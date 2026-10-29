@@ -88,13 +88,13 @@ function assTime(ms: number): string {
   return `${h}:${pad(m)}:${pad(s)}.${pad(cs % 100)}`;
 }
 
-const escapeAssText = (s: string) => s.replace(/\{/g, "\\{").replace(/\}/g, "\\}");
+const escapeAssText = (s: string) => s.replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
 
 export function buildAss(cues: Cue[], video: { width: number; height: number }): string {
   const fontSize = Math.round(video.height * 0.055);
   const marginV = Math.round(video.height * 0.06);
   const dialogue = cues.map(
-    (c) => `Dialogue: 0,${assTime(c.startMs)},${assTime(c.endMs)},Default,,0,0,0,,${c.lines.map(escapeAssText).join("\\N")}`,
+    (c) => `Dialogue: 0,${assTime(c.startMs)},${assTime(Math.max(c.endMs, c.startMs + 10))},Default,,0,0,0,,${c.lines.map(escapeAssText).join("\\N")}`,
   );
   return [
     "[Script Info]",

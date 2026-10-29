@@ -84,4 +84,10 @@ describe("buildSrt / buildAss", () => {
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:01.50,Default,,0,0,0,,a \\{b\\}\\Nc");
     expect(ass).toContain("Dialogue: 0,1:02:03.45,1:02:05.00,Default,,0,0,0,,Later");
   });
+
+  it("escapes literal backslashes and never emits zero-duration cues", () => {
+    const ass = buildAss([{ startMs: 1000, endMs: 1000, lines: ["a\\Nb"] }], { width: 640, height: 360 });
+    expect(ass).toContain("Default,,0,0,0,,a\\\\Nb");
+    expect(ass).toContain("0:00:01.00,0:00:01.01,Default");
+  });
 });

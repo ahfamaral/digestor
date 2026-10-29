@@ -11,13 +11,23 @@ export class FfmpegError extends Error {
   }
 }
 
+/** Max stderr retained per process; only the tail matters for diagnostics. */
+export const STDERR_CAP = 64 * 1024;
+
+/**
+ * Resolves with the full stdout (unbounded on purpose: ffprobe JSON needs all of it, and
+ * callers that stream huge stdout should not use this) and a bounded stderr tail (last STDERR_CAP chars).
+ */
 export function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (d: string) => (stdout += d));
-    child.stderr.setEncoding("utf8").on("data", (d: string) => (stderr += d));
+    child.stderr.setEncoding("utf8").on("data", (d: string) => {
+      stderr += d;
+      if (stderr.length > STDERR_CAP) stderr = stderr.slice(-STDERR_CAP);
+    });
     child.on("error", (err) => reject(new FfmpegError(cmd, null, String(err.message))));
     child.on("close", (code) => {
       if (code === 0) return resolve({ stdout, stderr });
@@ -65,8 +75,14 @@ export const makeProxy = (input: string, output: string) =>
 export const thumbnail = (input: string, atMs: number, output: string) =>
   ffmpeg(["-ss", secs(atMs), "-i", input, "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "3", output]);
 
-/** Escape a path for use as an ffmpeg filter option value (`\`, `:` and `'`). */
-export const escapeFilterPath = (p: string) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
+/**
+ * Escape a path for use as the value of a filter option inside a `-vf` string. ffmpeg unescapes twice:
+ * first the filtergraph parser (`\`, `'`, `,` `;` `[` `]`), then the filter option parser (`\`, `:`, `'`),
+ * so we escape for the option level first and then for the graph level.
+ * Pipeline code still uses safe generated names (`<clipId>.ass` under the data dir); this is defence in depth.
+ */
+export const escapeFilterPath = (p: string) =>
+  p.replace(/[\\:']/g, "\\$&").replace(/[\\',;[\]]/g, "\\$&");
 
 export const renderClip = (o: { input: string; output: string; startMs: number; endMs: number; assPath: string }) =>
   ffmpeg([
