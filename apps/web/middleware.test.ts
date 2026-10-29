@@ -56,6 +56,9 @@ describe("password gate", () => {
     expect(re.test("/_next/image")).toBe(false);
     expect(re.test("/favicon.ico")).toBe(false);
     expect(re.test("/api/sessions/upload")).toBe(false);
+    // Only the exact upload route is excluded: anything below or beside it is still gated.
+    expect(re.test("/api/sessions/upload/x")).toBe(true);
+    expect(re.test("/api/sessions/uploads")).toBe(true);
   });
 });
 

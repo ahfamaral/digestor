@@ -11,7 +11,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // `api/sessions/upload` is excluded on purpose: when middleware runs, Next buffers the request body in memory
+  // Exactly `api/sessions/upload` (anchored with `$`) is excluded on purpose: when middleware runs, Next buffers the request body in memory
   // (and truncates it past 10 MB), which would break streamed multi-GB uploads. That route checks the gate itself.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/sessions/upload).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/sessions/upload$).*)"],
 };
