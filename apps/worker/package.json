@@ -1,0 +1,16 @@
+{
+  "name": "@digestor/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node --import tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@digestor/core": "workspace:*",
+    "tsx": "^4.19.0"
+  }
+}

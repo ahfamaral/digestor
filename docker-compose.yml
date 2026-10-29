@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: digestor
+      POSTGRES_PASSWORD: digestor
+      POSTGRES_DB: digestor
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U digestor -d digestor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  chroma:
+    image: chromadb/chroma
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadata:/data
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: dev
+    restart: unless-stopped
+    working_dir: /app
+    command: pnpm --filter @digestor/worker dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+      TEST_DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor_test
+      DATA_DIR: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+    volumes:
+      - .:/app
+      - worker_node_modules:/app/node_modules
+      - worker_core_node_modules:/app/packages/core/node_modules
+      - worker_app_node_modules:/app/apps/worker/node_modules
+      - ./data:/data
+
+volumes:
+  pgdata:
+  chromadata:
+  worker_node_modules:
+  worker_core_node_modules:
+  worker_app_node_modules:
