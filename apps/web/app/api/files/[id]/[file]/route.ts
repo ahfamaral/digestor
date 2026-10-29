@@ -2,11 +2,11 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { getClip } from "@digestor/core/server";
+import { isUuid } from "@/lib/ids";
 import { errorResponse } from "@/lib/http";
 import { getServer } from "@/lib/server";
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const UUID_RE = new RegExp(`^${UUID}$`, "i");
 /** Allow-list of servable files; group 1 = clip id (if any), group 2 = extension. */
 const ALLOWED = [
   /^proxy\.(mp4)$/,
@@ -54,7 +54,7 @@ async function attachmentName(clipId: string | null, sessionId: string): Promise
 export async function GET(req: Request, ctx: { params: Promise<{ id: string; file: string }> }): Promise<Response> {
   const { id, file: rawFile } = await ctx.params;
   const match = matchFile(rawFile);
-  if (!UUID_RE.test(id) || !match) return errorResponse(404, "Not found.");
+  if (!isUuid(id) || !match) return errorResponse(404, "Not found.");
 
   const { storage } = getServer();
   const fullPath = storage.resolve(storage.key(id, match.file));

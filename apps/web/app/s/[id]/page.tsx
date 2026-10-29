@@ -1,12 +1,12 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getSession } from "@digestor/core/server";
+import { getContextCard, getSession } from "@digestor/core/server";
 import { AppBar, type Step } from "@/components/AppBar";
+import { ContextCheck } from "@/components/ContextCheck";
 import { Processing } from "@/components/Processing";
+import { isUuid } from "@/lib/ids";
 import { getServer } from "@/lib/server";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Stage router: the session row decides which screen shows. Reads the DB per request (Cache Components: inside Suspense). */
 export default function SessionPage({ params }: PageProps<"/s/[id]">) {
@@ -19,7 +19,7 @@ export default function SessionPage({ params }: PageProps<"/s/[id]">) {
 
 async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!UUID.test(id)) notFound();
+  if (!isUuid(id)) notFound();
   const session = await getSession(getServer().db, id);
   if (!session) notFound();
 
@@ -28,7 +28,14 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
   let body: React.ReactNode;
   if (stage === "awaiting_context") {
     current = "Context";
-    body = <Placeholder>Context check (coming next)</Placeholder>; // Task 14
+    const found = await getContextCard(getServer().db, id);
+    body = found ? (
+      <ContextCheck sessionId={session.id} card={found.card} />
+    ) : (
+      <div role="alert" className="rounded-xl border border-border bg-white p-5 text-sm text-red-700">
+        The context card is missing for this video. Start over from the upload page.
+      </div>
+    );
   } else if (stage === "awaiting_review" || stage === "done") {
     current = "Review";
     body = <Placeholder>Review (coming next)</Placeholder>; // Task 15
