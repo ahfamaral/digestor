@@ -1,5 +1,6 @@
 import { ChatAnthropic } from "@langchain/anthropic";
-import type { z } from "zod";
+import { OutputParserException } from "@langchain/core/output_parsers";
+import { ZodError, type z } from "zod";
 
 export type LLMModel = "reasoning" | "fast";
 
@@ -35,23 +36,18 @@ export function createAnthropicLLM(apiKey: string): StructuredLLM {
   };
 }
 
-function isParseError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  return (
-    err.name === "ZodError" ||
-    err.name === "OutputParserException" ||
-    /parse|validation|schema/i.test(err.message)
-  );
+export function isParseError(err: unknown): boolean {
+  return err instanceof ZodError || err instanceof OutputParserException;
 }
 
 export class FakeLLM implements StructuredLLM {
-  calls: { name: string; system: string; user: string }[] = [];
+  calls: { name: string; system: string; user: string; model: LLMModel }[] = [];
   private queue: unknown[];
   constructor(responses: unknown[]) {
     this.queue = [...responses];
   }
   async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T> {
-    this.calls.push({ name: a.name, system: a.system, user: a.user });
+    this.calls.push({ name: a.name, system: a.system, user: a.user, model: a.model });
     if (this.queue.length === 0) throw new Error(`FakeLLM response queue is empty (call "${a.name}")`);
     return a.schema.parse(this.queue.shift());
   }

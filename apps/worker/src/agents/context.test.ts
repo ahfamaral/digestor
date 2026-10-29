@@ -7,7 +7,9 @@ import {
   understandContext,
   type ContextInput,
 } from "./context.js";
-import { FakeLLM } from "../llm/structured.js";
+import { FakeLLM, isParseError } from "../llm/structured.js";
+import { OutputParserException } from "@langchain/core/output_parsers";
+import { z } from "zod";
 
 const none: Fact = { value: null, source: null, evidence: null };
 const fact = (value: string, source: Fact["source"], evidence: string): Fact => ({ value, source, evidence });
@@ -162,7 +164,7 @@ describe("assessSufficiency", () => {
   it("numbers other questions from 1", () => {
     const q = { id: "q", target: "other" as const, speakerId: null, question: "Where?", why: "w", sampleStartMs: null };
     const c = assessSufficiency(card({ dateOrYear: none, openQuestions: [q] }), words);
-    expect(c.openQuestions[0]!.id).toBe("other:1");
+    expect(c.openQuestions.map((x) => x.id)).toEqual(["date", "other:1"]);
   });
 });
 
@@ -195,5 +197,78 @@ describe("understandContext", () => {
     const bad = new FakeLLM([{ nope: 1 }]);
     await expect(understandContext(bad, input)).rejects.toThrow();
     await expect(understandContext(new FakeLLM([]), input)).rejects.toThrow(/queue/i);
+  });
+});
+
+describe("fix round 1", () => {
+  const bananaInput: ContextInput = {
+    ...input,
+    words: [...mk("I ate a banana today.", "A", 0), ...mk("Thank you for having me.", "B", 12_000)],
+  };
+  it("matches evidence on whole words only", () => {
+    const c = groundContext(withName(fact("Ana Costa", "video", "ana")), bananaInput);
+    expect(c.participants[0]!.name).toEqual(none);
+  });
+  it("participant name must appear in its evidence", () => {
+    const bad = groundContext(withName(fact("Maria Silva", "video", "a ministra")), input);
+    expect(bad.participants[0]!.name).toEqual(none);
+    const good = groundContext(withName(fact("Maria Silva", "video", "a ministra Maria Silva")), input);
+    expect(good.participants[0]!.name.value).toBe("Maria Silva");
+  });
+  it("role keeps evidence-only check", () => {
+    const c = groundContext(
+      card({ participants: [{ speakerId: "A", name: none, role: fact("minister", "video", "a ministra"), affiliation: none }] }),
+      input,
+    );
+    expect(c.participants[0]!.role.value).toBe("minister");
+  });
+  it("strips a timestamp/speaker prefix from evidence", () => {
+    const c = groundContext(withName(fact("Maria Silva", "video", "[00:00:00] A: a ministra Maria Silva")), input);
+    expect(c.participants[0]!.name.value).toBe("Maria Silva");
+  });
+  it("caps event type confidence when evidence is missing or unsupported", () => {
+    const none_ = groundContext(card({ eventType: { value: "interview", confidence: 0.9, evidence: null } }), input);
+    expect(none_.eventType.confidence).toBe(0.5);
+    const bad = groundContext(card({ eventType: { value: "interview", confidence: 0.9, evidence: "not said" } }), input);
+    expect(bad.eventType.confidence).toBe(0.5);
+    expect(groundContext(card(), input).eventType.confidence).toBe(0.9);
+  });
+  it("locked nulls stay null, not human-sourced", () => {
+    const c = groundContext(card(), { ...input, locked: { title: none } });
+    expect(c.title).toEqual(none);
+  });
+  it("required date question survives irrelevant LLM questions", () => {
+    const o = (n: number) => ({ id: `${n}`, target: "other" as const, speakerId: null, question: `Q${n}`, why: "w", sampleStartMs: null });
+    const llm = [
+      { ...o(1), target: "participant" as const, speakerId: "A" },
+      { ...o(2), target: "participant" as const, speakerId: "B" },
+      { ...o(3), target: "event_type" as const },
+    ];
+    const c = assessSufficiency(card({ dateOrYear: none, openQuestions: llm }), words);
+    expect(c.openQuestions).toHaveLength(3);
+    expect(c.openQuestions[0]!.id).toBe("date");
+  });
+  it("participant questions get real sample start; bogus speakers dropped", () => {
+    const pq = (speakerId: string | null) => ({ id: "x", target: "participant" as const, speakerId, question: "Who?", why: "w", sampleStartMs: 5 });
+    const c = assessSufficiency(card({ participants: [], openQuestions: [pq("B"), pq("Z"), pq(null)] }), words);
+    expect(c.openQuestions.map((q) => q.id).sort()).toEqual(["participant:A", "participant:B"]);
+    expect(c.openQuestions.find((q) => q.id === "participant:B")!.sampleStartMs).toBe(12_000);
+  });
+  it("prompt uses labels and the summary/prefix rules", () => {
+    const { system } = buildContextPrompt(input);
+    expect(system).toContain("summary must not state");
+    expect(system).toContain("no [hh:mm:ss]");
+    expect(system).not.toContain("Look for");
+  });
+  it("isParseError recognises parse/validation errors only", () => {
+    const zerr = z.string().safeParse(1).error!;
+    expect(isParseError(zerr)).toBe(true);
+    expect(isParseError(new OutputParserException("bad"))).toBe(true);
+    expect(isParseError(new Error("schema parse validation"))).toBe(false);
+  });
+  it("understandContext records the reasoning model", async () => {
+    const llm = new FakeLLM([card()]);
+    await understandContext(llm, input);
+    expect(llm.calls[0]!.model).toBe("reasoning");
   });
 });

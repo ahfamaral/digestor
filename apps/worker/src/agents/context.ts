@@ -28,7 +28,7 @@ const MIN_SPEAKER_SHARE = 0.1;
 
 export function buildContextPrompt(i: ContextInput): { system: string; user: string } {
   const eventTypes = Object.entries(EVENT_TYPES)
-    .map(([id, c]) => `- ${id}: ${c.label}. ${c.rubric}`)
+    .map(([id, c]) => `- ${id}: ${c.label}`)
     .join("\n");
   const system = [
     "You build a context card for a video transcript, so that later steps understand who is speaking and what the event is.",
@@ -38,10 +38,12 @@ export function buildContextPrompt(i: ContextInput): { system: string; user: str
     "",
     "Evidence rule: every fact must quote the exact transcript sentence, metadata value, or human text that supports it; otherwise null.",
     'A fact is {value, source, evidence}. source is "video" (transcript), "metadata" or "human" (hint or answers). If nothing supports a fact, use {value: null, source: null, evidence: null}. Never guess names, roles, dates or places.',
+    "Quote sentence text only in evidence: no [hh:mm:ss] or speaker prefix.",
+    "The summary must not state names, dates or places that are not supported facts.",
     "Do not report the language; it is detected separately. Set language to {value: null, source: null, evidence: null}.",
     "List one participant per speaker id that appears in the transcript.",
     "",
-    "Question rules: ask at most 3 questions (max 3), in plain language a non-expert understands, most important first. Only ask about things you could not establish. Use target date, event_type, participant (with speakerId) or other. Set sufficient to false and leave openQuestions empty if you have no questions.",
+    "Question rules: ask at most 3 questions (max 3), in plain language a non-expert understands, most important first. Only ask about things you could not establish. Use target date, event_type, participant (with speakerId) or other. Sufficiency is computed separately; just list your open questions.",
   ].join("\n");
 
   const meta = Object.entries(i.metadata)
@@ -68,12 +70,20 @@ function normalise(s: string): string {
   return s.toLowerCase().replace(/\p{P}/gu, "").replace(/\s+/g, " ").trim();
 }
 
-function supported(fact: Fact, sources: Record<"video" | "metadata" | "human", string>): boolean {
+type Sources = Record<"video" | "metadata" | "human", string>;
+
+function normEvidence(evidence: string): string {
+  return normalise(evidence.replace(/^\s*\[\d{1,2}:\d{2}(?::\d{2})?\]\s*[^:]{1,20}:\s*/, ""));
+}
+
+function hasWords(haystack: string, needle: string): boolean {
+  return needle !== "" && ` ${haystack} `.includes(` ${needle} `);
+}
+
+function supported(fact: Fact, sources: Sources): boolean {
   if (fact.value === null) return true;
   if (fact.source === null || fact.evidence === null) return false;
-  const ev = normalise(fact.evidence);
-  if (ev === "") return false;
-  return sources[fact.source].includes(ev);
+  return hasWords(sources[fact.source], normEvidence(fact.evidence));
 }
 
 export function groundContext(card: ContextCard, i: ContextInput): ContextCard {
@@ -83,22 +93,32 @@ export function groundContext(card: ContextCard, i: ContextInput): ContextCard {
     human: normalise([i.hint ?? "", ...i.answers.map((a) => a.answer)].join(" ")),
   };
   const ground = (f: Fact): Fact => (supported(f, sources) ? f : { ...NULL_FACT });
+  const groundName = (f: Fact): Fact => {
+    const g = ground(f);
+    if (g.value === null) return g;
+    return hasWords(normEvidence(g.evidence ?? ""), normalise(g.value)) ? g : { ...NULL_FACT };
+  };
+  const evType = card.eventType;
+  const evSupported =
+    evType.evidence !== null &&
+    Object.values(sources).some((src) => hasWords(src, normEvidence(evType.evidence ?? "")));
 
   const out: ContextCard = {
     ...card,
+    eventType: evSupported ? evType : { ...evType, confidence: Math.min(evType.confidence, 0.5) },
     title: ground(card.title),
     setting: ground(card.setting),
     dateOrYear: ground(card.dateOrYear),
     participants: card.participants.map((p) => ({
       ...p,
-      name: ground(p.name),
+      name: groundName(p.name),
       role: ground(p.role),
       affiliation: ground(p.affiliation),
     })),
   };
 
   // Human-locked values override, always with source "human".
-  const human = (f: Fact): Fact => ({ ...f, source: "human" });
+  const human = (f: Fact): Fact => (f.value !== null ? { ...f, source: "human" } : { ...NULL_FACT });
   const l = i.locked;
   if (l.language) out.language = human(l.language);
   if (l.title) out.title = human(l.title);
@@ -174,10 +194,27 @@ export function assessSufficiency(card: ContextCard, words: Word[]): ContextCard
     });
   }
 
+  const llmQuestions = card.openQuestions
+    .filter((q) => q.target !== "participant" || (q.speakerId !== null && q.speakerId in shares))
+    .map((q) =>
+      q.target === "participant"
+        ? { ...q, sampleStartMs: words.find((w) => w.speaker === q.speakerId)?.startMs ?? null }
+        : q,
+    );
+  const covers = (q: Omit<Question, "id">): boolean =>
+    (q.target === "date" && missingDate) ||
+    (q.target === "event_type" && lowEvent) ||
+    (q.target === "participant" && q.speakerId !== null && unidentified.includes(q.speakerId));
+  const ordered = [
+    ...llmQuestions.filter(covers),
+    ...fallbacks,
+    ...llmQuestions.filter((q) => !covers(q)),
+  ];
+
   const seen = new Set<string>();
   const questions: Question[] = [];
   let otherN = 0;
-  for (const q of [...card.openQuestions, ...fallbacks]) {
+  for (const q of ordered) {
     const key = `${q.target}|${q.speakerId ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
