@@ -11,3 +11,6 @@ export type ResumeJob = z.infer<typeof ResumeJobSchema>;
 
 export const RenderClipJobSchema = z.object({ clipId: z.string().uuid() });
 export type RenderClipJob = z.infer<typeof RenderClipJobSchema>;
+
+/** pg-boss send options shared by every sender, so a crashed/failed job is retried. */
+export const JOB_OPTIONS = { retryLimit: 2, retryDelay: 30 } as const;
