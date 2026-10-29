@@ -45,6 +45,7 @@ After adding a dependency: `pnpm install` on the host first (updates the lockfil
 - `pgboss-langgraph-gotchas`: read before touching jobs, queues, the pipeline graph, resume or retries.
 - `vendor-contract-check`: before writing or changing a fake for AssemblyAI, Claude or yt-dlp.
 - `llm-structured-output`: before adding or changing any LLM call that returns structured data.
+- `digestor-ui`: before building or changing any screen or component (tokens, colours, copy, keyboard, a11y). The UI concept is still to be agreed; mockups in `docs/design/` are inspiration only.
 - `nextjs16-gotchas`: before changing pages, route handlers, middleware, streaming routes, next.config or the web Dockerfile.
 
 ## Workflow
