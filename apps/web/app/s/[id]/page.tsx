@@ -1,11 +1,13 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getContextCard, getSession } from "@digestor/core/server";
+import { getContextCard, getSession, listClips } from "@digestor/core/server";
 import { AppBar, type Step } from "@/components/AppBar";
 import { ContextCheck } from "@/components/ContextCheck";
+import { Inbox } from "@/components/Inbox";
 import { Processing } from "@/components/Processing";
 import { isUuid } from "@/lib/ids";
+import { buildClipTree } from "@/lib/review";
 import { getServer } from "@/lib/server";
 
 /** Stage router: the session row decides which screen shows. Reads the DB per request (Cache Components: inside Suspense). */
@@ -24,6 +26,12 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
   if (!session) notFound();
 
   const stage = session.stage;
+  if (stage === "awaiting_review" || stage === "done") {
+    // The inbox owns its app bar ("Render N approved →" follows the live triage state).
+    const { db } = getServer();
+    const [rows, found] = await Promise.all([listClips(db, id), getContextCard(db, id)]);
+    return <Inbox sessionId={session.id} title={session.title} initialTree={buildClipTree(rows)} card={found?.card ?? null} />;
+  }
   let current: Step = "Processing";
   let body: React.ReactNode;
   if (stage === "awaiting_context") {
@@ -36,9 +44,6 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
         The context card is missing for this video. Start over from the upload page.
       </div>
     );
-  } else if (stage === "awaiting_review" || stage === "done") {
-    current = "Review";
-    body = <Placeholder>Review (coming next)</Placeholder>; // Task 15
   } else if (stage === "failed") {
     body = (
       <div className="mx-auto max-w-xl rounded-xl border border-border bg-white p-5">
@@ -68,8 +73,4 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
       </main>
     </>
   );
-}
-
-function Placeholder({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-xl border border-dashed border-border bg-white p-6 text-sm text-muted-foreground">{children}</div>;
 }
