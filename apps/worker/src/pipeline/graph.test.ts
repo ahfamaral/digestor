@@ -15,6 +15,7 @@ import {
   listClips,
   saveContextCard,
   saveTranscript,
+  setClipBounds,
   setClipStatus,
   setRenderState,
   setStage,
@@ -430,6 +431,41 @@ describe("nodes", () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it.each([
+    ["its times were edited", (id: string) => setClipBounds(db, id, { startMs: 3000, endMs: 9850 }, "user")],
+    ["it was un-approved", (id: string) => setClipStatus(db, id, "neutral", "user")],
+  ])("renderOne marks the render stale when, mid-render, %s", async (_case, change) => {
+    let clipId = "";
+    const racing = {
+      ...media,
+      renderClip: async (o: Parameters<typeof media.renderClip>[0]) => {
+        const out = await media.renderClip(o);
+        await change(clipId); // the user acts while ffmpeg runs
+        return out;
+      },
+    };
+    const { deps, sessionId } = await readyForClips({ llm: clipPass, media: racing });
+    await findClipsNode(deps)(state(sessionId));
+    const [clip] = await listClips(db, sessionId);
+    clipId = clip!.id;
+    await setClipStatus(db, clipId, "approved", "user");
+
+    await renderOne(deps, clipId);
+
+    const renderKey = `${sessionId}/clips/${clipId}.mp4`;
+    expect(await getClip(db, clipId)).toMatchObject({ renderStatus: "stale", renderKey, srtKey: `${sessionId}/clips/${clipId}.srt` });
+    expect(await exists(storage.resolve(renderKey))).toBe(true);
+  });
+
+  it("renderOne marks an unchanged approved clip done", async () => {
+    const { deps, sessionId } = await readyForClips({ llm: clipPass });
+    await findClipsNode(deps)(state(sessionId));
+    const [clip] = await listClips(db, sessionId);
+    await setClipStatus(db, clip!.id, "approved", "user");
+    await renderOne(deps, clip!.id);
+    expect((await getClip(db, clip!.id))!.renderStatus).toBe("done");
   });
 
   it("renderOne marks the clip failed, removes the temp .ass and rethrows", async () => {

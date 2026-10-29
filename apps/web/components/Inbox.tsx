@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ClipStatus, ContextCard } from "@digestor/core";
 import { AppBar } from "@/components/AppBar";
 import { ClipCard, LABELS } from "@/components/ClipCard";
@@ -79,7 +80,10 @@ export function Inbox({
   initialTree: ClipNode[];
   card: ContextCard | null;
 }) {
+  const router = useRouter();
   const [tree, setTree] = useState(initialTree);
+  const [rendering, setRendering] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [filter, setFilter] = useState<ReviewFilter>("all");
   const [focus, setFocus] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -171,18 +175,43 @@ export function Inbox({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Next keeps this page (and its state) alive after navigating to Export: re-enable the button for when it comes back.
+  useEffect(() => () => setRendering(false), []);
+
+  async function startRender() {
+    setRendering(true);
+    setRenderError(null);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/render`, { method: "POST" });
+      if (res.ok) {
+        router.push(`/s/${sessionId}/export`);
+        return; // stay "starting" until the export page takes over
+      }
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setRenderError(data.error ?? "Couldn't start the render. Try again.");
+    } catch {
+      setRenderError("Couldn't start the render. Try again.");
+    }
+    setRendering(false);
+  }
+
   const approved = counts.approved;
   return (
     <>
       <AppBar current="Review">
-        <span title="Rendering arrives in the next step">
-          {/* Task 16 wires the render POST. */}
+        {renderError && (
+          <span role="alert" className="max-w-xs text-right text-xs text-red-700">
+            {renderError}
+          </span>
+        )}
+        <span title={approved === 0 ? "Approve at least one clip first." : undefined}>
           <button
             type="button"
-            disabled
+            disabled={approved === 0 || rendering}
+            onClick={startRender}
             className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Render {approved} approved →
+            {rendering ? "Starting render…" : `Render ${approved} approved →`}
           </button>
         </span>
       </AppBar>

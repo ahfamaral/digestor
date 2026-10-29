@@ -110,3 +110,8 @@ export function formatDuration(ms: number): string {
   const s = String(total % 60).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
+
+/** The approved clips (long clips and hot takes) of a tree, in review order: what gets rendered. */
+export function approvedClips<T extends ReviewClip>(tree: ClipNode<T>[]): T[] {
+  return flattenTree(tree).filter((c) => c.status === "approved");
+}

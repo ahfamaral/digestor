@@ -1,6 +1,5 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { Readable } from "node:stream";
 import { getClip } from "@digestor/core/server";
 import { isUuid } from "@/lib/ids";
 import { errorResponse } from "@/lib/http";
@@ -15,10 +14,11 @@ const ALLOWED = [
 ];
 const CONTENT_TYPES: Record<string, string> = { mp4: "video/mp4", jpg: "image/jpeg", srt: "application/x-subrip" };
 
-function matchFile(raw: string): { file: string; clipId: string | null; ext: string } | null {
+/** Joins the raw (still-encoded) catch-all segments; the allow-list then validates the whole path. */
+function matchFile(segments: string[]): { file: string; clipId: string | null; ext: string } | null {
   let file: string;
   try {
-    file = decodeURIComponent(raw); // `thumbs/<id>.jpg` arrives as one segment, `thumbs%2F<id>.jpg`
+    file = segments.map(decodeURIComponent).join("/");
   } catch {
     return null;
   }
@@ -50,10 +50,46 @@ async function attachmentName(clipId: string | null, sessionId: string): Promise
   return title || "clip";
 }
 
-/** GET /api/files/<sessionId>/<file>[?download=1] — streams session media with HTTP Range support. */
-export async function GET(req: Request, ctx: { params: Promise<{ id: string; file: string }> }): Promise<Response> {
-  const { id, file: rawFile } = await ctx.params;
-  const match = matchFile(rawFile);
+/**
+ * Streams bytes [start, end] of a file. Unlike `Readable.toWeb`, a cancel (the client dropped the request)
+ * destroys the fs stream, closing the file, and fs events arriving after that are ignored instead of
+ * throwing "Controller is already closed".
+ */
+function fileStream(fullPath: string, range: { start: number; end: number }): ReadableStream<Uint8Array> {
+  const file = createReadStream(fullPath, range);
+  let done = false;
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      file.on("data", (chunk) => {
+        if (done) return;
+        controller.enqueue(chunk as Buffer);
+        if ((controller.desiredSize ?? 0) <= 0) file.pause(); // backpressure: wait for pull()
+      });
+      file.on("end", () => {
+        if (done) return;
+        done = true;
+        controller.close();
+      });
+      file.on("error", (err) => {
+        if (done) return;
+        done = true;
+        controller.error(err);
+      });
+    },
+    pull() {
+      file.resume();
+    },
+    cancel() {
+      done = true;
+      file.destroy();
+    },
+  });
+}
+
+/** GET /api/files/<sessionId>/<path…>[?download=1] — streams session media with HTTP Range support. */
+export async function GET(req: Request, ctx: { params: Promise<{ id: string; file: string[] }> }): Promise<Response> {
+  const { id, file: segments } = await ctx.params;
+  const match = matchFile(segments);
   if (!isUuid(id) || !match) return errorResponse(404, "Not found.");
 
   const { storage } = getServer();
@@ -86,6 +122,5 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; fil
   headers.set("Content-Length", String(size === 0 ? 0 : range.end - range.start + 1));
   if (size === 0) return new Response(null, { status, headers });
 
-  const stream = createReadStream(fullPath, { start: range.start, end: range.end });
-  return new Response(Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>, { status, headers });
+  return new Response(fileStream(fullPath, range), { status, headers });
 }

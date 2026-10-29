@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvedClips,
   buildClipTree,
   countByFilter,
   filterClips,
@@ -104,6 +105,12 @@ describe("countByFilter", () => {
 describe("flattenTree", () => {
   it("lists each parent followed by its hot takes", () => {
     expect(flattenTree(tree).map((c) => c.id)).toEqual([p1.id, k1a.id, k1b.id, p2.id, p3.id, k3.id, p4.id]);
+  });
+});
+
+describe("approvedClips", () => {
+  it("lists approved long clips and hot takes in review order, even under an unapproved parent", () => {
+    expect(approvedClips(tree).map((c) => c.id)).toEqual([p1.id, k3.id]);
   });
 });
 

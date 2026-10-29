@@ -121,9 +121,9 @@ export function ClipCard({ clip, sessionId, focusedId, errors, onFocus, onStatus
     >
       <div className={cn("relative aspect-video bg-gradient-to-br", label.thumb)}>
         {clip.thumbKey && (
-          // eslint-disable-next-line @next/next/no-img-element -- served by our files route, which takes `thumbs/<id>.jpg` as one (encoded) segment
+          // eslint-disable-next-line @next/next/no-img-element -- served by our files route (auth-gated, no image optimizer)
           <img
-            src={`/api/files/${sessionId}/thumbs%2F${clip.id}.jpg`}
+            src={`/api/files/${sessionId}/thumbs/${clip.id}.jpg`}
             alt=""
             loading="lazy"
             className="absolute inset-0 h-full w-full object-cover"

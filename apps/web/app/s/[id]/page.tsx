@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getContextCard, getSession, listClips } from "@digestor/core/server";
 import { AppBar, type Step } from "@/components/AppBar";
 import { ContextCheck } from "@/components/ContextCheck";
@@ -10,7 +10,7 @@ import { isUuid } from "@/lib/ids";
 import { buildClipTree } from "@/lib/review";
 import { getServer } from "@/lib/server";
 
-/** Stage router: the session row decides which screen shows. Reads the DB per request (Cache Components: inside Suspense). */
+/** Stage router: the session row decides which screen shows (rendering goes to /export). Reads the DB per request (Cache Components: inside Suspense). */
 export default function SessionPage({ params }: PageProps<"/s/[id]">) {
   return (
     <Suspense fallback={<AppBar />}>
@@ -26,6 +26,8 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
   if (!session) notFound();
 
   const stage = session.stage;
+  // While rendering, the export page shows per-clip progress.
+  if (stage === "rendering") redirect(`/s/${id}/export`);
   if (stage === "awaiting_review" || stage === "done") {
     // The inbox owns its app bar ("Render N approved →" follows the live triage state).
     const { db } = getServer();

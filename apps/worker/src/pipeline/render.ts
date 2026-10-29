@@ -6,7 +6,8 @@ import type { PipelineDeps } from "./graph.js";
 
 /**
  * Render one clip with burned-in subtitles from the original video, plus a sidecar .srt.
- * renderStatus goes queued → rendering → done; on any error it becomes failed and the error is rethrown.
+ * renderStatus goes queued → rendering → done (or stale if the clip changed during the render);
+ * on any error it becomes failed and the error is rethrown.
  */
 export async function renderOne(deps: PipelineDeps, clipId: string): Promise<void> {
   const { db, storage, media } = deps;
@@ -31,7 +32,10 @@ export async function renderOne(deps: PipelineDeps, clipId: string): Promise<voi
     const srtKey = storage.key(clip.sessionId, `clips/${clipId}.srt`);
     await media.renderClip({ input: original, output: storage.resolve(renderKey), ...range, assPath });
     await writeFile(storage.resolve(srtKey), buildSrt(cues), "utf8");
-    await setRenderState(db, clipId, { renderStatus: "done", renderKey, srtKey });
+    // The user may have edited the times or un-approved the clip while ffmpeg ran: then this file is stale.
+    const now = await getClip(db, clipId);
+    const unchanged = now?.status === "approved" && now.startMs === range.startMs && now.endMs === range.endMs;
+    await setRenderState(db, clipId, { renderStatus: unchanged ? "done" : "stale", renderKey, srtKey });
   } catch (err) {
     await setRenderState(db, clipId, { renderStatus: "failed" });
     throw err;
