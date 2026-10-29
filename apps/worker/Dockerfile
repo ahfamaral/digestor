@@ -15,6 +15,8 @@ RUN arch="$(dpkg --print-architecture)"; \
       "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${asset}" \
  && chmod +x /usr/local/bin/yt-dlp
 RUN corepack enable
+ENV PNPM_STORE_DIR=/pnpm-store
+ENV npm_config_store_dir=/pnpm-store
 WORKDIR /app
 
 # dev: dependencies only; source is bind-mounted at /app by compose
@@ -23,6 +25,8 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/core/package.json packages/core/
 COPY apps/worker/package.json apps/worker/
 RUN pnpm install --frozen-lockfile
+COPY apps/worker/sync-deps-entrypoint.sh /usr/local/bin/sync-deps-entrypoint.sh
+ENTRYPOINT ["sync-deps-entrypoint.sh"]
 CMD ["pnpm", "--filter", "@digestor/worker", "dev"]
 
 # prod: source baked in

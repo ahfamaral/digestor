@@ -5,7 +5,9 @@
   "packageManager": "pnpm@10.34.9",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "vitest run",
+    "test": "pnpm -r --filter '!@digestor/worker' test",
+    "test:worker": "docker compose run --rm worker pnpm --filter @digestor/worker test",
+    "test:all": "pnpm test && pnpm test:worker",
     "db:migrate": "pnpm --filter @digestor/core db:migrate",
     "typecheck": "pnpm -r typecheck"
   },
