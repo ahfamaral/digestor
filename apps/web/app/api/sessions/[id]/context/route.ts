@@ -1,5 +1,5 @@
 import { JOB_OPTIONS, QUEUES, ResumePayloadSchema } from "@digestor/core";
-import { getContextCard, getSession, setStage } from "@digestor/core/server";
+import { getContextCard, getSession, transitionStage } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { getServer } from "@/lib/server";
@@ -33,12 +33,18 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   const payload = parsed.data;
 
   const { db, boss } = getServer();
-  const session = await getSession(db, id);
-  if (!session) return errorResponse(404, "Session not found.");
-  if (session.stage !== "awaiting_context") return errorResponse(409, "This video isn't waiting for context.");
-
-  if (payload.action === "continue") await setStage(db, id, "understanding", 55);
-  else await setStage(db, id, "finding_clips", 70);
-  await boss.send(QUEUES.resume, { sessionId: id, payload }, { ...JOB_OPTIONS, singletonKey: id });
+  if (!(await getSession(db, id))) return errorResponse(404, "Session not found.");
+  const next = payload.action === "continue" ? ({ stage: "understanding", progress: 55 } as const) : ({ stage: "finding_clips", progress: 70 } as const);
+  // Atomic: only one concurrent request wins the transition.
+  if (!(await transitionStage(db, id, "awaiting_context", next.stage, next.progress))) {
+    return errorResponse(409, "This video isn't waiting for context.");
+  }
+  try {
+    await boss.send(QUEUES.resume, { sessionId: id, payload }, { ...JOB_OPTIONS, singletonKey: id });
+  } catch (err) {
+    console.error("context: enqueue failed", err);
+    await transitionStage(db, id, next.stage, "awaiting_context", 55);
+    return errorResponse(503, "Couldn't queue the job. Please try again.");
+  }
   return Response.json({ ok: true });
 }

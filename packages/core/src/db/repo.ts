@@ -60,6 +60,16 @@ export async function setStage(db: Db, id: string, stage: Stage, progress: numbe
     .where(eq(sessions.id, id));
 }
 
+/** Atomic compare-and-set: moves the session `from` → `to` only if it is still in `from`. Returns whether a row changed. */
+export async function transitionStage(db: Db, id: string, from: Stage, to: Stage, progress: number): Promise<boolean> {
+  const rows = await db
+    .update(sessions)
+    .set({ stage: to, progress, error: null })
+    .where(and(eq(sessions.id, id), eq(sessions.stage, from)))
+    .returning({ id: sessions.id });
+  return rows.length > 0;
+}
+
 export async function saveTranscript(db: Db, id: string, t: Transcript): Promise<void> {
   const values = {
     language: t.language,

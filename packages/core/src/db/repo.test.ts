@@ -5,7 +5,7 @@ import { createDb, type Db } from "./client.ts";
 import {
   createSession, deleteSession, getClip, getContextCard, getSession, getTranscript, listClips,
   listExpiredSessions, replaceAiClips, saveContextCard, saveTranscript, setClipBounds, setClipStatus,
-  setClipThumb, setRenderState, setStage, updateSession, type Session,
+  setClipThumb, setRenderState, setStage, transitionStage, updateSession, type Session,
 } from "./repo.ts";
 import { clipEvents } from "./schema.ts";
 
@@ -71,6 +71,16 @@ describe("sessions", () => {
     await saveContextCard(db, s.id, card, 1);
     await saveContextCard(db, s.id, card, 2);
     expect(await getContextCard(db, s.id)).toEqual({ card, round: 2 });
+  });
+});
+
+describe("transitionStage", () => {
+  it("moves only when the session is in the expected stage", async () => {
+    await setStage(db, s.id, "awaiting_context", 50);
+    expect(await transitionStage(db, s.id, "awaiting_context", "understanding", 55)).toBe(true);
+    expect(await getSession(db, s.id)).toMatchObject({ stage: "understanding", progress: 55 });
+    expect(await transitionStage(db, s.id, "awaiting_context", "finding_clips", 70)).toBe(false);
+    expect((await getSession(db, s.id))?.stage).toBe("understanding");
   });
 });
 

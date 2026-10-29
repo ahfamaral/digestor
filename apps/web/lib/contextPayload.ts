@@ -18,7 +18,7 @@ export interface ContextFields {
 
 type ContinuePayload = Extract<ResumePayload, { action: "continue" }>;
 
-/** Build the "continue" resume payload: only changed (trimmed) fields, and only non-empty answers. */
+/** Build the "continue" resume payload: only changed, non-blank (trimmed) fields (blanking is ignored), and only non-empty answers. */
 export function buildContextPayload(
   original: ContextFields,
   edited: ContextFields,
@@ -28,7 +28,7 @@ export function buildContextPayload(
   if (edited.eventType !== original.eventType) cardEdits.eventType = edited.eventType;
   for (const key of ["title", "setting", "dateOrYear"] as const) {
     const value = edited[key].trim();
-    if (value !== original[key].trim()) cardEdits[key] = value;
+    if (value !== "" && value !== original[key].trim()) cardEdits[key] = value;
   }
   const participants: NonNullable<ContinuePayload["cardEdits"]["participants"]> = [];
   for (const p of edited.participants) {
@@ -37,7 +37,7 @@ export function buildContextPayload(
     let changed = false;
     for (const key of ["name", "role", "affiliation"] as const) {
       const value = p[key].trim();
-      if (value !== (before?.[key] ?? "").trim()) {
+      if (value !== "" && value !== (before?.[key] ?? "").trim()) {
         diff[key] = value;
         changed = true;
       }

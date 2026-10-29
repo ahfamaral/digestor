@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ResumePayloadSchema } from "@digestor/core";
 import { buildContextPayload, type ContextFields } from "./contextPayload";
 
 const original: ContextFields = {
@@ -35,5 +36,18 @@ describe("buildContextPayload", () => {
       { questionId: "q2", answer: " 2019 " },
     ]);
     expect(p.answers).toEqual([{ questionId: "q2", answer: "2019" }]);
+  });
+  it("never sends a blanked field (the worker cannot clear facts)", () => {
+    const edited: ContextFields = {
+      ...original,
+      title: "  ",
+      participants: [{ speakerId: "A", name: "", role: "", affiliation: "" }],
+    };
+    expect(buildContextPayload(original, edited, []).cardEdits).toEqual({});
+  });
+  it("produces a payload ResumePayloadSchema accepts", () => {
+    const edited: ContextFields = { ...original, eventType: "panel", dateOrYear: "2020" };
+    const p = buildContextPayload(original, edited, [{ questionId: "q", answer: "x" }]);
+    expect(ResumePayloadSchema.safeParse(p).success).toBe(true);
   });
 });

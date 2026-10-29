@@ -1,20 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { EVENT_TYPES, type ContextCard, type EventType, type Fact } from "@digestor/core";
 import { buildContextPayload, type ContextFields } from "@/lib/contextPayload";
 import { cn } from "@/lib/utils";
 
 const BADGES = {
-  video: { text: "from audio/video", cls: "bg-green-100 text-green-800" },
+  video: { text: "from video", cls: "bg-green-100 text-green-800" },
   metadata: { text: "from metadata", cls: "bg-stone-200 text-stone-700" },
   human: { text: "from you", cls: "bg-purple-100 text-purple-800" },
   missing: { text: "missing", cls: "bg-red-100 text-red-700" },
 } as const;
 
-function Badge({ kind }: { kind: keyof typeof BADGES }) {
-  const b = BADGES[kind];
+function Badge({ kind, audio }: { kind: keyof typeof BADGES; audio?: boolean }) {
+  const b = audio && kind === "video" ? { ...BADGES.video, text: "from audio" } : BADGES[kind];
   return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", b.cls)}>{b.text}</span>;
 }
 
@@ -42,12 +42,12 @@ function toFields(card: ContextCard): ContextFields {
 
 const inputCls = "h-8 min-w-0 flex-1 rounded-md border border-border bg-white px-2 text-sm outline-none focus:border-brand";
 
-function Row({ label, badge, children }: { label: string; badge: keyof typeof BADGES; children: React.ReactNode }) {
+function Row({ label, badge, audio, children }: { label: string; badge: keyof typeof BADGES; audio?: boolean; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 border-b border-border py-2 last:border-b-0">
       <span className="w-24 shrink-0 text-xs font-semibold text-muted-foreground">{label}</span>
       {children}
-      <Badge kind={badge} />
+      <Badge kind={badge} audio={audio} />
     </div>
   );
 }
@@ -63,6 +63,10 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
   const player = useRef<HTMLVideoElement>(null);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => () => {
+    if (stopTimer.current) clearTimeout(stopTimer.current);
+  }, []);
+
   const set = <K extends keyof ContextFields>(key: K, value: ContextFields[K]) => setEdited((e) => ({ ...e, [key]: value }));
   const setPerson = (i: number, key: "name" | "role" | "affiliation", value: string) =>
     setEdited((e) => ({ ...e, participants: e.participants.map((p, j) => (j === i ? { ...p, [key]: value } : p)) }));
@@ -72,7 +76,10 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
     if (!v) return;
     if (stopTimer.current) clearTimeout(stopTimer.current);
     v.currentTime = startMs / 1000;
-    void v.play().catch(() => setError("Could not play the sample."));
+    void v.play().catch(() => {
+      if (stopTimer.current) clearTimeout(stopTimer.current);
+      setError("Could not play the sample.");
+    });
     stopTimer.current = setTimeout(() => v.pause(), 5000);
   }
 
@@ -110,6 +117,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
         value={edited[key]}
         placeholder="not found"
         onChange={(e) => set(key, e.target.value)}
+        onBlur={() => !edited[key].trim() && set(key, original[key])}
       />
     </Row>
   );
@@ -118,7 +126,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
     <div className="grid gap-4 md:grid-cols-2">
       <section className="rounded-xl border border-border bg-white p-5">
         <h2 className="mb-2 text-base font-bold">Here&apos;s what I understood</h2>
-        <Row label="Language" badge={card.language.value ? (card.language.source ?? "video") : "missing"}>
+        <Row label="Language" audio badge={card.language.value ? (card.language.source ?? "video") : "missing"}>
           <span className="flex-1 text-sm">{card.language.value ?? "unknown"}</span>
         </Row>
         <Row label="Event type" badge={edited.eventType !== original.eventType ? "human" : "video"}>
@@ -153,6 +161,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
                     value={e[k]}
                     placeholder="not found"
                     onChange={(ev) => setPerson(i, k, ev.target.value)}
+                    onBlur={() => !e[k].trim() && setPerson(i, k, o[k])}
                   />
                   <Badge kind={kindOf(p[k], e[k], o[k])} />
                 </div>

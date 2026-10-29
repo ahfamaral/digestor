@@ -62,6 +62,24 @@ describe("POST /api/sessions/[id]/context", () => {
     expect([s?.stage, s?.progress]).toEqual(["understanding", 55]);
     expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload }, { ...JOB_OPTIONS, singletonKey: id });
   });
+  it("404s for a valid uuid with no session", async () => {
+    expect((await post("00000000-0000-4000-8000-000000000000", { action: "skip" })).status).toBe(404);
+  });
+  it("503s and restores awaiting_context when the enqueue fails", async () => {
+    const id = await session("awaiting_context");
+    h.send.mockRejectedValueOnce(new Error("db down"));
+    const res = await post(id, { action: "skip" });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "Couldn't queue the job. Please try again." });
+    expect((await getSession(h.db, id))?.stage).toBe("awaiting_context");
+    expect((await post(id, { action: "skip" })).status).toBe(200);
+  });
+  it("409s a second POST after the first transitioned", async () => {
+    const id = await session("awaiting_context");
+    expect((await post(id, { action: "skip" })).status).toBe(200);
+    expect((await post(id, { action: "skip" })).status).toBe(409);
+    expect(h.send).toHaveBeenCalledTimes(1);
+  });
   it("skip sets finding_clips and enqueues", async () => {
     const id = await session("awaiting_context");
     expect((await post(id, { action: "skip" })).status).toBe(200);
