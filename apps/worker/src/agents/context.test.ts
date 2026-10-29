@@ -1,0 +1,199 @@
+import { describe, expect, it } from "vitest";
+import type { ContextCard, Fact, Word } from "@digestor/core";
+import {
+  assessSufficiency,
+  buildContextPrompt,
+  groundContext,
+  understandContext,
+  type ContextInput,
+} from "./context.js";
+import { FakeLLM } from "../llm/structured.js";
+
+const none: Fact = { value: null, source: null, evidence: null };
+const fact = (value: string, source: Fact["source"], evidence: string): Fact => ({ value, source, evidence });
+
+function mk(text: string, speaker: string, startMs: number): Word[] {
+  return text.split(" ").map((t, i) => ({
+    text: t,
+    startMs: startMs + i * 300,
+    endMs: startMs + i * 300 + 250,
+    speaker,
+    confidence: 0.99,
+  }));
+}
+
+const words: Word[] = [
+  ...mk("Welcome to the show. Today we talk with a ministra Maria Silva.", "A", 0),
+  ...mk("Thank you for having me.", "B", 12_000),
+];
+
+const input: ContextInput = {
+  words,
+  metadata: { title: "Weekly show", uploader: "Canal X" },
+  hint: null,
+  answers: [],
+  language: { code: "pt", confidence: 0.978 },
+  locked: {},
+};
+
+function card(over: Partial<ContextCard> = {}): ContextCard {
+  return {
+    language: none,
+    eventType: { value: "interview", confidence: 0.9, evidence: "Welcome to the show" },
+    title: none,
+    summary: "An interview.",
+    setting: none,
+    dateOrYear: fact("2026", "metadata", "Weekly show"),
+    participants: [
+      { speakerId: "A", name: none, role: fact("host", "video", "Welcome to the show"), affiliation: none },
+      { speakerId: "B", name: none, role: fact("guest", "video", "Thank you for having me"), affiliation: none },
+    ],
+    sufficient: false,
+    openQuestions: [],
+    ...over,
+  };
+}
+
+const withName = (name: Fact): ContextCard =>
+  card({ participants: [{ speakerId: "A", name, role: none, affiliation: none }] });
+
+describe("groundContext", () => {
+  it("drops a name the transcript never says", () => {
+    const c = groundContext(withName(fact("Maria Silva", "video", "a ministra Maria Silvia")), input);
+    expect(c.participants[0]!.name).toEqual(none);
+  });
+  it("keeps a quoted fact (normalised)", () => {
+    const c = groundContext(withName(fact("Maria Silva", "video", "A  MINISTRA, Maria Silva!")), input);
+    expect(c.participants[0]!.name.value).toBe("Maria Silva");
+  });
+  it("nulls empty evidence and value without a source", () => {
+    const c = groundContext(
+      card({ title: fact("X", "video", "  "), setting: { value: "Studio", source: null, evidence: "Welcome" } }),
+      input,
+    );
+    expect(c.title).toEqual(none);
+    expect(c.setting).toEqual(none);
+  });
+  it("checks metadata and human sources", () => {
+    const i = { ...input, hint: "recorded in Lisbon", answers: [{ question: "q", answer: "March 2026" }] };
+    const c = groundContext(
+      card({
+        title: fact("Weekly show", "metadata", "weekly show"),
+        setting: fact("Lisbon", "human", "recorded in Lisbon"),
+        dateOrYear: fact("2026", "metadata", "not in metadata"),
+      }),
+      i,
+    );
+    expect(c.title.value).toBe("Weekly show");
+    expect(c.setting.value).toBe("Lisbon");
+    expect(c.dateOrYear).toEqual(none);
+  });
+  it("never nulls language", () => {
+    const lang = fact("pt", "video", "detected from audio (confidence 0.98)");
+    expect(groundContext(card({ language: lang }), input).language).toEqual(lang);
+  });
+  it("human answers become human-sourced facts via locked", () => {
+    const c = groundContext(card({ dateOrYear: none }), {
+      ...input,
+      locked: { dateOrYear: { value: "March 2026", source: "video", evidence: "March 2026" } },
+    });
+    expect(c.dateOrYear).toEqual({ value: "March 2026", source: "human", evidence: "March 2026" });
+  });
+  it("locked participants merge by speakerId", () => {
+    const c = groundContext(card(), {
+      ...input,
+      locked: {
+        participants: [{ speakerId: "B", name: fact("Ana", "human", "Ana"), role: none, affiliation: none }],
+      },
+    });
+    expect(c.participants).toHaveLength(2);
+    expect(c.participants.find((p) => p.speakerId === "B")!.name).toEqual(fact("Ana", "human", "Ana"));
+    expect(c.participants.find((p) => p.speakerId === "A")!.role.value).toBe("host");
+  });
+});
+
+describe("assessSufficiency", () => {
+  it("is sufficient when everything is known and clears questions", () => {
+    const c = assessSufficiency(
+      card({ openQuestions: [{ id: "x", target: "other", speakerId: null, question: "?", why: "", sampleStartMs: null }] }),
+      words,
+    );
+    expect(c.sufficient).toBe(true);
+    expect(c.openQuestions).toEqual([]);
+  });
+  it("missing date makes context insufficient with a date question", () => {
+    const c = assessSufficiency(card({ dateOrYear: none }), words);
+    expect(c.sufficient).toBe(false);
+    const q = c.openQuestions.find((x) => x.target === "date")!;
+    expect(q.id).toBe("date");
+    expect(q.question).toBe("When was this recorded or first aired?");
+  });
+  it("low event type confidence asks for the event type", () => {
+    const c = assessSufficiency(card({ eventType: { value: "other", confidence: 0.3, evidence: null } }), words);
+    expect(c.openQuestions.find((x) => x.id === "event_type")!.question).toBe("What kind of event is this?");
+  });
+  it("never more than 3 questions", () => {
+    const c = assessSufficiency(
+      card({
+        dateOrYear: none,
+        eventType: { value: "other", confidence: 0.1, evidence: null },
+        participants: [],
+      }),
+      words,
+    );
+    expect(c.sufficient).toBe(false);
+    expect(c.openQuestions).toHaveLength(3);
+  });
+  it("participant question carries a sample start", () => {
+    const c = assessSufficiency(
+      card({ participants: [{ speakerId: "A", name: none, role: fact("host", "video", "Welcome"), affiliation: none }] }),
+      words,
+    );
+    const q = c.openQuestions.find((x) => x.target === "participant")!;
+    expect(q).toMatchObject({ id: "participant:B", speakerId: "B", question: "Who is Speaker B?", sampleStartMs: 12_000 });
+  });
+  it("LLM questions come first and are deduped by target+speaker", () => {
+    const llmQ = { id: "zzz", target: "date" as const, speakerId: null, question: "Which year?", why: "w", sampleStartMs: null };
+    const c = assessSufficiency(card({ dateOrYear: none, openQuestions: [llmQ, { ...llmQ, question: "again" }] }), words);
+    const dates = c.openQuestions.filter((q) => q.target === "date");
+    expect(dates).toHaveLength(1);
+    expect(dates[0]).toMatchObject({ id: "date", question: "Which year?" });
+  });
+  it("numbers other questions from 1", () => {
+    const q = { id: "q", target: "other" as const, speakerId: null, question: "Where?", why: "w", sampleStartMs: null };
+    const c = assessSufficiency(card({ dateOrYear: none, openQuestions: [q] }), words);
+    expect(c.openQuestions[0]!.id).toBe("other:1");
+  });
+});
+
+describe("buildContextPrompt", () => {
+  it("includes rules, event types, metadata, hint and transcript", () => {
+    const { system, user } = buildContextPrompt({ ...input, hint: "a debate", answers: [{ question: "Who?", answer: "Ana" }] });
+    expect(system).toContain("parliament");
+    expect(system).toContain("otherwise null");
+    expect(system).toContain("max 3");
+    expect(user).toContain("Canal X");
+    expect(user).toContain("a debate");
+    expect(user).toContain("Ana");
+    expect(user).toContain("[00:00:00] A: Welcome to the show.");
+  });
+});
+
+describe("understandContext", () => {
+  it("calls the reasoning model once, grounds, sets language and assesses", async () => {
+    const llm = new FakeLLM([
+      card({ language: none, title: fact("Invented", "video", "never said"), dateOrYear: none }),
+    ]);
+    const c = await understandContext(llm, input);
+    expect(llm.calls).toHaveLength(1);
+    expect(c.title).toEqual(none);
+    expect(c.language).toEqual({ value: "pt", source: "video", evidence: "detected from audio (confidence 0.98)" });
+    expect(c.sufficient).toBe(false);
+    expect(c.openQuestions.some((q) => q.target === "date")).toBe(true);
+  });
+  it("FakeLLM rejects malformed responses and empty queue", async () => {
+    const bad = new FakeLLM([{ nope: 1 }]);
+    await expect(understandContext(bad, input)).rejects.toThrow();
+    await expect(understandContext(new FakeLLM([]), input)).rejects.toThrow(/queue/i);
+  });
+});

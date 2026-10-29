@@ -1,0 +1,58 @@
+import { ChatAnthropic } from "@langchain/anthropic";
+import type { z } from "zod";
+
+export type LLMModel = "reasoning" | "fast";
+
+export interface StructuredLLM {
+  generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T>;
+}
+
+const MODEL_IDS: Record<LLMModel, string> = {
+  reasoning: "claude-sonnet-5-5",
+  fast: "claude-haiku-5-5",
+};
+
+export function createAnthropicLLM(apiKey: string): StructuredLLM {
+  return {
+    async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }) {
+      const chat = new ChatAnthropic({
+        apiKey,
+        model: MODEL_IDS[a.model],
+        temperature: 0,
+        maxTokens: 16000,
+      }).withStructuredOutput(a.schema, { name: a.name });
+      const messages: [string, string][] = [
+        ["system", a.system],
+        ["human", a.user],
+      ];
+      try {
+        return (await chat.invoke(messages)) as T;
+      } catch (err) {
+        if (!isParseError(err)) throw err;
+        return (await chat.invoke(messages)) as T; // one retry, then rethrow
+      }
+    },
+  };
+}
+
+function isParseError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "ZodError" ||
+    err.name === "OutputParserException" ||
+    /parse|validation|schema/i.test(err.message)
+  );
+}
+
+export class FakeLLM implements StructuredLLM {
+  calls: { name: string; system: string; user: string }[] = [];
+  private queue: unknown[];
+  constructor(responses: unknown[]) {
+    this.queue = [...responses];
+  }
+  async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T> {
+    this.calls.push({ name: a.name, system: a.system, user: a.user });
+    if (this.queue.length === 0) throw new Error(`FakeLLM response queue is empty (call "${a.name}")`);
+    return a.schema.parse(this.queue.shift());
+  }
+}
