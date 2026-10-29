@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@digestor/core": "workspace:*",
+    "assemblyai": "^4.42.0",
     "tsx": "^4.19.0"
   }
 }

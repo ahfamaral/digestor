@@ -1,0 +1,115 @@
+{
+  "id": "fixture-1",
+  "status": "completed",
+  "language_code": "pt",
+  "language_confidence": 0.98,
+  "audio_duration": 9,
+  "text": "Bom dia, a todos. Obrigado por vir. Claro, com prazer. Acho que há um problema.",
+  "words": [
+    {
+      "text": "Bom",
+      "start": 240,
+      "end": 660,
+      "confidence": 0.915,
+      "speaker": "A"
+    },
+    {
+      "text": "dia,",
+      "start": 720,
+      "end": 1180,
+      "confidence": 0.92,
+      "speaker": "A"
+    },
+    {
+      "text": "a",
+      "start": 1240,
+      "end": 1580,
+      "confidence": 0.905,
+      "speaker": "A"
+    },
+    {
+      "text": "todos.",
+      "start": 1640,
+      "end": 2180,
+      "confidence": 0.93,
+      "speaker": "A"
+    },
+    {
+      "text": "Obrigado",
+      "start": 2240,
+      "end": 2860,
+      "confidence": 0.94,
+      "speaker": "B"
+    },
+    {
+      "text": "por",
+      "start": 2920,
+      "end": 3340,
+      "confidence": 0.915,
+      "speaker": "B"
+    },
+    {
+      "text": "vir.",
+      "start": 3400,
+      "end": 3860,
+      "confidence": 0.92,
+      "speaker": "B"
+    },
+    {
+      "text": "Claro,",
+      "start": 3920,
+      "end": 4460,
+      "confidence": 0.93,
+      "speaker": "A"
+    },
+    {
+      "text": "com",
+      "start": 4520,
+      "end": 4940,
+      "confidence": 0.915,
+      "speaker": "A"
+    },
+    {
+      "text": "prazer.",
+      "start": 5000,
+      "end": 5580,
+      "confidence": 0.935,
+      "speaker": "A"
+    },
+    {
+      "text": "Acho",
+      "start": 5640,
+      "end": 6100,
+      "confidence": 0.92,
+      "speaker": "B"
+    },
+    {
+      "text": "que",
+      "start": 6160,
+      "end": 6580,
+      "confidence": 0.915,
+      "speaker": "B"
+    },
+    {
+      "text": "há",
+      "start": 6640,
+      "end": 7020,
+      "confidence": 0.91,
+      "speaker": "B"
+    },
+    {
+      "text": "um",
+      "start": 7080,
+      "end": 7460,
+      "confidence": 0.91,
+      "speaker": null
+    },
+    {
+      "text": "problema.",
+      "start": 7520,
+      "end": 8180,
+      "confidence": 0.945,
+      "speaker": "B"
+    }
+  ]
+}
