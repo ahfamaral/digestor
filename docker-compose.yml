@@ -49,6 +49,8 @@ services:
       - worker_node_modules:/app/node_modules
       - worker_core_node_modules:/app/packages/core/node_modules
       - worker_app_node_modules:/app/apps/worker/node_modules
+      # keeps the container's install of apps/web deps off the host's apps/web/node_modules (bind mount)
+      - worker_web_node_modules:/app/apps/web/node_modules
       - ./data:/data
       - pnpm-store:/pnpm-store
 
@@ -58,4 +60,5 @@ volumes:
   worker_node_modules:
   worker_core_node_modules:
   worker_app_node_modules:
+  worker_web_node_modules:
   pnpm-store:

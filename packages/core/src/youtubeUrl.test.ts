@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { InvalidYouTubeUrlError, parseYouTubeUrl } from "./youtubeUrl.js";
+import { InvalidYouTubeUrlError, parseYouTubeUrl } from "./youtubeUrl.ts";
 
 const ID = "dQw4w9WgXcQ";
 const CANON = `https://www.youtube.com/watch?v=${ID}`;

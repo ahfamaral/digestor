@@ -1,8 +1,11 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDb } from "./client.js";
+import { createDb } from "./client.ts";
 
-export const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
+// path.join rather than `new URL("../../drizzle", import.meta.url)`: bundlers (Next/Turbopack, which pulls this
+// module in through `@digestor/core/server`) treat that form as an asset import and fail on a directory.
+export const MIGRATIONS_FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "drizzle");
 
 export async function runMigrations(url: string): Promise<void> {
   const { db, close } = createDb(url);

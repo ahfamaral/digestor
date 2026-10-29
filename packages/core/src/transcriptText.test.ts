@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Word } from "./schemas.js";
-import { renderTranscript, sliceWords, speakerShares, toSentences } from "./transcriptText.js";
+import type { Word } from "./schemas.ts";
+import { renderTranscript, sliceWords, speakerShares, toSentences } from "./transcriptText.ts";
 
 const w = (text: string, startMs: number, endMs: number, speaker = "A"): Word => ({
   text,

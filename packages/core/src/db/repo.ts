@@ -1,7 +1,7 @@
 import { and, eq, lt, sql } from "drizzle-orm";
-import type { ClipOrigin, ClipStatus, ContextCard, ProposedClip, Transcript } from "../schemas.js";
-import type { Db } from "./client.js";
-import { clipEvents, clips, contextCards, sessions, transcripts, type Stage } from "./schema.js";
+import type { ClipOrigin, ClipStatus, ContextCard, ProposedClip, Transcript } from "../schemas.ts";
+import type { Db } from "./client.ts";
+import { clipEvents, clips, contextCards, sessions, transcripts, type Stage } from "./schema.ts";
 
 export type Session = typeof sessions.$inferSelect;
 export type Clip = typeof clips.$inferSelect;
@@ -9,11 +9,19 @@ export type Actor = "ai" | "user" | "copilot";
 
 export async function createSession(
   db: Db,
-  input: { title: string; source: "upload" | "youtube"; sourceUrl?: string; originalKey?: string; hint?: string | null },
+  input: {
+    id?: string;
+    title: string;
+    source: "upload" | "youtube";
+    sourceUrl?: string;
+    originalKey?: string;
+    hint?: string | null;
+  },
 ): Promise<Session> {
   const [row] = await db
     .insert(sessions)
     .values({
+      ...(input.id ? { id: input.id } : {}),
       title: input.title,
       source: input.source,
       sourceUrl: input.sourceUrl ?? null,

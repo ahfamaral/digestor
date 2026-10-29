@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
-import type { ProposedClip } from "../schemas.js";
-import { createDb, type Db } from "./client.js";
+import type { ProposedClip } from "../schemas.ts";
+import { createDb, type Db } from "./client.ts";
 import {
   createSession, deleteSession, getClip, getContextCard, getSession, getTranscript, listClips,
   listExpiredSessions, replaceAiClips, saveContextCard, saveTranscript, setClipBounds, setClipStatus,
   setClipThumb, setRenderState, setStage, updateSession, type Session,
-} from "./repo.js";
-import { clipEvents } from "./schema.js";
+} from "./repo.ts";
+import { clipEvents } from "./schema.ts";
 
 const tree: ProposedClip[] = [
   {
@@ -42,6 +42,12 @@ describe("sessions", () => {
     await setStage(db, s.id, "preparing", 20);
     expect((await getSession(db, s.id))!.error).toBeNull();
     expect((await updateSession(db, s.id, { audioKey: `${s.id}/audio.wav` })).audioKey).toBe(`${s.id}/audio.wav`);
+  });
+
+  it("creates with a caller-chosen id (upload saves the file before the row exists)", async () => {
+    const id = "22222222-2222-4222-8222-222222222222";
+    const row = await createSession(db, { id, title: "U", source: "upload", originalKey: `${id}/original.mp4` });
+    expect(row).toMatchObject({ id, originalKey: `${id}/original.mp4` });
   });
 
   it("lists expired sessions and cascades on delete", async () => {

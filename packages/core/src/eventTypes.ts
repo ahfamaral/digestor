@@ -1,4 +1,4 @@
-import type { EventType } from "./schemas.js";
+import type { EventType } from "./schemas.ts";
 
 export interface EventTypeConfig {
   label: string;

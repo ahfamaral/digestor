@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTimestamp, InvalidTimestampError, parseTimestamp } from "./time.js";
+import { formatTimestamp, InvalidTimestampError, parseTimestamp } from "./time.ts";
 
 describe("formatTimestamp", () => {
   it("formats hh:mm:ss with optional tenths", () => {

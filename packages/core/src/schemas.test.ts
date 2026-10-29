@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CandidateSchema, ContextCardSchema, EventTypeSchema } from "./schemas.js";
-import { EVENT_TYPES } from "./eventTypes.js";
-import { estimateCostUsd } from "./cost.js";
+import { CandidateSchema, ContextCardSchema, EventTypeSchema } from "./schemas.ts";
+import { EVENT_TYPES } from "./eventTypes.ts";
+import { estimateCostUsd } from "./cost.ts";
 
 const nullFact = { value: null, source: null, evidence: null };
 const question = (i: number) => ({

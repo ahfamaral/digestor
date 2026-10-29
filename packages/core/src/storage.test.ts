@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { rm } from "node:fs/promises";
-import { LocalStorage, UnsafePathError, UploadTooLargeError } from "./storage.js";
+import { LocalStorage, UnsafePathError, UploadTooLargeError } from "./storage.ts";
 
 function bodyOf(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
   return new ReadableStream({

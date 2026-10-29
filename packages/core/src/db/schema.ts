@@ -1,5 +1,5 @@
 import { boolean, doublePrecision, integer, jsonb, pgTable, serial, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import type { ContextCard, Word } from "../schemas.js";
+import type { ContextCard, Word } from "../schemas.ts";
 
 export type Stage =
   | "uploaded"

@@ -24,6 +24,7 @@ FROM base AS dev
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/core/package.json packages/core/
 COPY apps/worker/package.json apps/worker/
+COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile
 COPY apps/worker/sync-deps-entrypoint.sh /usr/local/bin/sync-deps-entrypoint.sh
 ENTRYPOINT ["sync-deps-entrypoint.sh"]

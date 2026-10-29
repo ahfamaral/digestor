@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Word } from "./schemas.js";
-import { endsSentence, findBoundaries, fitChildInParent, overlapRatio, snapRange } from "./snap.js";
+import type { Word } from "./schemas.ts";
+import { endsSentence, findBoundaries, fitChildInParent, overlapRatio, snapRange } from "./snap.ts";
 
 const w = (text: string, startMs: number, endMs: number): Word => ({
   text, startMs, endMs, speaker: "A", confidence: 1,

@@ -1,6 +1,6 @@
-import type { Word } from "./schemas.js";
-import { endsSentence } from "./snap.js";
-import { formatTimestamp } from "./time.js";
+import type { Word } from "./schemas.ts";
+import { endsSentence } from "./snap.ts";
+import { formatTimestamp } from "./time.ts";
 
 export type Sentence = { startMs: number; endMs: number; speaker: string; text: string };
 

@@ -1,4 +1,4 @@
-import type { Word } from "./schemas.js";
+import type { Word } from "./schemas.ts";
 
 export const SENTENCE_END_CHARS = [".", "?", "!", "…", "。", "？", "！"] as const;
 

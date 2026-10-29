@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ResumePayloadSchema } from "./schemas.js";
+import { ResumePayloadSchema } from "./schemas.ts";
 
 export const QUEUES = { start: "session.start", resume: "session.resume", renderClip: "clip.render" } as const;
 
