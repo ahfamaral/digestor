@@ -1,0 +1,9 @@
+# Production reverse proxy (docker-compose.prod.yml). Caddy obtains and renews the TLS certificate for
+# PUBLIC_HOSTNAME automatically (Let's Encrypt; a local CA certificate for `localhost`).
+{$PUBLIC_HOSTNAME} {
+	# no body size limit here: the app enforces MAX_UPLOAD_GB on streamed uploads itself
+	request_body {
+		max_size 0
+	}
+	reverse_proxy web:3000
+}

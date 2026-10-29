@@ -30,8 +30,22 @@ COPY apps/worker/sync-deps-entrypoint.sh /usr/local/bin/sync-deps-entrypoint.sh
 ENTRYPOINT ["sync-deps-entrypoint.sh"]
 CMD ["pnpm", "--filter", "@digestor/worker", "dev"]
 
-# prod: source baked in
+# prod: worker + core only, production deps, source baked in, runs as the unprivileged `node` user
 FROM base AS prod
-COPY . .
-RUN pnpm install --frozen-lockfile
-CMD ["node", "--import", "tsx", "apps/worker/src/main.ts"]
+ENV NODE_ENV=production
+# manifests first, so source edits don't invalidate the dependency layer
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/core/package.json packages/core/
+COPY apps/worker/package.json apps/worker/
+COPY apps/web/package.json apps/web/
+# the store is dropped in the same layer (node_modules keeps its own links/copies), keeping the image small
+RUN CI=true pnpm install --frozen-lockfile --prod --filter "@digestor/worker..." \
+ && rm -rf /pnpm-store
+COPY packages/core packages/core
+COPY apps/worker/package.json apps/worker/tsconfig.json apps/worker/
+COPY apps/worker/src apps/worker/src
+# /data owned by node so a fresh named volume mounted there is writable by the worker (and web, same uid)
+RUN mkdir -p /data && chown node:node /data
+USER node
+WORKDIR /app/apps/worker
+CMD ["node", "--import", "tsx", "src/main.ts"]

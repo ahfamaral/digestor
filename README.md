@@ -51,7 +51,7 @@ docker/initdb Creates the digestor_test database
 data/         Uploaded and generated files (git-ignored)
 ```
 
-- Docker Compose runs `postgres`, `chroma` (reserved for Plan 2) and `worker`. The web app runs on the host.
+- Docker Compose runs `postgres`, `chroma` (reserved for Plan 2) and `worker`. The web app runs on the host in development; in production it runs in its own container behind Caddy (see [Deployment](#deployment)).
 - Files live under `data/<sessionId>/` (for example `original.mp4`, `proxy.mp4`, `thumbs/<clipId>.jpg`, `clips/<clipId>.mp4` and `.srt`). The database stores these storage-relative keys, never absolute paths.
 - The worker image already includes ffmpeg, yt-dlp and the Noto fonts; nothing to install on the host.
 
@@ -95,6 +95,10 @@ Notes:
 
 Downloads work best from a home connection. From a server IP YouTube often asks for a bot check; the download is then best-effort and fails with a clear message ("download the video yourself and upload the file instead"). Digestor is for personal use, and you are responsible for how you use and share downloaded clips.
 
+## Deployment
+
+Production runs on a single VPS with `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` (production images, Caddy with automatic HTTPS, migrations on start, daily clean-up of sessions older than `RETENTION_DAYS`). The step-by-step runbook (server, DNS, firewall, `.env`, logs, updates, backups) is in [`docs/deploy.md`](docs/deploy.md).
+
 ## Tests
 
 - `pnpm test` runs host-safe packages (core, web).
@@ -104,7 +108,6 @@ Downloads work best from a home connection. From a server IP YouTube often asks 
 ## Roadmap
 
 - Plan 2: heat timeline and trim handles, a Chroma-backed RAG copilot with function calling, speaker labels, evaluation of clip quality.
-- Deployment to a single VPS (Task 18).
 
 ## Showcase
 

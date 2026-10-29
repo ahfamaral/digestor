@@ -1,0 +1,83 @@
+# Production override for a single VPS:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# See docs/deploy.md. Needs Docker Compose >= 2.24 (`!override` / `!reset`).
+
+x-worker-build: &worker-build
+  context: .
+  dockerfile: apps/worker/Dockerfile
+  target: prod
+
+services:
+  postgres:
+    ports: !reset [] # reachable only on the compose network
+
+  chroma:
+    ports: !reset []
+
+  # One-shot: applies Drizzle migrations, then exits; web and worker wait for it.
+  migrate:
+    build: *worker-build
+    restart: "no"
+    command: ["node", "--import", "tsx", "/app/packages/core/src/db/migrate.ts"]
+    environment:
+      DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: *worker-build
+    restart: unless-stopped
+    working_dir: /app/apps/worker
+    command: ["node", "--import", "tsx", "src/main.ts"]
+    environment: !override
+      DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+      DATA_DIR: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+    volumes: !override
+      - appdata:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # the container values win over the host values in .env
+      DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+      DATA_DIR: /data
+      APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in .env - the app is public in production}
+      MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}
+    volumes:
+      - appdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?set PUBLIC_HOSTNAME in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates and keys
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  appdata:
+  caddy_data:
+  caddy_config:

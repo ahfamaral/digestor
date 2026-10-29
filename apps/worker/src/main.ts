@@ -5,6 +5,7 @@ import { PgBoss } from "pg-boss";
 import type { z } from "zod";
 import { QUEUES, RenderClipJobSchema, ResumeJobSchema, StartJobSchema } from "@digestor/core";
 import { LocalStorage, createDb } from "@digestor/core/server";
+import { CLEANUP_CRON, CLEANUP_QUEUE, retentionDays, runCleanup } from "./cleanup.js";
 import { QUEUE_OPTIONS, handleRenderClip, handleResume, handleStart, MissingApiKeyError, processJobs, type JobContext } from "./jobs.js";
 import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
@@ -52,13 +53,22 @@ async function main() {
   const boss = new PgBoss(databaseUrl);
   boss.on("error", console.error);
   await boss.start();
-  for (const name of Object.values(QUEUES)) await boss.createQueue(name, QUEUE_OPTIONS);
+  for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE]) {
+    await boss.createQueue(name, QUEUE_OPTIONS); // no-op when the queue already exists...
+    await boss.updateQueue(name, QUEUE_OPTIONS); // ...so existing queues get the current options too
+  }
+  await boss.schedule(CLEANUP_QUEUE, CLEANUP_CRON, {}, { tz: "UTC" });
 
   const register = <T>(queue: string, schema: z.ZodType<T>, handle: (job: T) => Promise<void>) =>
     boss.work<unknown>(queue, { batchSize: 1 }, (jobs) => processJobs(queue, schema, handle, jobs));
   await register(QUEUES.start, StartJobSchema, (j) => handleStart(ctx, j));
   await register(QUEUES.resume, ResumeJobSchema, (j) => handleResume(ctx, j));
   await register(QUEUES.renderClip, RenderClipJobSchema, (j) => handleRenderClip(ctx, j));
+  await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
+    const days = retentionDays();
+    const { deleted } = await runCleanup({ db, storage }, days);
+    console.log(`cleanup: deleted ${deleted} session(s) older than ${days} day(s)`);
+  });
 
   let stopping = false;
   const shutdown = async () => {
@@ -75,7 +85,7 @@ async function main() {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
-  console.log(`worker ready (queues: ${Object.values(QUEUES).join(", ")})`);
+  console.log(`worker ready (queues: ${[...Object.values(QUEUES), CLEANUP_QUEUE].join(", ")})`);
 }
 
 main().catch((err) => {
