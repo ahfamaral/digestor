@@ -3,3 +3,4 @@ export * from "./eventTypes.js";
 export * from "./cost.js";
 export * from "./time.js";
 export * from "./snap.js";
+export * from "./transcriptText.js";
