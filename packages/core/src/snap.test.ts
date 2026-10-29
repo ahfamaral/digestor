@@ -36,6 +36,19 @@ describe("findBoundaries", () => {
   it("respects minPauseMs", () => {
     expect(findBoundaries(words, 10_000, 500)).toHaveLength(4);
   });
+  it("creates no boundary between overlapping words", () => {
+    const ov = [w("one.", 0, 900), w("two", 850, 1200), w("three.", 1300, 1600)];
+    // "one." ends a sentence but "two" starts before it ends: no boundary there
+    expect(findBoundaries(ov, 3000)).toEqual([
+      { afterWordEndMs: 0, beforeWordStartMs: 0 },
+      { afterWordEndMs: 1600, beforeWordStartMs: 3000 },
+    ]);
+    const bs = findBoundaries(ov, 3000);
+    for (let st = 0; st <= 3000; st += 50) {
+      const r = snapRange(bs, { startMs: st, endMs: 3000 - st });
+      expect(ov.some((x) => (r.startMs > x.startMs && r.startMs < x.endMs) || (r.endMs > x.startMs && r.endMs < x.endMs))).toBe(false);
+    }
+  });
   it("returns [] for no words", () => {
     expect(findBoundaries([], 1000)).toEqual([]);
   });
@@ -57,8 +70,26 @@ describe("snapRange", () => {
     expect(r.endMs).toBeGreaterThan(r.startMs);
     expect(r).toEqual({ startMs: 2250, endMs: 3600 });
   });
-  it("throws on empty boundaries", () => {
+  it("never starts in trailing silence", () => {
+    const r = snapRange(b, { startMs: 9_900, endMs: 9_950 });
+    expect(r.endMs).toBeGreaterThan(r.startMs);
+    expect(words.some((x) => x.startMs >= r.startMs && x.endMs <= r.endMs)).toBe(true);
+  });
+  it("throws with fewer than 2 boundaries", () => {
     expect(() => snapRange([], { startMs: 0, endMs: 1 })).toThrow(/boundaries/);
+    expect(() => snapRange(b.slice(0, 1), { startMs: 0, endMs: 1 })).toThrow(/boundaries/);
+  });
+  it("sweep: always valid, never mid-word, always contains a word", () => {
+    for (let st = 0; st <= 10_000; st += 50) {
+      for (let en = 0; en <= 10_000; en += 50) {
+        const r = snapRange(b, { startMs: st, endMs: en });
+        const msg = `${st}-${en} -> ${r.startMs}-${r.endMs}`;
+        expect(r.endMs > r.startMs, msg).toBe(true);
+        expect(r.startMs >= 0 && r.endMs <= 10_000, msg).toBe(true);
+        expect(words.some((x) => (r.startMs > x.startMs && r.startMs < x.endMs) || (r.endMs > x.startMs && r.endMs < x.endMs)), msg).toBe(false);
+        expect(words.some((x) => x.startMs >= r.startMs && x.endMs <= r.endMs), msg).toBe(true);
+      }
+    }
   });
 });
 

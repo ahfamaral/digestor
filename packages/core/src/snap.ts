@@ -21,7 +21,8 @@ export function findBoundaries(words: Word[], durationMs: number, minPauseMs = 3
   for (let i = 0; i < words.length - 1; i++) {
     const cur = words[i]!;
     const next = words[i + 1]!;
-    if (next.startMs - cur.endMs >= minPauseMs || endsSentence(cur.text)) {
+    const gap = next.startMs - cur.endMs;
+    if (gap >= 0 && (gap >= minPauseMs || endsSentence(cur.text))) {
       out.push({ afterWordEndMs: cur.endMs, beforeWordStartMs: next.startMs });
     }
   }
@@ -29,26 +30,25 @@ export function findBoundaries(words: Word[], durationMs: number, minPauseMs = 3
   return out;
 }
 
-function nearestIndex(b: Boundary[], pick: (x: Boundary) => number, target: number): number {
-  let best = 0;
-  for (let i = 1; i < b.length; i++) {
+function nearestIndex(b: Boundary[], from: number, to: number, pick: (x: Boundary) => number, target: number): number {
+  let best = from;
+  for (let i = from + 1; i <= to; i++) {
     if (Math.abs(pick(b[i]!) - target) < Math.abs(pick(b[best]!) - target)) best = i;
   }
   return best;
 }
 
 export function snapRange(b: Boundary[], r: Range, padMs = 150): Range {
-  if (b.length === 0) throw new Error("snapRange requires a non-empty boundaries array");
-  const sb = b[nearestIndex(b, (x) => x.beforeWordStartMs, r.startMs)]!;
-  const startMs = Math.max(sb.afterWordEndMs, sb.beforeWordStartMs - padMs);
-  const endAt = (x: Boundary) => Math.min(x.beforeWordStartMs, x.afterWordEndMs + padMs);
-  let ei = nearestIndex(b, (x) => x.afterWordEndMs, r.endMs);
-  let endMs = endAt(b[ei]!);
-  while (endMs <= startMs && ei + 1 < b.length) {
-    ei++;
-    endMs = endAt(b[ei]!);
-  }
-  return { startMs, endMs };
+  if (b.length < 2) throw new Error("snapRange requires at least 2 boundaries");
+  const n = b.length;
+  const s = nearestIndex(b, 0, n - 2, (x) => x.beforeWordStartMs, r.startMs);
+  const e = Math.max(nearestIndex(b, 1, n - 1, (x) => x.afterWordEndMs, r.endMs), s + 1);
+  const sb = b[s]!;
+  const eb = b[e]!;
+  return {
+    startMs: Math.max(sb.afterWordEndMs, sb.beforeWordStartMs - padMs),
+    endMs: Math.min(eb.beforeWordStartMs, eb.afterWordEndMs + padMs),
+  };
 }
 
 export function fitChildInParent(child: Range, parent: Range, minMs = 8000): Range | null {
