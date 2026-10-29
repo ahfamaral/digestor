@@ -11,7 +11,7 @@ export default async function setup(): Promise<void> {
   await runMigrations(url);
   const { db, close } = createDb(url);
   try {
-    await db.execute("TRUNCATE sessions, transcripts, context_cards, clips, clip_events RESTART IDENTITY CASCADE");
+    await db.execute("TRUNCATE sessions RESTART IDENTITY CASCADE");
   } finally {
     await close();
   }

@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, copyFile, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,8 @@ import {
   saveContextCard,
   saveTranscript,
   setClipStatus,
+  setRenderState,
+  setStage,
   updateSession,
   type Db,
 } from "@digestor/core/server";
@@ -23,7 +25,7 @@ import * as media from "../media/ffmpeg.js";
 import { FakeTranscriber } from "../transcribe/assemblyai.js";
 import { FakeLLM } from "../llm/structured.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
-import { buildPipeline, findClipsNode, type PipelineDeps } from "./graph.js";
+import { buildPipeline, findClipsNode, renderNode, type PipelineDeps } from "./graph.js";
 import { renderOne } from "./render.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
@@ -160,6 +162,19 @@ describe("pipeline", () => {
     expect(stored.card.sufficient).toBe(false);
     expect(stored.card.openQuestions.map((q) => q.id)).toEqual(["date"]);
     expect(stored.card.language).toMatchObject({ value: "en", source: "video" });
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it("an invalid action at the context pause pauses again without a resumed node re-setting the stage", async () => {
+    // The resumed ask_context gets {action:"render"} back from interrupt() (no stage write), routes back to
+    // ask_context, and that fresh run pauses again: only the real pause sets awaiting_context.
+    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft()] });
+    await graph.invoke({ sessionId }, cfg);
+    await setStage(db, sessionId, "understanding", 55);
+    await resume({ action: "render" });
+    expect(await interruptValue()).toEqual({ type: "context" });
+    expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
+    expect((await getSession(db, sessionId))!.stage).toBe("awaiting_context");
     expect(llm.calls).toHaveLength(1);
   });
 
@@ -306,7 +321,7 @@ describe("pipeline", () => {
   it("an unexpected download error ends with the generic message", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const { graph, cfg, sessionId } = await setup({
+      const { graph, cfg, sessionId, llm } = await setup({
         youtube: async () => {
           throw new Error("ENOENT: no such file or directory, open '/data/x/original.info.json'");
         },
@@ -316,6 +331,7 @@ describe("pipeline", () => {
         stage: "failed",
         error: "Couldn't download this video from YouTube.",
       });
+      expect(llm.calls.length).toBe(0);
       expect(log).toHaveBeenCalled();
     } finally {
       log.mockRestore();
@@ -357,6 +373,59 @@ describe("nodes", () => {
       const clips = await listClips(db, sessionId);
       expect(clips).toHaveLength(3);
       expect(clips.every((c) => c.thumbKey === null)).toBe(true);
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("render skips clips that are already rendered (retry-safe)", async () => {
+    const rendered: string[] = [];
+    const counting = {
+      ...media,
+      renderClip: async (o: Parameters<typeof media.renderClip>[0]) => {
+        rendered.push(o.output);
+        return media.renderClip(o);
+      },
+    };
+    const { deps, sessionId } = await readyForClips({ llm: clipPass, media: counting });
+    await findClipsNode(deps)(state(sessionId));
+    const [doneClip, todo] = await listClips(db, sessionId);
+    for (const c of [doneClip!, todo!]) await setClipStatus(db, c.id, "approved", "user");
+    const doneKey = storage.key(sessionId, `clips/${doneClip!.id}.mp4`);
+    await writeFile(storage.resolve(doneKey), "already rendered");
+    const before = (await stat(storage.resolve(doneKey))).mtimeMs;
+    await setRenderState(db, doneClip!.id, { renderStatus: "done", renderKey: doneKey });
+
+    await renderNode(deps)(state(sessionId));
+
+    expect(rendered).toEqual([storage.resolve(storage.key(sessionId, `clips/${todo!.id}.mp4`))]);
+    expect(await getClip(db, doneClip!.id)).toMatchObject({ renderStatus: "done", renderKey: doneKey });
+    expect((await stat(storage.resolve(doneKey))).mtimeMs).toBe(before);
+    expect((await getClip(db, todo!.id))!.renderStatus).toBe("done");
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "done", progress: 100 });
+  });
+
+  it("one failing render does not stop the others or fail the session", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let badId = "";
+      const flaky = {
+        ...media,
+        renderClip: async (o: Parameters<typeof media.renderClip>[0]) =>
+          o.output.includes(badId) ? Promise.reject(new Error("render boom")) : media.renderClip(o),
+      };
+      const { deps, sessionId } = await readyForClips({ llm: clipPass, media: flaky });
+      await findClipsNode(deps)(state(sessionId));
+      const [bad, good] = await listClips(db, sessionId);
+      badId = bad!.id;
+      for (const c of [bad!, good!]) await setClipStatus(db, c.id, "approved", "user");
+
+      await renderNode(deps)(state(sessionId));
+
+      expect((await getClip(db, bad!.id))!.renderStatus).toBe("failed");
+      expect(await getClip(db, good!.id)).toMatchObject({ renderStatus: "done", renderKey: `${sessionId}/clips/${good!.id}.mp4` });
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "done", progress: 100 });
       expect(log).toHaveBeenCalled();
     } finally {
       log.mockRestore();

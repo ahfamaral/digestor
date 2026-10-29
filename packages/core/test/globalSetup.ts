@@ -7,7 +7,7 @@ export default async function setup() {
   await runMigrations(url);
   const pool = new pg.Pool({ connectionString: url });
   try {
-    await pool.query("TRUNCATE sessions, transcripts, context_cards, clips, clip_events RESTART IDENTITY CASCADE");
+    await pool.query("TRUNCATE sessions RESTART IDENTITY CASCADE");
   } finally {
     await pool.end();
   }

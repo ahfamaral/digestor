@@ -306,9 +306,17 @@ export const renderNode =
   async (s) => {
     const { db } = deps;
     await setStage(db, s.sessionId, "rendering", 90);
-    const approved = (await listClips(db, s.sessionId)).filter((c) => c.status === "approved");
-    for (const clip of approved) await setRenderState(db, clip.id, { renderStatus: "queued" });
-    for (const clip of approved) await renderOne(deps, clip.id);
+    // Already-rendered clips are skipped so a retried run doesn't redo them.
+    const todo = (await listClips(db, s.sessionId)).filter((c) => c.status === "approved" && c.renderStatus !== "done");
+    for (const clip of todo) await setRenderState(db, clip.id, { renderStatus: "queued" });
+    for (const clip of todo) {
+      try {
+        await renderOne(deps, clip.id);
+      } catch (err) {
+        // renderOne already marked the clip failed; it can be re-cut later. The other clips still render.
+        console.error(`[pipeline] render failed for clip ${clip.id}:`, err);
+      }
+    }
     await setStage(db, s.sessionId, "done", 100);
     return {};
   };
