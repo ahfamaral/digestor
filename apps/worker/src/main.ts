@@ -5,7 +5,7 @@ import { PgBoss } from "pg-boss";
 import type { z } from "zod";
 import { QUEUES, RenderClipJobSchema, ResumeJobSchema, StartJobSchema } from "@digestor/core";
 import { LocalStorage, createDb } from "@digestor/core/server";
-import { handleRenderClip, handleResume, handleStart, MissingApiKeyError, type JobContext } from "./jobs.js";
+import { QUEUE_OPTIONS, handleRenderClip, handleResume, handleStart, MissingApiKeyError, processJobs, type JobContext } from "./jobs.js";
 import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
 import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
@@ -52,19 +52,10 @@ async function main() {
   const boss = new PgBoss(databaseUrl);
   boss.on("error", console.error);
   await boss.start();
-  for (const name of Object.values(QUEUES)) await boss.createQueue(name);
+  for (const name of Object.values(QUEUES)) await boss.createQueue(name, QUEUE_OPTIONS);
 
-  const register = <S extends z.ZodTypeAny>(queue: string, schema: S, handle: (job: z.infer<S>) => Promise<void>) =>
-    boss.work<unknown>(queue, { batchSize: 1 }, async (jobs) => {
-      for (const job of jobs) {
-        const parsed = schema.safeParse(job.data);
-        if (!parsed.success) {
-          console.error(`Invalid payload on ${queue}`, parsed.error.message);
-          throw new Error(`Invalid payload on ${queue}`);
-        }
-        await handle(parsed.data);
-      }
-    });
+  const register = <T>(queue: string, schema: z.ZodType<T>, handle: (job: T) => Promise<void>) =>
+    boss.work<unknown>(queue, { batchSize: 1 }, (jobs) => processJobs(queue, schema, handle, jobs));
   await register(QUEUES.start, StartJobSchema, (j) => handleStart(ctx, j));
   await register(QUEUES.resume, ResumeJobSchema, (j) => handleResume(ctx, j));
   await register(QUEUES.renderClip, RenderClipJobSchema, (j) => handleRenderClip(ctx, j));
@@ -73,8 +64,12 @@ async function main() {
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    await boss.stop();
-    await close();
+    try {
+      await boss.stop({ graceful: true, timeout: 8000 });
+      await close();
+    } catch (err) {
+      console.error(err);
+    }
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);

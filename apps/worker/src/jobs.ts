@@ -46,9 +46,18 @@ export async function handleStart(ctx: JobContext, job: StartJob): Promise<void>
   }
 }
 
+/** Idempotent: a retried or duplicated resume must not pre-answer a later interrupt or restart a finished thread. */
 export async function handleResume(ctx: JobContext, job: ResumeJob): Promise<void> {
+  const cfg = threadConfig(job.sessionId);
   try {
-    await ctx.graph.invoke(new Command({ resume: job.payload }), threadConfig(job.sessionId));
+    const state = await ctx.graph.getState(cfg);
+    if (state.tasks.some((t) => (t.interrupts?.length ?? 0) > 0)) {
+      await ctx.graph.invoke(new Command({ resume: job.payload }), cfg);
+    } else if (state.next.length > 0) {
+      await ctx.graph.invoke(null, cfg);
+    } else {
+      console.log(`Ignoring resume for ${job.sessionId}: nothing is waiting for an answer`);
+    }
   } catch (err) {
     await failSession(ctx, job.sessionId, err);
     throw err;
@@ -58,4 +67,24 @@ export async function handleResume(ctx: JobContext, job: ResumeJob): Promise<voi
 /** renderOne already records renderStatus=failed and rethrows. */
 export async function handleRenderClip(ctx: JobContext, job: RenderClipJob): Promise<void> {
   await renderOne(ctx.deps, job.clipId);
+}
+
+/** Applied to every queue: long sessions must not expire at pg-boss's 15 min default. */
+export const QUEUE_OPTIONS = { expireInSeconds: 14400, retryLimit: 2, retryDelay: 30 } as const;
+
+/** Validate and handle a pg-boss batch. Invalid payloads are logged and completed: retrying garbage can't succeed. */
+export async function processJobs<T>(
+  queue: string,
+  schema: { safeParse(d: unknown): { success: true; data: T } | { success: false; error: { message: string } } },
+  handle: (data: T) => Promise<void>,
+  jobs: { data: unknown }[],
+): Promise<void> {
+  for (const job of jobs) {
+    const parsed = schema.safeParse(job.data);
+    if (!parsed.success) {
+      console.error(`Dropping invalid payload on ${queue}: ${parsed.error.message}`);
+      continue;
+    }
+    await handle(parsed.data);
+  }
 }

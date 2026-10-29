@@ -33,6 +33,7 @@ services:
     restart: unless-stopped
     working_dir: /app
     command: pnpm --filter @digestor/worker dev
+    stop_grace_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
