@@ -193,6 +193,21 @@ describe("understandContext", () => {
     expect(c.sufficient).toBe(false);
     expect(c.openQuestions.some((q) => q.target === "date")).toBe(true);
   });
+  it("an LLM card with 4 open questions is accepted and cut to 3", async () => {
+    const q = (target: "date" | "event_type" | "participant", speakerId: string | null, question: string) => ({
+      id: question, target, speakerId, question, why: "w", sampleStartMs: null,
+    });
+    const llm = new FakeLLM([
+      card({
+        dateOrYear: none,
+        eventType: { value: "other", confidence: 0.1, evidence: null },
+        participants: [],
+        openQuestions: [q("date", null, "Which year?"), q("event_type", null, "What event?"), q("participant", "A", "Who is A?"), q("participant", "B", "Who is B?")],
+      }),
+    ]);
+    const c = await understandContext(llm, input);
+    expect(c.openQuestions.map((x) => x.question)).toEqual(["Which year?", "What event?", "Who is A?"]);
+  });
   it("FakeLLM rejects malformed responses and empty queue", async () => {
     const bad = new FakeLLM([{ nope: 1 }]);
     await expect(understandContext(bad, input)).rejects.toThrow();

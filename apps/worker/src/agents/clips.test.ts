@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EVENT_TYPES, findBoundaries, type Candidate, type ContextCard, type Fact, type Word } from "@digestor/core";
 import {
   buildHotTakePrompt,
@@ -137,6 +137,75 @@ describe("findClips", () => {
     }
     const first = out.find((p) => p.score === 90)!;
     expect(first.children.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps the 25 best of 26 long clips instead of rejecting the response", async () => {
+    // 30 min transcript; 26 non-overlapping ~63 s clips, scores 90 down to 65.
+    const longWords = mkWords(600);
+    const longTranscript = { language: "en", languageConfidence: 0.99, durationMs: 1_800_000, words: longWords };
+    const ts = (s: number) => `00:${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+    const clips = Array.from({ length: 26 }, (_, i) => cand({ start: ts(i * 66 + 1), end: ts(i * 66 + 64), score: 90 - i }));
+    const llm = new FakeLLM([{ clips }, ...Array.from({ length: 25 }, () => ({ hotTakes: [] }))]);
+    const out = await findClips(llm, { card, transcript: longTranscript });
+    expect(out).toHaveLength(25);
+    expect(out.map((c) => c.score)).not.toContain(65);
+    expect(llm.calls.filter((c) => c.name === "hot_takes")).toHaveLength(25);
+  });
+
+  it("drops a candidate with a malformed timestamp and keeps the others (h:mm:ss accepted)", async () => {
+    const llm = new FakeLLM([
+      {
+        clips: [
+          cand({ start: "0:02:00", end: "0:05:00", score: 90 }),
+          cand({ start: "00:06:00", end: "00:0x:00", score: 80 }),
+          cand({ start: "00:10:00", end: "00:13:00", score: 70 }),
+        ],
+      },
+      { hotTakes: [] },
+      { hotTakes: [] },
+    ]);
+    const out = await findClips(llm, { card, transcript });
+    expect(out.map((c) => c.score)).toEqual([90, 70]);
+  });
+
+  it("keeps at most 4 hot takes per long clip, the best ones", async () => {
+    const takes = [
+      ["00:02:00", "00:02:20"],
+      ["00:02:30", "00:02:50"],
+      ["00:03:00", "00:03:20"],
+      ["00:03:30", "00:03:50"],
+      ["00:04:00", "00:04:20"],
+    ].map(([start, end], i) => cand({ start, end, score: 50 + i }));
+    const llm = new FakeLLM([{ clips: [cand({ start: "00:02:00", end: "00:05:00", score: 90 })] }, { hotTakes: takes }]);
+    const [parent] = await findClips(llm, { card, transcript });
+    expect(parent!.children).toHaveLength(4);
+    expect(parent!.children.map((c) => c.score).sort((a, b) => a - b)).toEqual([51, 52, 53, 54]);
+    const starts = parent!.children.map((c) => c.startMs);
+    expect(starts).toEqual([...starts].sort((a, b) => a - b));
+  });
+
+  it("one failing hot-take call leaves that parent without children; the others still get theirs", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const llm = new FakeLLM([
+        {
+          clips: [
+            cand({ start: "00:02:00", end: "00:05:00", score: 90 }),
+            cand({ start: "00:10:00", end: "00:13:00", score: 70 }),
+          ],
+        },
+        { nope: "not a hot-take response" }, // parent 1: the call fails
+        { hotTakes: [cand({ start: "00:10:30", end: "00:11:00" })] },
+      ]);
+      const out = await findClips(llm, { card, transcript });
+      expect(out.map((c) => [c.score, c.children.length])).toEqual([
+        [90, 0],
+        [70, 1],
+      ]);
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("returns [] without calling the LLM for an empty transcript", async () => {

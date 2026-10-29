@@ -8,7 +8,7 @@ import {
   isGraphInterrupt,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
-import type { ContextCard, Fact, Participant, ResumePayload } from "@digestor/core";
+import type { ContextCard, Fact, Participant, ResumePayload, Transcript } from "@digestor/core";
 import {
   getContextCard,
   getSession,
@@ -29,7 +29,7 @@ import {
 import { understandContext } from "../agents/context.js";
 import { findClips } from "../agents/clips.js";
 import type { StructuredLLM } from "../llm/structured.js";
-import type { Transcriber } from "../transcribe/assemblyai.js";
+import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
 import { renderOne } from "./render.js";
 
@@ -59,9 +59,13 @@ type Node = (state: PipelineStateValue) => Promise<PipelineUpdate>;
 
 const NO_AUDIO = "This video has no audio track.";
 const NO_SPEECH = "No speech was detected in this video.";
+const UNREADABLE_VIDEO = "We couldn't read this video file.";
+/** AssemblyAI's error (with language_detection on) for audio without speech: "…cannot be performed on files with no spoken audio". */
+const NO_SPOKEN_AUDIO = /no spoken audio/i;
 const DOWNLOAD_FAILED = "Couldn't download this video from YouTube.";
 /** Evidence marker for an event type the user picked; such an event type is locked in later rounds. */
 const USER_SET_EVIDENCE = "set by user";
+/** Question rounds: the first round plus at most one follow-up. */
 const MAX_CONTEXT_ROUNDS = 2;
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
 
@@ -184,7 +188,15 @@ export const ingestNode =
     const session = await requireSession(db, s.sessionId);
     if (!session.originalKey) throw new Error(`Session ${s.sessionId} has no original video`);
     const original = storage.resolve(session.originalKey);
-    const info = await media.probe(original);
+    let info: Awaited<ReturnType<typeof media.probe>>;
+    try {
+      info = await media.probe(original);
+    } catch (err) {
+      // Zero-byte, truncated or not a video at all: retrying can't help.
+      console.error(`[pipeline] probe failed for session ${s.sessionId}:`, err);
+      await setStage(db, s.sessionId, "failed", 5, UNREADABLE_VIDEO);
+      return {};
+    }
     if (!info.hasAudio) {
       await setStage(db, s.sessionId, "failed", 5, NO_AUDIO);
       return {};
@@ -210,7 +222,14 @@ export const transcribeNode =
     await setStage(db, s.sessionId, "transcribing", 20);
     const session = await requireSession(db, s.sessionId);
     if (!session.audioKey) throw new Error(`Session ${s.sessionId} has no extracted audio`);
-    const transcript = await deps.transcriber.transcribe(storage.resolve(session.audioKey));
+    let transcript: Transcript;
+    try {
+      transcript = await deps.transcriber.transcribe(storage.resolve(session.audioKey), session.durationMs ?? undefined);
+    } catch (err) {
+      if (!(err instanceof TranscriptionError && NO_SPOKEN_AUDIO.test(err.message))) throw err;
+      await setStage(db, s.sessionId, "failed", 20, NO_SPEECH);
+      return {};
+    }
     if (transcript.words.length === 0) {
       await setStage(db, s.sessionId, "failed", 20, NO_SPEECH);
       return {};
@@ -352,7 +371,8 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
       "understand_context",
       async (s) => {
         const stored = await getContextCard(db, s.sessionId);
-        return stored?.card.sufficient || s.round >= MAX_CONTEXT_ROUNDS ? "find_clips" : "ask_context";
+        // After the follow-up round's answers this pass only folds them into the card: no third question round.
+        return stored?.card.sufficient || s.round > MAX_CONTEXT_ROUNDS ? "find_clips" : "ask_context";
       },
       ["find_clips", "ask_context"],
     )

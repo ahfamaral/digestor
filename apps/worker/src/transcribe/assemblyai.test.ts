@@ -47,6 +47,19 @@ describe("mapAssemblyAI", () => {
     ]);
   });
 
+  it("falls back to the probed duration when AssemblyAI omits audio_duration", () => {
+    const t = mapAssemblyAI(
+      { language_code: "en", words: [{ text: "hi", start: 100, end: 500, confidence: 0.9, speaker: "A" }] },
+      5000,
+    );
+    expect(t.durationMs).toBe(5000);
+    expect(t.words.map((w) => [w.text, w.startMs, w.endMs])).toEqual([["hi", 100, 500]]);
+  });
+
+  it("prefers AssemblyAI's audio_duration over the fallback", () => {
+    expect(mapAssemblyAI({ language_code: "en", audio_duration: 2, words: [] }, 5000).durationMs).toBe(2000);
+  });
+
   it("sorts words by startMs", () => {
     const t = mapAssemblyAI({
       language_code: "en",

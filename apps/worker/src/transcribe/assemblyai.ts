@@ -2,7 +2,8 @@ import { AssemblyAI } from "assemblyai";
 import { TranscriptSchema, type Transcript, type Word } from "@digestor/core";
 
 export interface Transcriber {
-  transcribe(audioPath: string): Promise<Transcript>;
+  /** `fallbackDurationMs` (the probed video duration) is used when the vendor doesn't report the audio duration. */
+  transcribe(audioPath: string, fallbackDurationMs?: number): Promise<Transcript>;
 }
 
 export class TranscriptionError extends Error {
@@ -35,8 +36,9 @@ export function throwIfError(raw: RawTranscript): void {
   }
 }
 
-export function mapAssemblyAI(raw: RawTranscript): Transcript {
-  const durationMs = Math.round((raw.audio_duration ?? 0) * 1000);
+/** Words are clamped to the audio duration; without `audio_duration`, `fallbackDurationMs` is used (not 0, which would drop every word). */
+export function mapAssemblyAI(raw: RawTranscript, fallbackDurationMs = 0): Transcript {
+  const durationMs = raw.audio_duration != null ? Math.round(raw.audio_duration * 1000) : Math.round(fallbackDurationMs);
   const words: Word[] = [];
   for (const w of raw.words ?? []) {
     const startMs = Math.min(Math.max(Math.round(w.start), 0), durationMs);
@@ -66,7 +68,7 @@ export class AssemblyAITranscriber implements Transcriber {
     this.client = new AssemblyAI({ apiKey });
   }
 
-  async transcribe(audioPath: string): Promise<Transcript> {
+  async transcribe(audioPath: string, fallbackDurationMs?: number): Promise<Transcript> {
     const raw = await this.client.transcripts.transcribe({
       audio: audioPath,
       speaker_labels: true,
@@ -75,14 +77,14 @@ export class AssemblyAITranscriber implements Transcriber {
       format_text: true,
     });
     throwIfError(raw as RawTranscript);
-    return mapAssemblyAI(raw as RawTranscript);
+    return mapAssemblyAI(raw as RawTranscript, fallbackDurationMs);
   }
 }
 
 export class FakeTranscriber implements Transcriber {
   constructor(private readonly transcript: Transcript) {}
 
-  async transcribe(_audioPath: string): Promise<Transcript> {
+  async transcribe(_audioPath: string, _fallbackDurationMs?: number): Promise<Transcript> {
     return this.transcript;
   }
 }

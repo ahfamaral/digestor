@@ -40,7 +40,7 @@ async function main() {
 
   const getTranscriber = lazy("ASSEMBLYAI_API_KEY", (k) => new AssemblyAITranscriber(k));
   const getLlm = lazy("ANTHROPIC_API_KEY", createAnthropicLLM);
-  const transcriber: Transcriber = { transcribe: (p) => getTranscriber().transcribe(p) };
+  const transcriber: Transcriber = { transcribe: (p, fallbackDurationMs) => getTranscriber().transcribe(p, fallbackDurationMs) };
   const llm: StructuredLLM = { generate: (a) => getLlm().generate(a) };
 
   const deps: PipelineDeps = { db, storage, transcriber, llm, media, youtube: { downloadYouTube } };

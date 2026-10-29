@@ -23,7 +23,8 @@ import {
   type Db,
 } from "@digestor/core/server";
 import * as media from "../media/ffmpeg.js";
-import { FakeTranscriber } from "../transcribe/assemblyai.js";
+import { FakeTranscriber, TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
+import { handleStart, type JobContext } from "../jobs.js";
 import { FakeLLM } from "../llm/structured.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
 import { buildPipeline, findClipsNode, renderNode, type PipelineDeps } from "./graph.js";
@@ -101,6 +102,7 @@ afterAll(async () => {
 type Setup = {
   llm?: unknown[];
   transcript?: Transcript;
+  transcriber?: Transcriber;
   fixture?: string;
   youtube?: typeof downloadYouTube;
   media?: PipelineDeps["media"];
@@ -123,7 +125,7 @@ async function setup(o: Setup = {}) {
   const deps: PipelineDeps = {
     db,
     storage,
-    transcriber: new FakeTranscriber(o.transcript ?? transcript),
+    transcriber: o.transcriber ?? new FakeTranscriber(o.transcript ?? transcript),
     llm,
     media: o.media ?? media,
     youtube: { downloadYouTube: o.youtube ?? notCalled },
@@ -195,8 +197,8 @@ describe("pipeline", () => {
     }
   });
 
-  it("asks at most one follow-up round", async () => {
-    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft(), ...clipPass] });
+  it("asks one follow-up round with the new questions, then finds clips (never a third round)", async () => {
+    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft(), draft(), ...clipPass] });
     await graph.invoke({ sessionId }, cfg);
     await resume({
       action: "continue",
@@ -206,17 +208,20 @@ describe("pipeline", () => {
       ],
       cardEdits: { title: "Budget hearing", eventType: "court", participants: [{ speakerId: "A", name: "Maria Silva" }] },
     });
-    expect(await interruptValue()).toEqual({ type: "review" });
-    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card", "long_clips", "hot_takes", "hot_takes", "hot_takes"]);
+    // Still insufficient after round 1's answers: the follow-up round pauses with its own questions.
+    expect(await interruptValue()).toEqual({ type: "context" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", progress: 55 });
+    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card"]);
     expect(llm.calls[1]!.user).toContain("Q: When was this recorded or first aired?\nA: Maybe last spring");
     expect(llm.calls[1]!.user).not.toContain("ignored answer");
 
-    const stored = (await getContextCard(db, sessionId))!;
-    expect(stored.round).toBe(2);
-    expect(stored.card.sufficient).toBe(false);
-    expect(stored.card.title).toEqual({ value: "Budget hearing", source: "human", evidence: "Budget hearing" });
-    expect(stored.card.eventType).toEqual({ value: "court", confidence: 1, evidence: "set by user" });
-    expect(stored.card.participants).toEqual([
+    const round2 = (await getContextCard(db, sessionId))!;
+    expect(round2.round).toBe(2);
+    expect(round2.card.sufficient).toBe(false);
+    expect(round2.card.openQuestions.map((q) => q.id)).toEqual(["date"]);
+    expect(round2.card.title).toEqual({ value: "Budget hearing", source: "human", evidence: "Budget hearing" });
+    expect(round2.card.eventType).toEqual({ value: "court", confidence: 1, evidence: "set by user" });
+    expect(round2.card.participants).toEqual([
       {
         speakerId: "A",
         name: { value: "Maria Silva", source: "human", evidence: "Maria Silva" },
@@ -225,6 +230,27 @@ describe("pipeline", () => {
       },
     ]);
     expect((await getSession(db, sessionId))!.eventType).toBe("court");
+
+    // The second round's answers are folded into the card, then clips are found even though it is still insufficient.
+    await resume({ action: "continue", answers: [{ questionId: "date", answer: "Sometime in 2025" }], cardEdits: {} });
+    expect(await interruptValue()).toEqual({ type: "review" });
+    expect(llm.calls.map((c) => c.name)).toEqual([
+      "context_card", "context_card", "context_card", "long_clips", "hot_takes", "hot_takes", "hot_takes",
+    ]);
+    expect(llm.calls[2]!.user).toContain("A: Maybe last spring");
+    expect(llm.calls[2]!.user).toContain("Q: When was this recorded or first aired?\nA: Sometime in 2025");
+    expect((await getContextCard(db, sessionId))!.card.sufficient).toBe(false);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_review" });
+  });
+
+  it("skipping the follow-up round goes straight to clips", async () => {
+    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft(), ...clipPass] });
+    await graph.invoke({ sessionId }, cfg);
+    await resume({ action: "continue", answers: [{ questionId: "date", answer: "no idea" }], cardEdits: {} });
+    expect(await interruptValue()).toEqual({ type: "context" });
+    await resume({ action: "skip" });
+    expect(await interruptValue()).toEqual({ type: "review" });
+    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card", "long_clips", "hot_takes", "hot_takes", "hot_takes"]);
   });
 
   it("sufficient context never pauses for context", async () => {
@@ -345,6 +371,113 @@ describe("pipeline", () => {
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "No speech was detected in this video." });
     expect((await graph.getState(cfg)).next).toEqual([]);
     expect(llm.calls.length).toBe(0);
+  });
+
+  it("AssemblyAI's 'no spoken audio' error ends with the no-speech message, not a transcription failure", async () => {
+    // What AssemblyAI answers (status "error") for a file without speech when language_detection is on.
+    const silent: Transcriber = {
+      transcribe: async () => {
+        throw new TranscriptionError("language_detection cannot be performed on files with no spoken audio.");
+      },
+    };
+    const { graph, cfg, sessionId, llm } = await setup({ transcriber: silent });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "No speech was detected in this video." });
+    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(llm.calls.length).toBe(0);
+  });
+
+  it("other transcription errors still escape the graph", async () => {
+    const broken: Transcriber = {
+      transcribe: async () => {
+        throw new TranscriptionError("Audio file is corrupt");
+      },
+    };
+    const { graph, cfg, sessionId } = await setup({ transcriber: broken });
+    await expect(graph.invoke({ sessionId }, cfg)).rejects.toThrow("Audio file is corrupt");
+    await expect(graph.invoke({ sessionId }, cfg)).rejects.toBeInstanceOf(TranscriptionError); // jobs.ts relies on instanceof
+  });
+
+  it("passes the probed duration to the transcriber", async () => {
+    const seen: (number | undefined)[] = [];
+    const recording: Transcriber = {
+      transcribe: async (_p, fallbackDurationMs) => {
+        seen.push(fallbackDurationMs);
+        return { ...transcript, words: [] };
+      },
+    };
+    const { graph, cfg, sessionId } = await setup({ transcriber: recording });
+    await graph.invoke({ sessionId }, cfg);
+    expect(seen).toHaveLength(1);
+    expect(Math.abs(seen[0]! - 100_000)).toBeLessThan(500);
+  });
+
+  it.each([
+    ["a zero-byte file", ""],
+    ["a text file renamed to .mp4", "this is not a video"],
+  ])("fails cleanly on an unreadable video (%s)", async (_case, content) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const fixture = path.join(root, `unreadable-${Math.random().toString(36).slice(2)}.mp4`);
+      await writeFile(fixture, content);
+      const { graph, cfg, sessionId, llm } = await setup({ fixture });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "We couldn't read this video file." });
+      expect((await graph.getState(cfg)).next).toEqual([]);
+      expect(llm.calls.length).toBe(0);
+    } finally {
+      log.mockRestore();
+    }
+  });
+});
+
+describe("crash and resume", () => {
+  it("a retried start job resumes from the checkpoint without re-running finished nodes or duplicating clips", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let transcribeCalls = 0;
+      const flaky: Transcriber = {
+        transcribe: async () => {
+          if (++transcribeCalls === 1) throw new Error("socket hang up"); // the worker "crashes" mid-transcription
+          return transcript;
+        },
+      };
+      const extracted: string[] = [];
+      const counting = {
+        ...media,
+        extractAudio: async (input: string, output: string) => {
+          extracted.push(output);
+          return media.extractAudio(input, output);
+        },
+      };
+      const { graph, cfg, sessionId, llm, deps } = await setup({
+        transcriber: flaky,
+        media: counting,
+        llm: [sufficientDraft(), ...clipPass],
+      });
+      const ctx: JobContext = { db, deps, graph };
+
+      // First attempt fails in transcribe: not final, so the job is retried and the stage is left as it was.
+      await expect(handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow("socket hang up");
+      expect((await getSession(db, sessionId))!.stage).toBe("transcribing");
+      expect((await graph.getState(cfg)).next).toEqual(["transcribe"]);
+
+      // pg-boss retries the job: the run continues from the checkpoint.
+      await handleStart(ctx, { sessionId }, { retryCount: 1, retryLimit: 2 });
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_review", progress: 70 });
+      expect((await graph.getState(cfg)).next).toEqual(["review"]);
+      expect(extracted).toHaveLength(1); // ingest ran once
+      expect(transcribeCalls).toBe(2);
+      expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "long_clips", "hot_takes", "hot_takes", "hot_takes"]);
+      expect((await listClips(db, sessionId)).map((c) => c.title)).toEqual(["One", "Two", "Three"]);
+
+      // A duplicate start job for the same session (e.g. redelivered after the pause) changes nothing.
+      await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
+      expect(await listClips(db, sessionId)).toHaveLength(3);
+      expect(llm.calls).toHaveLength(5);
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

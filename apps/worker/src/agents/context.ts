@@ -1,6 +1,8 @@
+import { z } from "zod";
 import {
   ContextCardSchema,
   EVENT_TYPES,
+  QuestionSchema,
   renderTranscript,
   speakerShares,
   toSentences,
@@ -23,6 +25,9 @@ export type ContextInput = {
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
 const MAX_QUESTIONS = 3;
+
+/** LLM output schema: like ContextCardSchema but without the question cap, which assessSufficiency applies in code. */
+export const ContextCardOutput = ContextCardSchema.extend({ openQuestions: z.array(QuestionSchema) });
 const MIN_EVENT_CONFIDENCE = 0.6;
 const MIN_SPEAKER_SHARE = 0.1;
 
@@ -233,7 +238,7 @@ export function assessSufficiency(card: ContextCard, words: Word[]): ContextCard
 
 export async function understandContext(llm: StructuredLLM, i: ContextInput): Promise<ContextCard> {
   const { system, user } = buildContextPrompt(i);
-  const draft = await llm.generate({ schema: ContextCardSchema, name: "context_card", system, user, model: "reasoning" });
+  const draft = await llm.generate({ schema: ContextCardOutput, name: "context_card", system, user, model: "reasoning" });
   const withLanguage: ContextCard = {
     ...draft,
     language: {

@@ -21,11 +21,20 @@ import {
 } from "@digestor/core";
 import type { StructuredLLM } from "../llm/structured.js";
 
-export const LongClipsOutput = z.object({ clips: z.array(CandidateSchema).max(25) });
-export const HotTakesOutput = z.object({ hotTakes: z.array(CandidateSchema).max(4) });
+/**
+ * LLM output schemas are lenient on purpose: one over-long list or one odd timestamp must not fail a paid session.
+ * Timestamps are plain strings (each candidate is validated by normalizeCandidates and dropped if malformed) and
+ * the list caps are applied in code (MAX_LONG_CLIPS, MAX_HOT_TAKES). The strict CandidateSchema stays the domain shape.
+ */
+const LlmTimestamp = z.string().describe("hh:mm:ss");
+export const LlmCandidateSchema = CandidateSchema.extend({ start: LlmTimestamp, end: LlmTimestamp });
+export const LongClipsOutput = z.object({ clips: z.array(LlmCandidateSchema) });
+export const HotTakesOutput = z.object({ hotTakes: z.array(LlmCandidateSchema) });
 
 type Clip = Omit<ProposedClip, "children">;
 
+const MAX_LONG_CLIPS = 25;
+const MAX_HOT_TAKES = 4;
 const HOT_TAKE_LIMITS = { minMs: 8_000, maxMs: 120_000 };
 const PASS2_CONCURRENCY = 4;
 const MAX_OVERLAP = 0.6;
@@ -182,17 +191,29 @@ export async function findClips(
 
   const long = buildLongClipPrompt({ card: a.card, words, durationMs });
   const pass1 = await llm.generate({ schema: LongClipsOutput, name: "long_clips", ...long, model: "reasoning" });
-  const parents = normalizeCandidates(pass1.clips, { durationMs, boundaries, ...longClipLimits(durationMs) });
+  // normalizeCandidates sorts by score, so the cap keeps the best.
+  const parents = normalizeCandidates(pass1.clips, { durationMs, boundaries, ...longClipLimits(durationMs) }).slice(
+    0,
+    MAX_LONG_CLIPS,
+  );
 
   return mapPool(parents, PASS2_CONCURRENCY, async (parent): Promise<ProposedClip> => {
     const withChildren: ProposedClip = { ...parent, children: [] };
     const prompt = buildHotTakePrompt({ card: a.card, parent: withChildren, words });
-    const res = await llm.generate({ schema: HotTakesOutput, name: "hot_takes", ...prompt, model: "reasoning" });
+    let res: z.infer<typeof HotTakesOutput>;
+    try {
+      res = await llm.generate({ schema: HotTakesOutput, name: "hot_takes", ...prompt, model: "reasoning" });
+    } catch (err) {
+      // One failed hot-take call costs this parent its hot takes, not the whole session.
+      console.error(`[clips] hot takes failed for "${parent.title}":`, err);
+      return withChildren;
+    }
     const fitted: Clip[] = [];
     for (const child of normalizeCandidates(res.hotTakes, { durationMs, boundaries, ...HOT_TAKE_LIMITS })) {
       const fit = fitChildInParent(child, parent);
       if (fit) fitted.push({ ...child, ...fit });
     }
-    return { ...parent, children: dedupe(fitted).sort((x, y) => x.startMs - y.startMs) };
+    const best = dedupe(fitted).slice(0, MAX_HOT_TAKES); // dedupe orders by score
+    return { ...parent, children: best.sort((x, y) => x.startMs - y.startMs) };
   });
 }
