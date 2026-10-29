@@ -224,3 +224,13 @@ export async function setRenderState(
   if (!row) throw new Error(`Clip not found: ${id}`);
   return row;
 }
+
+export async function setClipThumb(db: Db, id: string, key: string): Promise<Clip> {
+  const [row] = await db
+    .update(clips)
+    .set({ thumbKey: key, updatedAt: new Date() })
+    .where(eq(clips.id, id))
+    .returning();
+  if (!row) throw new Error(`Clip not found: ${id}`);
+  return row;
+}

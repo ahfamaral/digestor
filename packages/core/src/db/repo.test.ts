@@ -5,7 +5,7 @@ import { createDb, type Db } from "./client.js";
 import {
   createSession, deleteSession, getClip, getContextCard, getSession, getTranscript, listClips,
   listExpiredSessions, replaceAiClips, saveContextCard, saveTranscript, setClipBounds, setClipStatus,
-  setRenderState, setStage, updateSession, type Session,
+  setClipThumb, setRenderState, setStage, updateSession, type Session,
 } from "./repo.js";
 import { clipEvents } from "./schema.js";
 
@@ -114,6 +114,14 @@ describe("clips", () => {
     expect((await getClip(db, parent!.id))!.renderKey).toBe(`${s.id}/clips/x.mp4`);
     const events = (await db.select().from(clipEvents)).filter((e) => e.kind === "bounds");
     expect(events[0]).toMatchObject({ before: { startMs: 10_000, endMs: 100_000 }, after: { startMs: 11_000, endMs: 99_000 } });
+  });
+
+  it("setClipThumb stores the thumbnail key", async () => {
+    const [parent] = await replaceAiClips(db, s.id, tree);
+    const updated = await setClipThumb(db, parent!.id, `${s.id}/thumbs/${parent!.id}.jpg`);
+    expect(updated.thumbKey).toBe(`${s.id}/thumbs/${parent!.id}.jpg`);
+    expect((await getClip(db, parent!.id))!.thumbKey).toBe(`${s.id}/thumbs/${parent!.id}.jpg`);
+    await expect(setClipThumb(db, "00000000-0000-0000-0000-000000000000", "x")).rejects.toThrow("Clip not found");
   });
 
   it("orders parents by score desc with children by start", async () => {

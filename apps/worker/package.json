@@ -13,6 +13,7 @@
     "@digestor/core": "workspace:*",
     "@langchain/anthropic": "^1.6.0",
     "@langchain/core": "^1.3.1",
+    "@langchain/langgraph": "^1.5.3",
     "assemblyai": "^4.42.0",
     "tsx": "^4.19.0",
     "zod": "^3.25.76"
