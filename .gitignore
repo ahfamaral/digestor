@@ -5,3 +5,4 @@ data/
 .next/
 dist/
 .pnpm-store/
+apps/worker/test/tmp/
