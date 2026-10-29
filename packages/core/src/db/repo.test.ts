@@ -123,3 +123,19 @@ describe("clips", () => {
     expect(titles).toEqual(["High", "Kid A", "Kid B", "Low", "Kid A", "Kid B"]);
   });
 });
+
+describe("child bounds", () => {
+  it("editing a flagged child back inside its parent clears the flag", async () => {
+    const [parent, kid] = await replaceAiClips(db, s.id, tree);
+    await setClipBounds(db, parent!.id, { startMs: 50_000, endMs: 90_000 }, "user");
+    expect((await getClip(db, kid!.id))!.outOfBounds).toBe(true);
+    const fixed = await setClipBounds(db, kid!.id, { startMs: 55_000, endMs: 70_000 }, "user");
+    expect(fixed.outOfBounds).toBe(false);
+  });
+
+  it("moving a child outside its parent flags it", async () => {
+    const [, kid] = await replaceAiClips(db, s.id, tree);
+    const moved = await setClipBounds(db, kid!.id, { startMs: 5_000, endMs: 30_000 }, "user");
+    expect(moved.outOfBounds).toBe(true);
+  });
+});

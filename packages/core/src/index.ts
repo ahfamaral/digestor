@@ -1,12 +1,8 @@
+// Client-safe entrypoint: no pg / fs. Server-only pieces live in ./server.ts.
 export * from "./schemas.js";
 export * from "./eventTypes.js";
 export * from "./cost.js";
 export * from "./time.js";
 export * from "./snap.js";
 export * from "./transcriptText.js";
-export * from "./storage.js";
 export * from "./queue.js";
-export * from "./db/client.js";
-export * from "./db/repo.js";
-export { runMigrations } from "./db/migrate.js";
-export { sessions, transcripts, contextCards, clips, clipEvents, type Stage } from "./db/schema.js";

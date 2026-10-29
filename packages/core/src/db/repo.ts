@@ -178,9 +178,15 @@ export async function setClipBounds(
   return db.transaction(async (tx) => {
     const [before] = await tx.select().from(clips).where(eq(clips.id, id));
     if (!before) throw new Error(`Clip not found: ${id}`);
+    let outOfBounds = before.outOfBounds;
+    if (before.parentId) {
+      const [parent] = await tx.select().from(clips).where(eq(clips.id, before.parentId));
+      if (parent) outOfBounds = !(bounds.startMs >= parent.startMs && bounds.endMs <= parent.endMs);
+    }
     const [row] = await tx
       .update(clips)
       .set({
+        outOfBounds,
         startMs: bounds.startMs,
         endMs: bounds.endMs,
         renderStatus: before.renderStatus === "done" ? "stale" : before.renderStatus,
