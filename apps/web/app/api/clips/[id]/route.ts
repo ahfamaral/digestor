@@ -13,6 +13,7 @@ const BodySchema = z.union([
 const REVIEW_STAGES: readonly Stage[] = ["awaiting_review", "done"];
 const FORMAT_ERROR = "Use the format hh:mm:ss or hh:mm:ss.s";
 const RANGE_ERROR = "End must be after start and within the video (hh:mm:ss)";
+const NO_TRANSCRIPT = "This video has no transcript to snap the cut to.";
 
 /** PATCH /api/clips/[id] — `{ status }` or `{ start, end }` (timestamps; snapped to sentence/pause boundaries). */
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -48,11 +49,12 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
 
   const transcript = await getTranscript(db, session.id);
-  const durationMs = session.durationMs ?? transcript?.durationMs ?? 0;
+  if (!transcript) return errorResponse(409, NO_TRANSCRIPT);
+  const durationMs = session.durationMs ?? transcript.durationMs;
   if (!(startMs >= 0 && startMs < endMs && endMs <= durationMs)) return errorResponse(400, RANGE_ERROR);
 
-  const boundaries = transcript ? findBoundaries(transcript.words, durationMs) : [];
-  if (boundaries.length < 2) return errorResponse(409, "This video has no transcript to snap the cut to.");
+  const boundaries = findBoundaries(transcript.words, durationMs);
+  if (boundaries.length < 2) return errorResponse(409, NO_TRANSCRIPT);
   const snapped = snapRange(boundaries, { startMs, endMs });
   return Response.json(await setClipBounds(db, id, snapped, "user"));
 }

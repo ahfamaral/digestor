@@ -79,6 +79,9 @@ describe("filterClips", () => {
     ]);
     expect(ids(filterClips(tree, "light"))).toEqual([[k1b.id, []]]);
   });
+  it("rejected shows rejected clips so a rejection can be undone", () => {
+    expect(ids(filterClips(tree, "rejected"))).toEqual([[p3.id, []]]);
+  });
   it("approved and neutral filter by status", () => {
     expect(ids(filterClips(tree, "approved"))).toEqual([
       [p1.id, []],
@@ -93,8 +96,8 @@ describe("filterClips", () => {
 
 describe("countByFilter", () => {
   it("counts every clip (parents and hot takes) each filter shows", () => {
-    expect(countByFilter(tree)).toEqual({ all: 4, heated: 1, key_point: 2, light: 1, approved: 2, neutral: 2 });
-    expect(countByFilter([])).toEqual({ all: 0, heated: 0, key_point: 0, light: 0, approved: 0, neutral: 0 });
+    expect(countByFilter(tree)).toEqual({ all: 4, heated: 1, key_point: 2, light: 1, approved: 2, neutral: 2, rejected: 1 });
+    expect(countByFilter([])).toEqual({ all: 0, heated: 0, key_point: 0, light: 0, approved: 0, neutral: 0, rejected: 0 });
   });
 });
 

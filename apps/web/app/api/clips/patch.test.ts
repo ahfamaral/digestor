@@ -33,8 +33,8 @@ async function seed(stage: "awaiting_review" | "done" | "rendering" = "awaiting_
       reason: "why",
       label: "heated",
       score: 90,
-      startMs: 2850,
-      endMs: 7150,
+      startMs: 2000,
+      endMs: 9500,
       children: [{ title: "Child", reason: "why", label: "light", score: 70, startMs: 2850, endMs: 4650 }],
     },
   ]);
@@ -129,10 +129,26 @@ describe("PATCH /api/clips/[id]", () => {
     expect(body).toHaveProperty("outOfBounds", false);
     expect(body).toHaveProperty("renderStatus", "none");
     const saved = await getClip(h.db, parent.id);
-    expect([saved?.startMs, saved?.endMs]).toEqual([2850, 7150]);
+    expect([saved?.startMs, saved?.endMs]).toEqual([2850, 7150]); // seeded at 2000–9500
+    const events = await h.db.execute(`SELECT actor, before, after FROM clip_events WHERE clip_id = '${parent.id}' AND kind = 'bounds'`);
+    expect(events.rows).toEqual([
+      { actor: "user", before: { startMs: 2000, endMs: 9500 }, after: { startMs: 2850, endMs: 7150 } },
+    ]);
   });
 
-  it("returns outOfBounds for a hot take moved outside its parent (2850–7150)", async () => {
+  it("409s a bounds edit when the video has no transcript (and no duration)", async () => {
+    const s = await createSession(h.db, { title: "t", source: "upload" });
+    await setStage(h.db, s.id, "awaiting_review", 100);
+    const [clip] = await replaceAiClips(h.db, s.id, [
+      { title: "P", reason: "r", label: "light", score: 50, startMs: 0, endMs: 5000, children: [] },
+    ]);
+    const res = await patch(clip!.id, { start: "00:00:01", end: "00:00:03" });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "This video has no transcript to snap the cut to." });
+    await unchanged(clip!);
+  });
+
+  it("returns outOfBounds for a hot take moved outside its parent (2000–9500)", async () => {
     const { child } = await seed();
     const res = await patch(child.id, { start: "00:00:00.0", end: "00:00:04" });
     expect(res.status).toBe(200);

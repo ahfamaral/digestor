@@ -16,6 +16,7 @@ import {
   type ReviewClip,
   type ReviewFilter,
 } from "@/lib/review";
+import { StatusQueue } from "@/lib/statusQueue";
 import { cn } from "@/lib/utils";
 
 const FILTER_TEXT: Record<ReviewFilter, string> = {
@@ -25,6 +26,7 @@ const FILTER_TEXT: Record<ReviewFilter, string> = {
   light: LABELS.light.text,
   approved: "Approved",
   neutral: "Neutral",
+  rejected: "Rejected",
 };
 const FILTER_ON: Record<ReviewFilter, string> = {
   all: "bg-foreground text-white border-foreground",
@@ -33,6 +35,7 @@ const FILTER_ON: Record<ReviewFilter, string> = {
   light: "bg-[#fff3cf] text-[#a16207] border-[#a16207]",
   approved: "bg-green-100 text-green-700 border-green-700",
   neutral: "bg-stone-200 text-stone-700 border-stone-700",
+  rejected: "bg-red-100 text-red-700 border-red-700",
 };
 
 /** Applies `patch` to the clip with `id`, wherever it sits in the tree. */
@@ -41,6 +44,19 @@ function updateClip(tree: ClipNode[], id: string, patch: (c: ReviewClip) => Part
     const children = p.children.some((k) => k.id === id) ? p.children.map((k) => (k.id === id ? { ...k, ...patch(k) } : k)) : p.children;
     return p.id === id ? { ...p, ...patch(p), children } : children === p.children ? p : { ...p, children };
   });
+}
+
+/** PATCHes one clip status; throws with the API's human message on failure. */
+async function sendStatus(id: string, status: ClipStatus): Promise<void> {
+  const res = await fetch(`/api/clips/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? "Couldn't save. Try again.");
+  }
 }
 
 const findClip = (tree: ClipNode[], id: string): ReviewClip | undefined => flattenTree(tree).find((c) => c.id === id);
@@ -69,6 +85,25 @@ export function Inbox({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [keyboardMoved, setKeyboardMoved] = useState(0);
+  // Optimistic, per-clip latest-wins status updates (see lib/statusQueue).
+  const [queue] = useState(
+    () =>
+      new StatusQueue({
+        send: sendStatus,
+        onDisplay: (id, status) => setTree((t) => updateClip(t, id, () => ({ status }))),
+        onError: (id, message) => setError(id, message),
+      }),
+  );
+
+  function setError(id: string, message: string | null) {
+    setErrors((e) => {
+      if (message) return { ...e, [id]: message };
+      if (!(id in e)) return e;
+      const next = { ...e };
+      delete next[id];
+      return next;
+    });
+  }
 
   const visible = useMemo(() => filterClips(tree, filter), [tree, filter]);
   const order = useMemo(() => flattenTree(visible), [visible]);
@@ -89,38 +124,24 @@ export function Inbox({
     document.querySelector(`[data-clip-id="${currentId}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [keyboardMoved, currentId]);
 
-  async function setStatus(id: string, status: ClipStatus) {
-    const before = findClip(tree, id)?.status;
-    if (!before || before === status) return;
-    setTree((t) => updateClip(t, id, () => ({ status })));
-    setErrors((e) => {
-      const next = { ...e };
-      delete next[id];
-      return next;
-    });
-    try {
-      const res = await fetch(`/api/clips/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? "Couldn't save. Try again.");
-      }
-    } catch (err) {
-      // Roll back only if nothing newer replaced the optimistic value.
-      setTree((t) => updateClip(t, id, (c) => (c.status === status ? { status: before } : {})));
-      setErrors((e) => ({ ...e, [id]: err instanceof Error ? err.message : "Couldn't save. Try again." }));
-    }
+  function setStatus(id: string, status: ClipStatus) {
+    const shown = findClip(tree, id)?.status;
+    if (shown) queue.set(id, status, shown);
   }
 
   async function onSaved(saved: ReviewClip) {
+    setError(saved.id, null);
     setTree((t) => updateClip(t, saved.id, () => ({ startMs: saved.startMs, endMs: saved.endMs, outOfBounds: saved.outOfBounds, renderStatus: saved.renderStatus })));
     // Moving a long clip can push its hot takes in or out of bounds: reload the tree.
     try {
       const res = await fetch(`/api/sessions/${sessionId}/clips`);
-      if (res.ok) setTree((await res.json()) as ClipNode[]);
+      if (!res.ok) return;
+      const fresh = (await res.json()) as ClipNode[];
+      // Never let the reload overwrite a status change that is still on its way to the server.
+      setTree(flattenTree(fresh).reduce((t, c) => {
+        const pending = queue.pending(c.id);
+        return pending && pending !== c.status ? updateClip(t, c.id, () => ({ status: pending })) : t;
+      }, fresh));
     } catch {
       // keep the local update
     }
@@ -130,6 +151,8 @@ export function Inbox({
     if (editingId || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
     const action = keyToAction(e.key);
     if (!action || !current) return;
+    // Holding A/N/R/E must not triage a run of clips; holding ↓/↑ may scroll through them.
+    if (e.repeat && action !== "next" && action !== "prev") return;
     e.preventDefault();
     const at = order.findIndex((c) => c.id === current.id);
     if (action === "next" || action === "prev") {
@@ -139,7 +162,7 @@ export function Inbox({
       setEditingId(current.id);
     } else {
       setFocus({ id: current.id, index: at });
-      void setStatus(current.id, action === "approve" ? "approved" : action === "neutral" ? "neutral" : "rejected");
+      setStatus(current.id, action === "approve" ? "approved" : action === "neutral" ? "neutral" : "rejected");
     }
   });
 
@@ -202,7 +225,7 @@ export function Inbox({
                     onFocus={focusId}
                     onStatus={(id, s) => {
                       focusId(id);
-                      void setStatus(id, s);
+                      setStatus(id, s);
                     }}
                     onEdit={(id) => {
                       focusId(id);

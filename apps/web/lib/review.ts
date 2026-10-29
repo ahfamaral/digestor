@@ -21,8 +21,8 @@ export interface ReviewClip {
 export type ClipNode<T extends ReviewClip = ReviewClip> = T & { children: T[] };
 
 export type ReviewAction = "approve" | "neutral" | "reject" | "edit" | "next" | "prev";
-export type ReviewFilter = "all" | "heated" | "key_point" | "light" | "approved" | "neutral";
-export const FILTERS: readonly ReviewFilter[] = ["all", "heated", "key_point", "light", "approved", "neutral"];
+export type ReviewFilter = "all" | "heated" | "key_point" | "light" | "approved" | "neutral" | "rejected";
+export const FILTERS: readonly ReviewFilter[] = ["all", "heated", "key_point", "light", "approved", "neutral", "rejected"];
 
 const KEYS: Record<string, ReviewAction> = {
   a: "approve",
@@ -46,6 +46,7 @@ function matches(c: ReviewClip, f: ReviewFilter): boolean {
       return !hidden(c);
     case "approved":
     case "neutral":
+    case "rejected": // rejecting is reversible from here
       return c.status === f;
     default:
       return c.label === f && !hidden(c);
