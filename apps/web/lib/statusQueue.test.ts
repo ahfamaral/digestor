@@ -113,4 +113,40 @@ describe("StatusQueue", () => {
       ["c2", "rejected"],
     ]);
   });
+
+  describe("idle()", () => {
+    it("resolves at once when nothing is pending", async () => {
+      const h = harness();
+      await expect(h.q.idle()).resolves.toEqual({ failed: false });
+    });
+
+    it("waits for every clip's writes, including values queued behind an in-flight one", async () => {
+      const h = harness();
+      h.q.set("c1", "approved", "proposed");
+      h.q.set("c1", "rejected", "approved");
+      h.q.set("c2", "approved", "proposed");
+      let settled: { failed: boolean } | null = null;
+      void h.q.idle().then((r) => (settled = r));
+      h.calls[0]!.resolve(); // c1 approved → c1 rejected is sent next
+      await h.flush();
+      h.calls[1]!.resolve(); // c2
+      await h.flush();
+      expect(settled).toBeNull();
+      h.calls[2]!.resolve(); // c1 rejected
+      await h.flush();
+      expect(settled).toEqual({ failed: false });
+    });
+
+    it("reports a write that failed while waiting", async () => {
+      const h = harness();
+      h.q.set("c1", "approved", "proposed");
+      h.q.set("c2", "approved", "proposed");
+      const idle = h.q.idle();
+      h.calls[0]!.reject(new Error("This video isn't ready for review."));
+      h.calls[1]!.resolve();
+      await expect(idle).resolves.toEqual({ failed: true });
+      await expect(h.q.idle()).resolves.toEqual({ failed: false }); // only failures since the call count
+    });
+  });
 });
+

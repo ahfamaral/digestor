@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import type { ClipOrigin, ClipStatus, ContextCard, ProposedClip, Transcript } from "../schemas.ts";
 import type { Db } from "./client.ts";
 import { clipEvents, clips, contextCards, sessions, transcripts, type Stage } from "./schema.ts";
@@ -207,7 +207,11 @@ export async function setClipBounds(
         outOfBounds,
         startMs: bounds.startMs,
         endMs: bounds.endMs,
-        renderStatus: before.renderStatus === "done" ? "stale" : before.renderStatus,
+        // Re-saving the same (snapped) bounds keeps a finished render valid.
+        renderStatus:
+          before.renderStatus === "done" && (before.startMs !== bounds.startMs || before.endMs !== bounds.endMs)
+            ? "stale"
+            : before.renderStatus,
         updatedAt: new Date(),
       })
       .where(eq(clips.id, id))
@@ -241,6 +245,42 @@ export async function setRenderState(
     .returning();
   if (!row) throw new Error(`Clip not found: ${id}`);
   return row;
+}
+
+/**
+ * Atomic claim before enqueueing a render: moves the clip to `queued` only from none, failed or stale.
+ * Returns whether this caller won, so concurrent requests enqueue at most one job per clip.
+ */
+export async function claimClipRender(db: Db, id: string): Promise<boolean> {
+  const rows = await db
+    .update(clips)
+    .set({ renderStatus: "queued", updatedAt: new Date() })
+    .where(and(eq(clips.id, id), inArray(clips.renderStatus, ["none", "failed", "stale"])))
+    .returning({ id: clips.id });
+  return rows.length > 0;
+}
+
+/**
+ * Records a finished render in one statement: `done` only if the clip is still approved with exactly the
+ * rendered bounds, otherwise `stale` (it was edited or un-approved meanwhile). Keys are stored either way.
+ * Returns the status written, or null when the clip no longer exists.
+ */
+export async function finishClipRender(
+  db: Db,
+  id: string,
+  rendered: { startMs: number; endMs: number },
+  keys: { renderKey: string; srtKey: string },
+): Promise<"done" | "stale" | null> {
+  const [row] = await db
+    .update(clips)
+    .set({
+      ...keys,
+      renderStatus: sql`CASE WHEN ${clips.status} = 'approved' AND ${clips.startMs} = ${rendered.startMs} AND ${clips.endMs} = ${rendered.endMs} THEN 'done' ELSE 'stale' END`,
+      updatedAt: new Date(),
+    })
+    .where(eq(clips.id, id))
+    .returning({ renderStatus: clips.renderStatus });
+  return row ? (row.renderStatus as "done" | "stale") : null;
 }
 
 export function setClipThumb(db: Db, id: string, key: string): Promise<Clip> {

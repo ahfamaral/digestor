@@ -465,7 +465,11 @@ describe("nodes", () => {
     const [clip] = await listClips(db, sessionId);
     await setClipStatus(db, clip!.id, "approved", "user");
     await renderOne(deps, clip!.id);
-    expect((await getClip(db, clip!.id))!.renderStatus).toBe("done");
+    expect(await getClip(db, clip!.id)).toMatchObject({
+      renderStatus: "done",
+      renderKey: `${sessionId}/clips/${clip!.id}.mp4`,
+      srtKey: `${sessionId}/clips/${clip!.id}.srt`,
+    });
   });
 
   it("renderOne marks the clip failed, removes the temp .ass and rethrows", async () => {

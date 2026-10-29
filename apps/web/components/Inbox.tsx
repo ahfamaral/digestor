@@ -140,7 +140,7 @@ export function Inbox({
     try {
       const res = await fetch(`/api/sessions/${sessionId}/clips`);
       if (!res.ok) return;
-      const fresh = (await res.json()) as ClipNode[];
+      const { clips: fresh } = (await res.json()) as { clips: ClipNode[] };
       // Never let the reload overwrite a status change that is still on its way to the server.
       setTree(flattenTree(fresh).reduce((t, c) => {
         const pending = queue.pending(c.id);
@@ -182,6 +182,14 @@ export function Inbox({
     setRendering(true);
     setRenderError(null);
     try {
+      // Render exactly what was approved: let in-flight status changes land first (once the stage is
+      // `rendering` a late PATCH would be refused and that approval lost).
+      const { failed } = await queue.idle();
+      if (failed) {
+        setRenderError("Some changes couldn't be saved. Check the clips marked in red, then try again.");
+        setRendering(false);
+        return;
+      }
       const res = await fetch(`/api/sessions/${sessionId}/render`, { method: "POST" });
       if (res.ok) {
         router.push(`/s/${sessionId}/export`);

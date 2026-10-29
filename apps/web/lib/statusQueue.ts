@@ -22,6 +22,7 @@ interface Entry {
  */
 export class StatusQueue {
   private entries = new Map<string, Entry>();
+  private waiters: { failed: boolean; resolve(r: { failed: boolean }): void }[] = [];
 
   constructor(private readonly opts: StatusQueueOptions) {}
 
@@ -40,6 +41,22 @@ export class StatusQueue {
     return this.entries.get(id)?.desired;
   }
 
+  /**
+   * Resolves once no status write is pending or in flight; `failed` says whether any write failed since the call.
+   * Used before actions that depend on the saved statuses (starting a render).
+   */
+  idle(): Promise<{ failed: boolean }> {
+    if (this.entries.size === 0) return Promise.resolve({ failed: false });
+    return new Promise((resolve) => this.waiters.push({ failed: false, resolve }));
+  }
+
+  private settle(): void {
+    if (this.entries.size > 0) return;
+    const waiters = this.waiters;
+    this.waiters = [];
+    for (const w of waiters) w.resolve({ failed: w.failed });
+  }
+
   private async pump(id: string, entry: Entry): Promise<void> {
     while (entry.desired !== entry.confirmed) {
       const sending = entry.desired;
@@ -52,11 +69,14 @@ export class StatusQueue {
         this.entries.delete(id);
         this.opts.onDisplay(id, entry.confirmed);
         this.opts.onError(id, err instanceof Error ? err.message : "Couldn't save. Try again.");
+        for (const w of this.waiters) w.failed = true;
+        this.settle();
         return;
       }
       entry.inFlight = false;
     }
     this.entries.delete(id);
     this.opts.onError(id, null);
+    this.settle();
   }
 }

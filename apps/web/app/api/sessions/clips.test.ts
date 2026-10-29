@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createSession, replaceAiClips } from "@digestor/core/server";
+import { createSession, replaceAiClips, setStage } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { GET } from "./[id]/clips/route";
 
@@ -19,11 +19,12 @@ describe("GET /api/sessions/[id]/clips", () => {
     expect((await get("00000000-0000-4000-8000-000000000000")).status).toBe(404);
   });
 
-  it("returns an empty list when there are no clips", async () => {
+  it("returns the session stage and an empty list when there are no clips", async () => {
     const s = await createSession(h.db, { title: "t", source: "upload" });
+    await setStage(h.db, s.id, "rendering", 90);
     const res = await get(s.id);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([]);
+    expect(await res.json()).toEqual({ stage: "rendering", clips: [] });
   });
 
   it("groups hot takes under their parent (parents by score) and keeps orphaned hot takes top-level", async () => {
@@ -50,7 +51,7 @@ describe("GET /api/sessions/[id]/clips", () => {
       },
     ]);
     const res = await get(s.id);
-    const tree = (await res.json()) as { title: string; children: { title: string }[] }[];
+    const { clips: tree } = (await res.json()) as { clips: { title: string; children: { title: string }[] }[] };
     expect(tree.map((p) => [p.title, p.children.map((c) => c.title)])).toEqual([
       ["High", ["High kid 1", "High kid 2"]],
       ["Low", ["Low kid"]],
@@ -59,7 +60,7 @@ describe("GET /api/sessions/[id]/clips", () => {
     // Deleting the "Low" parent orphans its hot take, which then stands on its own.
     const low = created.find((c) => c.title === "Low")!;
     await h.db.execute(`DELETE FROM clips WHERE id = '${low.id}'`);
-    const after = (await (await get(s.id)).json()) as { title: string; children: unknown[] }[];
+    const { clips: after } = (await (await get(s.id)).json()) as { clips: { title: string; children: unknown[] }[] };
     expect(after.map((p) => [p.title, p.children.length])).toEqual([
       ["High", 2],
       ["Low kid", 0],

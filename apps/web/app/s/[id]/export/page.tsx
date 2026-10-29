@@ -33,7 +33,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
         <div className="flex flex-col items-start gap-4 md:flex-row">
           <section aria-label="Approved clips" className="w-full rounded-xl border border-border bg-white px-4 py-1 md:flex-[1.6]">
-            <ExportList sessionId={id} language={session.language} initialClips={clips} />
+            <ExportList sessionId={id} language={session.language} initialStage={session.stage} initialClips={clips} />
           </section>
           <aside className="w-full rounded-xl border border-border bg-white p-4 md:flex-1">
             <h2 className="text-sm font-bold">Render options</h2>

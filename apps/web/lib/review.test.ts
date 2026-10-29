@@ -6,6 +6,7 @@ import {
   filterClips,
   flattenTree,
   formatDuration,
+  renderInProgress,
   keyToAction,
   type ClipNode,
   type ReviewClip,
@@ -111,6 +112,15 @@ describe("flattenTree", () => {
 describe("approvedClips", () => {
   it("lists approved long clips and hot takes in review order, even under an unapproved parent", () => {
     expect(approvedClips(tree).map((c) => c.id)).toEqual([p1.id, k3.id]);
+  });
+});
+
+describe("renderInProgress", () => {
+  it("is true while the session renders or any clip is queued/rendering, false otherwise", () => {
+    expect(renderInProgress("rendering", [{ renderStatus: "done" }])).toBe(true);
+    expect(renderInProgress("done", [{ renderStatus: "done" }, { renderStatus: "queued" }])).toBe(true);
+    expect(renderInProgress("done", [{ renderStatus: "rendering" }])).toBe(true);
+    expect(renderInProgress("done", [{ renderStatus: "done" }, { renderStatus: "stale" }, { renderStatus: "failed" }])).toBe(false);
   });
 });
 

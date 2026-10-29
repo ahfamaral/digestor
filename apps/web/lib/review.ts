@@ -115,3 +115,8 @@ export function formatDuration(ms: number): string {
 export function approvedClips<T extends ReviewClip>(tree: ClipNode<T>[]): T[] {
   return flattenTree(tree).filter((c) => c.status === "approved");
 }
+
+/** Export keeps polling while the graph is rendering or any approved clip is queued or rendering. */
+export function renderInProgress(stage: string, approved: Pick<ReviewClip, "renderStatus">[]): boolean {
+  return stage === "rendering" || approved.some((c) => c.renderStatus === "queued" || c.renderStatus === "rendering");
+}

@@ -1,6 +1,6 @@
 import { writeFile, rm } from "node:fs/promises";
 import { sliceWords } from "@digestor/core";
-import { getClip, getSession, getTranscript, setRenderState } from "@digestor/core/server";
+import { finishClipRender, getClip, getSession, getTranscript, setRenderState } from "@digestor/core/server";
 import { buildAss, buildCues, buildSrt } from "../media/subtitles.js";
 import type { PipelineDeps } from "./graph.js";
 
@@ -33,9 +33,8 @@ export async function renderOne(deps: PipelineDeps, clipId: string): Promise<voi
     await media.renderClip({ input: original, output: storage.resolve(renderKey), ...range, assPath });
     await writeFile(storage.resolve(srtKey), buildSrt(cues), "utf8");
     // The user may have edited the times or un-approved the clip while ffmpeg ran: then this file is stale.
-    const now = await getClip(db, clipId);
-    const unchanged = now?.status === "approved" && now.startMs === range.startMs && now.endMs === range.endMs;
-    await setRenderState(db, clipId, { renderStatus: unchanged ? "done" : "stale", renderKey, srtKey });
+    // One conditional UPDATE decides, so no edit can slip in between a check and the write.
+    await finishClipRender(db, clipId, range, { renderKey, srtKey });
   } catch (err) {
     await setRenderState(db, clipId, { renderStatus: "failed" });
     throw err;

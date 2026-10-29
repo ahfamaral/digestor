@@ -3,7 +3,7 @@ import pg from "pg";
 import type { ProposedClip } from "../schemas.ts";
 import { createDb, type Db } from "./client.ts";
 import {
-  createSession, deleteSession, getClip, getContextCard, getSession, getTranscript, listClips,
+  claimClipRender, createSession, deleteSession, finishClipRender, getClip, getContextCard, getSession, getTranscript, listClips,
   listExpiredSessions, replaceAiClips, saveContextCard, saveTranscript, setClipBounds, setClipStatus,
   setClipThumb, setRenderState, setStage, transitionStage, updateSession, type Session,
 } from "./repo.ts";
@@ -130,6 +130,46 @@ describe("clips", () => {
     expect((await getClip(db, parent!.id))!.renderKey).toBe(`${s.id}/clips/x.mp4`);
     const events = (await db.select().from(clipEvents)).filter((e) => e.kind === "bounds");
     expect(events[0]).toMatchObject({ before: { startMs: 10_000, endMs: 100_000 }, after: { startMs: 11_000, endMs: 99_000 } });
+  });
+
+  it("re-saving the same bounds leaves a finished render done", async () => {
+    const [parent] = await replaceAiClips(db, s.id, tree);
+    await setRenderState(db, parent!.id, { renderStatus: "done" });
+    const same = await setClipBounds(db, parent!.id, { startMs: 10_000, endMs: 100_000 }, "user");
+    expect(same.renderStatus).toBe("done");
+  });
+
+  it("claimClipRender queues a clip only from none, failed or stale, once", async () => {
+    const [parent, kidA, kidB] = await replaceAiClips(db, s.id, tree);
+    await setRenderState(db, kidA!.id, { renderStatus: "stale" });
+    await setRenderState(db, kidB!.id, { renderStatus: "rendering" });
+    const claims = await Promise.all([claimClipRender(db, kidA!.id), claimClipRender(db, kidA!.id)]);
+    expect(claims.sort()).toEqual([false, true]);
+    expect((await getClip(db, kidA!.id))!.renderStatus).toBe("queued");
+    expect(await claimClipRender(db, kidB!.id)).toBe(false);
+    expect((await getClip(db, kidB!.id))!.renderStatus).toBe("rendering");
+    expect(await claimClipRender(db, parent!.id)).toBe(true); // none
+    await setRenderState(db, parent!.id, { renderStatus: "failed" });
+    expect(await claimClipRender(db, parent!.id)).toBe(true);
+    await setRenderState(db, parent!.id, { renderStatus: "done" });
+    expect(await claimClipRender(db, parent!.id)).toBe(false);
+  });
+
+  it("finishClipRender marks done only if the clip is still approved with the rendered bounds", async () => {
+    const [parent] = await replaceAiClips(db, s.id, tree);
+    const keys = { renderKey: `${s.id}/clips/p.mp4`, srtKey: `${s.id}/clips/p.srt` };
+    const rendered = { startMs: 10_000, endMs: 100_000 };
+    await setClipStatus(db, parent!.id, "approved", "user");
+    expect(await finishClipRender(db, parent!.id, rendered, keys)).toBe("done");
+    expect(await getClip(db, parent!.id)).toMatchObject({ renderStatus: "done", ...keys });
+
+    await setClipBounds(db, parent!.id, { startMs: 12_000, endMs: 100_000 }, "user");
+    expect(await finishClipRender(db, parent!.id, rendered, keys)).toBe("stale");
+    expect(await getClip(db, parent!.id)).toMatchObject({ renderStatus: "stale", ...keys });
+
+    await setClipStatus(db, parent!.id, "neutral", "user");
+    expect(await finishClipRender(db, parent!.id, { startMs: 12_000, endMs: 100_000 }, keys)).toBe("stale");
+    expect(await finishClipRender(db, "00000000-0000-0000-0000-000000000000", rendered, keys)).toBeNull();
   });
 
   it("setClipThumb stores the thumbnail key", async () => {

@@ -1,5 +1,5 @@
 import { JOB_OPTIONS, QUEUES } from "@digestor/core";
-import { getSession, listClips, setRenderState, transitionStage } from "@digestor/core/server";
+import { claimClipRender, getSession, listClips, setRenderState, transitionStage } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { getServer } from "@/lib/server";
@@ -30,29 +30,37 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     if (!(await transitionStage(db, id, "awaiting_review", "rendering", 90))) return errorResponse(409, NOT_READY);
     // Shown as queued on the export page until the graph's render node picks them up.
     const todo = approved.filter((c) => c.renderStatus !== "done");
-    for (const clip of todo) await setRenderState(db, clip.id, { renderStatus: "queued" });
     try {
+      for (const clip of todo) await setRenderState(db, clip.id, { renderStatus: "queued" });
       await boss.send(QUEUES.resume, { sessionId: id, payload: { action: "render" } }, { ...JOB_OPTIONS, singletonKey: id });
     } catch (err) {
       console.error("render: enqueue failed", err);
-      for (const clip of todo) await setRenderState(db, clip.id, { renderStatus: clip.renderStatus });
-      await transitionStage(db, id, "rendering", "awaiting_review", session.progress);
+      try {
+        for (const clip of todo) await setRenderState(db, clip.id, { renderStatus: clip.renderStatus });
+        await transitionStage(db, id, "rendering", "awaiting_review", session.progress);
+      } catch (rollbackErr) {
+        console.error("render: rollback failed", rollbackErr);
+      }
       return errorResponse(503, QUEUE_FAILED);
     }
     return Response.json({ queued: todo.length });
   }
 
-  const todo = approved.filter((c) => RERENDER.has(c.renderStatus));
-  for (const clip of todo) {
-    // Marked before sending, so the worker's own queued → rendering → done updates always come after ours.
-    await setRenderState(db, clip.id, { renderStatus: "queued" });
+  // Each clip is claimed atomically (none/failed/stale → queued) before its job is sent, so concurrent
+  // requests enqueue at most one job per clip; pg-boss singletonKey is not relied on for that.
+  let queued = 0;
+  for (const clip of approved.filter((c) => RERENDER.has(c.renderStatus))) {
+    let claimed = false;
     try {
+      claimed = await claimClipRender(db, clip.id);
+      if (!claimed) continue;
       await boss.send(QUEUES.renderClip, { clipId: clip.id }, { ...JOB_OPTIONS, singletonKey: clip.id });
+      queued++;
     } catch (err) {
       console.error("render: enqueue failed", err);
-      await setRenderState(db, clip.id, { renderStatus: clip.renderStatus });
+      if (claimed) await setRenderState(db, clip.id, { renderStatus: clip.renderStatus }).catch((e: unknown) => console.error("render: rollback failed", e));
       return errorResponse(503, QUEUE_FAILED);
     }
   }
-  return Response.json({ queued: todo.length });
+  return Response.json({ queued });
 }

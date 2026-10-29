@@ -109,6 +109,16 @@ describe("POST /api/sessions/[id]/render", () => {
     expect((await getSession(h.db, id))?.stage).toBe("done");
   });
 
+  it("after done two concurrent POSTs enqueue exactly one job per clip", async () => {
+    const { id, clipIds } = await session("done", [["approved", "stale"], ["approved", "failed"]]);
+    const results = await Promise.all([post(id), post(id)]);
+    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    const queued = await Promise.all(results.map(async (r) => ((await r.json()) as { queued: number }).queued));
+    expect(queued.reduce((a, b) => a + b)).toBe(2);
+    const sent = h.send.mock.calls.map((c) => (c[1] as { clipId: string }).clipId).sort();
+    expect(sent).toEqual([...clipIds].sort());
+  });
+
   it("after done also re-queues failed and never-rendered approved clips", async () => {
     const { id, clipIds } = await session("done", [["approved", "failed"], ["approved", "none"], ["approved", "queued"]]);
     const res = await post(id);

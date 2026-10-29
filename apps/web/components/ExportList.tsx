@@ -3,13 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LABELS } from "@/components/ClipCard";
-import { approvedClips, formatDuration, type ClipNode, type ReviewClip } from "@/lib/review";
+import { approvedClips, formatDuration, renderInProgress, type ClipNode, type ReviewClip } from "@/lib/review";
 import { cn } from "@/lib/utils";
 
 type RenderStatus = ReviewClip["renderStatus"];
 
 const POLL_MS = 2000;
 const inProgress = (s: RenderStatus) => s === "queued" || s === "rendering";
+
+interface Live {
+  stage: string;
+  clips: ReviewClip[];
+}
 const STATUS_TEXT: Record<RenderStatus, string> = {
   none: "Not rendered yet",
   queued: "Queued…",
@@ -19,36 +24,48 @@ const STATUS_TEXT: Record<RenderStatus, string> = {
   stale: "Times changed since this render.",
 };
 
-/** The session's approved clips, fresh from the API. */
-async function loadApproved(sessionId: string): Promise<ReviewClip[]> {
+/** The session stage and its approved clips, fresh from the API. */
+async function loadLive(sessionId: string): Promise<Live> {
   const res = await fetch(`/api/sessions/${sessionId}/clips`, { cache: "no-store" });
   if (!res.ok) throw new Error(`clips: ${res.status}`);
-  return approvedClips((await res.json()) as ClipNode[]);
+  const { stage, clips } = (await res.json()) as { stage: string; clips: ClipNode[] };
+  return { stage, clips: approvedClips(clips) };
 }
 
 /** Export list: approved clips with live render status, downloads when ready, re-render when stale or failed. */
-export function ExportList({ sessionId, language, initialClips }: { sessionId: string; language: string | null; initialClips: ReviewClip[] }) {
-  const [clips, setClips] = useState(initialClips);
+export function ExportList({
+  sessionId,
+  language,
+  initialStage,
+  initialClips,
+}: {
+  sessionId: string;
+  language: string | null;
+  initialStage: string;
+  initialClips: ReviewClip[];
+}) {
+  const [live, setLive] = useState<Live>({ stage: initialStage, clips: initialClips });
   const [error, setError] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
-  const busy = clips.some((c) => inProgress(c.renderStatus));
+  const { stage, clips } = live;
+  const busy = renderInProgress(stage, clips);
 
   async function refresh(): Promise<void> {
-    setClips(await loadApproved(sessionId));
+    setLive(await loadLive(sessionId));
   }
 
   // Re-read on mount and whenever the router shows this page again: Next keeps visited pages (and their
   // client state) alive, so coming back from review would otherwise show the old render statuses.
-  // Then poll every 2 s while any approved clip is queued or rendering.
+  // Then poll every 2 s while the session is rendering or any approved clip is queued or rendering.
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = () =>
-      loadApproved(sessionId).then(
+      loadLive(sessionId).then(
         (fresh) => {
           if (stopped) return;
-          setClips(fresh);
-          if (fresh.some((c) => inProgress(c.renderStatus))) timer = setTimeout(load, POLL_MS);
+          setLive(fresh);
+          if (renderInProgress(fresh.stage, fresh.clips)) timer = setTimeout(load, POLL_MS);
         },
         () => {
           if (!stopped) timer = setTimeout(load, POLL_MS); // offline for a moment: try again
@@ -154,7 +171,7 @@ export function ExportList({ sessionId, language, initialClips }: { sessionId: s
         </ul>
       )}
       <div className="border-t border-border pt-3">
-        {busy ? (
+        {stage === "rendering" ? (
           <span title="Wait for the renders to finish." className="cursor-not-allowed text-sm text-muted-foreground opacity-60">
             ← Back to review
           </span>
