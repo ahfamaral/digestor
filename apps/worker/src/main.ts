@@ -3,10 +3,10 @@ import { fileURLToPath } from "node:url";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { PgBoss } from "pg-boss";
 import type { z } from "zod";
-import { QUEUES, RenderClipJobSchema, ResumeJobSchema, StartJobSchema } from "@digestor/core";
+import { JOB_OPTIONS, QUEUES, RenderClipJobSchema, ResumeJobSchema, StartJobSchema } from "@digestor/core";
 import { LocalStorage, createDb } from "@digestor/core/server";
 import { CLEANUP_CRON, CLEANUP_QUEUE, retentionDays, runCleanup } from "./cleanup.js";
-import { QUEUE_OPTIONS, handleRenderClip, handleResume, handleStart, MissingApiKeyError, processJobs, type JobContext } from "./jobs.js";
+import { handleRenderClip, handleResume, handleStart, MissingApiKeyError, processJobs, type Attempt, type JobContext } from "./jobs.js";
 import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
 import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
@@ -54,19 +54,22 @@ async function main() {
   boss.on("error", console.error);
   await boss.start();
   for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE]) {
-    await boss.createQueue(name, QUEUE_OPTIONS); // no-op when the queue already exists...
-    await boss.updateQueue(name, QUEUE_OPTIONS); // ...so existing queues get the current options too
+    // Same options as every sender passes (JOB_OPTIONS): retries, 12 h expiry, 60 s heartbeat.
+    await boss.createQueue(name, JOB_OPTIONS); // no-op when the queue already exists...
+    await boss.updateQueue(name, JOB_OPTIONS); // ...so existing queues get the current options too
   }
   await boss.schedule(CLEANUP_QUEUE, CLEANUP_CRON, {}, { tz: "UTC" });
 
-  const register = <T>(queue: string, schema: z.ZodType<T>, handle: (job: T) => Promise<void>) =>
-    boss.work<unknown>(queue, { batchSize: 1 }, (jobs) => processJobs(queue, schema, handle, jobs));
-  await register(QUEUES.start, StartJobSchema, (j) => handleStart(ctx, j));
-  await register(QUEUES.resume, ResumeJobSchema, (j) => handleResume(ctx, j));
+  // includeMetadata: handlers need retryCount/retryLimit to fail the session only on the final attempt.
+  const workOptions = { batchSize: 1, includeMetadata: true } as const;
+  const register = <T>(queue: string, schema: z.ZodType<T>, handle: (job: T, attempt: Attempt) => Promise<void>) =>
+    boss.work<unknown, void, typeof workOptions>(queue, workOptions, (jobs) => processJobs(queue, schema, handle, jobs));
+  await register(QUEUES.start, StartJobSchema, (j, attempt) => handleStart(ctx, j, attempt));
+  await register(QUEUES.resume, ResumeJobSchema, (j, attempt) => handleResume(ctx, j, attempt));
   await register(QUEUES.renderClip, RenderClipJobSchema, (j) => handleRenderClip(ctx, j));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     const days = retentionDays();
-    const { deleted } = await runCleanup({ db, storage }, days);
+    const { deleted } = await runCleanup({ db, storage, checkpointer: saver }, days);
     console.log(`cleanup: deleted ${deleted} session(s) older than ${days} day(s)`);
   });
 

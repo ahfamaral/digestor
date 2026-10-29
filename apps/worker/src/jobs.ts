@@ -27,13 +27,34 @@ export function failureMessage(err: unknown): string {
 
 const threadConfig = (sessionId: string) => ({ configurable: { thread_id: sessionId } });
 
+/** Which pg-boss attempt is running (from the job metadata): retryCount 0 is the first try. */
+export type Attempt = { retryCount: number; retryLimit: number };
+
 async function failSession(ctx: JobContext, sessionId: string, err: unknown): Promise<void> {
   const message = failureMessage(err);
   const progress = (await getSession(ctx.db, sessionId))?.progress ?? 0;
   await setStage(ctx.db, sessionId, "failed", progress, message);
 }
 
-export async function handleStart(ctx: JobContext, job: StartJob): Promise<void> {
+/** Errors a retry can't fix (vendor rejected the file, key missing): fail at once instead of retrying. */
+const isDeterministic = (err: unknown): boolean => err instanceof TranscriptionError || err instanceof MissingApiKeyError;
+
+/**
+ * A deterministic error fails the session and completes the job (no rethrow, so no retry). Any other error is
+ * rethrown so pg-boss retries it; only the final attempt marks the session failed — earlier ones leave the
+ * in-progress stage alone, so the UI keeps showing progress instead of "Start over" while a retry is pending.
+ */
+async function onJobError(ctx: JobContext, sessionId: string, err: unknown, attempt: Attempt): Promise<void> {
+  if (isDeterministic(err)) {
+    await failSession(ctx, sessionId, err);
+    return;
+  }
+  if (attempt.retryCount >= attempt.retryLimit) await failSession(ctx, sessionId, err);
+  else console.error(`[jobs] session ${sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+  throw err;
+}
+
+export async function handleStart(ctx: JobContext, job: StartJob, attempt: Attempt): Promise<void> {
   const cfg = threadConfig(job.sessionId);
   try {
     const state = await ctx.graph.getState(cfg);
@@ -41,13 +62,12 @@ export async function handleStart(ctx: JobContext, job: StartJob): Promise<void>
     if (state.next.length > 0) await ctx.graph.invoke(null, cfg);
     else await ctx.graph.invoke({ sessionId: job.sessionId }, cfg);
   } catch (err) {
-    await failSession(ctx, job.sessionId, err);
-    throw err;
+    await onJobError(ctx, job.sessionId, err, attempt);
   }
 }
 
 /** Idempotent: a retried or duplicated resume must not pre-answer a later interrupt or restart a finished thread. */
-export async function handleResume(ctx: JobContext, job: ResumeJob): Promise<void> {
+export async function handleResume(ctx: JobContext, job: ResumeJob, attempt: Attempt): Promise<void> {
   const cfg = threadConfig(job.sessionId);
   try {
     const state = await ctx.graph.getState(cfg);
@@ -59,8 +79,7 @@ export async function handleResume(ctx: JobContext, job: ResumeJob): Promise<voi
       console.log(`Ignoring resume for ${job.sessionId}: nothing is waiting for an answer`);
     }
   } catch (err) {
-    await failSession(ctx, job.sessionId, err);
-    throw err;
+    await onJobError(ctx, job.sessionId, err, attempt);
   }
 }
 
@@ -69,15 +88,15 @@ export async function handleRenderClip(ctx: JobContext, job: RenderClipJob): Pro
   await renderOne(ctx.deps, job.clipId);
 }
 
-/** Applied to every queue: long sessions must not expire at pg-boss's 15 min default. */
-export const QUEUE_OPTIONS = { expireInSeconds: 14400, retryLimit: 2, retryDelay: 30 } as const;
-
-/** Validate and handle a pg-boss batch. Invalid payloads are logged and completed: retrying garbage can't succeed. */
+/**
+ * Validate and handle a pg-boss batch (fetched with includeMetadata, so each job carries its attempt).
+ * Invalid payloads are logged and completed: retrying garbage can't succeed.
+ */
 export async function processJobs<T>(
   queue: string,
   schema: { safeParse(d: unknown): { success: true; data: T } | { success: false; error: { message: string } } },
-  handle: (data: T) => Promise<void>,
-  jobs: { data: unknown }[],
+  handle: (data: T, attempt: Attempt) => Promise<void>,
+  jobs: ({ data: unknown } & Attempt)[],
 ): Promise<void> {
   for (const job of jobs) {
     const parsed = schema.safeParse(job.data);
@@ -85,6 +104,6 @@ export async function processJobs<T>(
       console.error(`Dropping invalid payload on ${queue}: ${parsed.error.message}`);
       continue;
     }
-    await handle(parsed.data);
+    await handle(parsed.data, { retryCount: job.retryCount, retryLimit: job.retryLimit });
   }
 }

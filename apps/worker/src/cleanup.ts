@@ -1,3 +1,4 @@
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { deleteSession, listExpiredSessions, type Db, type LocalStorage, type Stage } from "@digestor/core/server";
 
 /** pg-boss queue for the daily retention clean-up (scheduled 03:00 UTC in main.ts). */
@@ -14,11 +15,17 @@ const PROCESSING_STAGES: ReadonlySet<Stage> = new Set<Stage>([
   "rendering",
 ]);
 
-export type CleanupDeps = { db: Db; storage: Pick<LocalStorage, "removeSession"> };
+export type CleanupDeps = {
+  db: Db;
+  storage: Pick<LocalStorage, "removeSession">;
+  /** The pipeline's LangGraph checkpointer: thread id = session id; its checkpoints hold the human's answers. */
+  checkpointer: Pick<BaseCheckpointSaver, "deleteThread">;
+};
 
 /**
- * Deletes sessions older than `retentionDays` (DB rows cascade to transcripts, cards, clips) and their data folder.
- * Files go first, so a failed removal leaves the row in place and the next run retries it.
+ * Deletes sessions older than `retentionDays`: their data folder, their LangGraph checkpoints, then the DB row
+ * (which cascades to transcripts, cards, clips). The row goes last, so any failed step leaves it in place and the
+ * next run retries the whole session.
  */
 export async function runCleanup(deps: CleanupDeps, retentionDays: number): Promise<{ deleted: number }> {
   const expired = await listExpiredSessions(deps.db, retentionDays);
@@ -27,6 +34,7 @@ export async function runCleanup(deps: CleanupDeps, retentionDays: number): Prom
     if (PROCESSING_STAGES.has(session.stage)) continue;
     try {
       await deps.storage.removeSession(session.id);
+      await deps.checkpointer.deleteThread(session.id);
       await deleteSession(deps.db, session.id);
       deleted++;
     } catch (err) {

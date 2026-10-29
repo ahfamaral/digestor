@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command } from "@langchain/langgraph";
 import { createDb, createSession, getSession, setStage, type Db } from "@digestor/core/server";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
-import { MissingApiKeyError, QUEUE_OPTIONS, failureMessage, handleResume, processJobs, handleStart, type JobContext } from "./jobs.js";
+import { MissingApiKeyError, failureMessage, handleResume, processJobs, handleStart, type JobContext } from "./jobs.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -16,16 +16,18 @@ function stubGraph(opts: { next?: string[]; fail?: Error; interrupted?: boolean 
   return { invoke, getState };
 }
 
-describe("queue options and payloads", () => {
-  it("QUEUE_OPTIONS", () => {
-    expect(QUEUE_OPTIONS).toEqual({ expireInSeconds: 14400, retryLimit: 2, retryDelay: 30 });
-  });
-  it("invalid payload is logged and completed, valid ones are handled", async () => {
+/** Attempt metadata as pg-boss passes it (includeMetadata): retryCount 0 is the first try. */
+const FIRST = { retryCount: 0, retryLimit: 2 };
+const LAST = { retryCount: 2, retryLimit: 2 };
+
+describe("payloads", () => {
+  it("invalid payload is logged and completed, valid ones are handled with their attempt", async () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const handle = vi.fn(async () => {});
     const schema = { safeParse: (d: unknown) => (d === "ok" ? { success: true as const, data: d } : { success: false as const, error: { message: "bad" } }) };
-    await processJobs("q", schema, handle, [{ data: "nope" }, { data: "ok" }]);
+    await processJobs("q", schema, handle, [{ data: "nope", ...FIRST }, { data: "ok", retryCount: 1, retryLimit: 2 }]);
     expect(handle).toHaveBeenCalledTimes(1);
+    expect(handle).toHaveBeenCalledWith("ok", { retryCount: 1, retryLimit: 2 });
     expect(err).toHaveBeenCalled();
     err.mockRestore();
   });
@@ -59,7 +61,7 @@ d("job handlers", () => {
   it("handleStart starts a fresh run with thread_id = sessionId", async () => {
     const g = stubGraph();
     const id = await newSession();
-    await handleStart(ctxFor(g), { sessionId: id });
+    await handleStart(ctxFor(g), { sessionId: id }, FIRST);
     const cfg = { configurable: { thread_id: id } };
     expect(g.invoke).toHaveBeenCalledWith({ sessionId: id }, cfg);
   });
@@ -67,7 +69,7 @@ d("job handlers", () => {
   it("handleStart resumes from an existing checkpoint", async () => {
     const g = stubGraph({ next: ["transcribe"] });
     const id = await newSession();
-    await handleStart(ctxFor(g), { sessionId: id });
+    await handleStart(ctxFor(g), { sessionId: id }, FIRST);
     expect(g.invoke).toHaveBeenCalledWith(null, { configurable: { thread_id: id } });
   });
 
@@ -75,7 +77,7 @@ d("job handlers", () => {
     const g = stubGraph({ next: ["context"], interrupted: true });
     const id = await newSession();
     const payload = { action: "continue", answers: [] } as never;
-    await handleResume(ctxFor(g), { sessionId: id, payload });
+    await handleResume(ctxFor(g), { sessionId: id, payload }, FIRST);
     const [arg, cfg] = g.invoke.mock.calls[0]!;
     expect(arg).toBeInstanceOf(Command);
     expect((arg as Command).resume).toEqual(payload);
@@ -85,26 +87,69 @@ d("job handlers", () => {
   it("handleResume continues a mid-run thread with null (stale resume is not replayed)", async () => {
     const g = stubGraph({ next: ["find_clips"] });
     const id = await newSession();
-    await handleResume(ctxFor(g), { sessionId: id, payload: { action: "continue", answers: [] } as never });
+    await handleResume(ctxFor(g), { sessionId: id, payload: { action: "continue", answers: [] } as never }, FIRST);
     expect(g.invoke).toHaveBeenCalledWith(null, { configurable: { thread_id: id } });
   });
 
   it("handleResume on a finished thread does not invoke", async () => {
     const g = stubGraph();
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    await handleResume(ctxFor(g), { sessionId: await newSession(), payload: { action: "continue", answers: [] } as never });
+    await handleResume(ctxFor(g), { sessionId: await newSession(), payload: { action: "continue", answers: [] } as never }, FIRST);
     expect(g.invoke).not.toHaveBeenCalled();
     log.mockRestore();
   });
 
-  it("a throwing graph sets stage failed with friendly message and rethrows", async () => {
-    const g = stubGraph({ fail: new TranscriptionError("boom") });
+  it("a non-final attempt rethrows and leaves the stage untouched (pg-boss retries)", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const g = stubGraph({ fail: new Error("ECONNRESET") });
     const id = await newSession();
     await setStage(db, id, "transcribing", 40);
-    await expect(handleStart(ctxFor(g), { sessionId: id })).rejects.toThrow("boom");
-    const s = await getSession(db, id);
-    expect(s?.stage).toBe("failed");
-    expect(s?.error).toBe("Transcription failed: boom");
-    expect(s?.progress).toBe(40);
+    await expect(handleStart(ctxFor(g), { sessionId: id }, FIRST)).rejects.toThrow("ECONNRESET");
+    await expect(handleStart(ctxFor(g), { sessionId: id }, { retryCount: 1, retryLimit: 2 })).rejects.toThrow("ECONNRESET");
+    expect(await getSession(db, id)).toMatchObject({ stage: "transcribing", progress: 40, error: null });
+    log.mockRestore();
+  });
+
+  it("the final attempt sets stage failed with the friendly message and rethrows", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const g = stubGraph({ fail: new Error("ECONNRESET secret") });
+    const id = await newSession();
+    await setStage(db, id, "transcribing", 40);
+    await expect(handleStart(ctxFor(g), { sessionId: id }, LAST)).rejects.toThrow("ECONNRESET");
+    expect(await getSession(db, id)).toMatchObject({
+      stage: "failed",
+      progress: 40,
+      error: "Something went wrong while processing this video. Please try again.",
+    });
+    log.mockRestore();
+  });
+
+  it.each([
+    ["TranscriptionError", new TranscriptionError("boom"), "Transcription failed: boom"],
+    ["MissingApiKeyError", new MissingApiKeyError("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY is not set on the server."],
+  ])("a deterministic %s fails the session at once and completes the job (no retry)", async (_name, err, message) => {
+    const g = stubGraph({ fail: err });
+    const id = await newSession();
+    await setStage(db, id, "transcribing", 40);
+    await expect(handleStart(ctxFor(g), { sessionId: id }, FIRST)).resolves.toBeUndefined();
+    expect(await getSession(db, id)).toMatchObject({ stage: "failed", progress: 40, error: message });
+  });
+
+  it("handleResume follows the same attempt rules", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const payload = { action: "skip" } as const;
+    const id = await newSession();
+    await setStage(db, id, "finding_clips", 70);
+    const flaky = stubGraph({ next: ["find_clips"], fail: new Error("overloaded") });
+    await expect(handleResume(ctxFor(flaky), { sessionId: id, payload }, FIRST)).rejects.toThrow("overloaded");
+    expect((await getSession(db, id))!.stage).toBe("finding_clips");
+    await expect(handleResume(ctxFor(flaky), { sessionId: id, payload }, LAST)).rejects.toThrow("overloaded");
+    expect((await getSession(db, id))!.stage).toBe("failed");
+
+    const keyless = stubGraph({ next: ["find_clips"], fail: new MissingApiKeyError("ANTHROPIC_API_KEY") });
+    const id2 = await newSession();
+    await expect(handleResume(ctxFor(keyless), { sessionId: id2, payload }, FIRST)).resolves.toBeUndefined();
+    expect(await getSession(db, id2)).toMatchObject({ stage: "failed", error: "ANTHROPIC_API_KEY is not set on the server." });
+    log.mockRestore();
   });
 });
