@@ -107,3 +107,13 @@ export const ResumePayloadSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("render") }),
 ]);
 export type ResumePayload = z.infer<typeof ResumePayloadSchema>;
+
+export type ProposedClip = {
+  title: string;
+  reason: string;
+  label: ClipLabel;
+  score: number;
+  startMs: number;
+  endMs: number;
+  children: Omit<ProposedClip, "children">[];
+};
