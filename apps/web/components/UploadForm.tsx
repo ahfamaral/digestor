@@ -3,9 +3,10 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UploadIcon, XIcon } from "lucide-react";
-import { estimateCostUsd, parseYouTubeUrl } from "@digestor/core";
+import { estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -13,8 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-
-const EXTENSIONS = ["mp4", "mov", "mkv", "webm"];
 
 type Mode = "file" | "youtube";
 type Meta = { durationMs: number; width: number; height: number } | null;
@@ -115,6 +114,7 @@ export function UploadForm() {
   const [mode, setMode] = useState<Mode>("file");
   const [file, setFile] = useState<File | null>(null);
   const [meta, setMeta] = useState<Meta>(null);
+  const [audioAck, setAudioAck] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [upload, setUpload] = useState<Upload>({ phase: "idle" });
@@ -125,12 +125,13 @@ export function UploadForm() {
 
   const urlError = youtubeError(url);
   const busy = submitting || upload.phase !== "idle";
-  const canSubmit = !busy && (mode === "file" ? file !== null : url.trim() !== "" && urlError === null);
+  const audioOnly = file !== null && isAudioExtension(extOf(file.name));
+  const canSubmit = !busy && (mode === "file" ? file !== null && (!audioOnly || audioAck) : url.trim() !== "" && urlError === null);
 
   async function pick(f: File | undefined) {
     if (!f || busy) return;
     setSubmitError(null);
-    if (!EXTENSIONS.includes(extOf(f.name))) {
+    if (!isUploadExtension(extOf(f.name))) {
       pickedRef.current = null;
       setFile(null);
       setMeta(null);
@@ -138,6 +139,7 @@ export function UploadForm() {
       return;
     }
     setFileError(null);
+    setAudioAck(false);
     setFile(f);
     setMeta(null);
     pickedRef.current = f;
@@ -155,6 +157,7 @@ export function UploadForm() {
         setUpload({ phase: "uploading", pct: 0 });
         const qs = new URLSearchParams({ filename: file.name });
         if (hint.trim()) qs.set("hint", hint.trim());
+        if (audioOnly) qs.set("audioOnlyAck", "1");
         sessionId = await putFile(`/api/sessions/upload?${qs}`, file, (pct) => setUpload({ phase: "uploading", pct }));
         setUpload({ phase: "done" });
       } else {
@@ -230,7 +233,7 @@ export function UploadForm() {
           <input
             ref={inputRef}
             type="file"
-            accept=".mp4,.mov,.mkv,.webm,video/mp4,video/quicktime,video/x-matroska,video/webm"
+            accept=".mp4,.mov,.mkv,.webm,.mp3,.m4a,.wav,video/mp4,video/quicktime,video/x-matroska,video/webm,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav"
             className="hidden"
             onChange={(e) => {
               void pick(e.target.files?.[0]);
@@ -275,6 +278,7 @@ export function UploadForm() {
                   aria-label={t("upload.removeFile")}
                   onClick={() => {
                     pickedRef.current = null;
+                    setAudioAck(false);
                     setFile(null);
                     setMeta(null);
                   }}
@@ -283,6 +287,21 @@ export function UploadForm() {
                 </Button>
               )}
             </Card>
+          )}
+          {audioOnly && (
+            <div className="flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p role="status">{t("upload.audioOnlyWarning")}</p>
+              <label className="flex items-start gap-2 font-medium">
+                <Checkbox
+                  checked={audioAck}
+                  disabled={busy}
+                  onCheckedChange={(v) => setAudioAck(v === true)}
+                  aria-label={t("upload.audioOnlyCheckbox")}
+                  className="mt-0.5"
+                />
+                <span>{t("upload.audioOnlyCheckbox")}</span>
+              </label>
+            </div>
           )}
         </TabsContent>
 

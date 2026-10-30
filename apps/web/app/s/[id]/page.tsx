@@ -26,10 +26,10 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
 
   const stage = session.stage;
   if (stage === "ready") {
-    // Placeholder until the Preview screen (Plan 2, Task 19).
+    // Interim view until the Preview screen replaces it (Plan 2, Task 19).
     return (
       <>
-        <AppBar current="Processing" />
+        <AppBar current="Preview" />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
           <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
           <p className="text-sm text-muted-foreground">{t("session.analysisReady")}</p>

@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { XIcon } from "lucide-react";
 import { type ContextCard } from "@digestor/core";
 import { t } from "@/lib/i18n";
 
@@ -9,8 +13,28 @@ function languageName(code: string): string {
   }
 }
 
-/** One-line summary of the context card above the briefing: profile · language · date · setting · title. */
-export function ContextBanner({ card }: { card: ContextCard }) {
+const bannerKey = (sessionId: string) => `digestor:banner:${sessionId}`;
+
+/** One-line summary of the context card above the briefing: profile · language · date · setting · title. Dismissible; the choice is remembered per session in this browser. */
+export function ContextBanner({ sessionId, card }: { sessionId: string; card: ContextCard }) {
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(bannerKey(sessionId)) === "1") setDismissed(true);
+    } catch {
+      // storage unavailable: the banner just shows
+    }
+  }, [sessionId]);
+  function dismiss() {
+    setDismissed(true);
+    try {
+      localStorage.setItem(bannerKey(sessionId), "1");
+    } catch {
+      // not remembered, still hidden for this view
+    }
+  }
+  if (dismissed) return null;
+
   const parts = [
     t(`profile.${card.profile.value}`),
     card.language.value && languageName(card.language.value),
@@ -28,6 +52,14 @@ export function ContextBanner({ card }: { card: ContextCard }) {
           <span>{p}</span>
         </span>
       ))}
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label={t("context.bannerDismiss")}
+        className="ml-auto grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-muted"
+      >
+        <XIcon className="size-4" aria-hidden />
+      </button>
     </div>
   );
 }

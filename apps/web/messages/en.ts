@@ -1,4 +1,4 @@
-import { HIGHLIGHT_TYPES, PROFILES, UPLOAD_UNSUPPORTED, type HighlightTypeId, type ProfileId } from "@digestor/core";
+import { AUDIO_ONLY_CHECKBOX, AUDIO_ONLY_WARNING, HIGHLIGHT_TYPES, PROFILES, UPLOAD_UNSUPPORTED, type HighlightTypeId, type ProfileId } from "@digestor/core";
 
 /** Domain labels live in core; generated here so a new profile or highlight type gets its message key automatically. */
 const profile = Object.fromEntries(Object.entries(PROFILES).map(([id, p]) => [id, p.label])) as { [K in ProfileId]: string };
@@ -19,7 +19,9 @@ export const en = {
       Upload: "Upload",
       Processing: "Processing",
       Context: "Context",
-      Review: "Review",
+      Preview: "Preview",
+      Briefing: "Briefing",
+      Prepare: "Prepare",
       Export: "Export",
     },
   },
@@ -27,10 +29,12 @@ export const en = {
     title: "Digest a long video",
     intro: "Drop a video or paste a YouTube link — the language and the kind of event are detected for you.",
     unsupported: UPLOAD_UNSUPPORTED,
+    audioOnlyWarning: AUDIO_ONLY_WARNING,
+    audioOnlyCheckbox: AUDIO_ONLY_CHECKBOX,
     tabFile: "Upload a file",
     tabYoutube: "Paste a YouTube link",
     dropTitle: "Drop a long video here",
-    dropFormats: "MP4, MOV, MKV, WebM · up to 4 hours",
+    dropFormats: "MP4, MOV, MKV, WebM, MP3, M4A, WAV · up to 4 hours",
     browse: "or browse your files",
     uploadProgress: "Upload progress",
     uploaded: "Uploaded",
@@ -62,13 +66,14 @@ export const en = {
   },
   processing: {
     downloading: "Downloading from YouTube",
-    preparing: "Preparing video",
+    uploading: "Uploading",
     transcribing: "Transcribing",
     understanding: "Understanding context",
     indexing: "Indexing",
     finding_topics: "Finding topics",
     finding_moments: "Finding moments",
-    writing_briefing: "Writing the briefing",
+    writing_briefing: "Writing briefing",
+    ready: "Ready",
     language: "Language",
     profile: "Profile",
     stateDone: "done",
@@ -108,6 +113,7 @@ export const en = {
     continue: "Continue →",
     skip: "Skip — find clips anyway",
     bannerLabel: "Context",
+    bannerDismiss: "Dismiss context summary",
   },
   login: {
     title: "Enter the password",

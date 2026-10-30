@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
-export const STEPS = ["Upload", "Processing", "Context", "Review", "Export"] as const;
+export const STEPS = ["Upload", "Processing", "Context", "Preview", "Briefing", "Prepare", "Export"] as const;
 export type Step = (typeof STEPS)[number];
 
-/** Top bar: "Digestor." logo and the five-step indicator (done steps green with ✓, current step bold). */
+/** Top bar: "Digestor." logo and the seven-step indicator (done steps green with ✓, current step bold). */
 export function AppBar({ current, children }: { current?: Step; children?: React.ReactNode }) {
   const at = current ? STEPS.indexOf(current) : -1;
   return (

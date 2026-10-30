@@ -1,35 +1,55 @@
+import type { Stage } from "@digestor/core/server"; // type-only: erased at build, keeps the client bundle free of server code
 import { t, type MessageKey } from "@/lib/i18n";
 
-/** Stage names as stored in sessions.stage (mirrors core's Stage; kept client-safe). */
-export type StageName =
-  | "uploaded" | "downloading" | "preparing" | "transcribing" | "understanding" | "awaiting_context"
-  | "indexing" | "finding_topics" | "finding_moments" | "writing_briefing" | "ready" | "failed";
+/** Stage names as stored in sessions.stage. */
+export type StageName = Stage;
 
 export type StepState = "done" | "running" | "waiting";
 export interface Step {
-  key: string;
+  key: StepKey;
   label: string;
   state: StepState;
 }
 
-const PIPELINE: { stage: StageName; label: MessageKey }[] = [
-  { stage: "downloading", label: "processing.downloading" },
-  { stage: "preparing", label: "processing.preparing" },
-  { stage: "transcribing", label: "processing.transcribing" },
-  { stage: "understanding", label: "processing.understanding" },
-  { stage: "indexing", label: "processing.indexing" },
-  { stage: "finding_topics", label: "processing.finding_topics" },
-  { stage: "finding_moments", label: "processing.finding_moments" },
-  { stage: "writing_briefing", label: "processing.writing_briefing" },
-];
+export const STEP_KEYS = [
+  "intake", "transcribing", "understanding", "indexing", "finding_topics", "finding_moments", "writing_briefing", "ready",
+] as const;
+export type StepKey = (typeof STEP_KEYS)[number];
 
-/** Stepper rows for a stage: earlier steps done, the matching one running, later ones waiting. */
+const LABEL: Record<StepKey, MessageKey> = {
+  intake: "processing.uploading",
+  transcribing: "processing.transcribing",
+  understanding: "processing.understanding",
+  indexing: "processing.indexing",
+  finding_topics: "processing.finding_topics",
+  finding_moments: "processing.finding_moments",
+  writing_briefing: "processing.writing_briefing",
+  ready: "processing.ready",
+};
+
+/** Which step each stage belongs to; `failed` belongs to none. A Record over Stage: a new stage breaks the typecheck until it is placed here. */
+export const STAGE_STEP: Record<StageName, StepKey | null> = {
+  uploaded: "intake",
+  downloading: "intake",
+  preparing: "intake",
+  transcribing: "transcribing",
+  understanding: "understanding",
+  awaiting_context: "understanding",
+  indexing: "indexing",
+  finding_topics: "finding_topics",
+  finding_moments: "finding_moments",
+  writing_briefing: "writing_briefing",
+  ready: "ready",
+  failed: null,
+};
+
+/** Stepper rows for a stage: earlier steps done, the matching one running, later ones waiting. `ready` completes every step. */
 export function buildSteps(stage: StageName, source: "upload" | "youtube"): Step[] {
-  const steps = PIPELINE.filter((s) => source === "youtube" || s.stage !== "downloading");
-  const at = steps.findIndex((s) => s.stage === stage); // -1 for `uploaded`: nothing started yet
-  return steps.map((s, i) => ({
-    key: s.stage,
-    label: t(s.label),
-    state: at === -1 ? "waiting" : i < at ? "done" : i === at ? "running" : "waiting",
+  const current = STAGE_STEP[stage];
+  const at = current === null ? -1 : STEP_KEYS.indexOf(current);
+  return STEP_KEYS.map((key, i) => ({
+    key,
+    label: t(key === "intake" && source === "youtube" ? "processing.downloading" : LABEL[key]),
+    state: at === -1 ? "waiting" : stage === "ready" || i < at ? "done" : i === at ? "running" : "waiting",
   }));
 }
