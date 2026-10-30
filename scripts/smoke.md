@@ -23,7 +23,7 @@ Expected:
 
 ## 1b. New-flow extras
 
-- [ ] **Audio-only file** (an mp3 or m4a): the session reaches Preview; Prepare shows "This file has no video: the export shows a waveform in this shape." and the render is a waveform on a dark background (1280x720, or 720x1280 for 9:16). The upload-time warning and acknowledgement checkbox from the brief ("This file has no video. Clips will show a waveform instead of a picture.") are not built; note what you see.
+- [ ] **Audio-only file** (an mp3 or m4a): the session reaches Preview; Prepare shows "This file has no video: the export shows a waveform in this shape." and the render is a waveform on a dark background (1280x720, or 720x1280 for 9:16). On Upload, picking the file shows "This file has no video. Clips will show a waveform instead of a picture." and Upload stays disabled until "I understand clips from this file will have no video picture." is ticked.
 - [ ] **Translated track**: add a second subtitle language in Prepare; the lines are translated, the editor shows original and subtitle side by side, empty lines block approval, approving then burning in produces a "Burned-in MP4" on Export.
 - [ ] Translate the briefing from Preview ("Read in"); quotes keep the original text first.
 - [ ] Re-analyse from "Something's off" with a different profile: the old results stay until the new version finishes.
