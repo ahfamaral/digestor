@@ -26,6 +26,7 @@ import { buildPipeline, type PipelineDeps } from "./graph.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
 const LONG = `${TMP}long.mp4`; // 100 s with audio
+const AUDIO = `${TMP}long.m4a`; // 100 s, audio only
 const SILENT = `${TMP}silent.mp4`; // 6 s without audio
 
 // One 2 s sentence every 3 s ("Sentence number N."), speaker A: 33 sentences in 100 s.
@@ -85,6 +86,7 @@ type Setup = {
   transcript?: Transcript;
   transcriber?: Transcriber;
   fixture?: string;
+  audioOnlyAck?: boolean;
   youtube?: typeof downloadYouTube;
   media?: PipelineDeps["media"];
 };
@@ -100,7 +102,7 @@ async function setup(o: Setup = {}) {
   if (!o.youtube) {
     const originalKey = storage.key(session.id, "original.mp4");
     await copyFile(o.fixture ?? LONG, storage.resolve(originalKey));
-    await updateSession(db, session.id, { originalKey });
+    await updateSession(db, session.id, { originalKey, ...(o.audioOnlyAck ? { audioOnlyAck: true } : {}) });
   }
   const llm = new FakeLLM({ byName: { context_card: o.context ?? [], ...(o.analysis ?? emptyAnalysisResponses()) } });
   const contextCalls = () => llm.calls.filter((c) => c.name === "context_card");
@@ -227,6 +229,21 @@ describe("pipeline", () => {
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "This video has no audio track." });
     expect((await graph.getState(cfg)).next).toEqual([]);
     expect(llm.calls.length).toBe(0);
+  });
+
+  it("audio-only without acknowledgement fails with the copy", async () => {
+    const { graph, cfg, sessionId, llm } = await setup({ fixture: AUDIO });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "This file has no video." });
+    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(llm.calls.length).toBe(0);
+  });
+
+  it("with acknowledgement continues and sets hasVideo false", async () => {
+    const { graph, cfg, sessionId } = await setup({ fixture: AUDIO, audioOnlyAck: true, context: [draft()] });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ hasVideo: false, stage: "awaiting_context", proxyKey: `${sessionId}/proxy.mp4` });
+    expect((await graph.getState(cfg)).tasks[0]!.interrupts[0]!.value).toEqual({ type: "context" });
   });
 
   it("youtube upload date answers the date question", async () => {

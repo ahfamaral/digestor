@@ -8,6 +8,7 @@ import { buildAss } from "./subtitles.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
 const TEST_MP4 = join(TMP, "test.mp4");
+const AUDIO_M4A = join(TMP, "audio.m4a");
 const SILENT_MP4 = join(TMP, "silent.mp4");
 const outDir = mkdtempSync(join(tmpdir(), "digestor-ffmpeg-"));
 
@@ -44,6 +45,20 @@ describe("ffmpeg wrappers", () => {
     expect((await probe(SILENT_MP4)).hasAudio).toBe(false);
   });
 
+  it("probe reports hasVideo false for an m4a", async () => {
+    const p = await probe(AUDIO_M4A);
+    expect(p).toMatchObject({ hasVideo: false, hasAudio: true, width: 0, height: 0 });
+    expect((await probe(TEST_MP4)).hasVideo).toBe(true);
+  });
+
+  it("probe does not count embedded cover art as video", async () => {
+    const cover = join(outDir, "cover.jpg");
+    await run("ffmpeg", ["-y", "-f", "lavfi", "-i", "testsrc=size=64x64", "-frames:v", "1", cover]);
+    const out = join(outDir, "cover.m4a");
+    await run("ffmpeg", ["-y", "-i", AUDIO_M4A, "-i", cover, "-map", "0:a", "-map", "1:v", "-c", "copy", "-disposition:v", "attached_pic", out]);
+    expect((await probe(out)).hasVideo).toBe(false);
+  });
+
   it("probe returns lower-case tags", async () => {
     const out = join(outDir, "tagged.mp4");
     await run("ffmpeg", ["-y", "-i", TEST_MP4, "-c", "copy", "-metadata", "Title=Hello", out]);
@@ -63,6 +78,14 @@ describe("ffmpeg wrappers", () => {
     const p = await probe(out);
     expect(p.height).toBe(480);
     expect(p.hasAudio).toBe(true);
+  });
+
+  it("makeProxy writes an audio-only proxy for audio input", async () => {
+    const out = join(outDir, "audio-proxy.mp4");
+    await makeProxy(AUDIO_M4A, out);
+    const p = await probe(out);
+    expect(p).toMatchObject({ hasVideo: false, hasAudio: true });
+    expect(Math.abs(p.durationMs - 6000)).toBeLessThan(200);
   });
 
   it("creates a 640-wide jpg thumbnail", async () => {

@@ -41,19 +41,21 @@ const secs = (ms: number) => (ms / 1000).toFixed(3);
 
 type ProbeJson = {
   format?: { duration?: string; tags?: Record<string, string> };
-  streams?: { codec_type?: string; width?: number; height?: number }[];
+  streams?: { codec_type?: string; width?: number; height?: number; disposition?: { attached_pic?: number } }[];
 };
 
 export async function probe(path: string) {
   const { stdout } = await run("ffprobe", ["-v", "error", "-of", "json", "-show_format", "-show_streams", path]);
   const json = JSON.parse(stdout) as ProbeJson;
-  const video = json.streams?.find((s) => s.codec_type === "video");
+  // Embedded cover art is a "video" stream too, but not a picture of the content.
+  const video = json.streams?.find((s) => s.codec_type === "video" && !s.disposition?.attached_pic);
   const tags: Record<string, string> = {};
   for (const [k, v] of Object.entries(json.format?.tags ?? {})) tags[k.toLowerCase()] = v;
   return {
     durationMs: Math.round(Number(json.format?.duration ?? 0) * 1000),
     width: video?.width ?? 0,
     height: video?.height ?? 0,
+    hasVideo: video !== undefined,
     hasAudio: json.streams?.some((s) => s.codec_type === "audio") ?? false,
     tags,
   };
@@ -62,8 +64,9 @@ export async function probe(path: string) {
 export const extractAudio = (input: string, output: string) =>
   ffmpeg(["-i", input, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "64k", output]);
 
-export const makeProxy = (input: string, output: string) =>
-  ffmpeg([
+/** 480p H.264 proxy; audio-only sources get an AAC-only `proxy.mp4` (browsers play it in <audio>). */
+export const makeProxy = (input: string, output: string, opts: { hasVideo?: boolean } = {}) =>
+  ffmpeg(opts.hasVideo === false ? ["-i", input, "-vn", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", output] : [
     "-i", input,
     "-vf", "scale=-2:480",
     "-c:v", "libx264", "-crf", "28", "-preset", "veryfast", "-pix_fmt", "yuv420p",

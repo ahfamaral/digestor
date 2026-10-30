@@ -50,6 +50,7 @@ type PipelineStateValue = typeof PipelineState.State;
 type PipelineUpdate = typeof PipelineState.Update;
 type Node = (state: PipelineStateValue) => Promise<PipelineUpdate>;
 
+const NO_VIDEO = "This file has no video.";
 const NO_AUDIO = "This video has no audio track.";
 const NO_SPEECH = "No speech was detected in this video.";
 const UNREADABLE_VIDEO = "We couldn't read this video file.";
@@ -196,16 +197,21 @@ export const ingestNode =
       await setStage(db, s.sessionId, "failed", 5, NO_AUDIO);
       return {};
     }
+    if (!info.hasVideo && !session.audioOnlyAck) {
+      await setStage(db, s.sessionId, "failed", 5, NO_VIDEO);
+      return {};
+    }
     const audioKey = storage.key(s.sessionId, "audio.mp3");
     const proxyKey = storage.key(s.sessionId, "proxy.mp4");
     await media.extractAudio(original, storage.resolve(audioKey));
-    await media.makeProxy(original, storage.resolve(proxyKey));
+    await media.makeProxy(original, storage.resolve(proxyKey), { hasVideo: info.hasVideo });
     await updateSession(db, s.sessionId, {
       // Container tags never override metadata we already have (e.g. from YouTube).
       metadata: { ...info.tags, ...session.metadata },
       audioKey,
       proxyKey,
       durationMs: info.durationMs,
+      hasVideo: info.hasVideo,
     });
     return {};
   };
