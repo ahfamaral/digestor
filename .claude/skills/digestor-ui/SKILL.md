@@ -1,17 +1,19 @@
 ---
 name: digestor-ui
-description: Frontend conventions for Digestor's web UI — visual tokens, semantic colours, shadcn/Base UI components, layout, exact copy, keyboard triage, accessibility, multilingual content and how to verify a screen. Use this before building or changing any screen or component in apps/web (upload, processing, context check, review inbox, edit-times dialog, export, login) and for every Plan 2 UI piece (copilot drawer, heat timeline, trim handles, speaker labels) — also for small tweaks like a new button, badge, shortcut or error message, since consistency is what these rules protect.
+description: Frontend conventions for Digestor's web UI (concept agreed 2026-10-30: Preview → Full briefing → Prepare clips → Export) — visual tokens, semantic colours, shadcn/Base UI components, layout, exact copy, keyboard triage, accessibility, multilingual content and how to verify a screen. Use this before building or changing any screen or component in apps/web (upload, processing, context check, review inbox, edit-times dialog, export, login) and for every Plan 2 UI piece (copilot drawer, heat timeline, trim handles, speaker labels) — also for small tweaks like a new button, badge, shortcut or error message, since consistency is what these rules protect.
 ---
 
 # Digestor UI
 
 ## Status of the design (read first)
 
-The real UI concept is **not decided yet** — the owner will discuss it, starting from the walkthrough mockups. Until then:
+The UI concept was **agreed on 2026-10-30**. The source of truth is `docs/superpowers/specs/2026-10-30-digestor-ui-concept-design.md` (§5 is the journalist flow; §8 is the Tracker).
 
-- **The current code is the baseline.** Extend it consistently; don't restyle screens or swap patterns on your own initiative.
-- **The mockups are inspiration only**: `docs/design/walkthrough-mockups.html` (open it in a browser; tabs 1–6). Use them for intent and tone (light, calm, card-based; the human always decides; sources are visible), not as a pixel spec. Where code and mockup differ, the code wins until the owner says otherwise.
-- If a task needs a design decision the code doesn't answer (a new screen, a new interaction model, the Plan 2 timeline/copilot), propose 1–2 options with a quick screenshot or sketch and ask — don't silently invent the concept.
+- **The flow:** Upload → Processing → Context check → **Preview** → **Full briefing** → **Prepare clips** → Export. Plan 2 replaces the v1 review inbox with the Full briefing; its keyboard logic moves there.
+- **The Preview layout**, agreed with the owner: B's session timeline on top, A's top-highlight cards, and C's sober, information-rich briefing document. Mockup: `docs/design/ui-concept-overview.html`. Tracker proposal (Plan 4): `docs/design/ui-concept-tracker.html`.
+- **Mockups are still inspiration, not a pixel spec.** The older `docs/design/walkthrough-mockups.html` is superseded where it differs.
+- **Colour is reserved for highlight types**; topic bands are neutral greys. AI judgments carry an "AI" badge and a "Why:", counted values read "counted", and names show their source.
+- If a task needs a design decision the spec doesn't answer, propose 1–2 options with a quick screenshot or sketch and ask. Don't silently invent the concept.
 
 ## Visual language (as implemented)
 
@@ -88,9 +90,11 @@ Videos, quotes, clip titles and subtitles are in the **spoken language** (Portug
 
 Players use the 480p proxy (`/api/files/<id>/proxy.mp4`, Range-enabled) with `preload="none"` and `#t=start,end` fragments for previews; thumbnails are `/api/files/<id>/thumbs/<clipId>.jpg`. Never point a player at `original.*`.
 
-## Plan 2 pieces (inspiration only — concept to be agreed)
+## Plan 2 pieces (agreed; details in the spec and `docs/superpowers/plans/2026-10-30-digestor-plan-2-briefing.md`)
 
-The mockups sketch: a **copilot drawer** in the inbox (questions answered with clickable timestamps; tool calls shown as small "⚙ tool(args)" lines; every edit reversible with Undo and still subject to approval), an **edit-cut view** with a whole-video heat curve and a zoomed trim strip whose handles snap to pause lines, and **speaker labels** as an optional render checkbox (a name with no source is never shown). Treat these as starting points for the design discussion, not as specs.
+- **Ask drawer** (`/` opens it): answers only from stored data, with clickable `[hh:mm:ss]` timestamps. Tool calls show as small "⚙ tool(args)" lines. Edits touch only the personal layer and can be undone; bulk changes need confirmation.
+- **Prepare clips:** a zoomed trim strip whose handles snap to sentence pauses (Alt or Option turns snapping off). Also checks ("The argument continues" + Extend, "Context:", "Quoting someone else", "Interpreter audio"), 16:9 or 9:16 with a crop offset, the credit line, and per-language subtitle review and approval before burn-in.
+- **Speaker names with source badges** ("from record", "from caption", "from voice", "from you") arrive in Plan 3. A name with no source is never shown.
 
 ## Verify every UI change
 
