@@ -12,6 +12,7 @@ import {
   type ContextCard,
   type Transcript,
 } from "@digestor/core";
+import { MissingApiKeyError } from "../errors.js";
 import type { StructuredLLM } from "../llm/structured.js";
 
 export const MAX_TOPICS = 30;
@@ -145,6 +146,7 @@ export async function findTopics(
     const topics = normalizeTopics(res, { durationMs, boundaries });
     return topics.length > 0 ? topics : fallback(durationMs);
   } catch (err) {
+    if (err instanceof MissingApiKeyError) throw err; // deterministic: fail the session (Ruling R8)
     // The session must not die on topics: one whole-session topic is a usable briefing skeleton.
     console.error("[topics] topic finder failed, using one whole-session topic:", err);
     return fallback(durationMs);

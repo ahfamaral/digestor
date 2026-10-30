@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PROFILES, type Boundary, type ContextCard, type Fact, type Transcript, type Word } from "@digestor/core";
 import { findTopics, normalizeTopics } from "./topics.js";
-import { FakeLLM } from "../llm/structured.js";
+import { FakeLLM, type StructuredLLM } from "../llm/structured.js";
+import { MissingApiKeyError } from "../errors.js";
 
 const MIN = 60_000;
 const none: Fact = { value: null, source: null, evidence: null };
@@ -83,6 +84,15 @@ describe("findTopics", () => {
     const out = await findTopics(new FakeLLM([]), { card: card(), transcript });
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ title: "Whole session", startMs: 0, endMs: DURATION });
+  });
+
+  it("propagates a MissingApiKeyError instead of falling back", async () => {
+    const keyless: StructuredLLM = {
+      generate: async () => {
+        throw new MissingApiKeyError("ANTHROPIC_API_KEY");
+      },
+    };
+    await expect(findTopics(keyless, { card: card(), transcript })).rejects.toBeInstanceOf(MissingApiKeyError);
   });
 
   it("returns normalised topics from the model", async () => {

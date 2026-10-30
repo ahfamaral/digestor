@@ -4,12 +4,9 @@ import { getSession, setStage, type Db } from "@digestor/core/server";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 
-export class MissingApiKeyError extends Error {
-  constructor(public readonly varName: string) {
-    super(`${varName} is not set on the server.`);
-    this.name = "MissingApiKeyError";
-  }
-}
+import { MissingApiKeyError } from "./errors.js";
+
+export { MissingApiKeyError };
 
 export type JobContext = {
   db: Db;
