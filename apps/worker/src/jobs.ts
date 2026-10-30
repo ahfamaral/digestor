@@ -9,6 +9,8 @@ import {
   getSession,
   getTranscript,
   failTrack,
+  setClipRenderStatus,
+  setTrackBurnStatus,
   setMomentChecks,
   setStage,
   type Db,
@@ -16,10 +18,12 @@ import {
 import { checkMoment } from "./agents/checks.js";
 import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
+import type { BurnTrackJob, RenderClipJob } from "@digestor/core";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 
-import { MissingApiKeyError } from "./errors.js";
+import { MissingApiKeyError, VideoRemovedError } from "./errors.js";
+import { burnTrack, renderClipJob, type RenderDeps } from "./pipeline/render.js";
 
 export { MissingApiKeyError };
 
@@ -192,6 +196,31 @@ export async function handlePrepareTrack(
     throw err;
   }
 }
+
+/**
+ * Shared policy for render/burn jobs: a removed video is deterministic (mark failed, complete, no retry); any other
+ * error is rethrown for pg-boss to retry and only the final attempt marks the row failed.
+ */
+async function runRender(label: string, id: string, attempt: Attempt, work: () => Promise<void>, fail: () => Promise<void>) {
+  try {
+    await work();
+  } catch (err) {
+    if (err instanceof VideoRemovedError) {
+      console.error(`[jobs] ${label} ${id} failed: ${err.message}`);
+      await fail();
+      return;
+    }
+    if (attempt.retryCount >= attempt.retryLimit) await fail();
+    else console.error(`[jobs] ${label} ${id} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    throw err;
+  }
+}
+
+export const handleRenderClip = (deps: RenderDeps, job: RenderClipJob, attempt: Attempt) =>
+  runRender("clip", job.clipId, attempt, () => renderClipJob(deps, job.clipId), () => setClipRenderStatus(deps.db, job.clipId, "failed"));
+
+export const handleBurnTrack = (deps: RenderDeps, job: BurnTrackJob, attempt: Attempt) =>
+  runRender("track burn", job.trackId, attempt, () => burnTrack(deps, job.trackId), () => setTrackBurnStatus(deps.db, job.trackId, "failed"));
 
 /** Placeholder consumer for a queue whose task hasn't landed yet: completes the job so nothing retries. */
 export const notImplemented =

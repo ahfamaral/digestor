@@ -26,6 +26,8 @@ import {
   handleStart,
   MissingApiKeyError,
   notImplemented,
+  handleBurnTrack,
+  handleRenderClip,
   processJobs,
   type Attempt,
   type JobContext,
@@ -95,8 +97,8 @@ async function main() {
   await register(QUEUES.checkMoment, CheckMomentJobSchema, (j, attempt) => handleCheckMoment(ctx, j, attempt));
   // Consumers land with their tasks (11: prepare, 12: burn + render, 14: ask, 17: translate); until then jobs complete.
   await register(QUEUES.prepareTrack, PrepareTrackJobSchema, (j, attempt) => handlePrepareTrack(ctx, j, attempt));
-  await register(QUEUES.burnTrack, BurnTrackJobSchema, notImplemented(QUEUES.burnTrack));
-  await register(QUEUES.renderClip, RenderClipJobSchema, notImplemented(QUEUES.renderClip));
+  await register(QUEUES.burnTrack, BurnTrackJobSchema, (j, attempt) => handleBurnTrack({ db, storage }, j, attempt));
+  await register(QUEUES.renderClip, RenderClipJobSchema, (j, attempt) => handleRenderClip({ db, storage }, j, attempt));
   await register(QUEUES.ask, AskJobSchema, notImplemented(QUEUES.ask));
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, notImplemented(QUEUES.translateBriefing));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {

@@ -10,6 +10,7 @@ const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
 const TEST_MP4 = join(TMP, "test.mp4");
 const AUDIO_M4A = join(TMP, "audio.m4a");
 const SILENT_MP4 = join(TMP, "silent.mp4");
+const PLAIN = { format: "16:9" as const, cropOffset: 0, credit: null, hasVideo: true };
 const outDir = mkdtempSync(join(tmpdir(), "digestor-ffmpeg-"));
 
 describe("escapeFilterPath", () => {
@@ -100,7 +101,7 @@ describe("ffmpeg wrappers", () => {
     const output = join(outDir, "clip.mp4");
     const assPath = join(outDir, "clip.ass");
     writeFileSync(assPath, buildAss([{ startMs: 0, endMs: 1500, lines: ["Olá mundo"] }], { width: 640, height: 360 }));
-    await renderClip({ input: TEST_MP4, output, startMs: 1000, endMs: 3000, assPath });
+    await renderClip({ ...PLAIN, input: TEST_MP4, output, startMs: 1000, endMs: 3000, assPath });
     expect(Math.abs((await probe(output)).durationMs - 2000)).toBeLessThan(150);
   });
 
@@ -110,7 +111,42 @@ describe("ffmpeg wrappers", () => {
     const assPath = join(dir, "a:b 'c', [d];.ass");
     writeFileSync(assPath, buildAss([{ startMs: 0, endMs: 1000, lines: ["Hi"] }], { width: 640, height: 360 }));
     const output = join(outDir, "weird.mp4");
-    await renderClip({ input: TEST_MP4, output, startMs: 500, endMs: 2500, assPath });
+    await renderClip({ ...PLAIN, input: TEST_MP4, output, startMs: 500, endMs: 2500, assPath });
     expect(Math.abs((await probe(output)).durationMs - 2000)).toBeLessThan(150);
+  });
+
+  const base = { format: "16:9" as const, cropOffset: 0, credit: null as string | null, startMs: 500, endMs: 2500 };
+
+  it("9:16 render is 720x1280", async () => {
+    const output = join(outDir, "v.mp4");
+    await renderClip({ ...base, input: TEST_MP4, output, format: "9:16", cropOffset: 0.5, hasVideo: true });
+    const p = await probe(output);
+    expect([p.width, p.height]).toEqual([720, 1280]);
+    expect(p.hasAudio).toBe(true);
+  });
+
+  it("16:9 keeps source size", async () => {
+    const output = join(outDir, "h.mp4");
+    await renderClip({ ...base, input: TEST_MP4, output, hasVideo: true });
+    const p = await probe(output);
+    expect([p.width, p.height]).toEqual([640, 360]);
+  });
+
+  it("audio-only render has a video stream", async () => {
+    const output = join(outDir, "a.mp4");
+    await renderClip({ ...base, input: AUDIO_M4A, output, hasVideo: false, credit: "Someone" });
+    const p = await probe(output);
+    expect(p).toMatchObject({ hasVideo: true, hasAudio: true });
+    expect([p.width, p.height]).toEqual([1280, 720]);
+    expect(Math.abs(p.durationMs - 2000)).toBeLessThan(200);
+    const out2 = join(outDir, "a916.mp4");
+    await renderClip({ ...base, input: AUDIO_M4A, output: out2, format: "9:16", hasVideo: false });
+    expect([(await probe(out2)).width, (await probe(out2)).height]).toEqual([720, 1280]);
+  });
+
+  it("credit text with quotes and colons renders", async () => {
+    const output = join(outDir, "c.mp4");
+    await renderClip({ ...base, input: TEST_MP4, output, hasVideo: true, credit: `Photo: "O'Neil", 50% [UN] \\ ; done` });
+    expect(Math.abs((await probe(output)).durationMs - 2000)).toBeLessThan(200);
   });
 });

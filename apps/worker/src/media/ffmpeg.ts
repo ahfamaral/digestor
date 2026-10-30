@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export class FfmpegError extends Error {
   constructor(
@@ -87,14 +90,78 @@ export const thumbnail = (input: string, atMs: number, output: string) =>
 export const escapeFilterPath = (p: string) =>
   p.replace(/[\\:']/g, "\\$&").replace(/[\\',;[\]]/g, "\\$&");
 
-export const renderClip = (o: { input: string; output: string; startMs: number; endMs: number; assPath: string }) =>
-  ffmpeg([
-    "-ss", secs(o.startMs),
-    "-i", o.input,
-    "-t", secs(o.endMs - o.startMs),
-    "-vf", `ass=${escapeFilterPath(o.assPath)}`,
-    "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "160k",
-    "-movflags", "+faststart",
-    o.output,
-  ]);
+const NOTO_SANS = "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf";
+const WAVE_BG = "0x17181c";
+
+export type ClipFormat = "16:9" | "9:16";
+
+/** Output size of a render: 9:16 is always 720x1280; 16:9 keeps the source size (1280x720 for audio-only). */
+export function renderSize(format: ClipFormat, source: { hasVideo: boolean; width: number; height: number }): { width: number; height: number } {
+  if (format === "9:16") return { width: 720, height: 1280 };
+  return source.hasVideo && source.width > 0 ? { width: source.width, height: source.height } : { width: 1280, height: 720 };
+}
+
+export type RenderClipOptions = {
+  input: string;
+  output: string;
+  startMs: number;
+  endMs: number;
+  format: ClipFormat;
+  cropOffset: number;
+  credit: string | null;
+  hasVideo: boolean;
+  assPath?: string;
+};
+
+/**
+ * One filter graph: crop/scale (9:16) or a waveform on a dark background (audio-only), then the credit line
+ * (`drawtext` reading a temp `textfile`, so user text never touches the command line) and `ass=` subtitles.
+ */
+export async function renderClip(o: RenderClipOptions): Promise<void> {
+  const src = o.hasVideo ? await probe(o.input) : { hasVideo: false, width: 0, height: 0 };
+  const { width, height } = renderSize(o.format, { hasVideo: src.hasVideo, width: src.width, height: src.height });
+  const chain: string[] = [];
+  let head: string;
+  if (o.hasVideo) {
+    head = "[0:v]";
+    if (o.format === "9:16") {
+      const x = `(iw-ih*9/16)*(${o.cropOffset}+1)/2`;
+      chain.push(`crop=ih*9/16:ih:${x}:0`, "scale=720:1280");
+    }
+    chain.push("setsar=1");
+  } else {
+    const size = `${width}x${height}`;
+    head = `[0:a]showwaves=s=${size}:mode=cline:rate=25:colors=white[w];color=c=${WAVE_BG}:s=${size}:r=25[bg];[bg][w]overlay=shortest=1,`;
+  }
+
+  const tmp = await mkdtemp(join(tmpdir(), "digestor-render-"));
+  try {
+    if (o.credit) {
+      const textFile = join(tmp, "credit.txt");
+      await writeFile(textFile, o.credit, "utf8");
+      const fontSize = Math.max(8, Math.round(height * 0.025));
+      const margin = Math.round(height * 0.02);
+      chain.push(
+        `drawtext=fontfile=${escapeFilterPath(NOTO_SANS)}:textfile=${escapeFilterPath(textFile)}:expansion=none` +
+          `:fontsize=${fontSize}:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=${Math.round(fontSize * 0.4)}` +
+          `:x=w-tw-${margin}:y=h-th-${margin}`,
+      );
+    }
+    if (o.assPath) chain.push(`ass=${escapeFilterPath(o.assPath)}`);
+    chain.push("format=yuv420p");
+    const graph = `${head}${chain.join(",")}[v]`;
+    await ffmpeg([
+      "-ss", secs(o.startMs),
+      "-i", o.input,
+      "-t", secs(o.endMs - o.startMs),
+      "-filter_complex", graph,
+      "-map", "[v]", "-map", "0:a?",
+      "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k",
+      "-movflags", "+faststart",
+      o.output,
+    ]);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
