@@ -9,7 +9,7 @@ import { ContextCheck } from "@/components/ContextCheck";
 import { Preview } from "@/components/Preview/Preview";
 import { Processing } from "@/components/Processing";
 import { isUuid } from "@/lib/ids";
-import { asProfile, versionNote } from "@/lib/preview";
+import { asProfile, latestFailedAfter, versionNote } from "@/lib/preview";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
 
@@ -116,6 +116,7 @@ async function PreviewScreen({ session }: { session: Session }) {
             profile: asProfile(bundle.version.profile),
             note: versionNote(versions, bundle.version.id),
             running: running !== null,
+            failedVersion: latestFailedAfter(versions, bundle.version.id),
           }}
           speakers={speakers}
           topics={topics}

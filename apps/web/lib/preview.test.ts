@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BriefingContent, MomentWithHighlights, Topic } from "@digestor/core";
-import { buildSections, mostDiscussedCard, versionNote } from "./preview";
+import { buildSections, latestFailedAfter, mostDiscussedCard, versionNote } from "./preview";
 
 const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
   id, analysisId: "a", idx, startMs, endMs, title: `Topic ${id}`, summary: `Summary ${id}`,
@@ -61,5 +61,21 @@ describe("mostDiscussedCard", () => {
       detail: "61m by speaking time",
     });
     expect(mostDiscussedCard([])).toBeNull();
+  });
+});
+
+describe("latestFailedAfter", () => {
+  const v = (id: string, version: number, status: "running" | "complete" | "failed") => ({ id, version, status });
+
+  it("names a failed re-run newer than the shown version, until a newer one succeeds or starts", () => {
+    expect(latestFailedAfter([v("a", 1, "complete")], "a")).toBeNull();
+    expect(latestFailedAfter([v("a", 1, "complete"), v("b", 2, "failed"), v("c", 3, "failed")], "a")).toBe(3);
+    // a newer run started: the running notice takes over
+    expect(latestFailedAfter([v("a", 1, "complete"), v("b", 2, "failed"), v("c", 3, "running")], "a")).toBeNull();
+    // a newer run succeeded and is now the shown version
+    expect(latestFailedAfter([v("a", 1, "complete"), v("b", 2, "failed"), v("c", 3, "complete")], "c")).toBeNull();
+    // an old failure before the shown version doesn't count
+    expect(latestFailedAfter([v("a", 1, "failed"), v("b", 2, "complete")], "b")).toBeNull();
+    expect(latestFailedAfter([v("b", 2, "failed")], "missing")).toBeNull();
   });
 });

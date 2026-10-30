@@ -81,3 +81,14 @@ export function mostDiscussedCard(
     detail: t("preview.mostDiscussedDetail", { length: formatMinutes(topic.endMs - topic.startMs) }),
   };
 }
+
+/**
+ * The number of the newest analysis version when it is newer than the shown one and failed; otherwise null (no
+ * re-run, one still running, or a newer one succeeded and is now shown). A failed re-run must never just vanish.
+ */
+export function latestFailedAfter(versions: Pick<AnalysisVersion, "id" | "version" | "status">[], currentId: string): number | null {
+  const current = versions.find((v) => v.id === currentId);
+  const latest = versions.reduce<(typeof versions)[number] | null>((a, v) => (!a || v.version > a.version ? v : a), null);
+  if (!current || !latest || latest.version <= current.version || latest.status !== "failed") return null;
+  return latest.version;
+}

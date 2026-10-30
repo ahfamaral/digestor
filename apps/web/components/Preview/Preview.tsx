@@ -22,7 +22,15 @@ import { TopHighlights } from "./TopHighlights";
 
 export interface PreviewProps {
   session: { id: string; title: string; durationMs: number; language: string | null; hasVideo: boolean; videoRemoved: boolean };
-  analysis: { id: string; version: number; profile: ProfileId; note: string | null; running: boolean };
+  analysis: {
+    id: string;
+    version: number;
+    profile: ProfileId;
+    note: string | null;
+    running: boolean;
+    /** Number of a newer version that failed (its results never replaced these), or null. */
+    failedVersion: number | null;
+  };
   speakers: number;
   topics: Topic[];
   moments: MomentWithHighlights[];
@@ -167,6 +175,11 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
       {analysis.running && (
         <p role="status" className={`${NOTICE} border-border bg-white text-foreground`}>
           {t("preview.running")}
+        </p>
+      )}
+      {analysis.failedVersion !== null && !analysis.running && (
+        <p role="alert" className={`${NOTICE} border-border bg-white text-red-700`}>
+          {t("preview.rerunFailed")}
         </p>
       )}
       {session.videoRemoved && (

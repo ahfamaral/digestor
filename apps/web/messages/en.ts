@@ -147,6 +147,7 @@ export const en = {
     rerunProfile: "Re-run: profile changed to {profile}",
     rerunReason: "Re-run: {reason}",
     running: "Re-analysing… the current results stay until it finishes.",
+    rerunFailed: "The re-analysis didn't finish. The previous results are still shown.",
     videoRemoved: VIDEO_REMOVED,
     sensitive: "People in this video may need protection. Check before publishing.",
     timeline: "Session timeline",
