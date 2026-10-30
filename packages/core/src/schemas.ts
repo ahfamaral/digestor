@@ -116,3 +116,18 @@ export type ProposedClip = {
   endMs: number;
   children: Omit<ProposedClip, "children">[];
 };
+
+/** Pipeline stage as stored in sessions.stage (client-safe: the DB column type lives in db/schema.ts). */
+export type Stage =
+  | "uploaded"
+  | "downloading"
+  | "preparing"
+  | "transcribing"
+  | "understanding"
+  | "awaiting_context"
+  | "indexing"
+  | "finding_topics"
+  | "finding_moments"
+  | "writing_briefing"
+  | "ready"
+  | "failed";

@@ -7,21 +7,9 @@ import type {
   RenderStatus, SelectionStatus, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
-import type { ContextCard, Word } from "../schemas.ts";
+import type { ContextCard, Stage, Word } from "../schemas.ts";
 
-export type Stage =
-  | "uploaded"
-  | "downloading"
-  | "preparing"
-  | "transcribing"
-  | "understanding"
-  | "awaiting_context"
-  | "indexing"
-  | "finding_topics"
-  | "finding_moments"
-  | "writing_briefing"
-  | "ready"
-  | "failed";
+export type { Stage };
 
 export const sessions = pgTable("sessions", {
   id: uuid("id").primaryKey().defaultRandom(),

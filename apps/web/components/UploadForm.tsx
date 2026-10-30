@@ -296,7 +296,6 @@ export function UploadForm() {
                   checked={audioAck}
                   disabled={busy}
                   onCheckedChange={(v) => setAudioAck(v === true)}
-                  aria-label={t("upload.audioOnlyCheckbox")}
                   className="mt-0.5"
                 />
                 <span>{t("upload.audioOnlyCheckbox")}</span>

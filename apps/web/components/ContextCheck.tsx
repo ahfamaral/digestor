@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LANGUAGES, PROFILES, type ContextCard, type ProfileId, type Fact } from "@digestor/core";
+import { factBadge, profileBadge } from "@/lib/contextBadge";
 import { buildContextPayload, type ContextFields } from "@/lib/contextPayload";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -10,6 +11,7 @@ import { t, type MessageKey } from "@/lib/i18n";
 const BADGES = {
   video: { text: "context.badgeVideo", cls: "bg-green-100 text-green-800" },
   metadata: { text: "context.badgeMetadata", cls: "bg-stone-200 text-stone-700" },
+  ai: { text: "context.badgeSuggested", cls: "bg-stone-100 text-stone-600" },
   human: { text: "context.badgeHuman", cls: "bg-purple-100 text-purple-800" },
   missing: { text: "context.badgeMissing", cls: "bg-red-100 text-red-700" },
 } as const satisfies Record<string, { text: MessageKey; cls: string }>;
@@ -28,13 +30,6 @@ const FIELD_ARIA = {
 function Badge({ kind, audio }: { kind: keyof typeof BADGES; audio?: boolean }) {
   const b = audio && kind === "video" ? { ...BADGES.video, text: "context.badgeAudio" as const } : BADGES[kind];
   return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", b.cls)}>{t(b.text)}</span>;
-}
-
-/** Source of a displayed value: edited → "from you"; empty → missing; else the fact's own source. */
-function kindOf(fact: Fact | null, value: string, original: string): keyof typeof BADGES {
-  if (value.trim() !== original.trim()) return value.trim() ? "human" : "missing";
-  if (!value.trim()) return "missing";
-  return fact?.source ?? "human";
 }
 
 function toFields(card: ContextCard): ContextFields {
@@ -123,7 +118,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
 
   const n = card.openQuestions.length;
   const textRow = (label: string, key: "title" | "setting" | "dateOrYear", fact: Fact) => (
-    <Row label={label} badge={kindOf(fact, edited[key], original[key])}>
+    <Row label={label} badge={factBadge(fact, edited[key], original[key])}>
       <input
         className={inputCls}
         aria-label={label}
@@ -161,7 +156,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
             ))}
           </select>
         </Row>
-        <Row label={t("context.profile")} badge={edited.profile !== original.profile ? "human" : "video"}>
+        <Row label={t("context.profile")} badge={profileBadge(edited.profile, original.profile)}>
           <select
             className={inputCls}
             aria-label={t("context.profile")}
@@ -195,7 +190,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
                     onChange={(ev) => setPerson(i, k, ev.target.value)}
                     onBlur={() => !e[k].trim() && setPerson(i, k, o[k])}
                   />
-                  <Badge kind={kindOf(p[k], e[k], o[k])} />
+                  <Badge kind={factBadge(p[k], e[k], o[k])} />
                 </div>
               ))}
             </div>

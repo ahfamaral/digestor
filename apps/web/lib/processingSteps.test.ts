@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Stage } from "@digestor/core/server";
+import type { Stage } from "@digestor/core";
 import { buildSteps, STAGE_STEP } from "./processingSteps";
 
 const states = (s: ReturnType<typeof buildSteps>) => s.map((x) => `${x.label}:${x.state}`);

@@ -85,6 +85,7 @@ export const en = {
     badgeAudio: "from audio",
     badgeMetadata: "from metadata",
     badgeHuman: "from you",
+    badgeSuggested: "suggested by AI",
     badgeMissing: "missing",
     couldNotPlay: "Could not play the sample.",
     errorGeneric: "Something went wrong. Try again.",

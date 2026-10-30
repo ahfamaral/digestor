@@ -1,4 +1,4 @@
-import type { Stage } from "@digestor/core/server"; // type-only: erased at build, keeps the client bundle free of server code
+import type { Stage } from "@digestor/core";
 import { t, type MessageKey } from "@/lib/i18n";
 
 /** Stage names as stored in sessions.stage. */
