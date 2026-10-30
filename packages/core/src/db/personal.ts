@@ -86,6 +86,24 @@ export async function listSelections(db: Db, ownerId: string, sessionId: string)
   return Object.fromEntries(rows.map((r) => [r.momentId, r.status]));
 }
 
+/**
+ * The owner's selections in a session, counted per analysis version. Selections are per moment, so after a re-analysis
+ * the ones on an older version's moments no longer show; the Full briefing names them with this.
+ */
+export async function countSelectionsByAnalysis(
+  db: Db,
+  ownerId: string,
+  sessionId: string,
+): Promise<{ analysisId: string; version: number; count: number }[]> {
+  return db
+    .select({ analysisId: analysisVersions.id, version: analysisVersions.version, count: sql<number>`count(*)::int` })
+    .from(selections)
+    .innerJoin(moments, eq(moments.id, selections.momentId))
+    .innerJoin(analysisVersions, eq(analysisVersions.id, moments.analysisId))
+    .where(and(eq(selections.ownerId, ownerId), eq(analysisVersions.sessionId, sessionId)))
+    .groupBy(analysisVersions.id, analysisVersions.version);
+}
+
 // ---------------------------------------------------------------- clips
 
 export type ClipPatch = Partial<

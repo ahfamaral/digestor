@@ -10,6 +10,7 @@ import {
   addAskMessage, addProblemReport, approveTrack, claimClipRender, claimTrackBurn, createAskAction, createClip,
   createPersonalMoment, burnSignature, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
+  countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
 } from "./personal.ts";
 import type { TrackCue } from "../personalTypes.ts";
@@ -61,6 +62,31 @@ describe("personal moments and selections", () => {
     await setSelection(db, OWNER, id, null);
     expect(await listSelections(db, OWNER, s.id)).toEqual({});
     await completeAnalysisVersion(db, analysisId);
+  });
+
+  it("countSelectionsByAnalysis counts the owner's selections per analysis version of the session", async () => {
+    const row = (title: string) => ({
+      topicId: null, granularity: "passage" as const, startMs: 0, endMs: 40_000, title, why: "w", relevance: 50, speakers: [], evidence: [], origin: "ai" as const, highlights: [],
+    });
+    const [a1, a2] = await saveMoments(db, analysisId, [row("a1"), row("a2")]);
+    await completeAnalysisVersion(db, analysisId);
+    const v2 = await startAnalysisVersion(db, s.id, { profile: "interview", reason: "r", models: {}, promptVersions: {} });
+    const [b1] = await saveMoments(db, v2.id, [row("b1")]);
+    await setSelection(db, OWNER, a1!.id, "approved");
+    await setSelection(db, OWNER, a2!.id, "rejected");
+    await setSelection(db, OWNER, b1!.id, "neutral");
+    await setSelection(db, "someone-else", b1!.id, "approved");
+    const other = await createSession(db, { title: "Other", source: "upload" });
+    const ov = await startAnalysisVersion(db, other.id, { profile: "interview", reason: "r", models: {}, promptVersions: {} });
+    const [o1] = await saveMoments(db, ov.id, [row("o1")]);
+    await setSelection(db, OWNER, o1!.id, "approved");
+
+    const counts = await countSelectionsByAnalysis(db, OWNER, s.id);
+    expect(counts.sort((x, y) => x.version - y.version)).toEqual([
+      { analysisId, version: 1, count: 2 },
+      { analysisId: v2.id, version: 2, count: 1 },
+    ]);
+    expect(await countSelectionsByAnalysis(db, "nobody", s.id)).toEqual([]);
   });
 });
 

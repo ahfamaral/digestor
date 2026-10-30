@@ -1,5 +1,6 @@
 import {
-  AUDIO_ONLY_CHECKBOX, AUDIO_ONLY_WARNING, HIGHLIGHT_TYPES, PROFILES, UPLOAD_UNSUPPORTED, VIDEO_REMOVED, type HighlightTypeId, type ProfileId,
+  AUDIO_ONLY_CHECKBOX, AUDIO_ONLY_WARNING, GRANULARITY, HIGHLIGHT_TYPES, PROFILES, UPLOAD_UNSUPPORTED, VIDEO_REMOVED, type Granularity,
+  type HighlightTypeId, type ProfileId,
 } from "@digestor/core";
 
 /** Domain labels live in core; generated here so a new profile or highlight type gets its message key automatically. */
@@ -11,6 +12,8 @@ const highlightCard = Object.fromEntries(Object.entries(HIGHLIGHT_TYPES).map(([i
   [K in HighlightTypeId]: string;
 };
 
+const granularity = Object.fromEntries(Object.entries(GRANULARITY).map(([id, g]) => [id, g.label])) as { [K in Granularity]: string };
+
 export const en = {
   app: {
     name: "Digestor",
@@ -19,6 +22,7 @@ export const en = {
   profile,
   highlight,
   highlightCard,
+  granularity,
   appBar: {
     progress: "Progress",
     step: {
@@ -206,6 +210,67 @@ export const en = {
     targetQuote: "Key quote in topic {n}",
     targetMoment: "Highlight: {title}",
     errorGeneric: "Something went wrong. Please try again.",
+  },
+  briefing: {
+    title: "Full briefing",
+    backToPreview: "← Preview",
+    earlierOne: "You have 1 selection on an earlier analysis (v{version}).",
+    earlierMany: "You have {n} selections on an earlier analysis (v{version}).",
+    filters: "Filters",
+    granularity: "Granularity",
+    focus: "Focus",
+    everyone: "Everyone",
+    speaker: "Speaker {id}",
+    speakerShare: "Speaker {id} · {share}%",
+    speakerShareSmall: "Speaker {id} · <1%",
+    clearFocus: "Clear focus",
+    relevance: "Min. relevance",
+    relevanceValue: "{n} of 100",
+    types: "Highlight types",
+    allTypes: "All types",
+    show: "Show",
+    showOpen: "Open (proposed or approved)",
+    showAll: "All",
+    showApproved: "Approved",
+    showNeutral: "Neutral",
+    showRejected: "Rejected",
+    shownOne: "1 moment shown",
+    shownMany: "{n} moments shown",
+    reset: "Reset filters",
+    empty: "No moments match these filters.",
+    none: "No moments were found in this video.",
+    outsideTopics: "Outside the topics",
+    addedByAsk: "Added by Ask",
+    addedByYou: "Added by you",
+    speakers: "Speakers",
+    excerpt: "From the transcript",
+    statusProposed: "Proposed",
+    approve: "Approve",
+    neutral: "Neutral",
+    reject: "Reject",
+    approveLabel: "Approve: {title}",
+    neutralLabel: "Neutral: {title}",
+    rejectLabel: "Reject: {title}",
+    announceApproved: "Approved: {title}",
+    announceNeutral: "Neutral: {title}",
+    announceRejected: "Rejected: {title}",
+    keysApprove: "approve",
+    keysNeutral: "neutral",
+    keysReject: "reject",
+    keysPrepare: "open in Prepare clips",
+    keysMove: "move",
+    keyboard: "Keyboard shortcuts",
+    approvedOne: "1 approved",
+    approvedMany: "{n} approved",
+    confirm: "Confirm selection → Prepare clips",
+    confirmBusy: "Confirming…",
+    confirmEmpty: "Approve at least one moment first.",
+    opening: "Opening Prepare clips…",
+    saveFailed: "Couldn't save. Try again.",
+    someFailed: "Some changes couldn't be saved. Check the moments marked in red, then try again.",
+    confirmFailed: "Couldn't confirm the selection. Please try again.",
+    notReady: "This video isn't ready yet.",
+    backToSession: "Back to the session",
   },
   reports: {
     title: "Reported problems",
