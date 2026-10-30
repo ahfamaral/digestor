@@ -111,23 +111,54 @@ async function staleIfDone(tx: Tx, clipId: string): Promise<void> {
     .where(and(eq(subtitleTracks.clipId, clipId), eq(subtitleTracks.burnStatus, "done")));
 }
 
-export async function createClip(
+type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor };
+
+async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
+  const [row] = await tx
+    .insert(clips)
+    .values({ sessionId: a.sessionId, ownerId: a.ownerId, momentId: a.momentId ?? null, startMs: a.startMs, endMs: a.endMs })
+    .returning();
+  await tx.insert(clipEvents).values({
+    clipId: row!.id,
+    actor: a.actor,
+    kind: "create",
+    before: null,
+    after: { startMs: a.startMs, endMs: a.endMs, momentId: a.momentId ?? null },
+  });
+  return row!;
+}
+
+export async function createClip(db: Db, a: NewClip): Promise<Clip> {
+  return db.transaction((tx) => insertClip(tx, a));
+}
+
+/**
+ * "Confirm selection": one live clip per moment (bounds = the moment's). Serialised per session by an advisory
+ * lock, so parallel confirms insert each missing clip once. Returns the clips of the given moments.
+ */
+export async function confirmClips(
   db: Db,
-  a: { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor },
-): Promise<Clip> {
+  ownerId: string,
+  sessionId: string,
+  wanted: { id: string; startMs: number; endMs: number }[],
+): Promise<Clip[]> {
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(clips)
-      .values({ sessionId: a.sessionId, ownerId: a.ownerId, momentId: a.momentId ?? null, startMs: a.startMs, endMs: a.endMs })
-      .returning();
-    await tx.insert(clipEvents).values({
-      clipId: row!.id,
-      actor: a.actor,
-      kind: "create",
-      before: null,
-      after: { startMs: a.startMs, endMs: a.endMs, momentId: a.momentId ?? null },
-    });
-    return row!;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sessionId}))`);
+    const live = await tx
+      .select()
+      .from(clips)
+      .where(and(eq(clips.ownerId, ownerId), eq(clips.sessionId, sessionId), alive));
+    const byMoment = new Map(live.flatMap((c) => (c.momentId ? [[c.momentId, c] as const] : [])));
+    const out: Clip[] = [];
+    for (const m of wanted) {
+      let clip = byMoment.get(m.id);
+      if (!clip) {
+        clip = await insertClip(tx, { sessionId, ownerId, momentId: m.id, startMs: m.startMs, endMs: m.endMs, actor: "user" });
+        byMoment.set(m.id, clip);
+      }
+      out.push(clip);
+    }
+    return out;
   });
 }
 
@@ -317,14 +348,15 @@ export async function deleteTrack(db: Db, id: string): Promise<void> {
 
 /**
  * Records whether the user wants a burned-in version of this track. A request is a `burnStatus` other than `none`:
- * `stale` means "requested, not built (or out of date)". Never touches a burn that is queued, rendering or done.
- * Returns the track, or null when it doesn't exist.
+ * `stale` means "requested, not built (or out of date)". Asking turns `none` into `stale`; dropping the request
+ * turns stale, failed or done into `none`. A burn that is queued or rendering is never touched (the caller checks
+ * the returned status). Returns the track, or null when it doesn't exist.
  */
 export async function requestTrackBurn(db: Db, id: string, want: boolean): Promise<Track | null> {
   await db
     .update(subtitleTracks)
     .set({ burnStatus: want ? "stale" : "none" })
-    .where(and(eq(subtitleTracks.id, id), inArray(subtitleTracks.burnStatus, want ? ["none"] : ["stale", "failed"])));
+    .where(and(eq(subtitleTracks.id, id), inArray(subtitleTracks.burnStatus, want ? ["none"] : ["stale", "failed", "done"])));
   return getTrack(db, id);
 }
 

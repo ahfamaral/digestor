@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClip, createSession, createTrack, setTrackCues, updateSession } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
-import { readySession } from "@/test/personalFixture";
+import { seedReadySession } from "@/test/personalFixture";
 import { GET } from "./[id]/[...file]/route";
 
 // Records every fs stream the route opens, so a test can check the file gets closed.
@@ -152,7 +152,7 @@ describe("GET /api/files/[id]/[...file]", () => {
 
     it("filename* carries the UTF-8 title", async () => {
       const title = `Écoute — « l'été » "ok"/..`;
-      const { moments } = await readySession(h.db, [[1000, 9000, title]]);
+      const { moments } = await seedReadySession(h.db, [[1000, 9000, title]]);
       const clip = await createClip(h.db, { sessionId: realSession, ownerId: "owner", momentId: moments[0]!.id, startMs: 0, endMs: 1000, actor: "user" });
       const track = (await createTrack(h.db, clip.id, "pt"))!;
       await setTrackCues(h.db, track.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready");

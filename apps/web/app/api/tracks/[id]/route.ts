@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { approveTrack, editTrackCues, getClip, getSession, getTrack, requestTrackBurn } from "@digestor/core/server";
+import { approveTrack, editTrackCues, getTrack, requestTrackBurn } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { NOT_READY } from "@/lib/personal";
+import { readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.union([
@@ -27,13 +27,19 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
   const { db } = getServer();
   const track = await getTrack(db, id);
-  const clip = track ? await getClip(db, track.clipId) : null;
-  if (!track || !clip) return errorResponse(404, "Subtitles not found.");
-  const session = await getSession(db, clip.sessionId);
-  if (!session) return errorResponse(404, "Subtitles not found.");
-  if (session.stage !== "ready") return errorResponse(409, NOT_READY);
+  if (!track) return errorResponse(404, "Subtitles not found.");
+  const found = await readyClip(db, track.clipId);
+  if ("error" in found) {
+    return found.error.status === 404 ? errorResponse(404, "Subtitles not found.") : found.error;
+  }
 
-  if ("burn" in body) return Response.json(await requestTrackBurn(db, id, body.burn));
+  if ("burn" in body) {
+    const updated = await requestTrackBurn(db, id, body.burn);
+    if (!body.burn && (updated?.burnStatus === "queued" || updated?.burnStatus === "rendering")) {
+      return errorResponse(409, "The burned-in version is being made; try again when it finishes.");
+    }
+    return Response.json(updated);
+  }
   if (track.status !== "ready") return errorResponse(409, "These subtitles aren't ready yet.");
   if ("edits" in body) return Response.json(await editTrackCues(db, id, body.edits));
   if ((await approveTrack(db, id)) === "missing_cues") return errorResponse(400, "Fill every subtitle line before approving.");

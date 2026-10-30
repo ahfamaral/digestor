@@ -5,7 +5,7 @@ import {
   updateSession,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
-import { readySession } from "@/test/personalFixture";
+import { seedReadySession } from "@/test/personalFixture";
 import { POST as exportClips } from "./sessions/[id]/export/route";
 
 let h: Harness;
@@ -25,7 +25,7 @@ const sends = (queue: string) => h.send.mock.calls.filter((c) => c[0] === queue)
 
 /** A session with two clips; the first passes the checklist, the second has no checks, credit or acknowledgement. */
 async function twoClips() {
-  const { sessionId, moments } = await readySession(h.db, [[10_000, 30_000], [40_000, 60_000]]);
+  const { sessionId, moments } = await seedReadySession(h.db, [[10_000, 30_000], [40_000, 60_000]]);
   const mk = (i: number) =>
     createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: moments[i]!.id, startMs: 10_000 + i * 30_000, endMs: 30_000 + i * 30_000, actor: "user" });
   const good = await mk(0);

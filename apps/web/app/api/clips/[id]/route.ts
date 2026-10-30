@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { InvalidTimestampError, endsSentence, findBoundaries, parseTimestamp, snapRange } from "@digestor/core";
-import { getClip, getSession, getTranscript, updateClip, type ClipPatch } from "@digestor/core/server";
+import { getTranscript, updateClip, type ClipPatch } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { NOT_READY } from "@/lib/personal";
+import { readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.union([
@@ -40,11 +40,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const body = parsed.data;
 
   const { db } = getServer();
-  const clip = await getClip(db, id);
-  if (!clip) return errorResponse(404, "Clip not found.");
-  const session = await getSession(db, clip.sessionId);
-  if (!session) return errorResponse(404, "Clip not found.");
-  if (session.stage !== "ready") return errorResponse(409, NOT_READY);
+  const found = await readyClip(db, id);
+  if ("error" in found) return found.error;
+  const { clip, session } = found;
 
   let patch: ClipPatch;
   if ("start" in body || "extend" in body) {

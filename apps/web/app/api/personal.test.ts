@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import {
-  createClip, createTrack, getClip, listClips, listSelections, setMomentChecks, setTrackCues, updateSession,
+  createClip, createTrack, deleteClip, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
-import { readySession } from "@/test/personalFixture";
+import { seedReadySession } from "@/test/personalFixture";
 import { PUT as putSelection } from "./moments/[id]/selection/route";
 import { POST as confirm } from "./sessions/[id]/clips/route";
 import { PATCH as patchClip } from "./clips/[id]/route";
@@ -27,7 +27,7 @@ const cleanChecks = {
 
 describe("PUT /api/moments/[id]/selection", () => {
   it("selection approve enqueues one check when checks are missing", async () => {
-    const { moments } = await readySession(h.db);
+    const { moments } = await seedReadySession(h.db);
     const m = moments[0]!;
     const res = await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
     expect(res.status).toBe(200);
@@ -42,7 +42,7 @@ describe("PUT /api/moments/[id]/selection", () => {
   });
 
   it("null clears the selection; bad bodies and unready sessions are refused", async () => {
-    const { sessionId, moments } = await readySession(h.db);
+    const { sessionId, moments } = await seedReadySession(h.db);
     const m = moments[0]!;
     await putSelection(req({ status: "rejected" }, "PUT"), ctx(m.id));
     expect(await listSelections(h.db, OWNER_ID, sessionId)).toEqual({ [m.id]: "rejected" });
@@ -59,7 +59,7 @@ describe("PUT /api/moments/[id]/selection", () => {
 
 describe("POST /api/sessions/[id]/clips", () => {
   it("confirm creates one clip per approved moment and is idempotent", async () => {
-    const { sessionId, moments } = await readySession(h.db, [[10_000, 30_000], [40_000, 60_000], [70_000, 90_000]]);
+    const { sessionId, moments } = await seedReadySession(h.db, [[10_000, 30_000], [40_000, 60_000], [70_000, 90_000]]);
     const [a, b, c] = moments as [(typeof moments)[0], (typeof moments)[0], (typeof moments)[0]];
     await putSelection(req({ status: "approved" }, "PUT"), ctx(a.id));
     await putSelection(req({ status: "approved" }, "PUT"), ctx(b.id));
@@ -79,7 +79,7 @@ describe("POST /api/sessions/[id]/clips", () => {
   });
 
   it("refuses with the removal copy once the video is gone", async () => {
-    const { sessionId, moments } = await readySession(h.db);
+    const { sessionId, moments } = await seedReadySession(h.db);
     await putSelection(req({ status: "approved" }, "PUT"), ctx(moments[0]!.id));
     await updateSession(h.db, sessionId, { videoDeletedAt: new Date() });
     const res = await confirm(req({ momentIds: [moments[0]!.id] }), ctx(sessionId));
@@ -90,10 +90,23 @@ describe("POST /api/sessions/[id]/clips", () => {
 });
 
 async function clipFor(range: [number, number] = [10_000, 30_000]) {
-  const { sessionId, moments } = await readySession(h.db, [range]);
+  const { sessionId, moments } = await seedReadySession(h.db, [range]);
   const clip = await createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: moments[0]!.id, startMs: range[0], endMs: range[1], actor: "user" });
   return { sessionId, clip };
 }
+
+describe("POST /api/sessions/[id]/clips (parallel)", () => {
+  it("two parallel confirms give exactly one clip per approved moment", async () => {
+    const { sessionId, moments } = await seedReadySession(h.db, [[10_000, 30_000], [40_000, 60_000]]);
+    for (const m of moments) await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
+    const body = { momentIds: moments.map((m) => m.id) };
+    const [a, b] = await Promise.all([confirm(req(body), ctx(sessionId)), confirm(req(body), ctx(sessionId))]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(await listClips(h.db, OWNER_ID, sessionId)).toHaveLength(2);
+    const ids = (r: { clips: { id: string }[] }) => r.clips.map((c) => c.id).sort();
+    expect(ids(await a.json())).toEqual(ids(await b.json()));
+  });
+});
 
 describe("PATCH /api/clips/[id]", () => {
   it("trim snaps and reports the v1 errors", async () => {
@@ -147,11 +160,32 @@ describe("PATCH /api/clips/[id]", () => {
     const res = await undo(req({}), ctx(clip.id));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ endMs: 30_000 });
-    // undo the creation: soft-deleted, then undo again restores nothing more to undo → 409 or brings it back
+    // undo the creation: the clip is soft-deleted; with every event undone, a further undo has nothing to do (409)
     await undo(req({}), ctx(clip.id));
     expect(await getClip(h.db, clip.id)).toBeNull();
     expect((await undo(req({}), ctx(clip.id))).status).toBe(409);
     expect((await undo(req({}), ctx("00000000-0000-4000-8000-000000000000"))).status).toBe(404);
+  });
+
+  it("undo restores a deleted clip (R4)", async () => {
+    const { clip } = await clipFor();
+    await deleteClip(h.db, clip.id, "user");
+    expect(await getClip(h.db, clip.id)).toBeNull();
+    const res = await undo(req({}), ctx(clip.id));
+    expect(res.status).toBe(200);
+    expect((await res.json()).deletedAt).toBeNull();
+    expect(await getClip(h.db, clip.id)).not.toBeNull();
+  });
+
+  it("a clip owned by someone else is a 404 on every clip and track route", async () => {
+    const { sessionId, clip: mine } = await clipFor();
+    const other = await createClip(h.db, { sessionId, ownerId: "someone-else", startMs: 10_000, endMs: 30_000, actor: "user" });
+    const track = (await createTrack(h.db, other.id, "pt"))!;
+    expect((await patchClip(req({ warningsAck: true }, "PATCH"), ctx(other.id))).status).toBe(404);
+    expect((await undo(req({}), ctx(other.id))).status).toBe(404);
+    expect((await postTrack(req({ language: "fr" }), ctx(other.id))).status).toBe(404);
+    expect((await patchTrack(req({ burn: true }, "PATCH"), ctx(track.id))).status).toBe(404);
+    expect((await patchClip(req({ warningsAck: true }, "PATCH"), ctx(mine.id))).status).toBe(200);
   });
 });
 
@@ -192,6 +226,20 @@ describe("tracks", () => {
     const ok = await patchTrack(req({ approve: true }, "PATCH"), ctx(track.id));
     expect(ok.status).toBe(200);
     expect((await ok.json()).approvedAt).not.toBeNull();
+  });
+
+  it("burn:false drops a finished burn and is refused while one is being made", async () => {
+    const { clip } = await clipFor();
+    const track = (await createTrack(h.db, clip.id, "pt"))!;
+    await setTrackBurnStatus(h.db, track.id, "done");
+    expect(await (await patchTrack(req({ burn: false }, "PATCH"), ctx(track.id))).json()).toMatchObject({ burnStatus: "none" });
+    for (const status of ["queued", "rendering"] as const) {
+      await setTrackBurnStatus(h.db, track.id, status);
+      const res = await patchTrack(req({ burn: false }, "PATCH"), ctx(track.id));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "The burned-in version is being made; try again when it finishes." });
+      expect((await getTrack(h.db, track.id))?.burnStatus).toBe(status);
+    }
   });
 
   it("burn requests toggle and need no approval until export", async () => {

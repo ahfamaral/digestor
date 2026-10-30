@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { OWNER_ID } from "@digestor/core";
-import { createClip, getMoment, listClips, listSelections, getAnalysisVersion } from "@digestor/core/server";
+import { confirmClips, getAnalysisVersion, getMoment, listSelections } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { VIDEO_REMOVED, readySession, sendMomentCheckQuietly } from "@/lib/personal";
@@ -31,21 +31,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
   const momentIds = [...new Set(parsed.data.momentIds)];
   const selections = await listSelections(db, OWNER_ID, id);
-  const existing = await listClips(db, OWNER_ID, id);
-  const byMoment = new Map(existing.flatMap((c) => (c.momentId ? [[c.momentId, c] as const] : [])));
-
-  const result = [];
+  const wanted = [];
   for (const momentId of momentIds) {
     if (selections[momentId] !== "approved") continue;
     const moment = await getMoment(db, momentId);
     if (!moment || (moment.ownerId !== null && moment.ownerId !== OWNER_ID)) continue;
     if ((await getAnalysisVersion(db, moment.analysisId))?.sessionId !== id) continue;
-    let clip = byMoment.get(momentId);
-    if (!clip) {
-      clip = await createClip(db, { sessionId: id, ownerId: OWNER_ID, momentId, startMs: moment.startMs, endMs: moment.endMs, actor: "user" });
-    }
-    if (moment.checks === null) await sendMomentCheckQuietly(boss, momentId);
-    result.push(clip);
+    wanted.push(moment);
   }
+  const result = await confirmClips(db, OWNER_ID, id, wanted);
+  for (const moment of wanted) if (moment.checks === null) await sendMomentCheckQuietly(boss, moment.id);
   return Response.json({ clips: result });
 }

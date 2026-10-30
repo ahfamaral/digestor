@@ -38,6 +38,10 @@ describe("exportChecklist", () => {
     expect(run({ tracks: [t("stale", false)] }).subtitles).toBe(false);
     expect(run({ tracks: [t("stale", true), t("none", false)] }).subtitles).toBe(true);
   });
+  it("subtitles: an approved track that isn't ready still fails", () => {
+    const track = { burnStatus: "stale" as const, approvedAt: new Date(), status: "failed" as const };
+    expect(run({ tracks: [track] }).subtitles).toBe(false);
+  });
   it("credit: text or the no-credit box", () => {
     expect(run({ clip: { ...clip, credit: null } }).credit).toBe(false);
     expect(run({ clip: { ...clip, credit: "  " } }).credit).toBe(false);

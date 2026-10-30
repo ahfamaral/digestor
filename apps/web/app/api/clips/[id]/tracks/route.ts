@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { JOB_OPTIONS, LANGUAGES, QUEUES } from "@digestor/core";
-import { createTrack, deleteTrack, getClip, getSession } from "@digestor/core/server";
+import { createTrack, deleteTrack } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { NOT_READY, QUEUE_FAILED } from "@/lib/personal";
+import { QUEUE_FAILED, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.object({ language: z.string().min(2).max(35) }).strict();
@@ -23,11 +23,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const language = parsed.data.language;
 
   const { db, boss } = getServer();
-  const clip = await getClip(db, id);
-  if (!clip) return errorResponse(404, "Clip not found.");
-  const session = await getSession(db, clip.sessionId);
-  if (!session) return errorResponse(404, "Clip not found.");
-  if (session.stage !== "ready") return errorResponse(409, NOT_READY);
+  const found = await readyClip(db, id);
+  if ("error" in found) return found.error;
+  const { session } = found;
 
   const known = LANGUAGES.some((l) => l.code === language) || (session.language !== null && session.language === language);
   if (!known) return errorResponse(400, "That subtitle language isn't available.");
