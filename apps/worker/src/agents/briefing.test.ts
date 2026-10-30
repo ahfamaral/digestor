@@ -57,6 +57,33 @@ describe("groundBriefing", () => {
   });
 });
 
+describe("quote grounding", () => {
+  const ground = (ws: Word[], q: string) =>
+    groundBriefing({ lead: [], sections: [{ topicIdx: 0, summary: [], keyQuote: { momentId: "m1", text: q } }] }, { moments, topics, words: ws }).sections[0]!.keyQuote;
+  const mk = (ts: string[]): Word[] => ts.map((t, i) => ({ text: t, startMs: i * 500, endMs: i * 500 + 400, speaker: "A", confidence: 1 }));
+
+  it("stores the transcript's words, not the model's", () => {
+    expect(ground(words, "\"every EURO cut here, costs three later\"")!.text).toBe("Every euro cut here costs three later,");
+  });
+  it("drops a quote that starts or ends mid-word", () => {
+    expect(ground(words, "ery euro cut")).toBeNull();
+    expect(ground(words, "euro cut her")).toBeNull();
+  });
+  it("matches Japanese quotes written without spaces", () => {
+    const ws = mk(["私は", "今日", "、", "予算", "を", "守ります。"]);
+    expect(ground(ws, "予算を守ります")!.text).toBe("予算を守ります。");
+  });
+  it("matches accented Portuguese", () => {
+    const ws = mk(["Não", "vamos", "aceitar", "essa", "decisão."]);
+    expect(ground(ws, "não vamos aceitar essa decisão")!.text).toBe("Não vamos aceitar essa decisão.");
+  });
+  it("logs when grounding drops everything", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    groundBriefing({ lead: [{ text: "x", momentIds: ["nope"] }], sections: [] }, { moments, topics, words });
+    expect(spy).toHaveBeenCalled();
+  });
+});
+
 describe("writeBriefing", () => {
   it("returns an empty briefing when the call fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});

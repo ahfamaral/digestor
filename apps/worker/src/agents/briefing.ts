@@ -3,6 +3,7 @@ import {
   PROFILES,
   formatTimestamp,
   sliceWords,
+  toSentences,
   type BriefingContent,
   type BriefingSentence,
   type ContextCard,
@@ -45,6 +46,54 @@ export function normalizeQuote(s: string): string {
   return s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
 }
 
+const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uff00-\uffef]/;
+
+/** The transcript span (as rendered) matching a quote, or null. Word-aligned; CJK compares without whitespace. */
+export function matchQuote(quote: string, momentWords: Word[]): string | null {
+  const wanted = normalizeQuote(quote);
+  if (wanted === "" || momentWords.length === 0) return null;
+  const norm = momentWords.map((w) => normalizeQuote(w.text));
+  let from = -1;
+  let to = -1;
+  if (momentWords.some((w) => CJK.test(w.text))) {
+    const target = wanted.replace(/\s+/g, "");
+    let flat = "";
+    const owner: number[] = [];
+    norm.forEach((n, i) => {
+      for (const ch of n.replace(/\s+/g, "")) {
+        flat += ch;
+        owner.push(i);
+      }
+    });
+    const at = target === "" ? -1 : flat.indexOf(target);
+    if (at >= 0) {
+      from = owner[at]!;
+      to = owner[at + [...target].length - 1]!;
+    }
+  } else {
+    const tokens: string[] = [];
+    const owner: number[] = [];
+    norm.forEach((n, i) => {
+      for (const t of n.split(" ")) {
+        if (t !== "") {
+          tokens.push(t);
+          owner.push(i);
+        }
+      }
+    });
+    const q = wanted.split(" ");
+    for (let i = 0; i + q.length <= tokens.length; i++) {
+      if (q.every((t, j) => tokens[i + j] === t)) {
+        from = owner[i]!;
+        to = owner[i + q.length - 1]!;
+        break;
+      }
+    }
+  }
+  if (from < 0) return null;
+  return toSentences(momentWords.slice(from, to + 1)).map((x) => x.text).join(" ");
+}
+
 function groundSentences(sentences: BriefingSentence[], known: Set<string>, cap: number): BriefingSentence[] {
   const out: BriefingSentence[] = [];
   for (const s of sentences) {
@@ -73,15 +122,18 @@ export function groundBriefing(
     let keyQuote: { momentId: string; text: string } | null = null;
     const m = s.keyQuote ? byId.get(s.keyQuote.momentId) : undefined;
     if (s.keyQuote && m) {
-      const wanted = normalizeQuote(s.keyQuote.text);
-      const spoken = normalizeQuote(sliceWords(o.words, m).map((w) => w.text).join(" "));
-      if (wanted !== "" && spoken.includes(wanted)) keyQuote = { momentId: m.id, text: s.keyQuote.text.trim() };
+      const exact = matchQuote(s.keyQuote.text, sliceWords(o.words, m));
+      if (exact) keyQuote = { momentId: m.id, text: exact };
     }
     sections.push({ topicId: topic.id, summary: groundSentences(s.summary, known, MAX_SUMMARY_SENTENCES), keyQuote });
   }
   const idxOf = new Map(o.topics.map((t) => [t.id, t.idx]));
   sections.sort((x, y) => idxOf.get(x.topicId)! - idxOf.get(y.topicId)!);
-  return { lead: groundSentences(raw.lead, known, MAX_LEAD_SENTENCES), sections };
+  const lead = groundSentences(raw.lead, known, MAX_LEAD_SENTENCES);
+  if (lead.length === 0 && !sections.some((x) => x.summary.length > 0) && (raw.lead.length > 0 || raw.sections.length > 0)) {
+    console.error("[briefing] grounding dropped everything the model wrote; the briefing is empty");
+  }
+  return { lead, sections };
 }
 
 export function buildBriefingPrompt(a: {
