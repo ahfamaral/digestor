@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import type { ContextCard, Transcript } from "../schemas.ts";
 import type { Db } from "./client.ts";
 import { contextCards, sessions, transcripts, type Stage } from "./schema.ts";
@@ -33,6 +33,12 @@ export async function createSession(
 export async function listExpiredSessions(db: Db, olderThanDays: number): Promise<Session[]> {
   const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
   return db.select().from(sessions).where(lt(sessions.createdAt, cutoff));
+}
+
+/** Sessions created more than `olderThanDays` ago whose source video hasn't been removed yet. */
+export async function listSessionsWithExpiredVideo(db: Db, olderThanDays: number): Promise<Session[]> {
+  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
+  return db.select().from(sessions).where(and(lt(sessions.createdAt, cutoff), isNull(sessions.videoDeletedAt)));
 }
 
 export async function deleteSession(db: Db, id: string): Promise<void> {

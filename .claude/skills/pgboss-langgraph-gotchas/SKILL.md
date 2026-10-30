@@ -31,7 +31,7 @@ Every item below cost a review round on Plan 1. The code that implements each fi
 
 9. **`schedule(name, cron, data, { tz })` needs the queue to exist first**, and the schedule lives in the DB — renaming a cron queue leaves the old schedule behind.
 
-10. **Known open gap:** if the *final* attempt dies without its handler finishing (hard crash on the last retry), no code marks the session failed and it sits in an in-progress stage. Plan 2 backlog: dead-letter queue or a stale-session sweep. Don't assume "the job failed" always reaches the session row.
+10. **Final-attempt crash is covered by the sweep.** If the last attempt dies without its handler finishing, nothing in the handler marks the session failed. `sweepStaleSessions` (`apps/worker/src/sweep.ts`, queue `session.sweep`, every 15 min) fails sessions in a processing stage with no `created`/`retry`/`active` job in `pgboss.job` for 120 min, and likewise any `running` analysis version with no live job. Keep new job queues that own a session in `LIVE_JOB_QUEUES` there.
 
 ## LangGraph
 
@@ -45,7 +45,7 @@ Every item below cost a review round on Plan 1. The code that implements each fi
 
 5. **State channels need reducers/defaults** (`Annotation.Root` with `reducer` + `default`); conditional edges read state *and* the DB — keep the round/limit logic in one place (`MAX_CONTEXT_ROUNDS`).
 
-6. **Checkpoints are user data.** They hold the human's answers. Deleting a session means `checkpointer.deleteThread(sessionId)` too (`runCleanup`: files → checkpoints → row, so a failure leaves the row for the next run). Thread id = session id.
+6. **Checkpoints are user data.** They hold the human's answers. Deleting a session means `checkpointer.deleteThread(sessionId)` too (`runVideoRetention`: video files → checkpoints → `videoDeletedAt`, so a failure leaves the session for the next run; rows, thumbnails and `clips/` are kept). Thread id = session id.
 
 7. **`PostgresSaver.fromConnString(url)` then `await saver.setup()`** once at startup; tests use `MemorySaver`.
 

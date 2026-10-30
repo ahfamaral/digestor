@@ -1,6 +1,6 @@
 import { createWriteStream } from "node:fs";
 import { mkdirSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -83,5 +83,21 @@ export class LocalStorage {
   async removeSession(sessionId: string): Promise<void> {
     assertSafe(sessionId, false);
     await rm(path.join(this.root, sessionId), { recursive: true, force: true });
+  }
+
+  /** Deletes the session's source media (`original.*`, `audio.mp3`, `proxy.mp4`); thumbnails and `clips/` stay. */
+  async removeVideoFiles(sessionId: string): Promise<void> {
+    assertSafe(sessionId, false);
+    const dir = path.join(this.root, sessionId);
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+    for (const name of names) {
+      if (/^original\.[^/]+$/.test(name) || name === "audio.mp3" || name === "proxy.mp4") await rm(path.join(dir, name), { force: true });
+    }
   }
 }

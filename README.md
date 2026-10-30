@@ -72,7 +72,7 @@ Configure `.env` (`cp .env.example .env`):
 | `ASSEMBLYAI_API_KEY` | Transcription |
 | `APP_PASSWORD` | Optional; leave empty to disable the password gate |
 | `MAX_UPLOAD_GB` | Upload size limit (default 5) |
-| `RETENTION_DAYS` | How long files are kept (default 7) |
+| `VIDEO_RETENTION_DAYS` | How long the source video is kept (default 14); briefings, thumbnails and rendered clips stay |
 
 Then:
 
@@ -97,7 +97,7 @@ Downloads work best from a home connection. From a server IP YouTube often asks 
 
 ## Deployment
 
-Production runs on a single VPS with `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` (production images, Caddy with automatic HTTPS, migrations on start, daily clean-up of sessions older than `RETENTION_DAYS`). The step-by-step runbook (server, DNS, firewall, `.env`, logs, updates, backups) is in [`docs/deploy.md`](docs/deploy.md).
+Production runs on a single VPS with `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` (production images, Caddy with automatic HTTPS, migrations on start, daily removal of source videos older than `VIDEO_RETENTION_DAYS`). The step-by-step runbook (server, DNS, firewall, `.env`, logs, updates, backups) is in [`docs/deploy.md`](docs/deploy.md).
 
 ## Tests
 

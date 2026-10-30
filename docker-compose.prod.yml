@@ -35,7 +35,8 @@ services:
       DATA_DIR: /data
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
-      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      VIDEO_RETENTION_DAYS: ${VIDEO_RETENTION_DAYS:-14}
+      MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}
     volumes: !override
       - appdata:/data
     depends_on:

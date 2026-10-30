@@ -80,4 +80,4 @@ For flows the script doesn't cover (time-edit dialog, render button, SSE progres
 
 - Report what you looked at, with the screenshot paths, and anything in `errors.txt`.
 - Leave the stack running unless asked; stop your background dev server if you started it for a one-off check.
-- Seeded and uploaded sessions live in the dev DB and `./data/<id>/`; the daily retention job removes them after `RETENTION_DAYS`. Don't delete other sessions — they may be the owner's.
+- Seeded and uploaded sessions live in the dev DB and `./data/<id>/`; the daily retention job removes their source video after `VIDEO_RETENTION_DAYS`. Don't delete other sessions — they may be the owner's.

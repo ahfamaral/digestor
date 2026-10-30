@@ -17,7 +17,7 @@ import {
   TranslateBriefingJobSchema,
 } from "@digestor/core";
 import { LocalStorage, createDb } from "@digestor/core/server";
-import { CLEANUP_CRON, CLEANUP_QUEUE, retentionDays, runCleanup } from "./cleanup.js";
+import { CLEANUP_CRON, CLEANUP_QUEUE, runVideoRetention, videoRetentionDays } from "./cleanup.js";
 import {
   handleCheckMoment,
   handleReanalyze,
@@ -33,6 +33,7 @@ import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
 import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
 import { createAnthropicLLM, type StructuredLLM } from "./llm/structured.js";
+import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleSessions } from "./sweep.js";
 import { downloadYouTube } from "./youtube/ytdlp.js";
 
 const envFile = fileURLToPath(new URL("../../../.env", import.meta.url));
@@ -75,12 +76,13 @@ async function main() {
   const boss = new PgBoss(databaseUrl);
   boss.on("error", console.error);
   await boss.start();
-  for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE]) {
+  for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE]) {
     // Same options as every sender passes (JOB_OPTIONS): retries, 12 h expiry, 60 s heartbeat.
     await boss.createQueue(name, JOB_OPTIONS); // no-op when the queue already exists...
     await boss.updateQueue(name, JOB_OPTIONS); // ...so existing queues get the current options too
   }
   await boss.schedule(CLEANUP_QUEUE, CLEANUP_CRON, {}, { tz: "UTC" });
+  await boss.schedule(SWEEP_QUEUE, SWEEP_CRON, {}, { tz: "UTC" });
 
   // includeMetadata: handlers need retryCount/retryLimit to fail the session only on the final attempt.
   const workOptions = { batchSize: 1, includeMetadata: true } as const;
@@ -97,9 +99,13 @@ async function main() {
   await register(QUEUES.ask, AskJobSchema, notImplemented(QUEUES.ask));
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, notImplemented(QUEUES.translateBriefing));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
-    const days = retentionDays();
-    const { deleted } = await runCleanup({ db, storage, checkpointer: saver }, days);
-    console.log(`cleanup: deleted ${deleted} session(s) older than ${days} day(s)`);
+    const days = videoRetentionDays();
+    const { removed } = await runVideoRetention({ db, storage, checkpointer: saver }, days);
+    console.log(`cleanup: removed the video of ${removed} session(s) older than ${days} day(s)`);
+  });
+  await boss.work(SWEEP_QUEUE, { batchSize: 1 }, async () => {
+    const ids = await sweepStaleSessions(db);
+    if (ids.length > 0) console.log(`sweep: marked ${ids.length} stale session(s) failed`);
   });
 
   let stopping = false;
@@ -117,7 +123,7 @@ async function main() {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
-  console.log(`worker ready (queues: ${[...Object.values(QUEUES), CLEANUP_QUEUE].join(", ")})`);
+  console.log(`worker ready (queues: ${[...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE].join(", ")})`);
 }
 
 main().catch((err) => {

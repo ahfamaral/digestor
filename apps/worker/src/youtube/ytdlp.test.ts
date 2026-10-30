@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { mapInfoJson, mapYtDlpError } from "./ytdlp.js";
+import { mapInfoJson, mapYtDlpError, ytDlpArgs } from "./ytdlp.js";
 
 const fixture = JSON.parse(readFileSync(new URL("../../test/fixtures/ytdlp-info.json", import.meta.url), "utf8"));
 
@@ -36,8 +36,25 @@ describe("mapYtDlpError", () => {
     ["ERROR: Sign in to confirm your age", /age-restricted/],
     ["This video is age-restricted", /age-restricted/],
     ["ERROR: Video unavailable", /unavailable or was removed/],
+    ["ERROR: File is larger than max-filesize (6000000000 bytes > 5368709120 bytes). Aborting.", /larger than the upload limit/],
+    ["yt-dlp: x does not pass filter (!is_live), skipping ..", /Live streams can't be processed\. Try again after the stream has ended\./],
     ["something weird", /^Couldn't download this video from YouTube\.$/],
   ])("%s", (stderr, re) => {
     expect(mapYtDlpError(stderr)).toMatch(re);
+  });
+});
+
+describe("ytDlpArgs", () => {
+  it("ytdlp args include size cap and live filter", () => {
+    const args = ytDlpArgs("https://youtu.be/x", "/tmp/out", { MAX_UPLOAD_GB: "2" });
+    expect(args).toContain("--no-playlist");
+    expect(args[args.indexOf("--max-filesize") + 1]).toBe("2G");
+    expect(args[args.indexOf("--match-filter") + 1]).toBe("!is_live");
+    expect(args.slice(-2)).toEqual(["--", "https://youtu.be/x"]);
+  });
+  it("defaults the cap to 5 GB and ignores bad values", () => {
+    expect(ytDlpArgs("u", "/o", {})[ytDlpArgs("u", "/o", {}).indexOf("--max-filesize") + 1]).toBe("5G");
+    const bad = ytDlpArgs("u", "/o", { MAX_UPLOAD_GB: "abc" });
+    expect(bad[bad.indexOf("--max-filesize") + 1]).toBe("5G");
   });
 });

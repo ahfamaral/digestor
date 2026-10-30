@@ -56,7 +56,7 @@ Fill in every variable:
 | `ASSEMBLYAI_API_KEY` | Your AssemblyAI API key (transcription). |
 | `APP_PASSWORD` | **Required.** A strong password, for example from `openssl rand -base64 24`. The app is public, and compose refuses to start `web` without it. |
 | `MAX_UPLOAD_GB` | Upload limit (default 5). |
-| `RETENTION_DAYS` | Sessions and their files older than this are deleted daily at 03:00 UTC (default 7). Sessions still processing are never deleted. |
+| `VIDEO_RETENTION_DAYS` | Source videos (and the pipeline checkpoints) older than this are removed daily at 03:00 UTC (default 14). Sessions, briefings, thumbnails and rendered clips stay. Sessions still processing are never touched. |
 | `PUBLIC_HOSTNAME` | The DNS name from step 2, for example `digestor.example.com` (no `https://`). |
 
 Optional: `HTTP_PORT` and `HTTPS_PORT` (default 80 and 443) change the host ports Caddy listens on. Keep the defaults on a VPS: Let's Encrypt needs ports 80/443 to issue the certificate. Other values are only for local rehearsals (see below).
@@ -125,7 +125,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres
 docker compose -f docker-compose.yml -f docker-compose.prod.yml start web worker
 ```
 
-Copy dumps off the server (for example with `scp`). Uploaded and rendered files are short-lived by design (`RETENTION_DAYS`); to keep them too, archive the files volume:
+Copy dumps off the server (for example with `scp`). Uploaded and rendered files are short-lived by design (`VIDEO_RETENTION_DAYS` for the source video); to keep them too, archive the files volume:
 
 ```
 docker run --rm -v digestor_appdata:/data -v "$PWD":/backup busybox tar czf /backup/appdata-$(date +%F).tgz -C /data .

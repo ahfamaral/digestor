@@ -37,8 +37,32 @@ export function mapYtDlpError(stderr: string): string {
     return "YouTube blocked this download from the server. Download the video yourself and upload the file instead.";
   if (/Private video/i.test(stderr)) return "This video is private.";
   if (/confirm your age|age-restricted/i.test(stderr)) return "This video is age-restricted and can't be downloaded.";
+  if (/File is larger than max-filesize/i.test(stderr)) return "This video is larger than the upload limit.";
+  if (/does not pass filter|is_live/i.test(stderr))
+    return "Live streams can't be processed. Try again after the stream has ended.";
   if (/Video unavailable/i.test(stderr)) return "This video is unavailable or was removed.";
   return "Couldn't download this video from YouTube.";
+}
+
+/** MAX_UPLOAD_GB (default 5) also caps what yt-dlp may download. */
+function maxFilesizeGb(env: NodeJS.ProcessEnv): number {
+  const n = Number(env.MAX_UPLOAD_GB);
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
+export function ytDlpArgs(url: string, outPathNoExt: string, env: NodeJS.ProcessEnv = process.env): string[] {
+  return [
+    "-f", "bv*[height<=1080]+ba/b[height<=1080]",
+    "--merge-output-format", "mp4",
+    "--no-playlist",
+    "--max-filesize", `${maxFilesizeGb(env)}G`,
+    "--match-filter", "!is_live",
+    "--write-info-json",
+    "--no-progress",
+    "-o", `${outPathNoExt}.%(ext)s`,
+    "--",
+    url,
+  ];
 }
 
 export async function downloadYouTube(
@@ -47,16 +71,7 @@ export async function downloadYouTube(
 ): Promise<{ videoPath: string; metadata: YouTubeMetadata }> {
   const infoPath = `${outPathNoExt}.info.json`;
   try {
-    await run("yt-dlp", [
-      "-f", "bv*[height<=1080]+ba/b[height<=1080]",
-      "--merge-output-format", "mp4",
-      "--no-playlist",
-      "--write-info-json",
-      "--no-progress",
-      "-o", `${outPathNoExt}.%(ext)s`,
-      "--",
-      url,
-    ]);
+    await run("yt-dlp", ytDlpArgs(url, outPathNoExt));
   } catch (err) {
     const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
     throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
