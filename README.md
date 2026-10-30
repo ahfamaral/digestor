@@ -44,6 +44,7 @@ Progress streams to the browser over SSE; the pipeline survives worker restarts 
 | --- | --- |
 | LangGraph `StateGraph`, `interrupt()` / `Command`, Postgres checkpointer | `apps/worker/src/pipeline/graph.ts` (checkpointer wired in `apps/worker/src/main.ts`) |
 | LangChain `ChatAnthropic.withStructuredOutput` + zod | `apps/worker/src/llm/structured.ts` |
+| Swappable LLM provider (Anthropic or OpenRouter via `ChatOpenAICompletions`) | `apps/worker/src/llm/provider.ts`, `apps/worker/src/llm/openrouter.ts` |
 | Prompt engineering and grounding (fact sources, verbatim-quote check, per-item degradation) | `apps/worker/src/agents/` (context, topics, moments, briefing, checks, translation) |
 | Whisper-style speech-to-text via AssemblyAI | `apps/worker/src/transcribe/assemblyai.ts` |
 | ChromaDB transcript index, local e5 embeddings | `apps/worker/src/search/` |
@@ -79,6 +80,9 @@ Configure `.env` (`cp .env.example .env`):
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Claude (context, topics, moments, briefing, checks, translation, Ask) |
 | `ASSEMBLYAI_API_KEY` | Transcription |
+| `LLM_PROVIDER` | `anthropic` (default) or `openrouter`. Transcription always uses AssemblyAI |
+| `OPENROUTER_API_KEY` | Needed only with `LLM_PROVIDER=openrouter` (replaces `ANTHROPIC_API_KEY`) |
+| `OPENROUTER_MODEL_REASONING`, `OPENROUTER_MODEL_FAST` | Optional OpenRouter model ids; blank = `anthropic/claude-sonnet-5.5` and `anthropic/claude-haiku-5.5` |
 | `APP_PASSWORD` | Optional; leave empty to disable the password gate |
 | `MAX_UPLOAD_GB` | Upload size limit (default 5) |
 | `VIDEO_RETENTION_DAYS` | How long the source video is kept (default 14): `original.*`, `audio.mp3`, `proxy.mp4` and the pipeline checkpoint are deleted; analyses, selections and rendered clips stay |
@@ -128,6 +132,8 @@ docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval.
 ```
 
 The golden path is relative to `apps/worker` (for example `test/fixtures/golden-sample.json`); the session id can also sit in the golden file. Run it in the worker container, which has the database URL. The format is in `apps/worker/src/eval/metrics.ts`.
+
+**Comparing models.** Each analysis version records the model per step (`analysis_versions.models`; OpenRouter ids carry an `openrouter:` prefix). To compare models on the same video: set `LLM_PROVIDER=openrouter` and `OPENROUTER_MODEL_REASONING` / `OPENROUTER_MODEL_FAST` in `.env`, `docker compose up -d worker` (a restart alone doesn't re-read `.env`), click "Something's off" on the session to re-analyse it, and run the eval script again. The script scores the current version, so run it after each re-analysis. The transcript and context check are shared, so only the analysis models differ.
 
 **Results: pending.** The real numbers wait for the owner's hand-labelled golden set (one ~1 h interview and one Câmara or Senado session; open input #2 in `docs/superpowers/plans/2026-10-30-plan-2-open-inputs.md`). The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script against the seeded demo session; its numbers mean nothing. Attribution accuracy (speaker names) comes with Plan 3.
 

@@ -111,6 +111,26 @@ function stageRecorder(inner: StructuredLLM, sessionId: () => string) {
 const versionsOf = (sessionId: string) => listAnalysisVersions(db, sessionId);
 
 describe("runAnalysis", () => {
+  it("records the model ids the LLM reports (provider-qualified for OpenRouter)", async () => {
+    const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) });
+    const llm: StructuredLLM = {
+      modelIds: { reasoning: "openrouter:anthropic/claude-sonnet-5.5", fast: "openrouter:anthropic/claude-haiku-5.5" },
+      generate: (a) => fake.generate(a),
+    };
+    const id = await seed();
+
+    await runAnalysis(mkDeps(llm).deps, id, { profile: "interview", reason: "initial" });
+
+    const [v] = await versionsOf(id);
+    expect(v!.models).toEqual({
+      topics: "openrouter:anthropic/claude-sonnet-5.5",
+      moments: "openrouter:anthropic/claude-sonnet-5.5",
+      punchlines: "openrouter:anthropic/claude-sonnet-5.5",
+      briefing: "openrouter:anthropic/claude-sonnet-5.5",
+      checks: "openrouter:anthropic/claude-haiku-5.5",
+    });
+  });
+
   it("walks the analysis stages and stores one complete version with its models and prompt versions", async () => {
     const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) });
     let id = "";

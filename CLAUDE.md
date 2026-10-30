@@ -23,7 +23,7 @@ Spec: `docs/superpowers/specs/2026-10-28-video-digestor-design.md` (v1) and `doc
 
 - Docker runs on **Colima** (`colima start --cpu 4 --memory 8`), not Docker Desktop. `docker compose up -d` starts postgres, chroma (transcript index for Ask) and the worker; the web app runs on the host: `pnpm --filter @digestor/web dev`.
 - **Never install or call ffmpeg/yt-dlp on the host** (host ffmpeg has no libass). Anything that runs them — worker code and its tests — runs in the worker container.
-- API keys live in `.env` (`ANTHROPIC_API_KEY`, `ASSEMBLYAI_API_KEY`); they may be empty. The worker starts without them and fails a job with "`<VAR>` is not set on the server." when first needed. `APP_PASSWORD` empty = password gate off.
+- API keys live in `.env` (`ANTHROPIC_API_KEY`, `ASSEMBLYAI_API_KEY`, `OPENROUTER_API_KEY`); they may be empty. `LLM_PROVIDER=anthropic|openrouter` (default anthropic) picks the LLM vendor (`apps/worker/src/llm/provider.ts`); the key it needs is the one a missing-key failure names. Every structured call goes through `StructuredLLM` and Ask through `ToolLLM`, so a provider is one adapter pair; analysis versions record provider-qualified model ids (`StructuredLLM.modelIds`). Changing `.env` needs `docker compose up -d worker` (restart doesn't re-read it). The worker starts without them and fails a job with "`<VAR>` is not set on the server." when first needed. `APP_PASSWORD` empty = password gate off.
 - The worker container bind-mounts the repo and runs `tsx watch`; after editing worker code over the Colima mount, `docker compose restart worker` if the change isn't picked up.
 
 ## Commands
@@ -62,6 +62,7 @@ After adding a dependency: `pnpm install` on the host first (updates the lockfil
 - Trim: the server always snaps to sentence boundaries. Alt/Option in the UI only previews free positions.
 - Approved moments are never hidden by filters: the briefing footer reads "N approved · M hidden by filters" with a "Show hidden" button.
 - Every boundary (AI or human) goes through `snapRange`; cuts never start or end mid-sentence.
+- Claude 5.5 (`claude-sonnet-5-5`, `claude-haiku-5-5`, also via OpenRouter) rejects `temperature`/`top_p`/`top_k` and forced `tool_choice`, and thinks by default: no sampling parameters, structured output via `method: "jsonSchema"`, and Ask replays each tool turn's raw content (thinking blocks) unchanged (`ToolStep.raw`). Wire-level tests use the injected `fetch` in `apps/worker/src/llm/fakeFetch.ts`.
 - User-facing errors are friendly sentences; raw errors go to logs only.
 - Exact domain values (profiles, highlight types, statuses, fact sources, granularities, render settings) live in `packages/core/src/profiles.ts` and `schemas.ts` (and the specs) — use them verbatim.
 

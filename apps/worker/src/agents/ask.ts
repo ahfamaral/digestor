@@ -477,7 +477,7 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
         break;
       }
       if (step === MAX_ASK_STEPS - 1) break; // out of steps: the model could never read these results
-      messages.push({ role: "assistant", text: res.text, toolCalls: res.toolCalls });
+      messages.push({ role: "assistant", text: res.text, toolCalls: res.toolCalls, raw: res.raw });
       for (const [i, call] of res.toolCalls.entries()) {
         ctx.callWrote = false;
         let out: ToolResult & { ok: boolean };

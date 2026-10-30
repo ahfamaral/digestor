@@ -39,6 +39,8 @@ import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
 import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
 import { createAnthropicLLM, type StructuredLLM } from "./llm/structured.js";
 import { createAnthropicToolLLM, type ToolLLM } from "./llm/tools.js";
+import { createOpenRouterLLM, createOpenRouterToolLLM } from "./llm/openrouter.js";
+import { llmConfigFromEnv } from "./llm/provider.js";
 import { createE5Embedder } from "./search/embed.js";
 import { searchTranscript } from "./search/index.js";
 import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
@@ -70,10 +72,13 @@ async function main() {
   const storage = new LocalStorage(process.env.DATA_DIR ?? "./data");
 
   const getTranscriber = lazy("ASSEMBLYAI_API_KEY", (k) => new AssemblyAITranscriber(k));
-  const getLlm = lazy("ANTHROPIC_API_KEY", createAnthropicLLM);
   const transcriber: Transcriber = { transcribe: (p, fallbackDurationMs) => getTranscriber().transcribe(p, fallbackDurationMs) };
-  const llm: StructuredLLM = { generate: (a) => getLlm().generate(a) };
-  const getToolLlm = lazy("ANTHROPIC_API_KEY", createAnthropicToolLLM);
+  const llmConfig = llmConfigFromEnv();
+  const openRouter = llmConfig.provider === "openrouter";
+  console.log(`LLM provider: ${llmConfig.provider} (reasoning ${llmConfig.models.reasoning}, fast ${llmConfig.models.fast})`);
+  const getLlm = lazy(llmConfig.keyVar, (k) => (openRouter ? createOpenRouterLLM(k, llmConfig.models) : createAnthropicLLM(k)));
+  const llm: StructuredLLM = { modelIds: llmConfig.recordedModels, generate: (a) => getLlm().generate(a) };
+  const getToolLlm = lazy(llmConfig.keyVar, (k) => (openRouter ? createOpenRouterToolLLM(k, llmConfig.models) : createAnthropicToolLLM(k)));
   const toolLlm: ToolLLM = { step: (a) => getToolLlm().step(a) };
 
   const chromaUrl = new URL(process.env.CHROMA_URL ?? "http://localhost:8000");

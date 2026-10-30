@@ -4,7 +4,7 @@ import {
   AIMessage, HumanMessage, SystemMessage, ToolMessage as LcToolMessage, type AIMessageChunk, type BaseMessage,
 } from "@langchain/core/messages";
 import type { z } from "zod";
-import { MODEL_IDS } from "./structured.js";
+import { MODEL_IDS, type ClientOptions } from "./structured.js";
 
 /**
  * A tool the model may call. `schema` is sent to the model as the tool's JSON schema; the tool must still validate
@@ -17,10 +17,11 @@ export type ToolCallRequest = { id: string; name: string; args: unknown };
 
 export type ToolMessage =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; toolCalls?: ToolCallRequest[] }
+  | { role: "assistant"; text: string; toolCalls?: ToolCallRequest[]; raw?: unknown }
   | { role: "tool"; toolCallId: string; content: string };
 
-export type ToolStep = { text: string; toolCalls: ToolCallRequest[] };
+/** `raw` is the provider's reply content, replayed as-is on the next step (it carries thinking blocks). */
+export type ToolStep = { text: string; toolCalls: ToolCallRequest[]; raw?: unknown };
 export type ToolStepCall = { system: string; messages: ToolMessage[]; tools: ToolSpec[] };
 
 /** One model turn with tools bound: text and/or tool calls. The caller runs the tools and loops. */
@@ -30,13 +31,17 @@ export interface ToolLLM {
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Port messages → LangChain messages. Anthropic needs object `input` on tool_use blocks, so other args become {}. */
+/**
+ * Port messages → LangChain messages. Anthropic needs object `input` on tool_use blocks, so other args become {}.
+ * An assistant turn with `raw` goes back exactly as the provider sent it: Claude 5.5 needs its thinking blocks
+ * unchanged on the turn that produced them.
+ */
 export function toLangChainMessages(messages: ToolMessage[]): BaseMessage[] {
   return messages.map((m) => {
     if (m.role === "user") return new HumanMessage(m.text);
     if (m.role === "tool") return new LcToolMessage({ content: m.content, tool_call_id: m.toolCallId });
     return new AIMessage({
-      content: m.text,
+      content: (m.raw as AIMessage["content"] | undefined) ?? m.text,
       tool_calls: (m.toolCalls ?? []).map((c) => ({ id: c.id, name: c.name, args: isPlainObject(c.args) ? c.args : {}, type: "tool_call" as const })),
     });
   });
@@ -46,12 +51,20 @@ export function toLangChainMessages(messages: ToolMessage[]): BaseMessage[] {
 export function fromAIMessage(msg: AIMessage | AIMessageChunk): ToolStep {
   const ok = (msg.tool_calls ?? []).map((c) => ({ id: c.id ?? randomUUID(), name: c.name, args: c.args as unknown }));
   const bad = (msg.invalid_tool_calls ?? []).map((c) => ({ id: c.id ?? randomUUID(), name: c.name ?? "", args: c.args as unknown }));
-  return { text: msg.text.trim(), toolCalls: [...ok, ...bad] };
+  return { text: msg.text.trim(), toolCalls: [...ok, ...bad], raw: msg.content };
 }
 
-/** Reasoning model, temperature 0, tools bound per call. Transient vendor errors (429/529) propagate for pg-boss. */
-export function createAnthropicToolLLM(apiKey: string): ToolLLM {
-  const chat = new ChatAnthropic({ apiKey, model: MODEL_IDS.reasoning, temperature: 0, maxTokens: 4096 });
+/**
+ * Reasoning model, tools bound per call, no sampling parameters (Claude 5.5 rejects them). Transient vendor errors
+ * (429/529) propagate for pg-boss.
+ */
+export function createAnthropicToolLLM(apiKey: string, opts: ClientOptions = {}): ToolLLM {
+  const chat = new ChatAnthropic({
+    apiKey,
+    model: MODEL_IDS.reasoning,
+    maxTokens: 4096,
+    ...(opts.fetch ? { clientOptions: { fetch: opts.fetch } } : {}),
+  });
   return {
     async step(a) {
       const model = a.tools.length > 0 ? chat.bindTools(a.tools) : chat;

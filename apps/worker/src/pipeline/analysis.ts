@@ -30,7 +30,7 @@ import { checkMoment } from "../agents/checks.js";
 import { findMoments } from "../agents/moments.js";
 import { findTopics } from "../agents/topics.js";
 import { MissingApiKeyError } from "../errors.js";
-import { MODEL_IDS, type StructuredLLM } from "../llm/structured.js";
+import { MODEL_IDS, type LLMModel, type StructuredLLM } from "../llm/structured.js";
 
 /** Bump a version when its prompt changes; every analysis version records the set it ran with. */
 export const PROMPT_VERSIONS = {
@@ -41,14 +41,17 @@ export const PROMPT_VERSIONS = {
   checks: "checks@1",
 } as const;
 
-/** Model id per step, recorded on every analysis version. */
-export const ANALYSIS_MODELS = {
-  topics: MODEL_IDS.reasoning,
-  moments: MODEL_IDS.reasoning,
-  punchlines: MODEL_IDS.reasoning,
-  briefing: MODEL_IDS.reasoning,
-  checks: MODEL_IDS.fast,
-} as const;
+/** Model id per step, recorded on every analysis version (`ids` as the LLM reports them, provider-qualified). */
+export const analysisModels = (ids: Record<LLMModel, string>) => ({
+  topics: ids.reasoning,
+  moments: ids.reasoning,
+  punchlines: ids.reasoning,
+  briefing: ids.reasoning,
+  checks: ids.fast,
+});
+
+/** The steps' models with the default provider (Anthropic). */
+export const ANALYSIS_MODELS = analysisModels(MODEL_IDS);
 
 /** Evidence marker for a profile the user picked (same marker the context step uses). */
 const USER_SET_EVIDENCE = "set by user";
@@ -138,7 +141,7 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
   const version = await startAnalysisVersion(db, sessionId, {
     profile: opts.profile,
     reason: opts.reason,
-    models: { ...ANALYSIS_MODELS },
+    models: analysisModels(llm.modelIds ?? MODEL_IDS),
     promptVersions: { ...PROMPT_VERSIONS },
   });
 

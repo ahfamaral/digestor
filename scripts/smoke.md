@@ -1,6 +1,6 @@
 # Manual smoke checklist
 
-Needs real `ANTHROPIC_API_KEY` and `ASSEMBLYAI_API_KEY` in `.env`. Use a 20-40 min interview in a non-English language. Run it twice: once from a YouTube link, once as an uploaded file.
+Needs real `ANTHROPIC_API_KEY` and `ASSEMBLYAI_API_KEY` in `.env` (§4 also needs `OPENROUTER_API_KEY`). Use a 20-40 min interview in a non-English language. Run it twice: once from a YouTube link, once as an uploaded file.
 
 Setup: `colima start --cpu 4 --memory 8`, `docker compose up -d --build`, `pnpm install`, `pnpm db:migrate`, `pnpm --filter @digestor/web dev`, open http://localhost:3000.
 
@@ -56,4 +56,20 @@ The Ask fakes (`FakeToolLLM`) are shaped from the `@langchain/anthropic` 1.6 / `
 - [ ] "Approve all key points" (more than 3) → a pending `bulk_selection` action, no selection applied.
 - [ ] Something not in the video → "That isn't in this video's data."
 - [ ] Stop Chroma (`docker compose stop chroma`) and ask → "Search isn't available for this video."
+- [ ] A question that needs two tool rounds works: the second request carries the first turn's `thinking` blocks unchanged (Claude 5.5 rejects edited or dropped ones).
 - [ ] Record one raw tool-call response to `apps/worker/test/fixtures/anthropic/ask-tool-call.recorded.json` and feed it through `fromAIMessage` in a test.
+
+## 4. OpenRouter (`LLM_PROVIDER=openrouter`)
+
+The OpenRouter fakes in `apps/worker/src/llm/openrouter.test.ts` are shaped from OpenRouter's docs (OpenAI-compatible Chat Completions) and the `@langchain/openai` 1.8 code, not from a recorded response. Set `LLM_PROVIDER=openrouter` and `OPENROUTER_API_KEY` in `.env`, then `docker compose up -d worker`:
+
+- [ ] The worker log says `LLM provider: openrouter (reasoning anthropic/claude-sonnet-5.5, fast anthropic/claude-haiku-5.5)`.
+- [ ] With `OPENROUTER_API_KEY` empty, a new session fails with "OPENROUTER_API_KEY is not set on the server."
+- [ ] A full run reaches Preview; `analysis_versions.models` shows `openrouter:` ids.
+- [ ] Ask answers with `[hh:mm:ss]` citations and a `search_transcript` tool call.
+- [ ] Translate the briefing into one language.
+- [ ] A structured reply comes back as JSON content (`response_format` json_schema) and the worker log shows no LangChain retry backoff for it.
+- [ ] Ask with two tool rounds works through OpenRouter (check whether OpenRouter needs `reasoning_details` passed back; `ToolStep.raw` only carries the message content).
+- [ ] One non-Claude model (for example `OPENROUTER_MODEL_REASONING=google/gemini-3.8-flash`): a re-analysis completes or fails with the friendly message, never a raw error. Note which models refuse forced function calling.
+- [ ] Unverified cases to check: a 200 response whose body carries `error` instead of `choices` (OpenRouter documents this, https://openrouter.ai/docs/api-reference/errors); 402 out of credits (the session should fail after the retries with the generic message; the raw error goes to the log).
+- [ ] Record one raw structured-output response and one raw tool-call response to `apps/worker/test/fixtures/openrouter/*.recorded.json` and feed them through the adapter in a test.

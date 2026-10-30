@@ -2,7 +2,8 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { AIMessage, HumanMessage, ToolMessage as LcToolMessage } from "@langchain/core/messages";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { FakeToolLLM, fromAIMessage, toLangChainMessages, type ToolSpec } from "./tools.js";
+import { fakeFetch } from "./fakeFetch.js";
+import { createAnthropicToolLLM, FakeToolLLM, fromAIMessage, toLangChainMessages, type ToolMessage, type ToolSpec } from "./tools.js";
 
 const spec: ToolSpec = {
   name: "get_transcript",
@@ -46,7 +47,7 @@ describe("Anthropic tool adapter", () => {
       tool_calls: [{ id: "a", name: "search_transcript", args: { query: "housing" }, type: "tool_call" }],
       invalid_tool_calls: [{ id: "b", name: "get_transcript", args: "{bad", error: "parse", type: "invalid_tool_call" }],
     });
-    expect(fromAIMessage(msg)).toEqual({
+    expect(fromAIMessage(msg)).toMatchObject({
       text: "Let me look.",
       toolCalls: [
         { id: "a", name: "search_transcript", args: { query: "housing" } },
@@ -66,5 +67,41 @@ describe("FakeToolLLM", () => {
     expect(fake.calls).toHaveLength(2);
     expect(fake.calls[0]!.tools.map((t) => t.name)).toEqual(["get_transcript"]);
     await expect(fake.step({ system: "s", messages: [], tools: [] })).rejects.toThrow(/empty/);
+  });
+});
+
+describe("Anthropic tool LLM (Ask) on the wire", () => {
+  // Claude 5.5: no sampling parameters; adaptive thinking is on by default, and a thinking block must go back
+  // unchanged with the assistant turn that produced it (https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide).
+  // UNVERIFIED against a recorded response (scripts/smoke.md §3).
+  const reply = (content: unknown[], stop: string) => ({
+    id: "msg_1", type: "message", role: "assistant", model: "claude-sonnet-5-5", content,
+    stop_reason: stop, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 5 },
+  });
+  const thinking = { type: "thinking", thinking: "", signature: "sig-1" };
+  const toolUse = { type: "tool_use", id: "toolu_1", name: "get_transcript", input: { start: "00:01:00", end: "00:02:00" } };
+
+  it("sends no sampling parameters and replays the turn's thinking block with its tool call", async () => {
+    const { fetch, sent } = fakeFetch([
+      { body: reply([thinking, toolUse], "tool_use") },
+      { body: reply([{ type: "text", text: "Housing came up at [00:01:10]." }], "end_turn") },
+    ]);
+    const llm = createAnthropicToolLLM("k", { fetch });
+
+    const messages: ToolMessage[] = [{ role: "user", text: "Housing?" }];
+    const first = await llm.step({ system: "s", messages, tools: [spec] });
+    expect(first.toolCalls).toEqual([{ id: "toolu_1", name: "get_transcript", args: { start: "00:01:00", end: "00:02:00" } }]);
+    messages.push({ role: "assistant", text: first.text, toolCalls: first.toolCalls, raw: first.raw });
+    messages.push({ role: "tool", toolCallId: "toolu_1", content: "[00:01:10] Housing…" });
+    const second = await llm.step({ system: "s", messages, tools: [spec] });
+
+    expect(second).toMatchObject({ text: "Housing came up at [00:01:10].", toolCalls: [] });
+    for (const req of sent) {
+      for (const banned of ["temperature", "top_p", "top_k", "tool_choice", "thinking"]) expect(req.body).not.toHaveProperty(banned);
+    }
+    const assistant = sent[1]!.body.messages[1];
+    expect(assistant.role).toBe("assistant");
+    expect(assistant.content).toEqual([thinking, toolUse]);
+    expect(sent[1]!.body.messages[2].content[0]).toMatchObject({ type: "tool_result", tool_use_id: "toolu_1" });
   });
 });
