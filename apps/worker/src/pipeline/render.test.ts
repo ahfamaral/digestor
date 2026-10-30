@@ -52,9 +52,22 @@ d("clip render jobs", () => {
     expect(existsSync(storage.resolve(after.renderKey!))).toBe(true);
   });
 
+  it("a job for a done or unclaimed clip does nothing", async () => {
+    const { clip } = await seed();
+    const renderClip = fake(() => {});
+    await renderClipJob({ db, storage, renderClip }, clip.id); // none
+    await claimClipRender(db, clip.id);
+    await renderClipJob({ db, storage }, clip.id);
+    expect((await getClip(db, clip.id))!.renderStatus).toBe("done");
+    await renderClipJob({ db, storage, renderClip }, clip.id); // redelivered after done
+    expect(renderClip).not.toHaveBeenCalled();
+    expect((await getClip(db, clip.id))!.renderStatus).toBe("done");
+  });
+
   it("render refuses after video removal", async () => {
     const { s, clip } = await seed();
     await updateSession(db, s.id, { videoDeletedAt: new Date() });
+    await claimClipRender(db, clip.id);
     await expect(renderClipJob({ db, storage }, clip.id)).rejects.toBeInstanceOf(VideoRemovedError);
   });
 

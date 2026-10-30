@@ -149,4 +149,18 @@ describe("ffmpeg wrappers", () => {
     await renderClip({ ...base, input: TEST_MP4, output, hasVideo: true, credit: `Photo: "O'Neil", 50% [UN] \\ ; done` });
     expect(Math.abs((await probe(output)).durationMs - 2000)).toBeLessThan(200);
   });
+
+  it("portrait source in 9:16 is padded to 720x1280, odd 16:9 source gets even size", async () => {
+    const portrait = join(outDir, "portrait.mp4");
+    await run("ffmpeg", ["-y", "-f", "lavfi", "-i", "testsrc=size=360x720:rate=25:duration=3", "-pix_fmt", "yuv420p", portrait]);
+    const out = join(outDir, "p.mp4");
+    await renderClip({ ...base, input: portrait, output: out, format: "9:16", hasVideo: true, credit: "Cr" });
+    expect([(await probe(out)).width, (await probe(out)).height]).toEqual([720, 1280]);
+
+    const odd = join(outDir, "odd.mp4");
+    await run("ffmpeg", ["-y", "-f", "lavfi", "-i", "testsrc=size=641x361:rate=25:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv444p", odd]);
+    const out2 = join(outDir, "o.mp4");
+    await renderClip({ ...base, input: odd, output: out2, hasVideo: true });
+    expect([(await probe(out2)).width, (await probe(out2)).height]).toEqual([640, 360]);
+  });
 });

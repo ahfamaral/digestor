@@ -98,7 +98,9 @@ export type ClipFormat = "16:9" | "9:16";
 /** Output size of a render: 9:16 is always 720x1280; 16:9 keeps the source size (1280x720 for audio-only). */
 export function renderSize(format: ClipFormat, source: { hasVideo: boolean; width: number; height: number }): { width: number; height: number } {
   if (format === "9:16") return { width: 720, height: 1280 };
-  return source.hasVideo && source.width > 0 ? { width: source.width, height: source.height } : { width: 1280, height: 720 };
+  return source.hasVideo && source.width > 0
+    ? { width: Math.max(2, source.width - (source.width % 2)), height: Math.max(2, source.height - (source.height % 2)) }
+    : { width: 1280, height: 720 };
 }
 
 export type RenderClipOptions = {
@@ -124,9 +126,14 @@ export async function renderClip(o: RenderClipOptions): Promise<void> {
   let head: string;
   if (o.hasVideo) {
     head = "[0:v]";
-    if (o.format === "9:16") {
+    if (o.format === "9:16" && src.width < (src.height * 9) / 16) {
+      // Too narrow to crop: fit inside the frame and pad with the waveform background colour.
+      chain.push("scale=720:1280:force_original_aspect_ratio=decrease", `pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=${WAVE_BG}`);
+    } else if (o.format === "9:16") {
       const x = `(iw-ih*9/16)*(${o.cropOffset}+1)/2`;
       chain.push(`crop=ih*9/16:ih:${x}:0`, "scale=720:1280");
+    } else {
+      chain.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
     }
     chain.push("setsar=1");
   } else {
@@ -136,6 +143,7 @@ export async function renderClip(o: RenderClipOptions): Promise<void> {
 
   const tmp = await mkdtemp(join(tmpdir(), "digestor-render-"));
   try {
+    if (o.assPath) chain.push(`ass=${escapeFilterPath(o.assPath)}`);
     if (o.credit) {
       const textFile = join(tmp, "credit.txt");
       await writeFile(textFile, o.credit, "utf8");
@@ -147,7 +155,6 @@ export async function renderClip(o: RenderClipOptions): Promise<void> {
           `:x=w-tw-${margin}:y=h-th-${margin}`,
       );
     }
-    if (o.assPath) chain.push(`ass=${escapeFilterPath(o.assPath)}`);
     chain.push("format=yuv420p");
     const graph = `${head}${chain.join(",")}[v]`;
     await ffmpeg([

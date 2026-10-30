@@ -9,8 +9,8 @@ import {
   getSession,
   getTranscript,
   failTrack,
-  setClipRenderStatus,
-  setTrackBurnStatus,
+  failClipRender,
+  failTrackBurn,
   setMomentChecks,
   setStage,
   type Db,
@@ -217,10 +217,10 @@ async function runRender(label: string, id: string, attempt: Attempt, work: () =
 }
 
 export const handleRenderClip = (deps: RenderDeps, job: RenderClipJob, attempt: Attempt) =>
-  runRender("clip", job.clipId, attempt, () => renderClipJob(deps, job.clipId), () => setClipRenderStatus(deps.db, job.clipId, "failed"));
+  runRender("clip", job.clipId, attempt, () => renderClipJob(deps, job.clipId), () => failClipRender(deps.db, job.clipId));
 
 export const handleBurnTrack = (deps: RenderDeps, job: BurnTrackJob, attempt: Attempt) =>
-  runRender("track burn", job.trackId, attempt, () => burnTrack(deps, job.trackId), () => setTrackBurnStatus(deps.db, job.trackId, "failed"));
+  runRender("track burn", job.trackId, attempt, () => burnTrack(deps, job.trackId), () => failTrackBurn(deps.db, job.trackId));
 
 /** Placeholder consumer for a queue whose task hasn't landed yet: completes the job so nothing retries. */
 export const notImplemented =

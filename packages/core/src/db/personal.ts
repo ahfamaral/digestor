@@ -236,6 +236,14 @@ export async function setClipRenderStatus(db: Db, id: string, status: RenderStat
   await db.update(clips).set({ renderStatus: status, updatedAt: new Date() }).where(and(eq(clips.id, id), alive));
 }
 
+/** Marks a render failed only while it is still queued or rendering (never overwrites done/stale). */
+export async function failClipRender(db: Db, id: string): Promise<void> {
+  await db
+    .update(clips)
+    .set({ renderStatus: "failed", updatedAt: new Date() })
+    .where(and(eq(clips.id, id), alive, inArray(clips.renderStatus, ["queued", "rendering"])));
+}
+
 /** Atomic claim before enqueueing a render: `queued` only from none, failed or stale. */
 export async function claimClipRender(db: Db, id: string): Promise<boolean> {
   const rows = await db
@@ -381,6 +389,13 @@ export async function claimTrackBurn(db: Db, id: string): Promise<boolean> {
     )
     .returning({ id: subtitleTracks.id });
   return rows.length > 0;
+}
+
+export async function failTrackBurn(db: Db, id: string): Promise<void> {
+  await db
+    .update(subtitleTracks)
+    .set({ burnStatus: "failed" })
+    .where(and(eq(subtitleTracks.id, id), inArray(subtitleTracks.burnStatus, ["queued", "rendering"])));
 }
 
 export async function setTrackBurnStatus(db: Db, id: string, status: RenderStatus): Promise<void> {

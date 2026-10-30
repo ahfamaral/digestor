@@ -34,6 +34,10 @@ export async function renderClipJob(deps: RenderDeps, clipId: string): Promise<v
     console.log(`Ignoring render of clip ${clipId}: gone`);
     return;
   }
+  if (clip.renderStatus !== "queued" && clip.renderStatus !== "rendering") {
+    console.log(`Ignoring render of clip ${clipId}: it is ${clip.renderStatus}, not waiting for a render`);
+    return;
+  }
   const src = await sourceOf(deps, clip);
   if (!src) return;
   const range = { startMs: clip.startMs, endMs: clip.endMs, format: clip.format, cropOffset: clip.cropOffset, credit: clip.credit };
@@ -51,6 +55,10 @@ export async function burnTrack(deps: RenderDeps, trackId: string): Promise<void
   const clip = track && (await getClip(deps.db, track.clipId));
   if (!track || !clip || clip.deletedAt) {
     console.log(`Ignoring burn of track ${trackId}: gone`);
+    return;
+  }
+  if (track.burnStatus !== "queued" && track.burnStatus !== "rendering") {
+    console.log(`Ignoring burn of track ${trackId}: it is ${track.burnStatus}, not waiting for a burn`);
     return;
   }
   const src = await sourceOf(deps, clip);
