@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProfileIdSchema } from "./profiles.ts";
 
 export const WordSchema = z.object({
   text: z.string(),
@@ -17,8 +18,6 @@ export const TranscriptSchema = z.object({
 });
 export type Transcript = z.infer<typeof TranscriptSchema>;
 
-export const EventTypeSchema = z.enum(["interview", "panel", "parliament", "un", "court", "other"]);
-export type EventType = z.infer<typeof EventTypeSchema>;
 export const ClipLabelSchema = z.enum(["heated", "key_point", "light"]);
 export type ClipLabel = z.infer<typeof ClipLabelSchema>;
 export const ClipStatusSchema = z.enum(["proposed", "approved", "neutral", "rejected"]);
@@ -45,7 +44,7 @@ export type Participant = z.infer<typeof ParticipantSchema>;
 
 export const QuestionSchema = z.object({
   id: z.string(),
-  target: z.enum(["date", "event_type", "participant", "other"]),
+  target: z.enum(["date", "profile", "participant", "other"]),
   speakerId: z.string().nullable(),
   question: z.string(),
   why: z.string(),
@@ -55,8 +54,8 @@ export type Question = z.infer<typeof QuestionSchema>;
 
 export const ContextCardSchema = z.object({
   language: FactSchema,
-  eventType: z.object({
-    value: EventTypeSchema,
+  profile: z.object({
+    value: ProfileIdSchema,
     confidence: z.number().min(0).max(1),
     evidence: z.string().nullable(),
   }),
@@ -92,7 +91,8 @@ export const ResumePayloadSchema = z.discriminatedUnion("action", [
       title: z.string().optional(),
       setting: z.string().optional(),
       dateOrYear: z.string().optional(),
-      eventType: EventTypeSchema.optional(),
+      profile: ProfileIdSchema.optional(),
+      language: z.string().optional(),
       participants: z
         .array(z.object({
           speakerId: z.string(),
@@ -104,7 +104,6 @@ export const ResumePayloadSchema = z.discriminatedUnion("action", [
     }),
   }),
   z.object({ action: z.literal("skip") }),
-  z.object({ action: z.literal("render") }),
 ]);
 export type ResumePayload = z.infer<typeof ResumePayloadSchema>;
 

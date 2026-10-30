@@ -3,7 +3,8 @@ import { ResumePayloadSchema } from "@digestor/core";
 import { buildContextPayload, type ContextFields } from "./contextPayload";
 
 const original: ContextFields = {
-  eventType: "interview",
+  profile: "interview",
+  language: "en",
   title: "Talk",
   setting: "Studio",
   dateOrYear: "",
@@ -18,13 +19,13 @@ describe("buildContextPayload", () => {
     const edited: ContextFields = {
       ...original,
       dateOrYear: "  2021 ",
-      eventType: "panel",
+      profile: "trial",
       participants: [{ speakerId: "A", name: "Ann", role: " Host ", affiliation: "" }],
     };
     expect(buildContextPayload(original, edited, [])).toEqual({
       action: "continue",
       answers: [],
-      cardEdits: { dateOrYear: "2021", eventType: "panel", participants: [{ speakerId: "A", role: "Host" }] },
+      cardEdits: { dateOrYear: "2021", profile: "trial", participants: [{ speakerId: "A", role: "Host" }] },
     });
   });
   it("treats a whitespace-only change as unchanged", () => {
@@ -46,7 +47,7 @@ describe("buildContextPayload", () => {
     expect(buildContextPayload(original, edited, []).cardEdits).toEqual({});
   });
   it("produces a payload ResumePayloadSchema accepts", () => {
-    const edited: ContextFields = { ...original, eventType: "panel", dateOrYear: "2020" };
+    const edited: ContextFields = { ...original, profile: "trial", dateOrYear: "2020" };
     const p = buildContextPayload(original, edited, [{ questionId: "q", answer: "x" }]);
     expect(ResumePayloadSchema.safeParse(p).success).toBe(true);
   });

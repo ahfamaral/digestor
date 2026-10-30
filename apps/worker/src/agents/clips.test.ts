@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { EVENT_TYPES, findBoundaries, type Candidate, type ContextCard, type Fact, type Word } from "@digestor/core";
+import { PROFILES, findBoundaries, type Candidate, type ContextCard, type Fact, type Word } from "@digestor/core";
 import {
   buildHotTakePrompt,
   buildLongClipPrompt,
@@ -13,7 +13,7 @@ const none: Fact = { value: null, source: null, evidence: null };
 
 const card: ContextCard = {
   language: { value: "English", source: "video", evidence: "x" },
-  eventType: { value: "interview", confidence: 0.9, evidence: "x" },
+  profile: { value: "interview", confidence: 0.9, evidence: "x" },
   title: none,
   summary: "An interview.",
   setting: none,
@@ -96,7 +96,7 @@ describe("longClipLimits", () => {
 describe("prompts", () => {
   it("uses the detected event type rubric and context date", () => {
     const p = buildLongClipPrompt({ card, words, durationMs });
-    expect(p.system).toContain(EVENT_TYPES.interview.rubric);
+    expect(p.system).toContain(PROFILES.interview.rubric);
     expect(p.system).toContain("March 2026");
     expect(p.system).toContain("English");
     expect(p.user).toContain("[00:00:00]");

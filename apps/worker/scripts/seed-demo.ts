@@ -57,7 +57,7 @@ function buildCard(): ContextCard {
   const needsAnswers = stage === "awaiting_context";
   return {
     language: fact("en", "video", "detected from audio"),
-    eventType: { value: "interview", confidence: needsAnswers ? 0.5 : 0.9, evidence: "one host asks, one guest answers" },
+    profile: { value: "interview", confidence: needsAnswers ? 0.5 : 0.9, evidence: "one host asks, one guest answers" },
     title: fact("Demo interview", "metadata", "seeded title"),
     summary: "A synthetic interview used to preview the Digestor screens.",
     setting: fact(null, null, null),

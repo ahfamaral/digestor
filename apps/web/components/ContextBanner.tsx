@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type ContextCard } from "@digestor/core";
+import { PROFILES, type ContextCard } from "@digestor/core";
 
 function languageName(code: string): string {
   try {
@@ -11,7 +11,7 @@ function languageName(code: string): string {
 /** One-line summary of the context card above the inbox: event type · language · date · setting · title. */
 export function ContextBanner({ card }: { card: ContextCard }) {
   const parts = [
-    EVENT_TYPES[card.eventType.value].label,
+    PROFILES[card.profile.value].label,
     card.language.value && languageName(card.language.value),
     card.dateOrYear.value,
     card.setting.value,

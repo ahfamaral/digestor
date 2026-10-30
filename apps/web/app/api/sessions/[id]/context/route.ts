@@ -27,7 +27,7 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
     return errorResponse(400, "Send the answers as JSON.");
   }
   const parsed = ResumePayloadSchema.safeParse(raw);
-  if (!parsed.success || parsed.data.action === "render") {
+  if (!parsed.success) {
     return errorResponse(400, "Send either continue (with answers) or skip.");
   }
   const payload = parsed.data;

@@ -67,7 +67,7 @@ describe("sessions", () => {
     await saveTranscript(db, s.id, t);
     expect(await getTranscript(db, s.id)).toEqual(t);
     expect(await getContextCard(db, s.id)).toBeNull();
-    const card = { eventType: "interview" } as never;
+    const card = { profile: "interview" } as never;
     await saveContextCard(db, s.id, card, 1);
     await saveContextCard(db, s.id, card, 2);
     expect(await getContextCard(db, s.id)).toEqual({ card, round: 2 });

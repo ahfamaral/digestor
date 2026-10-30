@@ -1,4 +1,4 @@
-import type { EventType, ResumePayload } from "@digestor/core";
+import type { ProfileId, ResumePayload } from "@digestor/core";
 
 export interface ParticipantFields {
   speakerId: string;
@@ -9,7 +9,9 @@ export interface ParticipantFields {
 
 /** Editable card fields as plain strings (null facts become ""). */
 export interface ContextFields {
-  eventType: EventType;
+  profile: ProfileId;
+  /** BCP-47 code of the spoken language. */
+  language: string;
   title: string;
   setting: string;
   dateOrYear: string;
@@ -25,7 +27,8 @@ export function buildContextPayload(
   answers: { questionId: string; answer: string }[],
 ): ContinuePayload {
   const cardEdits: ContinuePayload["cardEdits"] = {};
-  if (edited.eventType !== original.eventType) cardEdits.eventType = edited.eventType;
+  if (edited.profile !== original.profile) cardEdits.profile = edited.profile;
+  if (edited.language !== original.language) cardEdits.language = edited.language;
   for (const key of ["title", "setting", "dateOrYear"] as const) {
     const value = edited[key].trim();
     if (value !== "" && value !== original[key].trim()) cardEdits[key] = value;

@@ -113,7 +113,8 @@ function humanLocked(card: ContextCard): Partial<ContextCard> {
   if (isHuman(card.title)) locked.title = card.title;
   if (isHuman(card.setting)) locked.setting = card.setting;
   if (isHuman(card.dateOrYear)) locked.dateOrYear = card.dateOrYear;
-  if (card.eventType.evidence === USER_SET_EVIDENCE) locked.eventType = card.eventType;
+  if (card.profile.evidence === USER_SET_EVIDENCE) locked.profile = card.profile;
+  if (isHuman(card.language)) locked.language = card.language;
   const pick = (f: Fact): Fact => (isHuman(f) ? f : { ...NULL_FACT });
   const participants = card.participants
     .filter((p) => isHuman(p.name) || isHuman(p.role) || isHuman(p.affiliation))
@@ -133,7 +134,8 @@ function applyCardEdits(card: ContextCard, edits: CardEdits): ContextCard {
   if (filled(edits.title)) out.title = human(edits.title);
   if (filled(edits.setting)) out.setting = human(edits.setting);
   if (filled(edits.dateOrYear)) out.dateOrYear = human(edits.dateOrYear);
-  if (edits.eventType) out.eventType = { value: edits.eventType, confidence: 1, evidence: USER_SET_EVIDENCE };
+  if (edits.profile) out.profile = { value: edits.profile, confidence: 1, evidence: USER_SET_EVIDENCE };
+  if (filled(edits.language)) out.language = human(edits.language);
   for (const e of edits.participants ?? []) {
     const idx = out.participants.findIndex((p) => p.speakerId === e.speakerId);
     const base: Participant =
@@ -260,7 +262,11 @@ export const understandContextNode =
       locked: stored ? humanLocked(stored.card) : {},
     });
     await saveContextCard(db, s.sessionId, card, round);
-    await updateSession(db, s.sessionId, { eventType: card.eventType.value });
+    // R1: the sessions.event_type column holds the profile id until the schema migration.
+    await updateSession(db, s.sessionId, {
+      eventType: card.profile.value,
+      ...(card.language.value !== null ? { language: card.language.value } : {}),
+    });
     return { round };
   };
 
@@ -383,7 +389,11 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
       ["find_clips", "understand_context", "ask_context"],
     )
     .addEdge("find_clips", "review")
-    .addConditionalEdges("review", (s) => (s.resume?.action === "render" ? "render" : "review"), ["render", "review"])
+    // "render" left the ResumePayload schema in Plan 2; this edge goes away with the review rewrite (Task 2).
+    .addConditionalEdges("review", (s) => ((s.resume?.action as string | undefined) === "render" ? "render" : "review"), [
+      "render",
+      "review",
+    ])
     .addEdge("render", END)
     .compile({ checkpointer });
 }

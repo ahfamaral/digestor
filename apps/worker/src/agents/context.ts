@@ -1,7 +1,8 @@
 import { z } from "zod";
 import {
   ContextCardSchema,
-  EVENT_TYPES,
+  PROFILES,
+  ProfileIdSchema,
   QuestionSchema,
   renderTranscript,
   speakerShares,
@@ -9,6 +10,7 @@ import {
   type ContextCard,
   type Fact,
   type Participant,
+  type ProfileId,
   type Question,
   type Word,
 } from "@digestor/core";
@@ -26,20 +28,34 @@ export type ContextInput = {
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
 const MAX_QUESTIONS = 3;
 
-/** LLM output schema: like ContextCardSchema but without the question cap, which assessSufficiency applies in code. */
-export const ContextCardOutput = ContextCardSchema.extend({ openQuestions: z.array(QuestionSchema) });
-const MIN_EVENT_CONFIDENCE = 0.6;
+/**
+ * LLM output schema: like ContextCardSchema but without the question cap (assessSufficiency applies it in code)
+ * and with a free-string profile, which normaliseProfile maps to a known id.
+ */
+export const ContextCardOutput = ContextCardSchema.extend({
+  openQuestions: z.array(QuestionSchema),
+  profile: z.object({ value: z.string(), confidence: z.number(), evidence: z.string().nullable() }),
+});
+const MIN_PROFILE_CONFIDENCE = 0.6;
 const MIN_SPEAKER_SHARE = 0.1;
 
+/** An unknown profile from the model becomes "other" with confidence 0 (so the profile question gets asked); confidence is clamped to 0-1. */
+export function normaliseProfile(p: z.infer<typeof ContextCardOutput>["profile"]): ContextCard["profile"] {
+  const known = ProfileIdSchema.safeParse(p.value);
+  if (!known.success) return { value: "other", confidence: 0, evidence: p.evidence };
+  const confidence = Number.isFinite(p.confidence) ? Math.min(1, Math.max(0, p.confidence)) : 0;
+  return { value: known.data, confidence, evidence: p.evidence };
+}
+
 export function buildContextPrompt(i: ContextInput): { system: string; user: string } {
-  const eventTypes = Object.entries(EVENT_TYPES)
+  const profiles = (Object.entries(PROFILES) as [ProfileId, (typeof PROFILES)[ProfileId]][])
     .map(([id, c]) => `- ${id}: ${c.label}`)
     .join("\n");
   const system = [
     "You build a context card for a video transcript, so that later steps understand who is speaking and what the event is.",
     "",
-    "Event types (pick exactly one for eventType.value):",
-    eventTypes,
+    "Profiles (pick exactly one for profile.value):",
+    profiles,
     "",
     "Evidence rule: every fact must quote the exact transcript sentence, metadata value, or human text that supports it; otherwise null.",
     'A fact is {value, source, evidence}. source is "video" (transcript), "metadata" or "human" (hint or answers). If nothing supports a fact, use {value: null, source: null, evidence: null}. Never guess names, roles, dates or places.',
@@ -48,7 +64,7 @@ export function buildContextPrompt(i: ContextInput): { system: string; user: str
     "Do not report the language; it is detected separately. Set language to {value: null, source: null, evidence: null}.",
     "List one participant per speaker id that appears in the transcript.",
     "",
-    "Question rules: ask at most 3 questions (max 3), in plain language a non-expert understands, most important first. Only ask about things you could not establish. Use target date, event_type, participant (with speakerId) or other. Sufficiency is computed separately; just list your open questions.",
+    "Question rules: ask at most 3 questions (max 3), in plain language a non-expert understands, most important first. Only ask about things you could not establish. Use target date, profile, participant (with speakerId) or other. Sufficiency is computed separately; just list your open questions.",
   ].join("\n");
 
   const meta = Object.entries(i.metadata)
@@ -103,14 +119,14 @@ export function groundContext(card: ContextCard, i: ContextInput): ContextCard {
     if (g.value === null) return g;
     return hasWords(normEvidence(g.evidence ?? ""), normalise(g.value)) ? g : { ...NULL_FACT };
   };
-  const evType = card.eventType;
+  const evType = card.profile;
   const evSupported =
     evType.evidence !== null &&
     Object.values(sources).some((src) => hasWords(src, normEvidence(evType.evidence ?? "")));
 
   const out: ContextCard = {
     ...card,
-    eventType: evSupported ? evType : { ...evType, confidence: Math.min(evType.confidence, 0.5) },
+    profile: evSupported ? evType : { ...evType, confidence: Math.min(evType.confidence, 0.5) },
     title: ground(card.title),
     setting: ground(card.setting),
     dateOrYear: ground(card.dateOrYear),
@@ -129,7 +145,7 @@ export function groundContext(card: ContextCard, i: ContextInput): ContextCard {
   if (l.title) out.title = human(l.title);
   if (l.setting) out.setting = human(l.setting);
   if (l.dateOrYear) out.dateOrYear = human(l.dateOrYear);
-  if (l.eventType) out.eventType = l.eventType;
+  if (l.profile) out.profile = l.profile;
   if (l.summary !== undefined) out.summary = l.summary;
   for (const lp of l.participants ?? []) {
     const locked: Participant = {
@@ -165,8 +181,8 @@ export function assessSufficiency(card: ContextCard, words: Word[]): ContextCard
       return !p || (p.name.value === null && p.role.value === null);
     });
   const missingDate = card.dateOrYear.value === null;
-  const lowEvent = card.eventType.confidence < MIN_EVENT_CONFIDENCE;
-  const sufficient = !lowEvent && !missingDate && unidentified.length === 0;
+  const lowProfile = card.profile.confidence < MIN_PROFILE_CONFIDENCE;
+  const sufficient = !lowProfile && !missingDate && unidentified.length === 0;
 
   if (sufficient) return { ...card, sufficient: true, openQuestions: [] };
 
@@ -180,12 +196,12 @@ export function assessSufficiency(card: ContextCard, words: Word[]): ContextCard
       sampleStartMs: null,
     });
   }
-  if (lowEvent) {
+  if (lowProfile) {
     fallbacks.push({
-      target: "event_type",
+      target: "profile",
       speakerId: null,
       question: "What kind of event is this?",
-      why: "The event type decides what counts as a highlight.",
+      why: "The profile decides what counts as a highlight.",
       sampleStartMs: null,
     });
   }
@@ -208,7 +224,7 @@ export function assessSufficiency(card: ContextCard, words: Word[]): ContextCard
     );
   const covers = (q: Omit<Question, "id">): boolean =>
     (q.target === "date" && missingDate) ||
-    (q.target === "event_type" && lowEvent) ||
+    (q.target === "profile" && lowProfile) ||
     (q.target === "participant" && q.speakerId !== null && unidentified.includes(q.speakerId));
   const ordered = [
     ...llmQuestions.filter(covers),
@@ -226,8 +242,8 @@ export function assessSufficiency(card: ContextCard, words: Word[]): ContextCard
     const id =
       q.target === "date"
         ? "date"
-        : q.target === "event_type"
-          ? "event_type"
+        : q.target === "profile"
+          ? "profile"
           : q.target === "participant"
             ? `participant:${q.speakerId ?? ""}`
             : `other:${++otherN}`;
@@ -241,6 +257,7 @@ export async function understandContext(llm: StructuredLLM, i: ContextInput): Pr
   const draft = await llm.generate({ schema: ContextCardOutput, name: "context_card", system, user, model: "reasoning" });
   const withLanguage: ContextCard = {
     ...draft,
+    profile: normaliseProfile(draft.profile),
     language: {
       value: i.language.code,
       source: "video",

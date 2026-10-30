@@ -1,6 +1,6 @@
 // Client-safe entrypoint: no pg / fs. Server-only pieces live in ./server.ts.
 export * from "./schemas.ts";
-export * from "./eventTypes.ts";
+export * from "./profiles.ts";
 export * from "./cost.ts";
 export * from "./time.ts";
 export * from "./snap.ts";

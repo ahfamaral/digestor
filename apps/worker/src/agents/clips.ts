@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   CandidateSchema,
-  EVENT_TYPES,
+  PROFILES,
   InvalidTimestampError,
   findBoundaries,
   fitChildInParent,
@@ -56,7 +56,7 @@ function languageName(card: ContextCard): string {
 }
 
 function commonSystem(card: ContextCard, role: string, rules: string[]): string {
-  const type = EVENT_TYPES[card.eventType.value];
+  const type = PROFILES[card.profile.value];
   const parts = [
     role,
     "",

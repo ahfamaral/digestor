@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { EVENT_TYPES, type EventType } from "@digestor/core";
+import { PROFILES, type ProfileId } from "@digestor/core";
 import { buildSteps, type StageName } from "@/lib/processingSteps";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,7 @@ export interface ProgressState {
 const CLOSING: StageName[] = ["awaiting_context", "awaiting_review", "done", "failed"];
 
 function eventLabel(t: string | null): string | null {
-  return t && t in EVENT_TYPES ? EVENT_TYPES[t as EventType].label : null;
+  return t && t in PROFILES ? PROFILES[t as ProfileId].label : null;
 }
 
 /** Processing screen: live stepper fed by SSE; refreshes the server page when the pipeline pauses or ends. */

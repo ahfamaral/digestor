@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { EVENT_TYPES, type ContextCard, type EventType, type Fact } from "@digestor/core";
+import { LANGUAGES, PROFILES, type ContextCard, type ProfileId, type Fact } from "@digestor/core";
 import { buildContextPayload, type ContextFields } from "@/lib/contextPayload";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,8 @@ function kindOf(fact: Fact | null, value: string, original: string): keyof typeo
 
 function toFields(card: ContextCard): ContextFields {
   return {
-    eventType: card.eventType.value,
+    profile: card.profile.value,
+    language: card.language.value ?? "",
     title: card.title.value ?? "",
     setting: card.setting.value ?? "",
     dateOrYear: card.dateOrYear.value ?? "",
@@ -126,19 +127,38 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
     <div className="grid gap-4 md:grid-cols-2">
       <section className="rounded-xl border border-border bg-white p-5">
         <h2 className="mb-2 text-base font-bold">Here&apos;s what I understood</h2>
-        <Row label="Language" audio badge={card.language.value ? (card.language.source ?? "video") : "missing"}>
-          <span className="flex-1 text-sm">{card.language.value ?? "unknown"}</span>
+        <Row
+          label="Language"
+          audio
+          badge={edited.language !== original.language ? "human" : card.language.value ? (card.language.source ?? "video") : "missing"}
+        >
+          <select
+            className={inputCls}
+            aria-label="Language"
+            value={edited.language}
+            onChange={(e) => set("language", e.target.value)}
+          >
+            {!edited.language && <option value="">Unknown</option>}
+            {!LANGUAGES.some((l) => l.code === original.language) && original.language && (
+              <option value={original.language}>{original.language} (detected)</option>
+            )}
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
         </Row>
-        <Row label="Event type" badge={edited.eventType !== original.eventType ? "human" : "video"}>
+        <Row label="Event type" badge={edited.profile !== original.profile ? "human" : "video"}>
           <select
             className={inputCls}
             aria-label="Event type"
-            value={edited.eventType}
-            onChange={(e) => set("eventType", e.target.value as EventType)}
+            value={edited.profile}
+            onChange={(e) => set("profile", e.target.value as ProfileId)}
           >
-            {(Object.keys(EVENT_TYPES) as EventType[]).map((t) => (
+            {(Object.keys(PROFILES) as ProfileId[]).map((t) => (
               <option key={t} value={t}>
-                {EVENT_TYPES[t].label}
+                {PROFILES[t].label}
               </option>
             ))}
           </select>

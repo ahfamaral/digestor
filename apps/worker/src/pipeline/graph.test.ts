@@ -53,7 +53,7 @@ const fact = (value: string, source: Fact["source"], evidence: string): Fact => 
 function draft(date: Fact = none): ContextCard {
   return {
     language: none,
-    eventType: { value: "interview", confidence: 0.9, evidence: "Sentence number 2." },
+    profile: { value: "interview", confidence: 0.9, evidence: "Sentence number 2." },
     title: none,
     summary: "An interview.",
     setting: none,
@@ -174,7 +174,7 @@ describe("pipeline", () => {
     const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft()] });
     await graph.invoke({ sessionId }, cfg);
     await setStage(db, sessionId, "understanding", 55);
-    await resume({ action: "render" });
+    await resume({ action: "render" } as never);
     expect(await interruptValue()).toEqual({ type: "context" });
     expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
     expect((await getSession(db, sessionId))!.stage).toBe("awaiting_context");
@@ -206,7 +206,7 @@ describe("pipeline", () => {
         { questionId: "date", answer: "Maybe last spring" },
         { questionId: "unknown", answer: "ignored answer" },
       ],
-      cardEdits: { title: "Budget hearing", eventType: "court", participants: [{ speakerId: "A", name: "Maria Silva" }] },
+      cardEdits: { title: "Budget hearing", profile: "supreme_court", participants: [{ speakerId: "A", name: "Maria Silva" }] },
     });
     // Still insufficient after round 1's answers: the follow-up round pauses with its own questions.
     expect(await interruptValue()).toEqual({ type: "context" });
@@ -220,7 +220,7 @@ describe("pipeline", () => {
     expect(round2.card.sufficient).toBe(false);
     expect(round2.card.openQuestions.map((q) => q.id)).toEqual(["date"]);
     expect(round2.card.title).toEqual({ value: "Budget hearing", source: "human", evidence: "Budget hearing" });
-    expect(round2.card.eventType).toEqual({ value: "court", confidence: 1, evidence: "set by user" });
+    expect(round2.card.profile).toEqual({ value: "supreme_court", confidence: 1, evidence: "set by user" });
     expect(round2.card.participants).toEqual([
       {
         speakerId: "A",
@@ -229,7 +229,7 @@ describe("pipeline", () => {
         affiliation: none,
       },
     ]);
-    expect((await getSession(db, sessionId))!.eventType).toBe("court");
+    expect((await getSession(db, sessionId))!.eventType).toBe("supreme_court");
 
     // The second round's answers are folded into the card, then clips are found even though it is still insufficient.
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "Sometime in 2025" }], cardEdits: {} });
@@ -266,7 +266,7 @@ describe("pipeline", () => {
     const [first, ...others] = await listClips(db, sessionId);
     await setClipStatus(db, first!.id, "approved", "user");
     await setClipStatus(db, others[0]!.id, "rejected", "user");
-    await resume({ action: "render" });
+    await resume({ action: "render" } as never);
 
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "done", progress: 100 });
     expect((await graph.getState(cfg)).next).toEqual([]);

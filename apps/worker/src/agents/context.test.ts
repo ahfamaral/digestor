@@ -4,6 +4,7 @@ import {
   assessSufficiency,
   buildContextPrompt,
   groundContext,
+  normaliseProfile,
   understandContext,
   type ContextInput,
 } from "./context.js";
@@ -41,7 +42,7 @@ const input: ContextInput = {
 function card(over: Partial<ContextCard> = {}): ContextCard {
   return {
     language: none,
-    eventType: { value: "interview", confidence: 0.9, evidence: "Welcome to the show" },
+    profile: { value: "interview", confidence: 0.9, evidence: "Welcome to the show" },
     title: none,
     summary: "An interview.",
     setting: none,
@@ -131,14 +132,14 @@ describe("assessSufficiency", () => {
     expect(q.question).toBe("When was this recorded or first aired?");
   });
   it("low event type confidence asks for the event type", () => {
-    const c = assessSufficiency(card({ eventType: { value: "other", confidence: 0.3, evidence: null } }), words);
-    expect(c.openQuestions.find((x) => x.id === "event_type")!.question).toBe("What kind of event is this?");
+    const c = assessSufficiency(card({ profile: { value: "other", confidence: 0.3, evidence: null } }), words);
+    expect(c.openQuestions.find((x) => x.id === "profile")!.question).toBe("What kind of event is this?");
   });
   it("never more than 3 questions", () => {
     const c = assessSufficiency(
       card({
         dateOrYear: none,
-        eventType: { value: "other", confidence: 0.1, evidence: null },
+        profile: { value: "other", confidence: 0.1, evidence: null },
         participants: [],
       }),
       words,
@@ -194,19 +195,31 @@ describe("understandContext", () => {
     expect(c.openQuestions.some((q) => q.target === "date")).toBe(true);
   });
   it("an LLM card with 4 open questions is accepted and cut to 3", async () => {
-    const q = (target: "date" | "event_type" | "participant", speakerId: string | null, question: string) => ({
+    const q = (target: "date" | "profile" | "participant", speakerId: string | null, question: string) => ({
       id: question, target, speakerId, question, why: "w", sampleStartMs: null,
     });
     const llm = new FakeLLM([
       card({
         dateOrYear: none,
-        eventType: { value: "other", confidence: 0.1, evidence: null },
+        profile: { value: "other", confidence: 0.1, evidence: null },
         participants: [],
-        openQuestions: [q("date", null, "Which year?"), q("event_type", null, "What event?"), q("participant", "A", "Who is A?"), q("participant", "B", "Who is B?")],
+        openQuestions: [q("date", null, "Which year?"), q("profile", null, "What event?"), q("participant", "A", "Who is A?"), q("participant", "B", "Who is B?")],
       }),
     ]);
     const c = await understandContext(llm, input);
     expect(c.openQuestions.map((x) => x.question)).toEqual(["Which year?", "What event?", "Who is A?"]);
+  });
+  it("unknown profile from the model becomes other and asks", async () => {
+    const llm = new FakeLLM([
+      { ...card(), profile: { value: "panel", confidence: 0.95, evidence: "Welcome to the show" } },
+    ]);
+    const c = await understandContext(llm, input);
+    expect(c.profile).toMatchObject({ value: "other", confidence: 0 });
+    expect(c.openQuestions.map((x) => x.id)).toContain("profile");
+  });
+  it("normaliseProfile clamps confidence to 0-1", () => {
+    expect(normaliseProfile({ value: "trial", confidence: 7, evidence: null }).confidence).toBe(1);
+    expect(normaliseProfile({ value: "trial", confidence: -2, evidence: null }).confidence).toBe(0);
   });
   it("FakeLLM rejects malformed responses and empty queue", async () => {
     const bad = new FakeLLM([{ nope: 1 }]);
@@ -242,11 +255,11 @@ describe("fix round 1", () => {
     expect(c.participants[0]!.name.value).toBe("Maria Silva");
   });
   it("caps event type confidence when evidence is missing or unsupported", () => {
-    const none_ = groundContext(card({ eventType: { value: "interview", confidence: 0.9, evidence: null } }), input);
-    expect(none_.eventType.confidence).toBe(0.5);
-    const bad = groundContext(card({ eventType: { value: "interview", confidence: 0.9, evidence: "not said" } }), input);
-    expect(bad.eventType.confidence).toBe(0.5);
-    expect(groundContext(card(), input).eventType.confidence).toBe(0.9);
+    const none_ = groundContext(card({ profile: { value: "interview", confidence: 0.9, evidence: null } }), input);
+    expect(none_.profile.confidence).toBe(0.5);
+    const bad = groundContext(card({ profile: { value: "interview", confidence: 0.9, evidence: "not said" } }), input);
+    expect(bad.profile.confidence).toBe(0.5);
+    expect(groundContext(card(), input).profile.confidence).toBe(0.9);
   });
   it("locked nulls stay null, not human-sourced", () => {
     const c = groundContext(card(), { ...input, locked: { title: none } });
@@ -257,7 +270,7 @@ describe("fix round 1", () => {
     const llm = [
       { ...o(1), target: "participant" as const, speakerId: "A" },
       { ...o(2), target: "participant" as const, speakerId: "B" },
-      { ...o(3), target: "event_type" as const },
+      { ...o(3), target: "profile" as const },
     ];
     const c = assessSufficiency(card({ dateOrYear: none, openQuestions: llm }), words);
     expect(c.openQuestions).toHaveLength(3);

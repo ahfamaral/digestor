@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CandidateSchema, ContextCardSchema, EventTypeSchema } from "./schemas.ts";
-import { EVENT_TYPES } from "./eventTypes.ts";
+import { CandidateSchema, ContextCardSchema, ResumePayloadSchema } from "./schemas.ts";
 import { estimateCostUsd } from "./cost.ts";
 
 const nullFact = { value: null, source: null, evidence: null };
@@ -14,7 +13,7 @@ const question = (i: number) => ({
 });
 const baseCard = {
   language: { value: "en", source: "video", evidence: null },
-  eventType: { value: "interview", confidence: 0.8, evidence: null },
+  profile: { value: "interview", confidence: 0.8, evidence: null },
   title: nullFact,
   summary: "A talk.",
   setting: nullFact,
@@ -48,8 +47,16 @@ describe("schemas", () => {
   it("start must be hh:mm:ss", () => {
     expect(CandidateSchema.safeParse({ ...validCandidate, start: "1:2:3" }).success).toBe(false);
   });
-  it("every event type has a rubric", () => {
-    for (const t of EventTypeSchema.options) expect(EVENT_TYPES[t].rubric.length).toBeGreaterThan(40);
+  it("context card accepts supreme_court and rejects the old court id", () => {
+    const card = (value: string) => ({ ...baseCard, profile: { value, confidence: 0.8, evidence: null }, openQuestions: [] });
+    expect(ContextCardSchema.safeParse(card("supreme_court")).success).toBe(true);
+    expect(ContextCardSchema.safeParse(card("court")).success).toBe(false);
+  });
+  it("resume payload rejects the removed render action and accepts profile and language edits", () => {
+    expect(ResumePayloadSchema.safeParse({ action: "render" }).success).toBe(false);
+    expect(
+      ResumePayloadSchema.safeParse({ action: "continue", answers: [], cardEdits: { profile: "trial", language: "pt" } }).success,
+    ).toBe(true);
   });
   it("estimates cost per hour", () => { expect(estimateCostUsd(90 * 60_000)).toBe(0.6); });
 });

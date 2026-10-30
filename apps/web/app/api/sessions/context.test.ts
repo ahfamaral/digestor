@@ -14,7 +14,7 @@ afterEach(() => h.send.mockClear());
 const fact = (value: string | null) => ({ value, source: value ? ("video" as const) : null, evidence: null });
 const card: ContextCard = {
   language: fact("en"),
-  eventType: { value: "interview", confidence: 0.9, evidence: null },
+  profile: { value: "interview", confidence: 0.9, evidence: null },
   title: fact("Talk"),
   summary: "s",
   setting: fact(null),
