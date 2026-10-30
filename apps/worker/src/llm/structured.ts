@@ -43,12 +43,21 @@ export function isParseError(err: unknown): boolean {
 export class FakeLLM implements StructuredLLM {
   calls: { name: string; system: string; user: string; model: LLMModel }[] = [];
   private queue: unknown[];
-  constructor(responses: unknown[]) {
-    this.queue = [...responses];
+  private byName: Map<string, unknown[]> | null;
+  /** FIFO list, or `{ byName: { topics: [...] } }` so concurrent fan-out tests don't depend on call order. */
+  constructor(responses: unknown[] | { byName: Record<string, unknown[]> }) {
+    if (Array.isArray(responses)) {
+      this.queue = [...responses];
+      this.byName = null;
+    } else {
+      this.queue = [];
+      this.byName = new Map(Object.entries(responses.byName).map(([k, v]) => [k, [...v]]));
+    }
   }
   async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T> {
     this.calls.push({ name: a.name, system: a.system, user: a.user, model: a.model });
-    if (this.queue.length === 0) throw new Error(`FakeLLM response queue is empty (call "${a.name}")`);
-    return a.schema.parse(this.queue.shift());
+    const q = this.byName ? (this.byName.get(a.name) ?? []) : this.queue;
+    if (q.length === 0) throw new Error(`FakeLLM response queue is empty (call "${a.name}")`);
+    return a.schema.parse(q.shift());
   }
 }
