@@ -1,5 +1,5 @@
 import {
-  PROFILES, ProfileIdSchema, topHighlights, type AnalysisVersion, type BriefingContent, type MomentWithHighlights, type ProfileId,
+  PROFILES, ProfileIdSchema, formatMinutes, mostDiscussedTopic, topHighlights, type HighlightMethod, type AnalysisVersion, type BriefingContent, type MomentWithHighlights, type ProfileId,
   type Topic,
 } from "@digestor/core";
 import { t } from "./i18n";
@@ -65,4 +65,19 @@ export function versionNote(versions: Pick<AnalysisVersion, "id" | "version" | "
     return t("preview.rerunProfile", { profile: PROFILES[asProfile(current.profile)].label });
   }
   return t("preview.rerunReason", { reason: current.reason });
+}
+
+/** The "Most discussed" card: the topic with the most speaking time. It is counted, not judged (Ruling R21). */
+export function mostDiscussedCard(
+  topics: Topic[],
+): { topicId: string; title: string; startMs: number; method: HighlightMethod; detail: string } | null {
+  const topic = mostDiscussedTopic(topics);
+  if (!topic) return null;
+  return {
+    topicId: topic.id,
+    title: topic.title,
+    startMs: topic.startMs,
+    method: "counted",
+    detail: t("preview.mostDiscussedDetail", { length: formatMinutes(topic.endMs - topic.startMs) }),
+  };
 }

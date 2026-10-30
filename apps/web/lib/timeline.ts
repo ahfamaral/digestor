@@ -17,7 +17,7 @@ export interface TimelinePin {
 
 /**
  * Session strip geometry: one band per topic, proportional to its length, each at least `MIN_BAND_PCT` wide and
- * together exactly 100%; one pin per highlight at its moment's start.
+ * together exactly 100%; one pin per highlight at its moment's start, placed within its topic's band.
  */
 export function buildTimeline(
   topics: Pick<Topic, "id" | "title" | "startMs" | "endMs">[],
@@ -49,10 +49,19 @@ export function buildTimeline(
     left += widths[i]!;
     return band;
   });
-  const pins = highlights.map((h) => ({
-    momentId: h.moment.id,
-    type: h.type,
-    leftPct: durationMs > 0 ? Math.min(100, Math.max(0, (h.moment.startMs / durationMs) * 100)) : 0,
-  }));
+  // A pin sits inside its topic's band (bands may be clamped, and topics may leave gaps); a moment outside every
+  // topic falls back to its share of the whole duration.
+  const pins = highlights.map((h) => {
+    const i = topics.findIndex((t) => h.moment.startMs >= t.startMs && h.moment.startMs < t.endMs);
+    let leftPct: number;
+    if (i >= 0) {
+      const t = topics[i]!;
+      const into = Math.min(1, Math.max(0, (h.moment.startMs - t.startMs) / (t.endMs - t.startMs)));
+      leftPct = bands[i]!.leftPct + into * bands[i]!.widthPct;
+    } else {
+      leftPct = durationMs > 0 ? Math.min(100, Math.max(0, (h.moment.startMs / durationMs) * 100)) : 0;
+    }
+    return { momentId: h.moment.id, type: h.type, leftPct };
+  });
   return { bands, pins };
 }

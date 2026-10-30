@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   LANGUAGES, briefingToMarkdown, formatLength, formatMinutes, formatTimestamp, type BriefingContent, type MomentWithHighlights,
-  type Topic, type TranslatedBriefingContent,
+  type Topic,
 } from "@digestor/core";
 import { HighlightChip } from "@/components/HighlightChip";
+import { translationFromResponse, type Translation } from "@/lib/briefingTranslation";
 import { errorMessage } from "@/lib/http";
 import type { PreviewSection } from "@/lib/preview";
 import { cn } from "@/lib/utils";
@@ -15,23 +16,6 @@ import { languageName, t } from "@/lib/i18n";
 const POLL_MS = 3000;
 const ACT =
   "inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
-
-type Translation = { status: "pending" } | { status: "ready"; content: TranslatedBriefingContent } | { status: "failed"; error: string };
-
-function asTranslated(content: unknown): TranslatedBriefingContent | null {
-  const c = content as Partial<TranslatedBriefingContent> | null;
-  return c && Array.isArray(c.lead) && Array.isArray(c.sections) ? (c as TranslatedBriefingContent) : null;
-}
-
-/** A translation API response as state; anything unexpected becomes a friendly failure. */
-async function translationFrom(res: Response): Promise<Translation> {
-  if (!res.ok) return { status: "failed", error: await errorMessage(res, t("preview.translationFailed")) };
-  const body = (await res.json().catch(() => null)) as { status?: string; content?: unknown; error?: string } | null;
-  if (body?.status === "pending") return { status: "pending" };
-  const content = body?.status === "ready" ? asTranslated(body.content) : null;
-  if (content) return { status: "ready", content };
-  return { status: "failed", error: body?.error || t("preview.translationFailed") };
-}
 
 function fileName(title: string, language: string | null): string {
   const slug = title.normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "briefing";
@@ -97,7 +81,7 @@ export function BriefingDoc({
       let next: Translation;
       try {
         const res = await fetch(`/api/analyses/${analysisId}/translations?language=${encodeURIComponent(readIn)}`);
-        next = await translationFrom(res);
+        next = translationFromResponse("poll", res.status, await res.json().catch(() => null));
       } catch {
         next = { status: "pending" }; // network blip: keep polling
       }
@@ -124,7 +108,7 @@ export function BriefingDoc({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language: code }),
       });
-      next = await translationFrom(res);
+      next = translationFromResponse("request", res.status, await res.json().catch(() => null));
     } catch {
       next = { status: "failed", error: t("preview.translationFailed") };
     }
@@ -174,7 +158,8 @@ export function BriefingDoc({
         body: JSON.stringify({ momentIds: [m.id] }),
       });
       if (!res.ok) throw new Error(await errorMessage(res, t("preview.errorGeneric")));
-      router.push(`/s/${sessionId}/prepare`); // stays busy until the next screen replaces this one
+      router.push(`/s/${sessionId}/prepare`);
+      setClipping(null); // if navigation stalls, the rows stay usable (the clip exists; repeating is safe)
     } catch (err) {
       setClipping(null);
       setRowError({ id: m.id, text: err instanceof Error && err.message ? err.message : t("preview.errorGeneric") });

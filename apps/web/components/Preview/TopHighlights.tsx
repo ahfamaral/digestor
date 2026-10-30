@@ -1,5 +1,6 @@
-import { formatLength, formatMinutes, formatTimestamp, type HighlightTypeId, type MomentWithHighlights, type Topic } from "@digestor/core";
-import { HighlightChip } from "@/components/HighlightChip";
+import { formatLength, formatTimestamp, type HighlightTypeId, type MomentWithHighlights } from "@digestor/core";
+import { HighlightChip, MethodBadge } from "@/components/HighlightChip";
+import type { mostDiscussedCard } from "@/lib/preview";
 import { t } from "@/lib/i18n";
 
 const CARD =
@@ -14,7 +15,7 @@ export function TopHighlights({
   onTopic,
 }: {
   top: { type: HighlightTypeId; moment: MomentWithHighlights }[];
-  mostDiscussed: Topic | null;
+  mostDiscussed: ReturnType<typeof mostDiscussedCard>;
   language: string | undefined;
   onMoment: (momentId: string) => void;
   onTopic: (topicId: string) => void;
@@ -37,13 +38,16 @@ export function TopHighlights({
         );
       })}
       {mostDiscussed && (
-        <button type="button" className={CARD} onClick={() => onTopic(mostDiscussed.id)}>
-          <span className="rounded-full bg-stone-200 px-2 py-0.5 text-[11.5px] font-semibold text-stone-800">{t("preview.mostDiscussed")}</span>
+        <button type="button" className={CARD} onClick={() => onTopic(mostDiscussed.topicId)}>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-200 px-2 py-0.5 text-[11.5px] font-semibold text-stone-800">
+            {t("preview.mostDiscussed")}
+            <MethodBadge method={mostDiscussed.method} />
+          </span>
           <span lang={language} dir="auto" className="line-clamp-2 text-[13px] leading-snug">
             {mostDiscussed.title}
           </span>
           <span className="font-mono text-[11px] text-muted-foreground">
-            {formatTimestamp(mostDiscussed.startMs)} · {formatMinutes(mostDiscussed.endMs - mostDiscussed.startMs)}
+            {formatTimestamp(mostDiscussed.startMs)} · {mostDiscussed.detail}
           </span>
         </button>
       )}

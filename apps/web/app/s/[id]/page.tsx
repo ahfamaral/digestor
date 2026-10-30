@@ -101,6 +101,7 @@ async function PreviewScreen({ session }: { session: Session }) {
       <AppBar current="Preview" />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
         <Preview
+          key={bundle.version.id}
           session={{
             id: session.id,
             title: session.title,

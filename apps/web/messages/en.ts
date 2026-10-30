@@ -155,6 +155,7 @@ export const en = {
     legend: "Highlight types",
     topHighlights: "Top highlights",
     mostDiscussed: "Most discussed",
+    mostDiscussedDetail: "{length} by speaking time",
     briefing: "Briefing",
     briefingActions: "Briefing actions",
     copyText: "Copy text",

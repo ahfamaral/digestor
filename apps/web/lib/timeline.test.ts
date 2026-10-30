@@ -45,4 +45,26 @@ describe("buildTimeline", () => {
       { momentId: "m3", type: "light", leftPct: 100 },
     ]);
   });
+
+  it("pins sit inside their topic's band, also when bands are clamped or topics leave gaps", () => {
+    const hour = 3_600_000;
+    // a: 0–2 h, tiny b: 2 h–2 h 1 min (clamped to 0.5%), gap 2 h 1 min–2 h 10 min, c: 2 h 10 min–5 h
+    const topics = [topic("a", 0, 2 * hour), topic("b", 2 * hour, 2 * hour + 60_000), topic("c", 2 * hour + 600_000, 5 * hour)];
+    const { bands, pins } = buildTimeline(
+      topics,
+      [
+        { type: "heated", moment: { id: "in-tiny", startMs: 2 * hour + 30_000 } },
+        { type: "key_point", moment: { id: "mid-c", startMs: 2 * hour + 600_000 + (3 * hour - 600_000) / 2 } },
+        { type: "light", moment: { id: "in-gap", startMs: 2 * hour + 300_000 } },
+      ],
+      5 * hour,
+    );
+    const [, b, c] = bands;
+    // halfway through the clamped band, not at its raw (0.33%-wide) position
+    expect(pins[0]!.leftPct).toBeCloseTo(b!.leftPct + b!.widthPct / 2, 9);
+    expect(pins[1]!.leftPct).toBeCloseTo(c!.leftPct + c!.widthPct / 2, 9);
+    // outside every topic: falls back to start / duration
+    expect(pins[2]!.leftPct).toBeCloseTo(((2 * hour + 300_000) / (5 * hour)) * 100, 9);
+  });
 });
+

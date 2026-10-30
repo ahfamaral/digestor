@@ -35,9 +35,16 @@ export function HighlightChip({ type, method, card, className }: { type: Highlig
   return (
     <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-semibold whitespace-nowrap", TONE_CHIP[config.tone], className)}>
       {card ? t(`highlightCard.${type}`) : t(`highlight.${type}`)}
-      <span className="rounded-full bg-white/70 px-1.5 text-[10px] leading-4 font-bold tracking-wide">
-        {method === "counted" ? t("preview.badgeCounted") : t("preview.badgeAi")}
-      </span>
+      <MethodBadge method={method} />
+    </span>
+  );
+}
+
+/** How a value was produced: "AI" for model judgments, "counted" for values computed from the transcript. */
+export function MethodBadge({ method }: { method: HighlightMethod }) {
+  return (
+    <span className="rounded-full bg-white/70 px-1.5 text-[10px] leading-4 font-bold tracking-wide">
+      {method === "counted" ? t("preview.badgeCounted") : t("preview.badgeAi")}
     </span>
   );
 }

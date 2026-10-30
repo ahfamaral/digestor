@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  PROFILES, formatTimestamp, mostDiscussedTopic, topHighlights, type BriefingContent, type ContextCard, type MomentWithHighlights,
+  PROFILES, formatTimestamp, topHighlights, type BriefingContent, type ContextCard, type MomentWithHighlights,
   type ProfileId, type Topic,
 } from "@digestor/core";
 import { ContextBanner } from "@/components/ContextBanner";
@@ -12,7 +12,8 @@ import { ReportProblem, previewTargets } from "@/components/ReportProblem";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
-import { buildSections } from "@/lib/preview";
+import { buildSections, mostDiscussedCard } from "@/lib/preview";
+import { startRefreshLoop } from "@/lib/refreshLoop";
 import { buildTimeline } from "@/lib/timeline";
 import { languageName, t } from "@/lib/i18n";
 import { BriefingDoc } from "./BriefingDoc";
@@ -34,11 +35,13 @@ const NOTICE = "mb-3 rounded-xl border px-3 py-2 text-sm";
 const CLICK_LOCK_MS = 1200;
 /** Height the sticky timeline covers at the top of the viewport; sections under it don't count as being read. */
 const STICKY_TIMELINE_PX = 120;
+/** While a re-analysis runs, re-read the page this often so the new version replaces the old one when it lands. */
+const RUNNING_REFRESH_MS = 5000;
 
 const prefersReducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * Preview, the proof step: header, session timeline, top highlight cards and the grounded briefing, with
+ * Preview, the proof step (render it with `key={analysis.id}` so a new analysis version starts with fresh state): header, session timeline, top highlight cards and the grounded briefing, with
  * "Looks right → Full briefing" and "Something's off" (re-run with another profile, or report a problem).
  */
 export function Preview({ session, analysis, speakers, topics, moments, briefing, card }: PreviewProps) {
@@ -46,7 +49,7 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
   const lang = session.language ?? undefined;
   const sections = useMemo(() => buildSections(topics, moments, briefing, analysis.profile), [topics, moments, briefing, analysis.profile]);
   const top = useMemo(() => topHighlights(moments, analysis.profile), [moments, analysis.profile]);
-  const mostDiscussed = useMemo(() => mostDiscussedTopic(topics), [topics]);
+  const mostDiscussed = useMemo(() => mostDiscussedCard(topics), [topics]);
   const timeline = useMemo(() => {
     const { bands, pins } = buildTimeline(topics, top, session.durationMs);
     const byId = new Map(moments.map((m) => [m.id, m]));
@@ -62,6 +65,13 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
     for (const m of moments) if (!map.has(m.id) && m.topicId) map.set(m.id, m.topicId);
     return map;
   }, [sections, moments]);
+
+  // Re-analysing: refresh the server data until the running version is gone (the page keys <Preview> on the
+  // analysis id, so a new version starts with fresh state).
+  useEffect(() => {
+    if (!analysis.running) return;
+    return startRefreshLoop(() => router.refresh(), RUNNING_REFRESH_MS);
+  }, [analysis.running, router]);
 
   const [active, setActive] = useState<string | null>(topics[0]?.id ?? null);
   const [flash, setFlash] = useState<string | null>(null);

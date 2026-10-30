@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   GRANULARITY, HIGHLIGHT_TYPES, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
-  parseTimestamp, renderTranscript, sliceWords, snapRange, toSentences,
+  parseTimestamp, renderTranscript, sliceWords, snapRange, toSentences, VIDEO_REMOVED,
   type AnalysisBundle, type AskToolCallRecord, type Boundary, type ContextCard, type SelectionStatus, type Transcript,
 } from "@digestor/core";
 import {
@@ -32,7 +32,6 @@ export const NOT_IN_DATA = "That isn't in this video's data.";
 export const SEARCH_UNAVAILABLE = "Search isn't available for this video.";
 export const OUT_OF_STEPS = "I couldn't finish looking this up within my step limit. Please ask a narrower question.";
 export const ASK_FAILED = "Couldn't answer this question. Please try again.";
-const VIDEO_REMOVED = "The video was removed after 14 days. Re-upload it to make new clips.";
 const NO_ANALYSIS = "This video has no analysis yet.";
 const TRUNCATED = "\n[…truncated: ask for a shorter range or fewer results]";
 

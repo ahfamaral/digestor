@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BriefingContent, MomentWithHighlights, Topic } from "@digestor/core";
-import { buildSections, versionNote } from "./preview";
+import { buildSections, mostDiscussedCard, versionNote } from "./preview";
 
 const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
   id, analysisId: "a", idx, startMs, endMs, title: `Topic ${id}`, summary: `Summary ${id}`,
@@ -48,5 +48,18 @@ describe("versionNote", () => {
       "Re-run: profile changed to Parliament",
     );
     expect(versionNote([v("a", 1, "interview", "initial"), v("b", 2, "interview", "Better topics")], "b")).toBe("Re-run: Better topics");
+  });
+});
+
+describe("mostDiscussedCard", () => {
+  it("is a counted value that says what was counted", () => {
+    expect(mostDiscussedCard([topic("t1", 0, 0, 240_000), topic("t2", 1, 240_000, 3_900_000)])).toEqual({
+      topicId: "t2",
+      title: "Topic t2",
+      startMs: 240_000,
+      method: "counted",
+      detail: "61m by speaking time",
+    });
+    expect(mostDiscussedCard([])).toBeNull();
   });
 });
