@@ -2,6 +2,7 @@
 export * from "./schemas.ts";
 export * from "./profiles.ts";
 export * from "./analysisTypes.ts";
+export * from "./personalTypes.ts";
 export * from "./cost.ts";
 export * from "./time.ts";
 export * from "./snap.ts";

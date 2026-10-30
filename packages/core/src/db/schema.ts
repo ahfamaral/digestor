@@ -2,6 +2,10 @@ import {
   boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uuid,
 } from "drizzle-orm/pg-core";
 import type { AnalysisStatus, BriefingContent, MomentChecks, MomentOrigin, HighlightMethod } from "../analysisTypes.ts";
+import type {
+  AskActionKind, AskActionStatus, AskMessageStatus, AskRole, ClipActor, ClipEventKind, ClipFormat, ProblemTargetKind,
+  RenderStatus, SelectionStatus, TrackCue, TrackStatus,
+} from "../personalTypes.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
 import type { ContextCard, Word } from "../schemas.ts";
 
@@ -158,3 +162,113 @@ export const translations = pgTable(
   },
   (t) => [unique("translations_analysis_language_kind").on(t.analysisId, t.language, t.kind)],
 );
+
+export const selections = pgTable(
+  "selections",
+  {
+    ownerId: text("owner_id").notNull(),
+    momentId: uuid("moment_id")
+      .notNull()
+      .references(() => moments.id, { onDelete: "cascade" }),
+    status: text("status").$type<SelectionStatus>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.ownerId, t.momentId] })],
+);
+
+export const clips = pgTable(
+  "clips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id").notNull(),
+    momentId: uuid("moment_id").references(() => moments.id, { onDelete: "set null" }),
+    startMs: integer("start_ms").notNull(),
+    endMs: integer("end_ms").notNull(),
+    format: text("format").$type<ClipFormat>().notNull().default("16:9"),
+    cropOffset: doublePrecision("crop_offset").notNull().default(0),
+    credit: text("credit"),
+    noCreditNeeded: boolean("no_credit_needed").notNull().default(false),
+    warningsAck: boolean("warnings_ack").notNull().default(false),
+    protectedAck: boolean("protected_ack").notNull().default(false),
+    renderStatus: text("render_status").$type<RenderStatus>().notNull().default("none"),
+    renderKey: text("render_key"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("clips_owner_session_idx").on(t.ownerId, t.sessionId)],
+);
+
+export const clipEvents = pgTable("clip_events", {
+  id: serial("id").primaryKey(),
+  clipId: uuid("clip_id")
+    .notNull()
+    .references(() => clips.id, { onDelete: "cascade" }),
+  actor: text("actor").$type<ClipActor>().notNull(),
+  kind: text("kind").$type<ClipEventKind>().notNull(),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const subtitleTracks = pgTable(
+  "subtitle_tracks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clipId: uuid("clip_id")
+      .notNull()
+      .references(() => clips.id, { onDelete: "cascade" }),
+    language: text("language").notNull(),
+    status: text("status").$type<TrackStatus>().notNull().default("preparing"),
+    cues: jsonb("cues").$type<TrackCue[]>().notNull().default([]),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    burnStatus: text("burn_status").$type<RenderStatus>().notNull().default("none"),
+    burnKey: text("burn_key"),
+    srtKey: text("srt_key"),
+    vttKey: text("vtt_key"),
+  },
+  (t) => [unique("subtitle_tracks_clip_language").on(t.clipId, t.language)],
+);
+
+export const askMessages = pgTable(
+  "ask_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id").notNull(),
+    role: text("role").$type<AskRole>().notNull(),
+    text: text("text").notNull().default(""),
+    toolCalls: jsonb("tool_calls").$type<unknown>(),
+    status: text("status").$type<AskMessageStatus>().notNull().default("done"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ask_messages_owner_session_idx").on(t.ownerId, t.sessionId)],
+);
+
+export const askActions = pgTable("ask_actions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  messageId: uuid("message_id")
+    .notNull()
+    .references(() => askMessages.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<AskActionKind>().notNull(),
+  payload: jsonb("payload").$type<unknown>().notNull(),
+  status: text("status").$type<AskActionStatus>().notNull().default("pending"),
+});
+
+export const problemReports = pgTable("problem_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: text("owner_id").notNull(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  targetKind: text("target_kind").$type<ProblemTargetKind>().notNull(),
+  targetId: text("target_id").notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
