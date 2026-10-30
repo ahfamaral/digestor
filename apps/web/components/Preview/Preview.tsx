@@ -7,6 +7,7 @@ import {
   PROFILES, formatTimestamp, topHighlights, type BriefingContent, type ContextCard, type MomentWithHighlights,
   type ProfileId, type Topic,
 } from "@digestor/core";
+import { AskDrawer } from "@/components/Ask/AskDrawer";
 import { ContextBanner } from "@/components/ContextBanner";
 import { ReportProblem, previewTargets } from "@/components/ReportProblem";
 import { Button } from "@/components/ui/button";
@@ -152,9 +153,12 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
       {card && <ContextBanner sessionId={session.id} card={card} />}
 
       <header className="mb-3">
-        <h1 lang={lang} dir="auto" className="text-xl font-bold tracking-tight break-words">
-          {session.title}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 lang={lang} dir="auto" className="min-w-0 text-xl font-bold tracking-tight break-words">
+            {session.title}
+          </h1>
+          <AskDrawer sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} />
+        </div>
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-xs text-muted-foreground">
           {meta.map((m, i) => (
             <span key={i} className="after:ml-1.5 after:content-['·']">

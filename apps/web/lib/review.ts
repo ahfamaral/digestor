@@ -91,3 +91,8 @@ export function approvedMomentIds(
 /** The status queue speaks `ClipStatus`; no selection row is "proposed". */
 export const asClipStatus = (s: SelectionStatus | null): ClipStatus => s ?? "proposed";
 export const asSelection = (s: ClipStatus): SelectionStatus | null => (s === "proposed" ? null : s);
+
+/** Whether a keydown opens the Ask drawer (`/`): never while typing, with modifiers, with a dialog open or once handled. */
+export function opensAsk(e: Pick<KeyInput, "key" | "metaKey" | "ctrlKey" | "altKey" | "defaultPrevented">, ctx: { typing: boolean; dialogOpen: boolean }): boolean {
+  return e.key === "/" && !ctx.typing && !ctx.dialogOpen && !e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.altKey;
+}

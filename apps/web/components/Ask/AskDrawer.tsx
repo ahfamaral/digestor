@@ -1,0 +1,425 @@
+"use client";
+
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord } from "@digestor/core";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { asToolCalls, formatToolCall, linkifyTimestamps, parseBulkPayload } from "@/lib/askText";
+import { errorMessage } from "@/lib/http";
+import { t } from "@/lib/i18n";
+import { isTyping, opensAsk } from "@/lib/review";
+
+const MAX_QUESTION = 500;
+/** The counter appears this close to the limit. */
+const COUNTER_FROM = 400;
+const POLL_MS = 2000;
+const CHIP = "inline-flex h-6 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
+
+type Message = Omit<AskMessageWithActions, "createdAt">;
+
+export interface AskDrawerProps {
+  sessionId: string;
+  /** Spoken language of the video: answers quote it, so they carry `lang`. */
+  language: string | null;
+  hasVideo: boolean;
+  videoRemoved: boolean;
+}
+
+/**
+ * The Ask drawer: `/` (or the Ask button) opens a side panel where the journalist questions this video. Answers come
+ * from stored data, with `[hh:mm:ss]` links that play in the drawer's own preview player (the page behind a modal
+ * drawer is inert, so it can't offer one). Tool calls show as chips; changes can be undone and bulk ones wait for a click.
+ */
+export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDrawerProps) {
+  const router = useRouter();
+  const lang = language ?? undefined;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listEnd = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loadError, setLoadError] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ ms: number; n: number } | null>(null);
+  /** Client-side only: chips whose change was undone, by `<messageId>:<index>`. */
+  const [undone, setUndone] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    const dialogOpen = document.querySelector("[role='dialog']") !== null;
+    if (!opensAsk(e, { typing: isTyping(e.target), dialogOpen })) return;
+    e.preventDefault();
+    setOpen(true);
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const load = useCallback(async (quiet: boolean) => {
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/ask`);
+      if (!res.ok) throw new Error("load");
+      const body = (await res.json()) as { messages: Message[] };
+      setMessages(body.messages);
+      setLoadError(false);
+    } catch {
+      if (!quiet) setLoadError(true);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (open) void load(false);
+  }, [open, load]);
+
+  const hasPending = messages.some((m) => m.role === "assistant" && m.status === "pending");
+  useEffect(() => {
+    if (!open || !hasPending) return;
+    const timer = setInterval(() => void load(true), POLL_MS);
+    return () => clearInterval(timer);
+  }, [open, hasPending, load]);
+
+  useEffect(() => {
+    listEnd.current?.scrollIntoView({ block: "end" });
+  }, [messages.length, hasPending]);
+
+  function setBusyKey(key: string, on: boolean) {
+    setBusy((b) => {
+      const next = new Set(b);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+  function setError(key: string, message: string | null) {
+    setErrors((e) => {
+      if (message) return { ...e, [key]: message };
+      const { [key]: _gone, ...rest } = e;
+      return rest;
+    });
+  }
+
+  async function send(e?: React.FormEvent) {
+    e?.preventDefault();
+    const question = text.trim();
+    if (sending || question.length === 0 || text.length > MAX_QUESTION) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      if (!res.ok) throw new Error(await errorMessage(res, t("ask.sendFailed")));
+      const body = (await res.json()) as { question: Omit<Message, "actions">; answer: Omit<Message, "actions"> };
+      setMessages((m) => [...m, { ...body.question, actions: [] }, { ...body.answer, actions: [] }]);
+      setText("");
+    } catch (err) {
+      setSendError(err instanceof Error && err.message ? err.message : t("ask.sendFailed"));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function undo(key: string, call: AskToolCallRecord) {
+    setBusyKey(key, true);
+    setError(key, null);
+    try {
+      if (call.clipId) {
+        const res = await fetch(`/api/clips/${call.clipId}/undo`, { method: "POST" });
+        if (!res.ok) throw new Error(await errorMessage(res, t("ask.undoFailed")));
+      } else {
+        for (const [momentId, previous] of Object.entries(call.undo ?? {})) {
+          const res = await fetch(`/api/moments/${momentId}/selection`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: previous }),
+          });
+          if (!res.ok) throw new Error(await errorMessage(res, t("ask.undoFailed")));
+        }
+      }
+      setUndone((u) => new Set(u).add(key));
+      router.refresh();
+    } catch (err) {
+      setError(key, err instanceof Error && err.message ? err.message : t("ask.undoFailed"));
+    } finally {
+      setBusyKey(key, false);
+    }
+  }
+
+  async function decide(action: AskAction, decision: "confirm" | "dismiss") {
+    const key = `action:${action.id}`;
+    setBusyKey(key, true);
+    setError(key, null);
+    try {
+      const res = await fetch(`/api/ask-actions/${action.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      if (!res.ok) {
+        const message = await errorMessage(res, t("ask.bulkFailed"));
+        if (res.status === 409) await load(true);
+        throw new Error(message);
+      }
+      await load(true);
+      if (decision === "confirm") router.refresh();
+    } catch (err) {
+      setError(key, err instanceof Error && err.message ? err.message : t("ask.bulkFailed"));
+    } finally {
+      setBusyKey(key, false);
+    }
+  }
+
+  const count = text.length;
+  const tooLong = count > MAX_QUESTION;
+  const canSend = !sending && text.trim().length > 0 && !tooLong;
+  const previewSrc = preview ? `/api/files/${sessionId}/proxy.mp4#t=${(preview.ms / 1000).toFixed(1)}` : null;
+  const previewLabel = preview ? t("ask.previewLabel", { time: formatTimestamp(preview.ms) }) : "";
+
+  return (
+    <>
+      <Button ref={triggerRef} type="button" variant="outline" size="sm" onClick={() => setOpen(true)} aria-keyshortcuts="/">
+        {t("ask.open")}
+        <kbd className="rounded border border-border bg-stone-50 px-1 font-mono text-[11px] text-muted-foreground">/</kbd>
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          finalFocus={triggerRef}
+          showCloseButton
+          className="top-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-md"
+        >
+          <div className="border-b border-border px-4 py-3 pr-12">
+            <DialogTitle>{t("ask.title")}</DialogTitle>
+            <DialogDescription id="ask-description" className="mt-1 text-xs text-muted-foreground">{t("ask.hint")}</DialogDescription>
+          </div>
+
+          {preview && (
+            <div className="border-b border-border bg-stone-50 px-4 py-2">
+              <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="font-mono">{previewLabel}</span>
+                <button type="button" className="underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand" onClick={() => setPreview(null)}>
+                  {t("ask.previewClose")}
+                </button>
+              </div>
+              {hasVideo ? (
+                <video key={preview.n} controls autoPlay preload="none" src={previewSrc ?? undefined} aria-label={previewLabel} className="mx-auto aspect-video max-h-40 w-full rounded-lg bg-black" />
+              ) : (
+                <audio key={preview.n} controls autoPlay preload="none" src={previewSrc ?? undefined} aria-label={previewLabel} className="w-full" />
+              )}
+            </div>
+          )}
+
+          {videoRemoved && (
+            <p id="ask-video-removed" role="status" className="border-b border-border bg-stone-100 px-4 py-2 text-xs text-stone-800">
+              {t("preview.videoRemoved")}
+            </p>
+          )}
+
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+            {loadError && (
+              <p role="alert" className="mb-2 text-xs text-red-700">
+                {t("ask.loadFailed")}
+              </p>
+            )}
+            {messages.length === 0 && !loadError && <p className="text-sm text-muted-foreground">{t("ask.empty")}</p>}
+            <ol aria-live="polite" aria-relevant="additions" className="grid gap-3">
+              {messages.map((m) => (
+                <MessageItem
+                  key={m.id}
+                  message={m}
+                  lang={lang}
+                  videoRemoved={videoRemoved}
+                  undone={undone}
+                  busy={busy}
+                  errors={errors}
+                  onTime={(ms) => setPreview((p) => ({ ms, n: (p?.n ?? 0) + 1 }))}
+                  onUndo={undo}
+                  onDecide={decide}
+                />
+              ))}
+            </ol>
+            <div ref={listEnd} />
+          </div>
+
+          <form onSubmit={send} className="border-t border-border bg-white p-3">
+            <label htmlFor="ask-input" className="sr-only">
+              {t("ask.inputLabel")}
+            </label>
+            <Textarea
+              id="ask-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              placeholder={t("ask.placeholder")}
+              aria-invalid={tooLong}
+              aria-describedby="ask-hint ask-description"
+              rows={2}
+              className="max-h-32 min-h-16 resize-none bg-white"
+            />
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p id="ask-hint" className="min-h-4 min-w-0 text-xs text-muted-foreground">
+                {count >= COUNTER_FROM && (
+                  <span className={tooLong ? "font-semibold text-red-700" : undefined}>{t("ask.counter", { n: count, max: MAX_QUESTION })}</span>
+                )}
+              </p>
+              <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:bg-brand/90">
+                {sending ? t("ask.sending") : t("ask.send")}
+              </Button>
+            </div>
+            {sendError && (
+              <p role="alert" className="mt-1 text-xs text-red-700">
+                {sendError}
+              </p>
+            )}
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function MessageItem({
+  message, lang, videoRemoved, undone, busy, errors, onTime, onUndo, onDecide,
+}: {
+  message: Message;
+  lang: string | undefined;
+  videoRemoved: boolean;
+  undone: Set<string>;
+  busy: Set<string>;
+  errors: Record<string, string>;
+  onTime: (ms: number) => void;
+  onUndo: (key: string, call: AskToolCallRecord) => void;
+  onDecide: (action: AskAction, decision: "confirm" | "dismiss") => void;
+}) {
+  if (message.role === "user") {
+    return (
+      <li className="ml-6 rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+        <span className="sr-only">{t("ask.you")}: </span>
+        <p lang={lang} dir="auto" className="whitespace-pre-wrap break-words">
+          {message.text}
+        </p>
+      </li>
+    );
+  }
+  const calls = asToolCalls(message.toolCalls);
+  return (
+    <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
+      <span className="sr-only">{t("ask.answer")}: </span>
+      {message.status === "pending" && <p className="text-muted-foreground">{t("ask.thinking")}</p>}
+      {message.status === "failed" && (
+        <p role="alert" className="break-words text-red-700">
+          {message.text}
+        </p>
+      )}
+      {message.status === "done" && (
+        <p lang={lang} dir="auto" className="whitespace-pre-wrap break-words">
+          {linkifyTimestamps(message.text).map((part, i) =>
+            part.kind === "text" ? (
+              part.value
+            ) : (
+              <button
+                key={i}
+                type="button"
+                disabled={videoRemoved}
+                aria-describedby={videoRemoved ? "ask-video-removed" : undefined}
+                aria-label={t("ask.playLabel", { time: formatTimestamp(part.ms) })}
+                onClick={() => onTime(part.ms)}
+                dir="ltr"
+                className="rounded bg-stone-100 px-1 font-mono text-xs font-medium text-foreground underline decoration-dotted underline-offset-2 outline-none hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {part.label}
+              </button>
+            ),
+          )}
+        </p>
+      )}
+      {calls.length > 0 && (
+        <ul className="grid gap-1.5" aria-label={t("ask.toolCall")}>
+          {calls.map((call, i) => {
+            const key = `${message.id}:${i}`;
+            const mutating = call.ok && (call.clipId !== undefined || call.undo !== undefined);
+            const label = formatToolCall(call);
+            return (
+              <li key={key} className="grid gap-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <code className="min-w-0 max-w-full break-all rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-stone-700">⚙ {label}</code>
+                  {mutating &&
+                    (undone.has(key) ? (
+                      <span className="text-xs text-muted-foreground">{t("ask.undone")}</span>
+                    ) : (
+                      <button type="button" className={CHIP} disabled={busy.has(key)} aria-label={t("ask.undoLabel", { call: label })} onClick={() => onUndo(key, call)}>
+                        {busy.has(key) ? t("ask.undoing") : t("ask.undo")}
+                      </button>
+                    ))}
+                </div>
+                {call.result && <p className="break-words text-xs text-muted-foreground">{call.result}</p>}
+                {errors[key] && (
+                  <p role="alert" className="text-xs text-red-700">
+                    {errors[key]}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {message.actions.map((action) => (
+        <ActionItem key={action.id} action={action} busy={busy.has(`action:${action.id}`)} error={errors[`action:${action.id}`]} onDecide={onDecide} />
+      ))}
+    </li>
+  );
+}
+
+function ActionItem({
+  action, busy, error, onDecide,
+}: {
+  action: AskAction;
+  busy: boolean;
+  error: string | undefined;
+  onDecide: (action: AskAction, decision: "confirm" | "dismiss") => void;
+}) {
+  const payload = parseBulkPayload(action.payload);
+  if (action.kind !== "bulk_selection" || !payload) return null;
+  const n = payload.momentIds.length;
+  const summary = payload.status
+    ? n === 1
+      ? t("ask.bulkSetOne", { status: t(`ask.bulkStatus.${payload.status}`) })
+      : t("ask.bulkSet", { n, status: t(`ask.bulkStatus.${payload.status}`) })
+    : n === 1
+      ? t("ask.bulkClearOne")
+      : t("ask.bulkClear", { n });
+  return (
+    <div className="grid gap-1.5 rounded-lg border border-border bg-stone-50 p-2">
+      <p className="text-xs">{summary}</p>
+      {action.status === "pending" ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, "confirm")}>
+            {busy ? t("ask.bulkApplying") : n === 1 ? t("ask.bulkApplyOne") : t("ask.bulkApply", { n })}
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDecide(action, "dismiss")}>
+            {t("ask.bulkDismiss")}
+          </Button>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">{action.status === "confirmed" ? t("ask.bulkApplied") : t("ask.bulkDismissed")}</p>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}

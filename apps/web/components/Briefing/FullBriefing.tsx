@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   formatMinutes, formatTimestamp, type ClipStatus, type HighlightTypeId, type MomentWithHighlights, type SelectionStatus, type Topic,
 } from "@digestor/core";
+import { AskDrawer } from "@/components/Ask/AskDrawer";
 import { AppBar } from "@/components/AppBar";
 import {
   DEFAULT_FILTERS, SHOW_HIDDEN_FILTERS, filterMoments, fromSearchParams, groupByTopic, hiddenApprovedCount, toSearchParams,
@@ -228,9 +229,12 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
           <Link href={`/s/${session.id}`} className="text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand">
             {t("briefing.backToPreview")}
           </Link>
-          <h1 lang={lang} dir="auto" className="mt-1 text-xl font-bold tracking-tight break-words">
-            {session.title}
-          </h1>
+          <div className="mt-1 flex items-start justify-between gap-3">
+            <h1 lang={lang} dir="auto" className="min-w-0 text-xl font-bold tracking-tight break-words">
+              {session.title}
+            </h1>
+            <AskDrawer sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} />
+          </div>
           <p className="mt-1 font-mono text-xs text-muted-foreground">
             {t("briefing.title")} · {t("preview.analysisVersion", { n: analysis.version })}
           </p>

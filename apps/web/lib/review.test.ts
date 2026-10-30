@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MomentWithHighlights } from "@digestor/core";
 import type { MomentView } from "./briefingFilters";
 import {
-  actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, keyToAction, moveFocus, resolveFocus, type KeyInput,
+  actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, keyToAction, moveFocus, opensAsk, resolveFocus, type KeyInput,
 } from "./review";
 
 let n = 0;
@@ -165,5 +165,20 @@ describe("status mapping", () => {
     expect(asClipStatus("approved")).toBe("approved");
     expect(asSelection("proposed")).toBeNull();
     expect(asSelection("rejected")).toBe("rejected");
+  });
+});
+
+describe("opensAsk", () => {
+  const e = { key: "/", metaKey: false, ctrlKey: false, altKey: false, defaultPrevented: false };
+  const free = { typing: false, dialogOpen: false };
+  it("opens on a plain slash", () => expect(opensAsk(e, free)).toBe(true));
+  it("not while typing, with a dialog open, with modifiers, when handled, or on other keys", () => {
+    expect(opensAsk(e, { ...free, typing: true })).toBe(false);
+    expect(opensAsk(e, { ...free, dialogOpen: true })).toBe(false);
+    expect(opensAsk({ ...e, ctrlKey: true }, free)).toBe(false);
+    expect(opensAsk({ ...e, metaKey: true }, free)).toBe(false);
+    expect(opensAsk({ ...e, altKey: true }, free)).toBe(false);
+    expect(opensAsk({ ...e, defaultPrevented: true }, free)).toBe(false);
+    expect(opensAsk({ ...e, key: "a" }, free)).toBe(false);
   });
 });
