@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JOB_OPTIONS, PROFILES, ProfileIdSchema, QUEUES } from "@digestor/core";
-import { getRunningAnalysis } from "@digestor/core/server";
+import { claimAnalysisVersion, failAnalysisVersion } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { QUEUE_FAILED, readySession } from "@/lib/personal";
@@ -24,16 +24,18 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const { db, boss } = getServer();
   const ready = await readySession(db, id);
   if ("error" in ready) return ready.error;
-  if (await getRunningAnalysis(db, id)) return errorResponse(409, "A re-analysis is already running for this video.");
 
   const { profile } = parsed.data;
   const reason = parsed.data.reason ?? `Re-analysed as ${PROFILES[profile].label}`;
+  // Claimed in the database (queues are standard, so the job layer can't dedupe): one running version per session.
+  const claimed = await claimAnalysisVersion(db, id, { profile, reason });
+  if (!claimed) return errorResponse(409, "A re-analysis is already running for this video.");
   try {
-    // The worker creates the version row, so the singleton key stops a double click from queueing two.
-    await boss.send(QUEUES.reanalyze, { sessionId: id, profile, reason }, { ...JOB_OPTIONS, singletonKey: `reanalyze:${id}` });
+    await boss.send(QUEUES.reanalyze, { sessionId: id, profile, reason, analysisId: claimed.id }, JOB_OPTIONS);
   } catch (err) {
     console.error("reanalyze: enqueue failed", err);
+    await failAnalysisVersion(db, claimed.id).catch((e: unknown) => console.error("reanalyze: rollback failed", e));
     return errorResponse(503, QUEUE_FAILED);
   }
-  return Response.json({ status: "queued" }, { status: 202 });
+  return Response.json({ status: "queued", analysisId: claimed.id }, { status: 202 });
 }

@@ -9,6 +9,7 @@ import {
 import {
   completeAnalysisVersion,
   getContextCard,
+  getRunningAnalysis,
   getSession,
   getTranscript,
   saveBriefing,
@@ -110,7 +111,7 @@ async function prepareTopHighlights(
  *   attempt, fails the version when it gives up (deterministic error or final attempt; see `jobs.ts`).
  * - On success `sessions.profile` follows the profile of the new current version.
  */
-export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: { profile: ProfileId; reason: string }): Promise<void> {
+export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: { profile: ProfileId; reason: string; analysisId?: string }): Promise<void> {
   const { db, llm } = deps;
   const [session, transcript, stored] = await Promise.all([
     getSession(db, sessionId),
@@ -126,6 +127,14 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
   };
   const card = withProfile(stored.card, opts.profile);
 
+  if (opts.analysisId) {
+    // A version claimed by the web route: only fill it while it is still this session's running one.
+    const claimed = await getRunningAnalysis(db, sessionId);
+    if (claimed?.id !== opts.analysisId) {
+      console.log(`Ignoring analysis ${opts.analysisId} of ${sessionId}: it is no longer running`);
+      return;
+    }
+  }
   const version = await startAnalysisVersion(db, sessionId, {
     profile: opts.profile,
     reason: opts.reason,

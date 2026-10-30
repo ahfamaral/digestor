@@ -7,6 +7,13 @@ import {
 const ID = "6f1c1d1e-2b8a-4c55-9a3e-0c4a2f6b8d10";
 
 describe("JOB_OPTIONS", () => {
+  it("ReanalyzeJobSchema takes an optional analysisId", () => {
+    const base = { sessionId: ID, profile: "parliament", reason: "r" };
+    expect(ReanalyzeJobSchema.parse({ ...base, analysisId: ID }).analysisId).toBe(ID);
+    expect(ReanalyzeJobSchema.parse(base).analysisId).toBeUndefined();
+    expect(ReanalyzeJobSchema.safeParse({ ...base, analysisId: "x" }).success).toBe(false);
+  });
+
   it("is the single source of queue and send options: retries, 12 h expiry and a 60 s heartbeat", () => {
     expect(JOB_OPTIONS).toEqual({ retryLimit: 2, retryDelay: 30, expireInSeconds: 43200, heartbeatSeconds: 60 });
   });

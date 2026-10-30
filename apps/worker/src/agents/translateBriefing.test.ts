@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BriefingContent } from "@digestor/core";
 import { FakeLLM } from "../llm/structured.js";
 import { MissingApiKeyError } from "../errors.js";
@@ -46,17 +46,26 @@ describe("translateBriefing", () => {
     expect(llm.calls[0]!.system).toContain("Portuguese");
   });
 
-  it("a skipped sentence keeps its original; a skipped quote has an empty translation; extra lines are ignored", async () => {
-    const llm = new FakeLLM([{ lines: [{ n: 2, text: "T2" }, { n: 3, text: "T3" }, { n: 99, text: "junk" }] }]);
-    const out = await translateBriefing(llm, content, "pt");
-    expect(out.lead[0]!.text).toBe("The minister defended the budget."); // line 1 missing -> original
-    expect(out.sections[0]!.summary.map((s) => s.text)).toEqual(["T2", "T3"]);
-    expect(out.sections[0]!.keyQuote).toMatchObject({ original: "We will build 42 hospitals.", translation: "" });
-    expect(out.sections[1]!.summary[0]!.text).toBe("A short vote followed.");
+  it("a few skipped lines keep their originals (and are logged); extra lines are ignored", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const big: BriefingContent = {
+      lead: Array.from({ length: 10 }, (_, i) => ({ text: `S${i + 1}`, momentIds: [M1] })),
+      sections: [{ topicId: "t", summary: [], keyQuote: { momentId: M1, text: "Quote" } }],
+    };
+    // 11 lines; the model skips line 1 (9%) and the quote (line 11) -> 2/11 = 18% is tolerated
+    const lines = Array.from({ length: 9 }, (_, i) => ({ n: i + 2, text: `T${i + 2}` }));
+    const out = await translateBriefing(new FakeLLM([{ lines: [...lines, { n: 99, text: "junk" }] }]), big, "pt");
+    expect(out.lead[0]!.text).toBe("S1");
+    expect(out.lead[1]!.text).toBe("T2");
+    expect(out.sections[0]!.keyQuote).toMatchObject({ original: "Quote", translation: "" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("2 of 11 lines"));
+    log.mockRestore();
   });
 
-  it("throws when nothing usable comes back, and rethrows a missing key", async () => {
-    await expect(translateBriefing(new FakeLLM([{ lines: [] }]), content, "pt")).rejects.toThrow("no usable translation");
+  it("throws when more than 20% of the lines are missing, and rethrows a missing key", async () => {
+    // 5 lines, 2 missing = 40%
+    await expect(translateBriefing(new FakeLLM([{ lines: [{ n: 2, text: "T2" }, { n: 3, text: "T3" }, { n: 4, text: "T4" }] }]), content, "pt")).rejects.toThrow("skipped 2 of 5");
+    await expect(translateBriefing(new FakeLLM([{ lines: [] }]), content, "pt")).rejects.toThrow("skipped 5 of 5");
     const keyless = new FakeLLM({ byName: { translate_briefing: [() => { throw new MissingApiKeyError("ANTHROPIC_API_KEY"); }] } });
     await expect(translateBriefing(keyless, content, "pt")).rejects.toBeInstanceOf(MissingApiKeyError);
   });

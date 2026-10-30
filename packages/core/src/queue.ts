@@ -25,6 +25,8 @@ export const ReanalyzeJobSchema = z.object({
   sessionId: z.string().uuid(),
   profile: ProfileIdSchema,
   reason: z.string().trim().min(1).max(500),
+  /** The `running` version the web route claimed for this job; absent in older payloads (the worker then starts one). */
+  analysisId: z.string().uuid().optional(),
 });
 export type ReanalyzeJob = z.infer<typeof ReanalyzeJobSchema>;
 

@@ -65,6 +65,37 @@ export async function startAnalysisVersion(
 }
 
 /**
+ * Claims a re-analysis: under an advisory lock for the session, inserts the next `running` version row, or returns
+ * null when one is already running. Lets the web route refuse a double click before any paid job is queued; the
+ * worker then fills the claimed version (`startAnalysisVersion` reuses a running one).
+ */
+export async function claimAnalysisVersion(
+  db: Db,
+  sessionId: string,
+  meta: Pick<AnalysisMeta, "profile" | "reason">,
+): Promise<{ id: string; version: number } | null> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sessionId}))`);
+    await tx.execute(sql`select id from ${sessions} where ${sessions.id} = ${sessionId} for update`);
+    const [running] = await tx
+      .select({ id: analysisVersions.id })
+      .from(analysisVersions)
+      .where(and(eq(analysisVersions.sessionId, sessionId), eq(analysisVersions.status, "running")));
+    if (running) return null;
+    const [max] = await tx
+      .select({ v: sql<number>`coalesce(max(${analysisVersions.version}), 0)::int` })
+      .from(analysisVersions)
+      .where(eq(analysisVersions.sessionId, sessionId));
+    const version = (max?.v ?? 0) + 1;
+    const [row] = await tx
+      .insert(analysisVersions)
+      .values({ sessionId, version, status: "running", pipelineVersion: PIPELINE_VERSION, models: {}, promptVersions: {}, ...meta })
+      .returning({ id: analysisVersions.id });
+    return { id: row!.id, version };
+  });
+}
+
+/**
  * Atomically completes a `running` version and makes it the session's only current one. Takes the same session row
  * lock as `startAnalysisVersion`, so concurrent completes of two versions serialise instead of deadlocking.
  * Throws when the version is missing or not running (a failed or already complete version never becomes current).

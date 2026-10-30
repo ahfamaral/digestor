@@ -2,6 +2,9 @@ import { LANGUAGES, type BriefingContent, type TranslatedBriefingContent } from 
 import type { StructuredLLM } from "../llm/structured.js";
 import { BATCH_SIZE, TranslationOutput, normalizeTranslation } from "./translate.js";
 
+/** More skipped lines than this share of the briefing fail the call, so the job retries. */
+export const MAX_MISSING_SHARE = 0.2;
+
 const label = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? code;
 
 /**
@@ -29,7 +32,11 @@ export async function translateBriefing(llm: StructuredLLM, content: BriefingCon
     const raw = await llm.generate({ schema: TranslationOutput, name: "translate_briefing", system, user, model: "fast" });
     translated.push(...normalizeTranslation(batch, raw));
   }
-  if (lines.length > 0 && translated.every((t) => t.missing)) throw new Error("The model returned no usable translation");
+  const missing = translated.filter((t) => t.missing).length;
+  if (missing > lines.length * MAX_MISSING_SHARE) {
+    throw new Error(`The model skipped ${missing} of ${lines.length} lines (more than ${MAX_MISSING_SHARE * 100}%)`);
+  }
+  if (missing > 0) console.error(`[translate_briefing] ${missing} of ${lines.length} lines came back empty; kept the originals`);
 
   let next = 0;
   /** The next translated line, in the order the lines were collected; "" when the model skipped it. */

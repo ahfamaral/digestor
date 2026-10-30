@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AUDIO_ONLY_WARNING, UPLOAD_UNSUPPORTED, isAudioExtension, isUploadExtension } from "@digestor/core";
-import { createSession, updateSession, UploadTooLargeError } from "@digestor/core/server";
+import { createSession, UploadTooLargeError } from "@digestor/core/server";
 import { authCookieFrom, isAuthorized } from "@/lib/auth";
 import { errorResponse } from "@/lib/http";
 import { sendStart } from "@/lib/jobs";
@@ -46,8 +46,7 @@ export async function PUT(req: Request): Promise<Response> {
   }
 
   const hint = params.get("hint")?.trim() || null;
-  await createSession(db, { id: sessionId, title: filename.slice(0, dot), source: "upload", originalKey, hint });
-  if (audioOnly) await updateSession(db, sessionId, { audioOnlyAck: true });
+  await createSession(db, { id: sessionId, title: filename.slice(0, dot), source: "upload", originalKey, hint, audioOnlyAck: audioOnly });
   await sendStart(boss, sessionId);
   return Response.json({ sessionId });
 }

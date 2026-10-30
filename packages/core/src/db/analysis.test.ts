@@ -3,7 +3,7 @@ import pg from "pg";
 import { createDb, type Db } from "./client.ts";
 import {
   completeAnalysisVersion, failAnalysisVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation, listAnalysisVersions,
-  deletePendingTranslation, failTranslation, requestTranslation, saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
+  claimAnalysisVersion, deletePendingTranslation, failTranslation, requestTranslation, saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
   type NewMoment,
 } from "./analysis.ts";
 import { createSession, deleteSession, getSession, setStage, transitionStage, updateSession, type Session } from "./repo.ts";
@@ -156,6 +156,21 @@ describe("analysis versions", () => {
     expect(await getTranslation(db, v.id, "pt", "briefing")).toEqual({ status: "ready", content: { a: 2 }, error: null });
     await deleteSession(db, s.id);
     expect(await getRunningAnalysis(db, s.id)).toBeNull();
+  });
+});
+
+describe("claimAnalysisVersion", () => {
+  it("inserts one running version, refuses while one runs, and startAnalysisVersion reuses the claimed row", async () => {
+    const [a, b] = await Promise.all([
+      claimAnalysisVersion(db, s.id, { profile: "other", reason: "x" }),
+      claimAnalysisVersion(db, s.id, { profile: "other", reason: "x" }),
+    ]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    const claimed = (a ?? b)!;
+    expect(await getRunningAnalysis(db, s.id)).toMatchObject({ id: claimed.id, version: claimed.version, profile: "other" });
+    expect(await startAnalysisVersion(db, s.id, META)).toEqual(claimed);
+    await failAnalysisVersion(db, claimed.id);
+    expect(await claimAnalysisVersion(db, s.id, { profile: "other", reason: "y" })).toMatchObject({ version: claimed.version + 1 });
   });
 });
 

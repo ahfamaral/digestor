@@ -5,7 +5,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ContextCard, Fact, Transcript, Word } from "@digestor/core";
 import {
   LocalStorage,
+  claimAnalysisVersion,
   createDb,
+  failAnalysisVersion,
   createSession,
   getCurrentAnalysis,
   getMoment,
@@ -267,6 +269,27 @@ describe("re-analysis and check jobs", () => {
     // The moments prompt of the re-analysis uses the new profile's types.
     const lastMoments = fake.calls.filter((c: FakeCall) => c.name === "moments").at(-1)!;
     expect(lastMoments.system).toContain("strong_argument");
+  });
+
+  it("a reanalysis job fills the version it carries, and ignores one that is no longer running", async () => {
+    const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS, runs: 2 }) });
+    const { deps } = mkDeps(fake);
+    const id = await seed();
+    await runAnalysis(deps, id, { profile: "interview", reason: "initial" });
+    const claimed = (await claimAnalysisVersion(db, id, { profile: "parliament", reason: "r" }))!;
+    const attempt = { retryCount: 0, retryLimit: 2 };
+    await handleReanalyze(ctxFor(deps), { sessionId: id, profile: "parliament", reason: "r", analysisId: claimed.id }, attempt);
+    const rows = await versionsOf(id);
+    expect(rows.map((r) => [r.id === claimed.id ? "claimed" : "old", r.version, r.status])).toEqual([["old", 1, "complete"], ["claimed", 2, "complete"]]);
+    expect((await getCurrentAnalysis(db, id))!.version.id).toBe(claimed.id);
+
+    // a job whose version was failed meanwhile (e.g. swept) does nothing and starts no new version
+    const gone = (await claimAnalysisVersion(db, id, { profile: "un", reason: "r" }))!;
+    await failAnalysisVersion(db, gone.id);
+    const calls = fake.calls.length;
+    await handleReanalyze(ctxFor(deps), { sessionId: id, profile: "un", reason: "r", analysisId: gone.id }, attempt);
+    expect(fake.calls).toHaveLength(calls);
+    expect(await versionsOf(id)).toHaveLength(3);
   });
 
   it("a reanalysis that gives up fails its version and leaves the session ready on the old one", async () => {

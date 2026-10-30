@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import {
-  completeAnalysisVersion, createAskAction, getAskMessage, listAskMessages, listProblemReports, listSelections, saveTranslation,
+  completeAnalysisVersion, getRunningAnalysis, listAnalysisVersions, createAskAction, getAskMessage, listAskMessages, listProblemReports, listSelections, saveTranslation,
   startAnalysisVersion, createSession, updateSession, getTranslation, addAskMessage, getMoment, setMomentChecks,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
@@ -133,9 +133,7 @@ describe("briefing translations", () => {
 
     const res = await postTranslation(req({ language: "pt" }), ctx(analysisId));
     expect(res.status).toBe(202);
-    expect(h.send).toHaveBeenCalledWith(
-      QUEUES.translateBriefing, { analysisId, language: "pt" }, { ...JOB_OPTIONS, singletonKey: `${analysisId}:pt` },
-    );
+    expect(h.send).toHaveBeenCalledWith(QUEUES.translateBriefing, { analysisId, language: "pt" }, JOB_OPTIONS);
     expect(await (await get("pt")).json()).toEqual({ status: "pending" });
 
     await saveTranslation(h.db, analysisId, "pt", "briefing", { lead: [] });
@@ -180,29 +178,42 @@ describe("POST /api/sessions/[id]/reanalyze", () => {
     const { sessionId } = await seedReadySession(h.db);
     const ok = await reanalyze(req({ profile: "parliament" }), ctx(sessionId));
     expect(ok.status).toBe(202);
+    const running = (await getRunningAnalysis(h.db, sessionId))!;
+    expect(running).toMatchObject({ version: 2, profile: "parliament", reason: "Re-analysed as Parliament" });
     expect(h.send).toHaveBeenCalledWith(
       QUEUES.reanalyze,
-      { sessionId, profile: "parliament", reason: "Re-analysed as Parliament" },
-      { ...JOB_OPTIONS, singletonKey: `reanalyze:${sessionId}` },
+      { sessionId, profile: "parliament", reason: "Re-analysed as Parliament", analysisId: running.id },
+      JOB_OPTIONS,
     );
-    const v = await startAnalysisVersion(h.db, sessionId, { profile: "parliament", reason: "x", models: {}, promptVersions: {} });
     h.send.mockClear();
     const res = await reanalyze(req({ profile: "parliament" }), ctx(sessionId));
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "A re-analysis is already running for this video." });
     expect(h.send).not.toHaveBeenCalled();
-    await completeAnalysisVersion(h.db, v.id);
+    await completeAnalysisVersion(h.db, running.id);
     expect((await reanalyze(req({ profile: "un", reason: "Wrong kind" }), ctx(sessionId))).status).toBe(202);
-    expect(h.send).toHaveBeenCalledWith(QUEUES.reanalyze, { sessionId, profile: "un", reason: "Wrong kind" }, expect.anything());
+    expect(h.send).toHaveBeenCalledWith(QUEUES.reanalyze, expect.objectContaining({ sessionId, profile: "un", reason: "Wrong kind" }), JOB_OPTIONS);
   });
 
-  it("validates the profile, readiness and the enqueue", async () => {
+  it("two parallel POSTs give one 202, one 409, one new version and one job", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    const [a, b] = await Promise.all([reanalyze(req({ profile: "other" }), ctx(sessionId)), reanalyze(req({ profile: "other" }), ctx(sessionId))]);
+    expect([a.status, b.status].sort()).toEqual([202, 409]);
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect((await listAnalysisVersions(h.db, sessionId)).map((v) => v.version)).toEqual([1, 2]);
+  });
+
+  it("validates the profile and readiness; a failed enqueue fails the claimed version and answers 503", async () => {
     const { sessionId } = await seedReadySession(h.db);
     expect((await reanalyze(req({ profile: "nope" }), ctx(sessionId))).status).toBe(400);
     expect((await reanalyze(req({}), ctx(sessionId))).status).toBe(400);
     expect((await reanalyze(req({ profile: "other" }), ctx("nope"))).status).toBe(404);
     h.send.mockRejectedValueOnce(new Error("boom"));
     expect((await reanalyze(req({ profile: "other" }), ctx(sessionId))).status).toBe(503);
+    expect(await getRunningAnalysis(h.db, sessionId)).toBeNull();
+    expect((await listAnalysisVersions(h.db, sessionId)).map((v) => v.status)).toEqual(["complete", "failed"]);
+    // the user can try again
+    expect((await reanalyze(req({ profile: "other" }), ctx(sessionId))).status).toBe(202);
     await updateSession(h.db, sessionId, { stage: "failed" });
     expect((await reanalyze(req({ profile: "other" }), ctx(sessionId))).status).toBe(409);
   });

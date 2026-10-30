@@ -55,7 +55,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
   await requestTranslation(db, id, language, "briefing");
   try {
-    await boss.send(QUEUES.translateBriefing, { analysisId: id, language }, { ...JOB_OPTIONS, singletonKey: `${id}:${language}` });
+    await boss.send(QUEUES.translateBriefing, { analysisId: id, language }, JOB_OPTIONS);
   } catch (err) {
     console.error("translations: enqueue failed", err);
     await deletePendingTranslation(db, id, language, "briefing").catch((e: unknown) => console.error("translations: rollback failed", e));

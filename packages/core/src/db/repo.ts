@@ -14,6 +14,7 @@ export async function createSession(
     sourceUrl?: string;
     originalKey?: string;
     hint?: string | null;
+    audioOnlyAck?: boolean;
   },
 ): Promise<Session> {
   const [row] = await db
@@ -25,6 +26,7 @@ export async function createSession(
       sourceUrl: input.sourceUrl ?? null,
       originalKey: input.originalKey ?? null,
       hint: input.hint ?? null,
+      audioOnlyAck: input.audioOnlyAck ?? false,
     })
     .returning();
   return row!;

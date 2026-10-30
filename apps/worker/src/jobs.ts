@@ -137,7 +137,7 @@ export async function handleReanalyze(ctx: JobContext, job: ReanalyzeJob, attemp
     return;
   }
   try {
-    await runAnalysis(ctx.deps, job.sessionId, { profile: job.profile, reason: job.reason });
+    await runAnalysis(ctx.deps, job.sessionId, { profile: job.profile, reason: job.reason, analysisId: job.analysisId });
   } catch (err) {
     const deterministic = isDeterministic(err);
     if (deterministic || attempt.retryCount >= attempt.retryLimit) {
