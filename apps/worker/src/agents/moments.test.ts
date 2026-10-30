@@ -1,0 +1,214 @@
+import { describe, expect, it } from "vitest";
+import type { Boundary, ContextCard, Fact, Topic, Transcript, Word } from "@digestor/core";
+import { findMoments, normalizeMoments } from "./moments.js";
+import { FakeLLM, type StructuredLLM } from "../llm/structured.js";
+import { MissingApiKeyError } from "../errors.js";
+
+const MIN = 60_000;
+const none: Fact = { value: null, source: null, evidence: null };
+const DURATION = 40 * MIN;
+const boundaries: Boundary[] = Array.from({ length: DURATION / 1000 + 1 }, (_, i) => ({
+  afterWordEndMs: i * 1000,
+  beforeWordStartMs: i * 1000 + 100,
+}));
+const ts = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  return `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+};
+const lm = (o: Partial<Record<string, unknown>> & { a: number; b: number }) => ({
+  title: "Moment",
+  why: "Because.",
+  highlightTypes: ["heated"],
+  relevance: 70,
+  granularity: "exchange",
+  start: ts(o.a),
+  end: ts(o.b),
+  evidence: ["word"],
+  ...o,
+  a: undefined,
+  b: undefined,
+});
+const clean = (o: ReturnType<typeof lm>) => {
+  const { a: _a, b: _b, ...rest } = o as Record<string, unknown>;
+  return rest;
+};
+const m = (o: Parameters<typeof lm>[0]) => clean(lm(o));
+
+function card(profile: ContextCard["profile"]["value"] = "parliament"): ContextCard {
+  return {
+    language: none,
+    profile: { value: profile, confidence: 0.9, evidence: "x" },
+    title: none,
+    summary: "A session.",
+    setting: none,
+    dateOrYear: none,
+    participants: [],
+    sufficient: true,
+    openQuestions: [],
+  };
+}
+/** One sentence-ending word per second; speaker A until `switchAtS`, then B. */
+function makeTranscript(switchAtS = 1500): Transcript {
+  const words: Word[] = Array.from({ length: DURATION / 1000 }, (_, i) => ({
+    text: "word.",
+    startMs: i * 1000,
+    endMs: i * 1000 + 500,
+    speaker: i < switchAtS ? "A" : "B",
+    confidence: 0.99,
+  }));
+  return { words, durationMs: DURATION, language: "en", languageConfidence: 0.99 };
+}
+const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
+  id,
+  analysisId: "an",
+  idx,
+  startMs,
+  endMs,
+  title: `Topic ${id}`,
+  summary: "",
+});
+const twoTopics = [topic("t1", 0, 0, 20 * MIN), topic("t2", 1, 20 * MIN, DURATION)];
+const oneTopic = [topic("t1", 0, 0, DURATION)];
+
+describe("normalizeMoments", () => {
+  it("drops and clamps per item", () => {
+    const raw = [
+      m({ a: 5 * MIN, b: 10 * MIN, title: "good" }),
+      m({ a: 12 * MIN, b: 16 * MIN, title: "hot", relevance: 140 }),
+      m({ a: 17 * MIN, b: 20 * MIN, title: "spicy+heated", highlightTypes: ["spicy", "heated"] }),
+      m({ a: 21 * MIN, b: 24 * MIN, title: "spicy only", highlightTypes: ["spicy"] }),
+      m({ a: 26 * MIN, b: 25 * MIN, title: "reversed" }),
+      m({ a: 35 * MIN, b: 38 * MIN, title: "outside" }),
+      m({ a: 27 * MIN, b: 27 * MIN + 30_000, title: "too short" }),
+      m({ a: 28 * MIN, b: 29 * MIN, title: "chapter", granularity: "chapter" }),
+    ] as never;
+    const out = normalizeMoments(raw, {
+      durationMs: DURATION,
+      boundaries,
+      within: { startMs: 0, endMs: 30 * MIN },
+      allowed: ["exchange", "passage"],
+      types: ["heated", "key_point"],
+    });
+    expect(out.map((x) => x.title)).toEqual(["hot", "good", "spicy+heated", "spicy only"]);
+    expect(out[0]!.relevance).toBe(100);
+    expect(out[2]!.highlightTypes).toEqual(["heated"]);
+    expect(out[3]!.highlightTypes).toEqual([]);
+    expect(out[1]!.startMs).toBe(5 * MIN);
+  });
+
+  it("rounds relevance and filters types to the allowed ones", () => {
+    const out = normalizeMoments([m({ a: 0, b: 2 * MIN, relevance: 55.6, highlightTypes: ["laughter", "heated"] })] as never, {
+      durationMs: DURATION,
+      boundaries,
+      within: { startMs: 0, endMs: DURATION },
+      allowed: ["exchange"],
+      types: ["heated"],
+    });
+    expect(out[0]).toMatchObject({ relevance: 56, highlightTypes: ["heated"] });
+  });
+});
+
+describe("findMoments", () => {
+  it("survives one failed topic call", async () => {
+    const fake = new FakeLLM({
+      byName: {
+        moments: [{ moments: [m({ a: 21 * MIN, b: 26 * MIN, title: "second topic" })] }],
+        punchlines: [{ punchlines: [] }],
+      },
+    });
+    let first = true;
+    const llm: StructuredLLM = {
+      generate: (a) => {
+        if (a.name === "moments" && first) {
+          first = false;
+          return Promise.reject(new Error("boom"));
+        }
+        return fake.generate(a);
+      },
+    };
+    const out = await findMoments(llm, { card: card(), transcript: makeTranscript(), topics: twoTopics });
+    const ai = out.filter((x) => x.origin === "ai");
+    expect(ai.map((x) => x.title)).toEqual(["second topic"]);
+    expect(ai[0]).toMatchObject({ topicId: "t2", speakers: ["A", "B"], origin: "ai" });
+    expect(ai[0]!.highlights).toEqual([{ type: "heated", method: "ai", value: null }]);
+  });
+
+  it("rethrows a MissingApiKeyError instead of degrading", async () => {
+    const llm: StructuredLLM = {
+      generate: () => Promise.reject(new MissingApiKeyError("ANTHROPIC_API_KEY")),
+    };
+    await expect(findMoments(llm, { card: card(), transcript: makeTranscript(), topics: oneTopic })).rejects.toBeInstanceOf(
+      MissingApiKeyError,
+    );
+  });
+
+  it("punchlines lie inside their exchange and link to it", async () => {
+    const fake = new FakeLLM({
+      byName: {
+        moments: [
+          {
+            moments: [
+              m({ a: 2 * MIN, b: 8 * MIN, title: "exchange" }),
+              m({ a: 3 * MIN, b: 3 * MIN + 60_000, title: "passage", granularity: "passage" }),
+            ],
+          },
+        ],
+        punchlines: [
+          {
+            punchlines: [
+              m({ a: 4 * MIN, b: 4 * MIN + 20_000, title: "inside", granularity: "punchline" }),
+              m({ a: 9 * MIN, b: 9 * MIN + 20_000, title: "outside", granularity: "punchline" }),
+            ],
+          },
+        ],
+      },
+    });
+    const out = await findMoments(fake, { card: card("interview"), transcript: makeTranscript(), topics: oneTopic });
+    const ex = out.findIndex((x) => x.title === "exchange");
+    const pl = out.find((x) => x.title === "inside")!;
+    expect(out.map((x) => x.title).sort()).toEqual(["exchange", "inside", "passage"]);
+    expect(pl.granularity).toBe("punchline");
+    expect(pl.insideIdx).toBe(ex);
+    expect(pl.startMs).toBeGreaterThanOrEqual(out[ex]!.startMs);
+    expect(pl.endMs).toBeLessThanOrEqual(out[ex]!.endMs);
+    expect(out.find((x) => x.title === "passage")!.insideIdx).toBe(ex);
+    expect(out[ex]!.insideIdx).toBeUndefined();
+    expect(fake.calls.filter((c) => c.name === "punchlines")).toHaveLength(1);
+  });
+
+  it("caps: 8 exchanges per topic by relevance, 4 punchlines per exchange", async () => {
+    const exchanges = Array.from({ length: 15 }, (_, i) =>
+      m({ a: i * 150_000, b: i * 150_000 + 100_000, title: `E${i}`, relevance: 10 + i * 5 }),
+    );
+    const best = 14 * 150_000; // E14 has the highest relevance
+    const punchlines = Array.from({ length: 6 }, (_, i) =>
+      m({ a: best + 10_000 + i * 15_000, b: best + 20_000 + i * 15_000, title: `P${i}`, granularity: "punchline", relevance: 50 + i }),
+    );
+    const fake = new FakeLLM({
+      byName: {
+        moments: [{ moments: exchanges }],
+        punchlines: [{ punchlines }, ...Array.from({ length: 7 }, () => ({ punchlines: [] }))],
+      },
+    });
+    const out = await findMoments(fake, { card: card("interview"), transcript: makeTranscript(), topics: oneTopic });
+    const ex = out.filter((x) => x.granularity === "exchange");
+    expect(ex.map((x) => x.title).sort()).toEqual(["E10", "E11", "E12", "E13", "E14", "E7", "E8", "E9"].sort());
+    const pls = out.filter((x) => x.granularity === "punchline");
+    expect(pls).toHaveLength(4);
+    expect(pls.map((x) => x.title).sort()).toEqual(["P2", "P3", "P4", "P5"]);
+    const parent = out.findIndex((x) => x.title === "E14");
+    for (const p of pls) expect(p.insideIdx).toBe(parent);
+    expect(fake.calls.filter((c) => c.name === "punchlines")).toHaveLength(8);
+  });
+
+  it("adds the counted longest speech for parliament only", async () => {
+    const empty = () => new FakeLLM({ byName: { moments: [{ moments: [] }], punchlines: [] } });
+    const parl = await findMoments(empty(), { card: card("parliament"), transcript: makeTranscript(), topics: oneTopic });
+    expect(parl).toHaveLength(1);
+    expect(parl[0]).toMatchObject({ origin: "counted", granularity: "exchange", speakers: ["A"], topicId: "t1" });
+    expect(parl[0]!.highlights).toEqual([{ type: "longest_speech", method: "counted", value: expect.any(Number) }]);
+    expect(parl[0]!.endMs - parl[0]!.startMs).toBeGreaterThan(1_200_000); // no upper cap
+    const interview = await findMoments(empty(), { card: card("interview"), transcript: makeTranscript(), topics: oneTopic });
+    expect(interview).toHaveLength(0);
+  });
+});
