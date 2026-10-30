@@ -1,24 +1,28 @@
-import { writeFile } from "node:fs/promises";
 import type { TrackCue } from "@digestor/core";
 import {
-  getClip, getSession, getTrack, getTranscript, setTrackCues, setTrackFiles, type Db, type LocalStorage,
+  failTrack, getClip, getSession, getTrack, getTranscript, setTrackCues, type Db,
 } from "@digestor/core/server";
 import { translateCues } from "../agents/translate.js";
 import type { StructuredLLM } from "../llm/structured.js";
-import { buildCues, buildSrt, buildVtt, type Cue } from "../media/subtitles.js";
+import { buildCues } from "../media/subtitles.js";
 
-export type TrackDeps = { db: Db; storage: LocalStorage; llm: StructuredLLM };
+export type TrackDeps = { db: Db; llm: StructuredLLM };
 
 /**
  * Builds a track's cues from the clip's words (translating when the language differs from the session's), stores them
- * and writes the .srt/.vtt files. Throws on failure: the job handler decides between retry and marking it failed.
+ (SRT/VTT are rendered from the cues on download, so edits always show). Does nothing unless the
+ * track is still `preparing`, so a duplicate job never wipes edits. Throws on failure: the job handler decides between retry and marking it failed.
  * Idempotent: a retry rebuilds the same rows and files.
  */
 export async function prepareTrack(deps: TrackDeps, trackId: string): Promise<void> {
-  const { db, storage, llm } = deps;
+  const { db, llm } = deps;
   const track = await getTrack(db, trackId);
   if (!track) {
     console.log(`Ignoring track ${trackId}: not found`);
+    return;
+  }
+  if (track.status !== "preparing") {
+    console.log(`Ignoring track ${trackId}: already ${track.status}`);
     return;
   }
   const clip = await getClip(db, track.clipId);
@@ -30,6 +34,10 @@ export async function prepareTrack(deps: TrackDeps, trackId: string): Promise<vo
   if (!session || !transcript) throw new Error(`Track ${trackId}: session ${clip.sessionId} has no transcript`);
 
   const base = buildCues(transcript.words, clip);
+  if (base.length === 0) {
+    await failTrack(db, trackId, "This clip has no speech to subtitle.");
+    return;
+  }
   const original = base.map((c) => c.lines.join(" "));
   const sourceLang = session.language ?? transcript.language;
   const texts =
@@ -40,16 +48,5 @@ export async function prepareTrack(deps: TrackDeps, trackId: string): Promise<vo
   const cues: TrackCue[] = base.map((c, i) => ({
     startMs: c.startMs, endMs: c.endMs, original: original[i]!, text: texts[i]!.text, missing: texts[i]!.missing,
   }));
-  // Files show the track text; a gap is skipped rather than written as an empty cue.
-  const shown: Cue[] = [];
-  base.forEach((c, i) => {
-    if (cues[i]!.text) shown.push({ startMs: c.startMs, endMs: c.endMs, lines: track.language === sourceLang ? c.lines : [cues[i]!.text] });
-  });
-
-  const srtKey = storage.key(clip.sessionId, `clips/${clip.id}.${track.language}.srt`);
-  const vttKey = storage.key(clip.sessionId, `clips/${clip.id}.${track.language}.vtt`);
-  await writeFile(storage.resolve(srtKey), buildSrt(shown));
-  await writeFile(storage.resolve(vttKey), buildVtt(shown));
   await setTrackCues(db, trackId, cues, "ready");
-  await setTrackFiles(db, trackId, { srtKey, vttKey });
 }

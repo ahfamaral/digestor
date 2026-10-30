@@ -8,10 +8,9 @@ import {
   getRunningAnalysis,
   getSession,
   getTranscript,
-  getTrack,
+  failTrack,
   setMomentChecks,
   setStage,
-  setTrackCues,
   type Db,
 } from "@digestor/core/server";
 import { checkMoment } from "./agents/checks.js";
@@ -168,31 +167,27 @@ export async function handleCheckMoment(ctx: JobContext, job: CheckMomentJob, _a
   }
 }
 
-/** Marks a track failed, keeping any cues it has (setTrackCues flips the status only). */
-async function failTrack(db: Db, trackId: string): Promise<void> {
-  const track = await getTrack(db, trackId);
-  if (track && track.status !== "failed") await setTrackCues(db, trackId, track.cues, "failed");
-}
+const TRACK_FAILED = "The subtitles could not be prepared. Please try again.";
 
 /**
  * Builds a subtitle track. A missing key fails the track and completes the job; any other error is rethrown for
  * pg-boss to retry and only the final attempt marks the track failed.
  */
 export async function handlePrepareTrack(
-  ctx: Pick<JobContext, "db"> & { deps: Pick<PipelineDeps, "storage" | "llm"> },
+  ctx: Pick<JobContext, "db"> & { deps: Pick<PipelineDeps, "llm"> },
   job: PrepareTrackJob,
   attempt: Attempt,
 ): Promise<void> {
   const { db, deps } = ctx;
   try {
-    await prepareTrack({ db, storage: deps.storage, llm: deps.llm }, job.trackId);
+    await prepareTrack({ db, llm: deps.llm }, job.trackId);
   } catch (err) {
     if (isDeterministic(err)) {
       console.error(`[jobs] track ${job.trackId} failed: ${(err as Error).message}`);
-      await failTrack(db, job.trackId);
+      await failTrack(db, job.trackId, (err as Error).message);
       return;
     }
-    if (attempt.retryCount >= attempt.retryLimit) await failTrack(db, job.trackId);
+    if (attempt.retryCount >= attempt.retryLimit) await failTrack(db, job.trackId, TRACK_FAILED);
     else console.error(`[jobs] track ${job.trackId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
     throw err;
   }

@@ -64,6 +64,7 @@ export interface Track {
   burnKey: string | null;
   srtKey: string | null;
   vttKey: string | null;
+  error: string | null;
 }
 
 export interface AskAction {

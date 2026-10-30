@@ -1,0 +1,1 @@
+ALTER TABLE "subtitle_tracks" ADD COLUMN "error" text;

@@ -230,6 +230,7 @@ export const subtitleTracks = pgTable(
     burnKey: text("burn_key"),
     srtKey: text("srt_key"),
     vttKey: text("vtt_key"),
+    error: text("error"),
   },
   (t) => [unique("subtitle_tracks_clip_language").on(t.clipId, t.language)],
 );

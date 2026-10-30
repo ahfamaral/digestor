@@ -308,6 +308,7 @@ export async function setTrackCues(db: Db, id: string, cues: TrackCue[], status:
     .set({
       cues,
       status,
+      error: null,
       approvedAt: null,
       burnStatus: sql`CASE WHEN ${subtitleTracks.burnStatus} = 'done' THEN 'stale' ELSE ${subtitleTracks.burnStatus} END`,
     })
@@ -315,6 +316,16 @@ export async function setTrackCues(db: Db, id: string, cues: TrackCue[], status:
     .returning();
   if (!row) throw new Error(`Track not found: ${id}`);
   return row;
+}
+
+/** Marks a track that is still `preparing` as failed with a user-facing message; a ready track is never touched. */
+export async function failTrack(db: Db, id: string, message: string): Promise<boolean> {
+  const rows = await db
+    .update(subtitleTracks)
+    .set({ status: "failed", error: message })
+    .where(and(eq(subtitleTracks.id, id), eq(subtitleTracks.status, "preparing")))
+    .returning({ id: subtitleTracks.id });
+  return rows.length > 0;
 }
 
 export async function setTrackFiles(db: Db, id: string, keys: { srtKey: string; vttKey: string }): Promise<void> {
