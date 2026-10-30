@@ -11,10 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const EXTENSIONS = ["mp4", "mov", "mkv", "webm"];
-const UNSUPPORTED = "Unsupported file type. Use MP4, MOV, MKV or WebM.";
 
 type Mode = "file" | "youtube";
 type Meta = { durationMs: number; width: number; height: number } | null;
@@ -27,14 +27,14 @@ function extOf(name: string): string {
 
 function formatDuration(ms: number): string {
   const totalMin = Math.round(ms / 60_000);
-  if (totalMin >= 60) return `${Math.floor(totalMin / 60)} h ${totalMin % 60} m`;
-  if (totalMin >= 1) return `${totalMin} m`;
-  return `${Math.round(ms / 1000)} s`;
+  if (totalMin >= 60) return t("upload.durationHm", { h: Math.floor(totalMin / 60), m: totalMin % 60 });
+  if (totalMin >= 1) return t("upload.durationM", { m: totalMin });
+  return t("upload.durationS", { s: Math.round(ms / 1000) });
 }
 
 function formatSize(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  return `${Math.max(0.1, bytes / 1024 ** 2).toFixed(1)} MB`;
+  if (bytes >= 1024 ** 3) return t("upload.sizeGb", { n: (bytes / 1024 ** 3).toFixed(1) });
+  return t("upload.sizeMb", { n: Math.max(0.1, bytes / 1024 ** 2).toFixed(1) });
 }
 
 /** Rough wall-clock time: processing runs at about 12× real time, never under 2 minutes. */
@@ -90,10 +90,10 @@ function putFile(url: string, file: File, onProgress: (pct: number) => void): Pr
         const { sessionId } = JSON.parse(xhr.responseText) as { sessionId: string };
         resolve(sessionId);
       } else {
-        reject(new Error(errorFrom(xhr.responseText, "Upload failed. Please try again.")));
+        reject(new Error(errorFrom(xhr.responseText, t("upload.errorUploadFailed"))));
       }
     };
-    xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+    xhr.onerror = () => reject(new Error(t("upload.errorUploadConnection")));
     xhr.send(file);
   });
 }
@@ -134,7 +134,7 @@ export function UploadForm() {
       pickedRef.current = null;
       setFile(null);
       setMeta(null);
-      setFileError(UNSUPPORTED);
+      setFileError(t("upload.unsupported"));
       return;
     }
     setFileError(null);
@@ -164,7 +164,7 @@ export function UploadForm() {
           body: JSON.stringify({ url, hint: hint.trim() || undefined }),
         });
         const text = await res.text();
-        if (!res.ok) throw new Error(errorFrom(text, "Something went wrong. Please try again."));
+        if (!res.ok) throw new Error(errorFrom(text, t("upload.errorGeneric")));
         sessionId = (JSON.parse(text) as { sessionId: string }).sessionId;
       }
       router.push(`/s/${sessionId}`);
@@ -178,15 +178,15 @@ export function UploadForm() {
   const estimate =
     mode === "file" && meta ? (
       <>
-        Estimated cost <b className="text-foreground">≈ {formatCost(estimateCostUsd(meta.durationMs))}</b> · time{" "}
-        <b className="text-foreground">≈ {estimateMinutes(meta.durationMs)} min</b>
+        {t("upload.estimateCost")} <b className="text-foreground">≈ {formatCost(estimateCostUsd(meta.durationMs))}</b> · {t("upload.estimateTime")}{" "}
+        <b className="text-foreground">≈ {t("upload.minutes", { n: estimateMinutes(meta.durationMs) })}</b>
       </>
     ) : mode === "file" && file ? (
-      "We'll estimate cost and time once processing starts."
+      t("upload.estimateAfterStart")
     ) : mode === "youtube" ? (
-      "Cost and time depend on the video's length — we'll show them after the download."
+      t("upload.estimateYoutube")
     ) : (
-      "Pick a video to see the estimated cost and time."
+      t("upload.estimatePick")
     );
 
   return (
@@ -194,10 +194,10 @@ export function UploadForm() {
       <Tabs value={mode} onValueChange={(v) => !busy && setMode(v as Mode)} className="md:flex-[1.3]">
         <TabsList className="w-full sm:w-fit">
           <TabsTrigger value="file" disabled={busy && mode !== "file"}>
-            Upload a file
+            {t("upload.tabFile")}
           </TabsTrigger>
           <TabsTrigger value="youtube" disabled={busy && mode !== "youtube"}>
-            Paste a YouTube link
+            {t("upload.tabYoutube")}
           </TabsTrigger>
         </TabsList>
 
@@ -223,9 +223,9 @@ export function UploadForm() {
             )}
           >
             <UploadIcon className="mb-1 size-7 text-muted-foreground" aria-hidden />
-            <span className="font-semibold">Drop a long video here</span>
-            <span className="text-sm text-muted-foreground">MP4, MOV, MKV, WebM · up to 4 hours</span>
-            <span className="mt-2 text-sm text-muted-foreground underline underline-offset-4">or browse your files</span>
+            <span className="font-semibold">{t("upload.dropTitle")}</span>
+            <span className="text-sm text-muted-foreground">{t("upload.dropFormats")}</span>
+            <span className="mt-2 text-sm text-muted-foreground underline underline-offset-4">{t("upload.browse")}</span>
           </button>
           <input
             ref={inputRef}
@@ -259,20 +259,20 @@ export function UploadForm() {
                 {upload.phase !== "idle" && (
                   <Progress
                     value={upload.phase === "done" ? 100 : upload.pct}
-                    aria-label="Upload progress"
+                    aria-label={t("upload.uploadProgress")}
                     className={cn("mt-2", upload.phase === "done" ? "[&_[data-slot=progress-indicator]]:bg-emerald-600" : "[&_[data-slot=progress-indicator]]:bg-brand")}
                   />
                 )}
               </div>
               {upload.phase === "done" ? (
-                <Badge className="bg-emerald-100 text-emerald-700">Uploaded</Badge>
+                <Badge className="bg-emerald-100 text-emerald-700">{t("upload.uploaded")}</Badge>
               ) : upload.phase === "uploading" ? (
-                <Badge className="bg-orange-100 text-orange-700 tabular-nums">Uploading {upload.pct}%</Badge>
+                <Badge className="bg-orange-100 text-orange-700 tabular-nums">{t("upload.uploadingBadge", { pct: upload.pct })}</Badge>
               ) : (
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Remove file"
+                  aria-label={t("upload.removeFile")}
                   onClick={() => {
                     pickedRef.current = null;
                     setFile(null);
@@ -289,13 +289,13 @@ export function UploadForm() {
         <TabsContent value="youtube" className="flex flex-col gap-2">
           <Card className="gap-2 p-4">
             <label htmlFor="yt-url" className="font-semibold">
-              YouTube link
+              {t("upload.youtubeLabel")}
             </label>
             <Input
               id="yt-url"
               type="url"
               inputMode="url"
-              placeholder="https://www.youtube.com/watch?v=…"
+              placeholder={t("upload.youtubePlaceholder")}
               value={url}
               disabled={busy}
               aria-invalid={urlError !== null}
@@ -306,7 +306,7 @@ export function UploadForm() {
               }}
             />
             <p id="yt-help" className={cn("text-sm", urlError ? "text-destructive" : "text-muted-foreground")}>
-              {urlError ?? "A single video (not a playlist). If YouTube blocks the download, upload the file instead."}
+              {urlError ?? t("upload.youtubeHelp")}
             </p>
           </Card>
         </TabsContent>
@@ -314,7 +314,7 @@ export function UploadForm() {
 
       <Card className="h-fit gap-0 p-4 md:mt-10 md:flex-1">
         <label htmlFor="hint" className="font-semibold">
-          Anything we should know? <span className="font-normal text-muted-foreground">(optional)</span>
+          {t("upload.hintLabel")} <span className="font-normal text-muted-foreground">{t("upload.hintOptional")}</span>
         </label>
         <Textarea
           id="hint"
@@ -323,7 +323,7 @@ export function UploadForm() {
           value={hint}
           disabled={busy}
           onChange={(e) => setHint(e.target.value)}
-          placeholder="e.g. 'Interview with the health minister on the evening news, about hospital waiting lists'"
+          placeholder={t("upload.hintPlaceholder")}
         />
         <p className="my-3 text-sm text-muted-foreground">{estimate}</p>
         <Button
@@ -332,7 +332,7 @@ export function UploadForm() {
           disabled={!canSubmit}
           onClick={() => void submit()}
         >
-          {upload.phase === "uploading" ? `Uploading… ${upload.pct}%` : submitting ? "Starting…" : "Digest this video →"}
+          {upload.phase === "uploading" ? t("upload.submitUploading", { pct: upload.pct }) : submitting ? t("upload.submitStarting") : t("upload.submit")}
         </Button>
         {submitError && (
           <p role="alert" className="mt-2 text-sm text-destructive">

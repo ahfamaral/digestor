@@ -7,6 +7,7 @@ import { ContextCheck } from "@/components/ContextCheck";
 import { Processing } from "@/components/Processing";
 import { isUuid } from "@/lib/ids";
 import { getServer } from "@/lib/server";
+import { t } from "@/lib/i18n";
 
 /** Stage router: the session row decides which screen shows (later screens arrive in later tasks). Reads the DB per request (Cache Components: inside Suspense). */
 export default function SessionPage({ params }: PageProps<"/s/[id]">) {
@@ -31,7 +32,7 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
         <AppBar current="Processing" />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
           <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
-          <p className="text-sm text-muted-foreground">Analysis ready.</p>
+          <p className="text-sm text-muted-foreground">{t("session.analysisReady")}</p>
         </main>
       </>
     );
@@ -45,16 +46,16 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
       <ContextCheck sessionId={session.id} card={found.card} />
     ) : (
       <div role="alert" className="rounded-xl border border-border bg-white p-5 text-sm text-red-700">
-        The context card is missing for this video. Start over from the upload page.
+        {t("session.contextMissing")}
       </div>
     );
   } else if (stage === "failed") {
     body = (
       <div className="mx-auto max-w-xl rounded-xl border border-border bg-white p-5">
-        <h2 className="mb-1 text-base font-bold">Something went wrong</h2>
-        <p className="mb-4 text-sm text-muted-foreground">{session.error ?? "The video could not be processed."}</p>
+        <h2 className="mb-1 text-base font-bold">{t("session.failedTitle")}</h2>
+        <p className="mb-4 text-sm text-muted-foreground">{session.error ?? t("session.failedFallback")}</p>
         <Link href="/" className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white">
-          Start over
+          {t("session.startOver")}
         </Link>
       </div>
     );

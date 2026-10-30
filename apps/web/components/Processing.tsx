@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PROFILES, type ProfileId } from "@digestor/core";
 import { buildSteps, type StageName } from "@/lib/processingSteps";
 import { cn } from "@/lib/utils";
+import { t, type MessageKey } from "@/lib/i18n";
 
 export interface ProgressState {
   stage: StageName;
@@ -15,8 +16,14 @@ export interface ProgressState {
 
 const CLOSING: StageName[] = ["awaiting_context", "ready", "failed"];
 
-function eventLabel(t: string | null): string | null {
-  return t && t in PROFILES ? PROFILES[t as ProfileId].label : null;
+const STATE_KEY = {
+  done: "processing.stateDone",
+  running: "processing.stateRunning",
+  waiting: "processing.stateWaiting",
+} as const satisfies Record<string, MessageKey>;
+
+function eventLabel(id: string | null): string | null {
+  return id && id in PROFILES ? t(`profile.${id as ProfileId}`) : null;
 }
 
 /** Processing screen: live stepper fed by SSE; refreshes the server page when the pipeline pauses or ends. */
@@ -63,16 +70,16 @@ export function Processing({ sessionId, source, initial }: { sessionId: string; 
           <div className="min-w-0 flex-1">
             <div className={cn("text-sm", s.state === "waiting" ? "text-muted-foreground" : "font-semibold")}>
               {s.label}
-              <span className="sr-only"> ({s.state})</span>
+              <span className="sr-only"> ({t(STATE_KEY[s.state])})</span>
             </div>
             {s.key === "transcribing" && s.state === "done" && language && (
               <div className="text-xs text-muted-foreground">
-                Language <b className="text-foreground">{language}</b>
+                {t("processing.language")} <b className="text-foreground">{language}</b>
               </div>
             )}
             {s.key === "understanding" && s.state !== "waiting" && type && (
               <div className="text-xs text-muted-foreground">
-                Profile <b className="text-foreground">{type}</b>
+                {t("processing.profile")} <b className="text-foreground">{type}</b>
               </div>
             )}
             {s.state === "running" && (

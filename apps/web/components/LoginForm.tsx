@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { t } from "@/lib/i18n";
 
 export function LoginForm() {
   const router = useRouter();
@@ -27,9 +28,9 @@ export function LoginForm() {
         return;
       }
       const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(body.error ?? "Something went wrong. Please try again.");
+      setError(body.error ?? t("login.errorGeneric"));
     } catch {
-      setError("Couldn't reach the server. Please try again.");
+      setError(t("login.errorNetwork"));
     }
     setPending(false);
   }
@@ -37,15 +38,15 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>Enter the password</CardTitle>
-        <CardDescription>This Digestor is private.</CardDescription>
+        <CardTitle>{t("login.title")}</CardTitle>
+        <CardDescription>{t("login.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="flex flex-col gap-3">
           <Input
             type="password"
             autoComplete="current-password"
-            aria-label="Password"
+            aria-label={t("login.password")}
             aria-invalid={error !== null}
             autoFocus
             value={password}
@@ -57,7 +58,7 @@ export function LoginForm() {
             </p>
           )}
           <Button type="submit" className="h-9 bg-brand text-brand-foreground hover:bg-brand/90" disabled={pending || !password}>
-            {pending ? "Checking…" : "Continue"}
+            {pending ? t("login.checking") : t("login.continue")}
           </Button>
         </form>
       </CardContent>

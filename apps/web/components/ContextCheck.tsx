@@ -5,17 +5,29 @@ import { useRouter } from "next/navigation";
 import { LANGUAGES, PROFILES, type ContextCard, type ProfileId, type Fact } from "@digestor/core";
 import { buildContextPayload, type ContextFields } from "@/lib/contextPayload";
 import { cn } from "@/lib/utils";
+import { t, type MessageKey } from "@/lib/i18n";
 
 const BADGES = {
-  video: { text: "from video", cls: "bg-green-100 text-green-800" },
-  metadata: { text: "from metadata", cls: "bg-stone-200 text-stone-700" },
-  human: { text: "from you", cls: "bg-purple-100 text-purple-800" },
-  missing: { text: "missing", cls: "bg-red-100 text-red-700" },
-} as const;
+  video: { text: "context.badgeVideo", cls: "bg-green-100 text-green-800" },
+  metadata: { text: "context.badgeMetadata", cls: "bg-stone-200 text-stone-700" },
+  human: { text: "context.badgeHuman", cls: "bg-purple-100 text-purple-800" },
+  missing: { text: "context.badgeMissing", cls: "bg-red-100 text-red-700" },
+} as const satisfies Record<string, { text: MessageKey; cls: string }>;
+
+const FIELD_LABEL = {
+  name: "context.fieldName",
+  role: "context.fieldRole",
+  affiliation: "context.fieldAffiliation",
+} as const satisfies Record<string, MessageKey>;
+const FIELD_ARIA = {
+  name: "context.speakerName",
+  role: "context.speakerRole",
+  affiliation: "context.speakerAffiliation",
+} as const satisfies Record<string, MessageKey>;
 
 function Badge({ kind, audio }: { kind: keyof typeof BADGES; audio?: boolean }) {
-  const b = audio && kind === "video" ? { ...BADGES.video, text: "from audio" } : BADGES[kind];
-  return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", b.cls)}>{b.text}</span>;
+  const b = audio && kind === "video" ? { ...BADGES.video, text: "context.badgeAudio" as const } : BADGES[kind];
+  return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", b.cls)}>{t(b.text)}</span>;
 }
 
 /** Source of a displayed value: edited → "from you"; empty → missing; else the fact's own source. */
@@ -79,7 +91,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
     v.currentTime = startMs / 1000;
     void v.play().catch(() => {
       if (stopTimer.current) clearTimeout(stopTimer.current);
-      setError("Could not play the sample.");
+      setError(t("context.couldNotPlay"));
     });
     stopTimer.current = setTimeout(() => v.pause(), 5000);
   }
@@ -96,11 +108,11 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? "Something went wrong. Try again.");
+        throw new Error(data.error ?? t("context.errorGeneric"));
       }
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong. Try again.");
+      setError(e instanceof Error ? e.message : t("context.errorGeneric"));
       setBusy(false);
     }
   }
@@ -116,7 +128,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
         className={inputCls}
         aria-label={label}
         value={edited[key]}
-        placeholder="not found"
+        placeholder={t("context.notFound")}
         onChange={(e) => set(key, e.target.value)}
         onBlur={() => !edited[key].trim() && set(key, original[key])}
       />
@@ -126,21 +138,21 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <section className="rounded-xl border border-border bg-white p-5">
-        <h2 className="mb-2 text-base font-bold">Here&apos;s what I understood</h2>
+        <h2 className="mb-2 text-base font-bold">{t("context.understood")}</h2>
         <Row
-          label="Language"
+          label={t("context.language")}
           audio
           badge={edited.language !== original.language ? "human" : card.language.value ? (card.language.source ?? "video") : "missing"}
         >
           <select
             className={inputCls}
-            aria-label="Language"
+            aria-label={t("context.language")}
             value={edited.language}
             onChange={(e) => set("language", e.target.value)}
           >
-            {!edited.language && <option value="">Unknown</option>}
+            {!edited.language && <option value="">{t("context.languageUnknown")}</option>}
             {!LANGUAGES.some((l) => l.code === original.language) && original.language && (
-              <option value={original.language}>{original.language} (detected)</option>
+              <option value={original.language}>{t("context.languageDetected", { code: original.language })}</option>
             )}
             {LANGUAGES.map((l) => (
               <option key={l.code} value={l.code}>
@@ -149,37 +161,37 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
             ))}
           </select>
         </Row>
-        <Row label="Profile" badge={edited.profile !== original.profile ? "human" : "video"}>
+        <Row label={t("context.profile")} badge={edited.profile !== original.profile ? "human" : "video"}>
           <select
             className={inputCls}
-            aria-label="Profile"
+            aria-label={t("context.profile")}
             value={edited.profile}
             onChange={(e) => set("profile", e.target.value as ProfileId)}
           >
-            {(Object.keys(PROFILES) as ProfileId[]).map((t) => (
-              <option key={t} value={t}>
-                {PROFILES[t].label}
+            {(Object.keys(PROFILES) as ProfileId[]).map((id) => (
+              <option key={id} value={id}>
+                {t(`profile.${id}`)}
               </option>
             ))}
           </select>
         </Row>
-        {textRow("Title / topic", "title", card.title)}
-        {textRow("Setting", "setting", card.setting)}
-        {textRow("Date", "dateOrYear", card.dateOrYear)}
+        {textRow(t("context.titleTopic"), "title", card.title)}
+        {textRow(t("context.setting"), "setting", card.setting)}
+        {textRow(t("context.date"), "dateOrYear", card.dateOrYear)}
         {card.participants.map((p, i) => {
           const o = original.participants[i];
           const e = edited.participants[i];
           return (
             <div key={p.speakerId} className="border-b border-border py-2 last:border-b-0">
-              <div className="mb-1 text-xs font-semibold text-muted-foreground">Speaker {p.speakerId}</div>
+              <div className="mb-1 text-xs font-semibold text-muted-foreground">{t("context.speaker", { id: p.speakerId })}</div>
               {(["name", "role", "affiliation"] as const).map((k) => (
                 <div key={k} className="mb-1 flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-muted-foreground">{k[0].toUpperCase() + k.slice(1)}</span>
+                  <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(FIELD_LABEL[k])}</span>
                   <input
                     className={inputCls}
-                    aria-label={`Speaker ${p.speakerId} ${k}`}
+                    aria-label={t(FIELD_ARIA[k], { id: p.speakerId })}
                     value={e[k]}
-                    placeholder="not found"
+                    placeholder={t("context.notFound")}
                     onChange={(ev) => setPerson(i, k, ev.target.value)}
                     onBlur={() => !e[k].trim() && setPerson(i, k, o[k])}
                   />
@@ -193,13 +205,13 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
 
       <section className="flex flex-col rounded-xl border-2 border-purple-400 bg-white p-5">
         <h2 className="mb-2 text-base font-bold">
-          {n === 0 ? "No questions" : `${n} quick question${n === 1 ? "" : "s"}`}
+          {n === 0 ? t("context.noQuestions") : n === 1 ? t("context.questionsOne") : t("context.questionsMany", { n })}
         </h2>
-        {n === 0 && <p className="text-sm text-muted-foreground">Everything looks clear. Check the card and continue.</p>}
+        {n === 0 && <p className="text-sm text-muted-foreground">{t("context.allClear")}</p>}
         {card.openQuestions.map((q) => (
           <div key={q.id} className="mb-3 border-b border-border pb-3 last:border-b-0">
             <div className="text-sm font-semibold">{q.question}</div>
-            <div className="mb-2 text-xs text-muted-foreground">Why: {q.why}</div>
+            <div className="mb-2 text-xs text-muted-foreground">{t("context.why", { why: q.why })}</div>
             <div className="flex items-center gap-2">
               <input
                 className={inputCls}
@@ -213,7 +225,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
                   className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-semibold hover:bg-muted"
                   onClick={() => hear(q.sampleStartMs as number)}
                 >
-                  ▶ hear 5 s
+                  {t("context.hear")}
                 </button>
               )}
             </div>
@@ -233,7 +245,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
             onClick={onContinue}
             className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white disabled:opacity-50"
           >
-            Continue →
+            {t("context.continue")}
           </button>
           <button
             type="button"
@@ -241,7 +253,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
             onClick={onSkip}
             className="text-sm font-medium text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
           >
-            Skip — find clips anyway
+            {t("context.skip")}
           </button>
         </div>
       </section>
