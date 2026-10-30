@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import { LocalStorage, createDb, createSession, getSession, updateSession, type Db, type Stage } from "@digestor/core/server";
+import { LocalStorage, createDb, createSession, getSession, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
 import { runVideoRetention, videoRetentionDays } from "./cleanup.js";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -110,6 +110,22 @@ d("runVideoRetention", () => {
     expect((await runVideoRetention(deps(), 14)).removed).toBe(0);
     expect(recent.at("original.mp4")).toBe(true);
     expect(await hasCheckpoint(recent.id)).toBe(true);
+  });
+
+  it("skips awaiting_context so the human pause can still be resumed", async () => {
+    const waiting = await seed(30, "awaiting_context");
+    await checkpoint(waiting.id);
+    expect((await runVideoRetention(deps(), 14)).removed).toBe(0);
+    expect(waiting.at("original.mp4")).toBe(true);
+    expect(await hasCheckpoint(waiting.id)).toBe(true);
+  });
+
+  it("skips a session whose re-analysis is running", async () => {
+    const busy = await seed(30, "ready");
+    await startAnalysisVersion(db, busy.id, { profile: "general", reason: "reanalyze", models: {}, promptVersions: {} });
+    expect((await runVideoRetention(deps(), 14)).removed).toBe(0);
+    expect(busy.at("original.mp4")).toBe(true);
+    expect((await getSession(db, busy.id))?.videoDeletedAt).toBeNull();
   });
 
   it("never touches a session that is still processing", async () => {

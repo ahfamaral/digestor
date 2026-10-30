@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { FfmpegError, run } from "../media/ffmpeg.js";
 
@@ -32,14 +33,16 @@ export function mapInfoJson(info: unknown): YouTubeMetadata {
   };
 }
 
+const LIVE_MESSAGE = "Live streams can't be processed. Try again after the stream has ended.";
+
 export function mapYtDlpError(stderr: string): string {
   if (!/confirm your age/i.test(stderr) && /Sign in to confirm|not a bot/i.test(stderr))
     return "YouTube blocked this download from the server. Download the video yourself and upload the file instead.";
   if (/Private video/i.test(stderr)) return "This video is private.";
   if (/confirm your age|age-restricted/i.test(stderr)) return "This video is age-restricted and can't be downloaded.";
   if (/File is larger than max-filesize/i.test(stderr)) return "This video is larger than the upload limit.";
-  if (/does not pass filter|is_live/i.test(stderr))
-    return "Live streams can't be processed. Try again after the stream has ended.";
+  if (/does not pass filter|due to --break-match-filter/i.test(stderr))
+    return LIVE_MESSAGE;
   if (/Video unavailable/i.test(stderr)) return "This video is unavailable or was removed.";
   return "Couldn't download this video from YouTube.";
 }
@@ -56,7 +59,7 @@ export function ytDlpArgs(url: string, outPathNoExt: string, env: NodeJS.Process
     "--merge-output-format", "mp4",
     "--no-playlist",
     "--max-filesize", `${maxFilesizeGb(env)}G`,
-    "--match-filter", "!is_live",
+    "--break-match-filters", "!is_live",
     "--write-info-json",
     "--no-progress",
     "-o", `${outPathNoExt}.%(ext)s`,
@@ -70,13 +73,21 @@ export async function downloadYouTube(
   outPathNoExt: string,
 ): Promise<{ videoPath: string; metadata: YouTubeMetadata }> {
   const infoPath = `${outPathNoExt}.info.json`;
+  let output = "";
   try {
-    await run("yt-dlp", ytDlpArgs(url, outPathNoExt));
+    const { stdout, stderr } = await run("yt-dlp", ytDlpArgs(url, outPathNoExt));
+    output = `${stdout}\n${stderr}`;
   } catch (err) {
+    // Verified against yt-dlp 2026.10.26: --break-match-filters rejecting a live stream exits 101 with the
+    // "does not pass filter" text on stdout (which run() does not keep in the error), so the exit code is the signal.
+    if (err instanceof FfmpegError && err.code === 101) throw new YouTubeDownloadError(LIVE_MESSAGE, err.stderrTail);
     const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
     throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
   }
   try {
+    // An over-size file is a *skip*: yt-dlp exits 0, prints "File is larger than max-filesize" on stdout and writes
+    // only the info json.
+    if (!existsSync(`${outPathNoExt}.mp4`)) throw new YouTubeDownloadError(mapYtDlpError(output), output.slice(-2000));
     const metadata = mapInfoJson(JSON.parse(await readFile(infoPath, "utf8")));
     return { videoPath: `${outPathNoExt}.mp4`, metadata };
   } finally {

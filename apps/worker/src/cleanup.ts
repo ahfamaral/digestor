@@ -1,5 +1,5 @@
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
-import { listSessionsWithExpiredVideo, updateSession, type Db, type LocalStorage, type Stage } from "@digestor/core/server";
+import { getRunningAnalysis, listSessionsWithExpiredVideo, updateSession, type Db, type LocalStorage, type Stage } from "@digestor/core/server";
 
 /** pg-boss queue for the daily video retention clean-up (scheduled 03:00 UTC in main.ts). */
 export const CLEANUP_QUEUE = "maintenance.cleanup";
@@ -33,8 +33,9 @@ export async function runVideoRetention(deps: CleanupDeps, days: number): Promis
   const expired = await listSessionsWithExpiredVideo(deps.db, days);
   let removed = 0;
   for (const session of expired) {
-    if (PROCESSING_STAGES.has(session.stage)) continue;
+    if (PROCESSING_STAGES.has(session.stage) || session.stage === "awaiting_context") continue;
     try {
+      if (await getRunningAnalysis(deps.db, session.id)) continue; // a re-analysis is mid-run
       await deps.storage.removeVideoFiles(session.id);
       await deps.checkpointer.deleteThread(session.id);
       await updateSession(deps.db, session.id, { videoDeletedAt: new Date() });
