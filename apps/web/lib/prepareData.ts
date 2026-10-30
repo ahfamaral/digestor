@@ -1,0 +1,101 @@
+import {
+  LANGUAGES, type Clip, type ClipEventKind, type ClipFormat, type MomentChecks, type RenderStatus, type Track, type TrackCue,
+  type TrackStatus,
+} from "@digestor/core";
+import { languageName } from "./i18n";
+
+/** The credit line a clip starts with: the YouTube channel (or uploader); uploads have none. */
+export function defaultCredit(session: { source: string; metadata: Record<string, unknown> }): string {
+  if (session.source !== "youtube") return "";
+  for (const key of ["channel", "uploader"]) {
+    const v = session.metadata[key];
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return "";
+}
+
+/**
+ * Whether "Undo" has something to revert: the latest change still standing is an edit. Undoing a clip's creation
+ * would delete it, so that never counts here. `events` are in order (oldest first).
+ */
+export function canUndo(events: { kind: ClipEventKind; undoneAt: Date | string | null }[]): boolean {
+  const live = events.filter((e) => e.undoneAt === null);
+  const last = live[live.length - 1];
+  return last !== undefined && last.kind !== "create";
+}
+
+export type CheckWarning = { kind: "argument" | "context" | "reportedSpeech" | "interpreter"; detail: string | null };
+
+/** The warnings a clip's checks raise, in display order. */
+export function checkWarnings(checks: MomentChecks): CheckWarning[] {
+  const out: CheckWarning[] = [];
+  if (!checks.argumentComplete) out.push({ kind: "argument", detail: checks.continuesWith });
+  if (checks.contextRisk !== null) out.push({ kind: "context", detail: checks.contextRisk });
+  if (checks.reportedSpeech) out.push({ kind: "reportedSpeech", detail: null });
+  if (checks.interpreter) out.push({ kind: "interpreter", detail: null });
+  return out;
+}
+
+/** Languages a clip can get subtitles in: the video's own language first, then the offered list, minus existing tracks. */
+export function subtitleLanguages(original: string | null, existing: string[]): { code: string; label: string }[] {
+  const all = original
+    ? [{ code: original, label: LANGUAGES.find((l) => l.code === original)?.label ?? languageName(original) }, ...LANGUAGES.filter((l) => l.code !== original)]
+    : [...LANGUAGES];
+  return all.filter((l) => !existing.includes(l.code));
+}
+
+/** What Prepare clips needs of a clip, as plain data (same shape from a DB row or from an API response). */
+export interface ClipView {
+  id: string;
+  startMs: number;
+  endMs: number;
+  format: ClipFormat;
+  cropOffset: number;
+  credit: string | null;
+  noCreditNeeded: boolean;
+  warningsAck: boolean;
+  protectedAck: boolean;
+  updatedAt: string;
+}
+
+type Jsonish<T> = { [K in keyof T]: T[K] extends Date ? Date | string : T[K] extends Date | null ? Date | string | null : T[K] };
+
+export function toClipView(c: Jsonish<Clip>): ClipView {
+  return {
+    id: c.id,
+    startMs: c.startMs,
+    endMs: c.endMs,
+    format: c.format,
+    cropOffset: c.cropOffset,
+    credit: c.credit,
+    noCreditNeeded: c.noCreditNeeded,
+    warningsAck: c.warningsAck,
+    protectedAck: c.protectedAck,
+    updatedAt: new Date(c.updatedAt).toISOString(),
+  };
+}
+
+export interface TrackView {
+  id: string;
+  language: string;
+  status: TrackStatus;
+  cues: TrackCue[];
+  approved: boolean;
+  burnStatus: RenderStatus;
+  /** A burned-in version was made at some point (so `stale` means "out of date", not just "requested"). */
+  burnBuilt: boolean;
+  error: string | null;
+}
+
+export function toTrackView(t: Jsonish<Track>): TrackView {
+  return {
+    id: t.id,
+    language: t.language,
+    status: t.status,
+    cues: t.cues,
+    approved: t.approvedAt !== null,
+    burnStatus: t.burnStatus,
+    burnBuilt: t.burnKey !== null,
+    error: t.error,
+  };
+}

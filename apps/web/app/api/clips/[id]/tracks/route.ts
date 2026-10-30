@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JOB_OPTIONS, LANGUAGES, QUEUES } from "@digestor/core";
-import { createTrack, deleteTrack } from "@digestor/core/server";
+import { createTrack, deleteTrack, listTracks } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { QUEUE_FAILED, readyClip } from "@/lib/personal";
@@ -40,4 +40,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     return errorResponse(503, QUEUE_FAILED);
   }
   return Response.json(track, { status: 201 });
+}
+
+/** GET /api/clips/[id]/tracks — `{ tracks }`: the clip's subtitle tracks (Prepare polls this while one is preparing). */
+export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+  const { id } = await ctx.params;
+  if (!isUuid(id)) return errorResponse(404, "Clip not found.");
+  const { db } = getServer();
+  const found = await readyClip(db, id);
+  if ("error" in found) return found.error;
+  return Response.json({ tracks: await listTracks(db, id) });
 }

@@ -1,12 +1,18 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getSession } from "@digestor/core/server";
+import { OWNER_ID, findBoundaries } from "@digestor/core";
+import { getMoment, getSession, getTranscript, listClipEvents, listClips, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
+import { PrepareList, type PrepareClipData } from "@/components/Prepare/PrepareList";
 import { isUuid } from "@/lib/ids";
+import { canUndo, defaultCredit, toClipView, toTrackView } from "@/lib/prepareData";
+import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
+import { cutPoints, trimView } from "@/lib/trim";
 import { t } from "@/lib/i18n";
 
-/** Prepare clips placeholder until the Prepare screen (Plan 2, Task 21). Reads the DB per request (inside Suspense). */
+/** Prepare clips: trim, checks, format, credit and subtitles for each confirmed clip. Reads the DB per request (inside Suspense). */
 export default function PreparePage({ params }: PageProps<"/s/[id]/prepare">) {
   return (
     <Suspense fallback={<AppBar current="Prepare" />}>
@@ -18,16 +24,66 @@ export default function PreparePage({ params }: PageProps<"/s/[id]/prepare">) {
 async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
-  const session = await getSession(getServer().db, id);
+  const { db } = getServer();
+  const session = await getSession(db, id);
   if (!session) notFound();
 
+  if (session.stage !== "ready") {
+    return (
+      <>
+        <AppBar current="Prepare" />
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
+          <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
+          <p role="alert" className="mb-3 text-sm text-red-700">
+            {t("briefing.notReady")}
+          </p>
+          <Link href={`/s/${id}`} className="text-sm underline underline-offset-2">
+            {t("briefing.backToSession")}
+          </Link>
+        </main>
+      </>
+    );
+  }
+
+  const clips = await listClips(db, OWNER_ID, id);
+  const transcript = clips.length > 0 ? await getTranscript(db, id) : null;
+  const durationMs = session.durationMs ?? transcript?.durationMs ?? Math.max(0, ...clips.map((c) => c.endMs));
+  // Boundaries are computed here and only the clip's window (± 30 s) is sent, as plain numbers.
+  const boundaries = transcript ? findBoundaries(transcript.words, durationMs) : [];
+
+  const data: PrepareClipData[] = await Promise.all(
+    clips.map(async (clip) => {
+      const [moment, tracks, events] = await Promise.all([
+        clip.momentId ? getMoment(db, clip.momentId) : null,
+        listTracks(db, clip.id),
+        listClipEvents(db, clip.id),
+      ]);
+      const view = trimView(clip, durationMs);
+      return {
+        clip: toClipView(clip),
+        title: moment?.title ?? "",
+        checks: moment?.checks ?? null,
+        tracks: tracks.map(toTrackView),
+        points: cutPoints(boundaries, view.viewStart, view.viewEnd),
+        canUndo: canUndo(events),
+        thumbUrl: moment?.thumbKey ? `/api/files/${id}/thumbs/${moment.id}.jpg` : null,
+      };
+    }),
+  );
+
   return (
-    <>
-      <AppBar current="Prepare" />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
-        <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
-        <p className="text-sm text-muted-foreground">{t("session.prepareSoon")}</p>
-      </main>
-    </>
+    <PrepareList
+      session={{
+        id: session.id,
+        title: session.title,
+        language: session.language,
+        durationMs,
+        hasVideo: session.hasVideo,
+        videoRemoved: session.videoDeletedAt !== null,
+        profile: asProfile(session.profile),
+      }}
+      defaultCredit={defaultCredit(session)}
+      clips={data}
+    />
   );
 }
