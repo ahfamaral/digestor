@@ -64,15 +64,25 @@ export async function startAnalysisVersion(
   });
 }
 
-/** Atomically completes the version and makes it the session's only current one. */
+/**
+ * Atomically completes a `running` version and makes it the session's only current one. Takes the same session row
+ * lock as `startAnalysisVersion`, so concurrent completes of two versions serialise instead of deadlocking.
+ * Throws when the version is missing or not running (a failed or already complete version never becomes current).
+ */
 export async function completeAnalysisVersion(db: Db, analysisId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    const [found] = await tx
+      .select({ sessionId: analysisVersions.sessionId })
+      .from(analysisVersions)
+      .where(eq(analysisVersions.id, analysisId));
+    if (!found) throw new Error(`Analysis version not found: ${analysisId}`);
+    await tx.execute(sql`select id from ${sessions} where ${sessions.id} = ${found.sessionId} for update`);
     const [row] = await tx
       .update(analysisVersions)
       .set({ status: "complete", isCurrent: true })
-      .where(eq(analysisVersions.id, analysisId))
+      .where(and(eq(analysisVersions.id, analysisId), eq(analysisVersions.status, "running")))
       .returning({ sessionId: analysisVersions.sessionId });
-    if (!row) throw new Error(`Analysis version not found: ${analysisId}`);
+    if (!row) throw new Error(`Analysis version is not running: ${analysisId}`);
     await tx
       .update(analysisVersions)
       .set({ isCurrent: false })
@@ -80,8 +90,19 @@ export async function completeAnalysisVersion(db: Db, analysisId: string): Promi
   });
 }
 
-export async function failAnalysisVersion(db: Db, analysisId: string): Promise<void> {
-  await db.update(analysisVersions).set({ status: "failed" }).where(eq(analysisVersions.id, analysisId));
+/** Marks a `running` version failed. Returns false (and changes nothing) for a missing, complete or failed version. */
+export async function failAnalysisVersion(db: Db, analysisId: string): Promise<boolean> {
+  const rows = await db
+    .update(analysisVersions)
+    .set({ status: "failed" })
+    .where(and(eq(analysisVersions.id, analysisId), eq(analysisVersions.status, "running")))
+    .returning({ id: analysisVersions.id });
+  return rows.length > 0;
+}
+
+export async function getAnalysisVersion(db: Db, analysisId: string): Promise<AnalysisVersion | null> {
+  const [row] = await db.select().from(analysisVersions).where(eq(analysisVersions.id, analysisId));
+  return row ?? null;
 }
 
 export async function getRunningAnalysis(db: Db, sessionId: string): Promise<AnalysisVersion | null> {

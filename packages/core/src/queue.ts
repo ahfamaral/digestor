@@ -1,7 +1,18 @@
 import { z } from "zod";
+import { LANGUAGES, ProfileIdSchema } from "./profiles.ts";
 import { ResumePayloadSchema } from "./schemas.ts";
 
-export const QUEUES = { start: "session.start", resume: "session.resume", renderClip: "clip.render" } as const;
+export const QUEUES = {
+  start: "session.start",
+  resume: "session.resume",
+  reanalyze: "session.reanalyze",
+  checkMoment: "moment.check",
+  prepareTrack: "track.prepare",
+  burnTrack: "track.burn",
+  renderClip: "clip.render",
+  translateBriefing: "briefing.translate",
+  ask: "ask.run",
+} as const;
 
 export const StartJobSchema = z.object({ sessionId: z.string().uuid() });
 export type StartJob = z.infer<typeof StartJobSchema>;
@@ -9,8 +20,34 @@ export type StartJob = z.infer<typeof StartJobSchema>;
 export const ResumeJobSchema = z.object({ sessionId: z.string().uuid(), payload: ResumePayloadSchema });
 export type ResumeJob = z.infer<typeof ResumeJobSchema>;
 
+/** A new analysis version of a `ready` session, e.g. with a corrected profile. */
+export const ReanalyzeJobSchema = z.object({
+  sessionId: z.string().uuid(),
+  profile: ProfileIdSchema,
+  reason: z.string().trim().min(1).max(500),
+});
+export type ReanalyzeJob = z.infer<typeof ReanalyzeJobSchema>;
+
+export const CheckMomentJobSchema = z.object({ momentId: z.string().uuid() });
+export type CheckMomentJob = z.infer<typeof CheckMomentJobSchema>;
+
+export const PrepareTrackJobSchema = z.object({ trackId: z.string().uuid() });
+export type PrepareTrackJob = z.infer<typeof PrepareTrackJobSchema>;
+
+export const BurnTrackJobSchema = z.object({ trackId: z.string().uuid() });
+export type BurnTrackJob = z.infer<typeof BurnTrackJobSchema>;
+
 export const RenderClipJobSchema = z.object({ clipId: z.string().uuid() });
 export type RenderClipJob = z.infer<typeof RenderClipJobSchema>;
+
+export const TranslateBriefingJobSchema = z.object({
+  analysisId: z.string().uuid(),
+  language: z.string().refine((code) => LANGUAGES.some((l) => l.code === code), "unsupported language"),
+});
+export type TranslateBriefingJob = z.infer<typeof TranslateBriefingJobSchema>;
+
+export const AskJobSchema = z.object({ messageId: z.string().uuid() });
+export type AskJob = z.infer<typeof AskJobSchema>;
 
 /**
  * The one source of pg-boss options: the worker applies them to every queue (create + update) and every sender

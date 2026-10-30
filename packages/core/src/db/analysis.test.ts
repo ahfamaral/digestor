@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createDb, type Db } from "./client.ts";
 import {
-  completeAnalysisVersion, failAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation,
+  completeAnalysisVersion, failAnalysisVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation,
   saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
   type NewMoment,
 } from "./analysis.ts";
@@ -64,6 +64,46 @@ describe("analysis versions", () => {
     expect(await getRunningAnalysis(db, s.id)).toBeNull();
     expect(await getCurrentAnalysis(db, s.id)).toBeNull();
     expect((await startAnalysisVersion(db, s.id, META)).version).toBe(2);
+  });
+
+  it("only a running version can complete: completing a failed or complete version throws and changes nothing", async () => {
+    const v1 = await startAnalysisVersion(db, s.id, META);
+    await completeAnalysisVersion(db, v1.id);
+    const v2 = await startAnalysisVersion(db, s.id, META);
+    await failAnalysisVersion(db, v2.id);
+    await expect(completeAnalysisVersion(db, v2.id)).rejects.toThrow(/not running/);
+    await expect(completeAnalysisVersion(db, v1.id)).rejects.toThrow(/not running/);
+    expect(await getAnalysisVersion(db, v2.id)).toMatchObject({ status: "failed", isCurrent: false });
+    expect(await getCurrentAnalysis(db, s.id)).toMatchObject({ version: { version: 1 } });
+    await expect(completeAnalysisVersion(db, "00000000-0000-4000-8000-000000000000")).rejects.toThrow(/not found/);
+  });
+
+  it("only a running version can fail: failing a complete version is a no-op", async () => {
+    const v1 = await startAnalysisVersion(db, s.id, META);
+    await completeAnalysisVersion(db, v1.id);
+    expect(await failAnalysisVersion(db, v1.id)).toBe(false);
+    expect(await getAnalysisVersion(db, v1.id)).toMatchObject({ status: "complete", isCurrent: true });
+    const v2 = await startAnalysisVersion(db, s.id, META);
+    expect(await failAnalysisVersion(db, v2.id)).toBe(true);
+    expect(await failAnalysisVersion(db, v2.id)).toBe(false);
+    expect(await getAnalysisVersion(db, v2.id)).toMatchObject({ status: "failed" });
+  });
+
+  it("concurrent completes of two versions of one session don't deadlock and leave exactly one current", async () => {
+    const v1 = await startAnalysisVersion(db, s.id, META);
+    await completeAnalysisVersion(db, v1.id);
+    // Two running versions can only exist through direct inserts (start reuses a running one); enough to race the completes.
+    const [v2] = await db
+      .insert(analysisVersions)
+      .values({ sessionId: s.id, version: 2, status: "running", pipelineVersion: "2.0.0", ...META })
+      .returning();
+    const [v3] = await db
+      .insert(analysisVersions)
+      .values({ sessionId: s.id, version: 3, status: "running", pipelineVersion: "2.0.0", ...META })
+      .returning();
+    await Promise.all([completeAnalysisVersion(db, v2!.id), completeAnalysisVersion(db, v3!.id)]);
+    const rows = await db.select().from(analysisVersions).where(eq(analysisVersions.sessionId, s.id));
+    expect(rows.filter((r) => r.isCurrent)).toHaveLength(1);
   });
 
   it("saveMoments resolves insideIdx and stores highlights", async () => {
