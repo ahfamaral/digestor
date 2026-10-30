@@ -2,12 +2,12 @@ import { z } from "zod";
 import {
   GRANULARITY, HIGHLIGHT_TYPES, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
   parseTimestamp, renderTranscript, sliceWords, snapRange, toSentences,
-  type AnalysisBundle, type Boundary, type ContextCard, type SelectionStatus, type Transcript,
+  type AnalysisBundle, type AskToolCallRecord, type Boundary, type ContextCard, type SelectionStatus, type Transcript,
 } from "@digestor/core";
 import {
   createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskMessage, getClip, getContextCard,
   getCurrentAnalysis, getMoment, getSession, getTranscript, listAskMessages, listPersonalMoments, listSelections,
-  setSelection, updateClip, type Db, type Session,
+  setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
@@ -43,8 +43,7 @@ export type AskDeps = {
   search: (sessionId: string, query: string, k: number) => Promise<SearchHit[]>;
 };
 
-/** What the UI shows as a chip per tool call. */
-export type AskToolCallRecord = { name: string; args: unknown; result: string; ok: boolean };
+export type { AskToolCallRecord };
 
 /** A failed run, with the chips of what already happened and whether a retry would repeat a change. */
 export class AskRunError extends Error {
@@ -72,9 +71,13 @@ type AskContext = {
   boundaries: Boundary[];
   /** Set just before a tool's first write, so a failure mid-write also counts: a retry would repeat it. */
   wrote: boolean;
+  /** The same, for the tool call that is running (its chip is kept if it fails partway). */
+  callWrote: boolean;
+  /** Selection changes applied without confirmation in this run (at most MAX_DIRECT_SELECTIONS). */
+  directSelections: number;
 };
 
-type ToolResult = { text: string };
+type ToolResult = { text: string } & Pick<AskToolCallRecord, "undo" | "clipId">;
 type Tool = { spec: ToolSpec; run(ctx: AskContext, args: never): Promise<ToolResult> };
 
 // ---------------------------------------------------------------- helpers
@@ -137,6 +140,11 @@ function snapClip(ctx: AskContext, a: { start: string | number; end: string | nu
     );
   }
   return snapped;
+}
+
+function willWrite(ctx: AskContext): void {
+  ctx.wrote = true;
+  ctx.callWrote = true;
 }
 
 const normSpeaker = (s: string) => s.trim().replace(/^speaker\s+/i, "").toLowerCase();
@@ -249,10 +257,13 @@ const tools: Tool[] = [
       const title = a.title.trim().slice(0, MAX_TITLE_CHARS);
       if (!title) throw new ToolInputError("title is empty.");
       const range = snapClip(ctx, a);
-      ctx.wrote = true;
+      willWrite(ctx);
       const moment = await createPersonalMoment(ctx.db, { analysisId: analysis.version.id, ownerId: ctx.ownerId, ...range, title, origin: "ask" });
       const clip = await createClip(ctx.db, { sessionId: ctx.session.id, ownerId: ctx.ownerId, momentId: moment.id, ...range, actor: "ask" });
-      return { text: `Created clip ${clip.id} ${span(range)} "${title}" (moment ${moment.id}), snapped to whole sentences.` };
+      return {
+        text: `Created clip ${clip.id} ${span(range)} "${title}" (moment ${moment.id}), snapped to whole sentences.`,
+        clipId: clip.id,
+      };
     },
   },
   {
@@ -268,7 +279,7 @@ const tools: Tool[] = [
       }
       requireVideo(ctx);
       const range = snapClip(ctx, a);
-      ctx.wrote = true;
+      willWrite(ctx);
       await updateClip(ctx.db, clip.id, range, "ask");
       return { text: `Clip ${clip.id} now runs ${span(range)}, snapped to whole sentences.` };
     },
@@ -277,7 +288,7 @@ const tools: Tool[] = [
     spec: {
       name: "set_selection",
       description:
-        `Mark moments approved, neutral or rejected, or back to proposed (only when the user asks). Up to ${MAX_DIRECT_SELECTIONS} apply at once; more wait for the user's confirmation.`,
+        `Mark moments approved, neutral or rejected, or back to proposed (only when the user asks). Send every moment of one request in a single call. Per question, only the first ${MAX_DIRECT_SELECTIONS} changes apply at once; a call that would go beyond that waits for the user's confirmation instead.`,
       schema: z.object({
         momentIds: z.array(z.string().uuid()).min(1).max(200),
         status: z.enum(["approved", "neutral", "rejected", "proposed"]),
@@ -292,13 +303,17 @@ const tools: Tool[] = [
       );
       if (unknown.length > 0) throw new ToolInputError(`unknown moment ids: ${unknown.slice(0, 5).join(", ")}. Nothing was changed.`);
       const status = a.status === "proposed" ? null : a.status;
-      ctx.wrote = true;
-      if (ids.length > MAX_DIRECT_SELECTIONS) {
+      if (ctx.directSelections + ids.length > MAX_DIRECT_SELECTIONS) {
+        willWrite(ctx);
         await createAskAction(ctx.db, { messageId: ctx.messageId, kind: "bulk_selection", payload: { momentIds: ids, status } });
         return { text: `Waiting for the user to confirm ${ids.length} changes.` };
       }
+      const before = await listSelections(ctx.db, ctx.ownerId, ctx.session.id);
+      const undo = Object.fromEntries(ids.map((id) => [id, before[id] ?? null]));
+      willWrite(ctx);
+      ctx.directSelections += ids.length;
       for (const id of ids) await setSelection(ctx.db, ctx.ownerId, id, status);
-      return { text: `Set ${ids.length} moment${ids.length === 1 ? "" : "s"} to ${a.status}.` };
+      return { text: `Set ${ids.length} moment${ids.length === 1 ? "" : "s"} to ${a.status}.`, undo };
     },
   },
 ];
@@ -306,7 +321,7 @@ const tools: Tool[] = [
 const byName = new Map(tools.map((t) => [t.spec.name, t]));
 
 /** Validates the model's arguments and runs the tool; any input problem comes back as a readable "Error: …" string. */
-async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<{ text: string; ok: boolean }> {
+async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<ToolResult & { ok: boolean }> {
   const tool = byName.get(call.name);
   if (!tool) return { text: `Error: unknown tool "${call.name}". Available: ${[...byName.keys()].join(", ")}.`, ok: false };
   const parsed = tool.spec.schema.safeParse(call.args);
@@ -316,7 +331,7 @@ async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<{ text: 
   }
   try {
     const out = await tool.run(ctx, parsed.data as never);
-    return { text: cap(out.text), ok: true };
+    return { ...out, text: cap(out.text), ok: true };
   } catch (err) {
     if (err instanceof ToolInputError) return { text: cap(`Error: ${err.message}`), ok: false };
     throw err; // infrastructure (DB) failure: the job's retry policy decides
@@ -361,20 +376,34 @@ ${facts.map((f) => `- ${f}`).join("\n")}`;
 // ---------------------------------------------------------------- run
 
 /** Earlier turns of this owner's conversation, ending with the question being answered. */
-async function loadHistory(db: Db, ownerId: string, sessionId: string, messageId: string): Promise<ToolMessage[]> {
-  const all = await listAskMessages(db, ownerId, sessionId);
-  const idx = all.findIndex((m) => m.id === messageId);
-  const usable = all
-    .slice(0, idx < 0 ? all.length : idx)
-    .filter((m) => m.text.trim() !== "" && (m.role === "user" || m.status === "done"))
+/**
+ * Earlier turns of this owner's conversation, ending with the question: the latest user message created at or before
+ * the pending answer. Row order isn't trusted, because the web route may insert both in one transaction (same now()).
+ */
+async function loadHistory(db: Db, pending: AskMessage): Promise<ToolMessage[]> {
+  const earlier = (await listAskMessages(db, pending.ownerId, pending.sessionId)).filter(
+    (m) => m.id !== pending.id && m.createdAt.getTime() <= pending.createdAt.getTime(),
+  );
+  const question = earlier.filter((m) => m.role === "user" && m.text.trim() !== "").at(-1);
+  if (!question) return [];
+  const usable = earlier
+    .filter((m) => m.id !== question.id && m.text.trim() !== "" && (m.role === "user" || m.status === "done"))
+    .concat(question)
     .slice(-HISTORY_LIMIT);
   while (usable[0] && usable[0].role !== "user") usable.shift();
   return usable.map((m) => (m.role === "user" ? { role: "user", text: m.text } : { role: "assistant", text: m.text }));
 }
 
-const record = (call: ToolCallRequest, text: string, ok: boolean): AskToolCallRecord => {
+const record = (call: ToolCallRequest, out: ToolResult & { ok: boolean }): AskToolCallRecord => {
   const json = JSON.stringify(call.args ?? null) ?? "null";
-  return { name: call.name, args: json.length <= 2000 ? call.args : json.slice(0, 2000), result: text.slice(0, 300), ok };
+  return {
+    name: call.name,
+    args: json.length <= 2000 ? call.args : json.slice(0, 2000),
+    result: out.text.slice(0, 300),
+    ok: out.ok,
+    ...(out.undo ? { undo: out.undo } : {}),
+    ...(out.clipId ? { clipId: out.clipId } : {}),
+  };
 };
 
 /**
@@ -389,7 +418,7 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     return;
   }
   const session = await getSession(db, msg.sessionId);
-  const history = await loadHistory(db, msg.ownerId, msg.sessionId, msg.id);
+  const history = await loadHistory(db, msg);
   if (!session || history.at(-1)?.role !== "user") {
     await finishAskMessage(db, msg.id, { text: ASK_FAILED, status: "failed" });
     console.error(`[ask] message ${messageId} has no session or question`);
@@ -410,6 +439,8 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     transcript,
     boundaries: transcript && transcript.words.length > 0 ? findBoundaries(transcript.words, transcript.durationMs) : [],
     wrote: false,
+    callWrote: false,
+    directSelections: 0,
   };
   const system = buildSystem(session, transcript, analysis, stored?.card ?? null);
   const specs = tools.map((t) => t.spec);
@@ -426,11 +457,19 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
       if (step === MAX_ASK_STEPS - 1) break; // out of steps: the model could never read these results
       messages.push({ role: "assistant", text: res.text, toolCalls: res.toolCalls });
       for (const [i, call] of res.toolCalls.entries()) {
-        const out =
-          i < MAX_CALLS_PER_STEP
-            ? await runTool(ctx, call)
-            : { text: `Error: at most ${MAX_CALLS_PER_STEP} tool calls per turn.`, ok: false };
-        records.push(record(call, out.text, out.ok));
+        ctx.callWrote = false;
+        let out: ToolResult & { ok: boolean };
+        try {
+          out =
+            i < MAX_CALLS_PER_STEP
+              ? await runTool(ctx, call)
+              : { text: `Error: at most ${MAX_CALLS_PER_STEP} tool calls per turn.`, ok: false };
+        } catch (err) {
+          // It may have changed something before failing: keep a chip so the user can check.
+          if (ctx.callWrote) records.push(record(call, { text: "Failed partway; check your clips and selections.", ok: false }));
+          throw err;
+        }
+        records.push(record(call, out));
         messages.push({ role: "tool", toolCallId: call.id, content: out.text });
       }
     }

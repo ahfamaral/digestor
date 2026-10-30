@@ -86,6 +86,20 @@ export interface AskMessage {
   createdAt: Date;
 }
 
+/** One tool call of an Ask answer, as stored in `ask_messages.tool_calls` (the UI's chips). */
+export interface AskToolCallRecord {
+  name: string;
+  /** The model's arguments (a string preview when very large or unparseable). */
+  args: unknown;
+  /** Short result text shown on the chip. */
+  result: string;
+  ok: boolean;
+  /** set_selection applied directly: each moment's status before the change (null = proposed, no row). */
+  undo?: Record<string, SelectionStatus | null>;
+  /** propose_clip: the clip it created (undo deletes it). */
+  clipId?: string;
+}
+
 export type AskMessageWithActions = AskMessage & { actions: AskAction[] };
 
 export interface ProblemReport {

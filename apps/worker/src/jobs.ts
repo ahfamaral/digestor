@@ -241,7 +241,9 @@ export async function handleAsk(deps: AskDeps, job: AskJob, attempt: Attempt): P
       console.error(`[jobs] ask ${job.messageId} failed:`, cause);
       const msg = await getAskMessage(deps.db, job.messageId);
       if (msg?.status === "pending") {
-        await finishAskMessage(deps.db, job.messageId, { text: ASK_FAILED, toolCalls: run?.toolCalls ?? [], status: "failed" });
+        // A missing key says which one (as sessions do); anything else gets the generic line.
+        const text = cause instanceof MissingApiKeyError ? cause.message : ASK_FAILED;
+        await finishAskMessage(deps.db, job.messageId, { text, toolCalls: run?.toolCalls ?? [], status: "failed" });
       }
     } else {
       console.error(`[jobs] ask ${job.messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, cause);

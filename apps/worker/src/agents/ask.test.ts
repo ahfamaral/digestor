@@ -1,12 +1,13 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChromaClient } from "chromadb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { OWNER_ID, findBoundaries, snapRange, type Word } from "@digestor/core";
+import { OWNER_ID, findBoundaries, snapRange, type AskToolCallRecord, type Word } from "@digestor/core";
 import {
   addAskMessage, completeAnalysisVersion, createClip, createDb, createSession, getAskMessage, getClip, listAskMessages,
   listClipEvents, listClips, listPersonalMoments, listSelections, saveMoments, saveTopics, saveTranscript,
-  startAnalysisVersion, updateSession, type Db,
+  askMessages, setSelection, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
+import { eq } from "drizzle-orm";
 import { MissingApiKeyError } from "../errors.js";
 import { handleAsk } from "../jobs.js";
 import { FakeToolLLM, type ToolCallRequest, type ToolMessage, type ToolStepCall } from "../llm/tools.js";
@@ -132,6 +133,7 @@ describe("runAsk tools", () => {
     expect(toolResults(llm.calls[1]!)[0]).toContain(clip!.id);
     const done = (await getAskMessage(db, msg.id))!;
     expect(done.toolCalls).toEqual([expect.objectContaining({ name: "propose_clip", ok: true, args: expect.objectContaining({ start: "00:01:01" }) })]);
+    expect((done.toolCalls as AskToolCallRecord[])[0]!.clipId).toBe(clip!.id); // Undo (Task 21) deletes this clip
   });
 
   it("trim_clip snaps the new bounds and refuses another session's clip", async () => {
@@ -177,6 +179,34 @@ describe("runAsk tools", () => {
     await runAsk(depsFor(llm), msg.id);
     expect(await listSelections(db, OWNER_ID, s.id)).toEqual({ [momentIds[0]!]: "rejected", [momentIds[1]!]: "rejected" });
     expect(toolResults(llm.calls[1]!)[1]).toMatch(/^Error: /);
+  });
+
+  it("the 3 direct selection changes are per run: a second 3-id call becomes a pending action", async () => {
+    const { s, momentIds } = await seed();
+    const msg = await ask(s.id, "Approve moments 0-2, then reject 3 and 4 and clear 0.");
+    const llm = new FakeToolLLM([
+      toolStep(call("set_selection", { momentIds: momentIds.slice(0, 3), status: "approved" })),
+      toolStep(call("set_selection", { momentIds: [momentIds[3], momentIds[4], momentIds[0]], status: "rejected" })),
+      answer("Done [00:00:00]."),
+    ]);
+    await runAsk(depsFor(llm), msg.id);
+    const sel = Object.fromEntries(momentIds.slice(0, 3).map((id) => [id, "approved"]));
+    expect(await listSelections(db, OWNER_ID, s.id)).toEqual(sel);
+    expect(toolResults(llm.calls[2]!)[0]).toBe("Waiting for the user to confirm 3 changes.");
+    const stored = (await listAskMessages(db, OWNER_ID, s.id)).find((m) => m.id === msg.id)!;
+    expect(stored.actions).toEqual([expect.objectContaining({ kind: "bulk_selection", status: "pending" })]);
+    const calls = stored.toolCalls as AskToolCallRecord[];
+    expect(calls[1]!.undo).toBeUndefined(); // nothing changed directly
+  });
+
+  it("direct selection changes record the previous status for undo", async () => {
+    const { s, momentIds } = await seed();
+    await setSelection(db, OWNER_ID, momentIds[0]!, "neutral");
+    const msg = await ask(s.id, "Approve the first two.");
+    const llm = new FakeToolLLM([toolStep(call("set_selection", { momentIds: momentIds.slice(0, 2), status: "approved" })), answer("Done [00:00:00].")]);
+    await runAsk(depsFor(llm), msg.id);
+    const [rec] = (await getAskMessage(db, msg.id))!.toolCalls as AskToolCallRecord[];
+    expect(rec!.undo).toEqual({ [momentIds[0]!]: "neutral", [momentIds[1]!]: null });
   });
 
   it("tool output is capped at 4000 chars", async () => {
@@ -289,6 +319,21 @@ describe("runAsk loop", () => {
     );
   });
 
+  it("finds the question even when it shares created_at with the pending answer and sorts after it", async () => {
+    const { s } = await seed();
+    const at = new Date("2026-10-30T12:00:00.000Z");
+    const pending = await addAskMessage(db, { sessionId: s.id, ownerId: OWNER_ID, role: "assistant", text: "", status: "pending" });
+    const question = await addAskMessage(db, { sessionId: s.id, ownerId: OWNER_ID, role: "user", text: "Same instant?" });
+    // Same now() (one transaction in the web route), and ids that order the answer first.
+    const answerId = `00000000${pending.id.slice(8)}`;
+    await db.update(askMessages).set({ id: answerId, createdAt: at }).where(eq(askMessages.id, pending.id));
+    await db.update(askMessages).set({ id: `ffffffff${question.id.slice(8)}`, createdAt: at }).where(eq(askMessages.id, question.id));
+    const llm = new FakeToolLLM([answer("Yes [00:00:01].")]);
+    await runAsk(depsFor(llm), answerId);
+    expect(llm.calls[0]!.messages.at(-1)).toEqual({ role: "user", text: "Same instant?" });
+    expect((await getAskMessage(db, answerId))!.status).toBe("done");
+  });
+
   it("stops after 6 steps with a polite answer", async () => {
     const { s } = await seed();
     const msg = await ask(s.id, "Loop forever.");
@@ -338,8 +383,28 @@ describe("handleAsk", () => {
     const msg = await ask(s.id, "Q");
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await handleAsk(depsFor(new FakeToolLLM([() => { throw new MissingApiKeyError("ANTHROPIC_API_KEY"); }])), { messageId: msg.id }, FIRST);
-    expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "failed", text: ASK_FAILED });
+    expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "failed", text: "ANTHROPIC_API_KEY is not set on the server." });
     err.mockRestore();
+  });
+
+  it("a tool that fails partway through a write keeps a failed chip", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Clip it.");
+    // The personal moment is written, then createClip's transaction fails.
+    const flaky = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === "transaction") return () => Promise.reject(new Error("connection reset"));
+        const v = Reflect.get(target, prop, receiver);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+    const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:00:10", end: "00:00:40", title: "x" })), answer("never")]);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await handleAsk({ db: flaky, llm, search: noSearch }, { messageId: msg.id }, FIRST);
+    err.mockRestore();
+    const failed = (await getAskMessage(db, msg.id))!;
+    expect(failed).toMatchObject({ status: "failed", text: ASK_FAILED });
+    expect(failed.toolCalls).toEqual([expect.objectContaining({ name: "propose_clip", ok: false })]);
   });
 
   it("an error after a change fails at once and keeps the change's chip (a retry would repeat it)", async () => {
