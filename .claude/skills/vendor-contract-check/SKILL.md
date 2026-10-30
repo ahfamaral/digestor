@@ -36,6 +36,7 @@ When the owner adds keys or runs `scripts/smoke.md`, record once per case and co
 |---|---|---|---|
 | AssemblyAI transcribe | `transcribe/assemblyai.ts` | silence with `language_detection` → `status:"error"`, "…no spoken audio" (docs); missing `audio_duration` possible | silence handled; no recorded fixtures yet |
 | Claude structured output | `llm/structured.ts`, `agents/*` | can exceed list caps, emit odd timestamps (`1:02:03`), out-of-range labels/scores | caps + timestamps handled leniently; label/score still strict (Plan 2 backlog) |
+| Claude tool calls (Ask) | `llm/tools.ts`, `agents/ask.ts` | per `@langchain/core` 1.3 types: `tool_calls[].id` optional, unparseable JSON lands in `invalid_tool_calls` with `args` as a string; tool_use needs an object `input` | adapter maps both, args validated in each tool; no recorded response yet (smoke.md §3) |
 | Anthropic transport | `llm/structured.ts` | 429 rate limit, 529 overloaded, network resets — transient | retried by pg-boss; only the final attempt fails the session |
 | yt-dlp | `youtube/ytdlp.ts` | bot check ("Sign in to confirm you're not a bot"), age gate, private/removed, playlists, live streams | messages mapped; no size cap or live filter yet (Plan 2 backlog) |
 | ffprobe/ffmpeg | `media/ffmpeg.ts` | zero-byte or non-video file → probe fails; no audio stream | friendly failures; tested with real ffprobe in the container |

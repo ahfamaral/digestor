@@ -448,6 +448,11 @@ export async function finishAskMessage(
   return row;
 }
 
+export async function getAskMessage(db: Db, id: string): Promise<AskMessage | null> {
+  const [row] = await db.select().from(askMessages).where(eq(askMessages.id, id));
+  return row ?? null;
+}
+
 export async function listAskMessages(db: Db, ownerId: string, sessionId: string): Promise<AskMessageWithActions[]> {
   const msgs = await db
     .select()

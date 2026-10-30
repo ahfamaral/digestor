@@ -9,7 +9,7 @@ import { clipEvents, subtitleTracks } from "./schema.ts";
 import {
   addAskMessage, addProblemReport, approveTrack, claimClipRender, claimTrackBurn, createAskAction, createClip,
   createPersonalMoment, burnSignature, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
-  finishTrackBurn, setTrackBurnStatus, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
+  finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   resolveAskAction, setSelection, setTrackCues, undoLastEvent, updateClip,
 } from "./personal.ts";
 import type { TrackCue } from "../personalTypes.ts";
@@ -233,6 +233,8 @@ describe("ask and reports", () => {
     const [got] = await listAskMessages(db, OWNER, s.id);
     expect(got).toMatchObject({ text: "Done", status: "done" });
     expect(got!.actions[0]!.status).toBe("confirmed");
+    expect(await getAskMessage(db, m.id)).toMatchObject({ id: m.id, sessionId: s.id, role: "assistant", status: "done" });
+    expect(await getAskMessage(db, "00000000-0000-0000-0000-000000000000")).toBeNull();
   });
 
   it("problem reports are listed per owner", async () => {

@@ -1,5 +1,5 @@
 import { Command } from "@langchain/langgraph";
-import { ProfileIdSchema, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { ProfileIdSchema, type AskJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   failAnalysisVersion,
   getAnalysisVersion,
@@ -11,10 +11,13 @@ import {
   failTrack,
   failClipRender,
   failTrackBurn,
+  finishAskMessage,
+  getAskMessage,
   setMomentChecks,
   setStage,
   type Db,
 } from "@digestor/core/server";
+import { ASK_FAILED, AskRunError, runAsk, type AskDeps } from "./agents/ask.js";
 import { checkMoment } from "./agents/checks.js";
 import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
@@ -221,6 +224,31 @@ export const handleRenderClip = (deps: RenderDeps, job: RenderClipJob, attempt: 
 
 export const handleBurnTrack = (deps: RenderDeps, job: BurnTrackJob, attempt: Attempt) =>
   runRender("track burn", job.trackId, attempt, () => burnTrack(deps, job.trackId), () => failTrackBurn(deps.db, job.trackId));
+
+/**
+ * Answers one Ask question (the pending assistant message). The message goes `pending` → `done`, or `failed` with a
+ * friendly line. A missing key, or an error after a tool already changed something (a retry would repeat the change),
+ * fails at once without a retry; any other error is rethrown for pg-boss and only the final attempt marks it failed.
+ */
+export async function handleAsk(deps: AskDeps, job: AskJob, attempt: Attempt): Promise<void> {
+  try {
+    await runAsk(deps, job.messageId);
+  } catch (err) {
+    const run = err instanceof AskRunError ? err : null;
+    const cause = run ? run.cause : err;
+    const deterministic = cause instanceof MissingApiKeyError || (run?.sideEffect ?? false);
+    if (deterministic || attempt.retryCount >= attempt.retryLimit) {
+      console.error(`[jobs] ask ${job.messageId} failed:`, cause);
+      const msg = await getAskMessage(deps.db, job.messageId);
+      if (msg?.status === "pending") {
+        await finishAskMessage(deps.db, job.messageId, { text: ASK_FAILED, toolCalls: run?.toolCalls ?? [], status: "failed" });
+      }
+    } else {
+      console.error(`[jobs] ask ${job.messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, cause);
+    }
+    if (!deterministic) throw cause;
+  }
+}
 
 /** Placeholder consumer for a queue whose task hasn't landed yet: completes the job so nothing retries. */
 export const notImplemented =

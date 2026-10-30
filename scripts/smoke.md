@@ -27,3 +27,15 @@ Expected:
 Expected:
 - [ ] The job is retried and the session reaches the context check or the review inbox.
 - [ ] No duplicate clips in the inbox.
+
+## 3. Ask (real Claude tool calls)
+
+The Ask fakes (`FakeToolLLM`) are shaped from the `@langchain/anthropic` 1.6 / `@langchain/core` 1.3 types, not from a recorded response. On a `ready` session:
+
+- [ ] "What did speaker A say about <topic>?" → the answer cites `[hh:mm:ss]`, and the stored message's `toolCalls` show `search_transcript`.
+- [ ] Ask in another language than the video → the answer is in the question's language.
+- [ ] "Make a clip of the first answer" → one clip and one personal moment (`origin: ask`); bounds on sentence edges.
+- [ ] "Approve all key points" (more than 3) → a pending `bulk_selection` action, no selection applied.
+- [ ] Something not in the video → "That isn't in this video's data."
+- [ ] Stop Chroma (`docker compose stop chroma`) and ask → "Search isn't available for this video."
+- [ ] Record one raw tool-call response to `apps/worker/test/fixtures/anthropic/ask-tool-call.recorded.json` and feed it through `fromAIMessage` in a test.
