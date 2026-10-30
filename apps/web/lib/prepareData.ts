@@ -36,6 +36,27 @@ export function checkWarnings(checks: MomentChecks): CheckWarning[] {
   return out;
 }
 
+export type ChecksStatus = "checking" | "failed" | "originalCut" | "checked";
+
+/**
+ * What the checks panel shows: "checking" while checks are on their way, "failed" when still none after a minute
+ * (R11), "originalCut" when the checks were made for the moment's bounds and the clip was trimmed since (R28).
+ */
+export function checksStatus(a: { checks: MomentChecks | null; originalCut: boolean; timedOut: boolean }): ChecksStatus {
+  if (a.checks !== null) return "checked";
+  if (a.originalCut) return "originalCut";
+  return a.timedOut ? "failed" : "checking";
+}
+
+/** Clips whose moment checks are still polled: none yet, and not timed out (or "Check again" restarted them). */
+export function checksToPoll(
+  items: { id: string; checks: unknown }[],
+  timedOut: boolean,
+  retrying: Record<string, boolean>,
+): string[] {
+  return items.filter((i) => i.checks === null && (!timedOut || retrying[i.id] === true)).map((i) => i.id);
+}
+
 /** Languages a clip can get subtitles in: the video's own language first, then the offered list, minus existing tracks. */
 export function subtitleLanguages(original: string | null, existing: string[]): { code: string; label: string }[] {
   const all = original

@@ -38,6 +38,10 @@ export const undoClip = (id: string): Promise<ClipView> => call(`/api/clips/${id
 export const fetchChecks = (clipId: string): Promise<MomentChecks | null> =>
   call(`/api/clips/${clipId}/checks`, { method: "GET" }, (b: { checks: MomentChecks | null }) => b.checks);
 
+/** "Check again": asks for the clip's checks once more; true when a new check was queued. */
+export const requestChecks = (clipId: string): Promise<boolean> =>
+  call(`/api/clips/${clipId}/checks`, json("POST"), (b: { queued: boolean }) => b.queued);
+
 export const fetchTracks = (clipId: string): Promise<TrackView[]> =>
   call(`/api/clips/${clipId}/tracks`, { method: "GET" }, (b: { tracks: Parameters<typeof toTrackView>[0][] }) => b.tracks.map(toTrackView));
 

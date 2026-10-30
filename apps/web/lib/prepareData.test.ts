@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { canUndo, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView } from "./prepareData";
+import { canUndo, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -73,11 +73,36 @@ describe("views", () => {
 
     const track = {
       id: "t", clipId: "c", language: "de", status: "ready" as const, cues: [], approvedAt: at, burnStatus: "stale" as const,
-      burnKey: "k", srtKey: null, vttKey: null, error: null,
+      burnKey: "k", srtKey: null, vttKey: null, error: null, builtStartMs: 1, builtEndMs: 2,
     };
     expect(toTrackView(JSON.parse(JSON.stringify(track)))).toEqual(toTrackView(track));
     expect(toTrackView(track)).toEqual({
       id: "t", language: "de", status: "ready", cues: [], approved: true, burnStatus: "stale", burnBuilt: true, error: null,
     });
+  });
+});
+
+describe("checksStatus (R11, R28)", () => {
+  const checks = {
+    argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
+  };
+  it("checking until a minute passed, then failed; checks for another cut say so", () => {
+    expect(checksStatus({ checks: null, originalCut: false, timedOut: false })).toBe("checking");
+    expect(checksStatus({ checks: null, originalCut: false, timedOut: true })).toBe("failed");
+    expect(checksStatus({ checks: null, originalCut: true, timedOut: false })).toBe("originalCut");
+    expect(checksStatus({ checks, originalCut: false, timedOut: true })).toBe("checked");
+  });
+});
+
+describe("checksToPoll", () => {
+  const items = [
+    { id: "a", checks: null },
+    { id: "b", checks: null },
+    { id: "c", checks: { argumentComplete: true } },
+  ];
+  it("polls clips without checks until they time out; Check again polls that clip again", () => {
+    expect(checksToPoll(items, false, {})).toEqual(["a", "b"]);
+    expect(checksToPoll(items, true, {})).toEqual([]);
+    expect(checksToPoll(items, true, { b: true })).toEqual(["b"]);
   });
 });

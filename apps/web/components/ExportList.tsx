@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LANGUAGES, formatLength, formatTimestamp, type ChecklistId } from "@digestor/core";
 import { AppBar } from "@/components/AppBar";
+import { WarningIcon } from "@/components/WarningNote";
 import { inFlight, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { languageName, t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
@@ -162,8 +163,9 @@ function ClipRow({ n, clip, sessionId, lang }: { n: number; clip: ExportClipData
         </div>
         <p
           role="status"
-          className={cn("text-xs", bad ? "text-red-700" : row.renderOutOfDate ? "text-amber-800" : "text-muted-foreground")}
+          className={cn("inline-flex items-center gap-1 text-xs", bad ? "text-red-700" : row.renderOutOfDate ? "font-medium text-stone-900" : "text-muted-foreground")}
         >
+          {row.renderOutOfDate && <WarningIcon className="size-3.5" />}
           {status}
         </p>
       </div>
@@ -224,13 +226,20 @@ function LanguageLine({ l, heading }: { l: ExportLanguageRow; heading: string })
           {t("exportScreen.vtt")}
         </a>
       )}
+      {l.outdated && (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-stone-900">
+          <WarningIcon className="size-3.5" />
+          {t("exportScreen.trackOutdated")}
+        </span>
+      )}
       {l.burn.url !== null && (
         <a href={l.burn.url} aria-label={t("exportScreen.downloadLabel", { what: `${name} ${t("exportScreen.burned")}`, title: heading })} className={LINK}>
           {t("exportScreen.burned")}
         </a>
       )}
       {burnNote !== "" && (
-        <span className={cn("text-xs", l.burn.status === "failed" ? "text-red-700" : l.burn.outOfDate ? "text-amber-800" : "text-muted-foreground")}>
+        <span className={cn("inline-flex items-center gap-1 text-xs", l.burn.status === "failed" ? "text-red-700" : l.burn.outOfDate ? "font-medium text-stone-900" : "text-muted-foreground")}>
+          {l.burn.outOfDate && <WarningIcon className="size-3.5" />}
           {t("exportScreen.burned")}: {burnNote}
         </span>
       )}

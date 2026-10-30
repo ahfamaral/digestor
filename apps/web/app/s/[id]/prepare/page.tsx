@@ -63,6 +63,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
         clip: toClipView(clip),
         title: moment?.title ?? "",
         checks: moment?.checks ?? null,
+        momentRange: moment ? { startMs: moment.startMs, endMs: moment.endMs } : null,
         tracks: tracks.map(toTrackView),
         points: cutPoints(boundaries, view.viewStart, view.viewEnd),
         canUndo: canUndo(events),

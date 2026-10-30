@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  exportChecklist, formatLength, formatTimestamp, type ClipFormat, type MomentChecks, type ProfileId, type Range,
+  checksForClip, exportChecklist, formatLength, formatTimestamp, type ClipFormat, type MomentChecks, type ProfileId, type Range,
 } from "@digestor/core";
 import { AppBar } from "@/components/AppBar";
 import { debouncedCommit } from "@/lib/debouncedCommit";
-import { fetchChecks, fetchTracks, patchClip, undoClip, type ClipChange } from "@/lib/prepareApi";
-import type { ClipView, TrackView } from "@/lib/prepareData";
+import { fetchChecks, fetchTracks, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
+import { checksToPoll, type ClipView, type TrackView } from "@/lib/prepareData";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -25,7 +25,10 @@ export interface PrepareClipData {
   clip: ClipView;
   /** The clip's moment title (in the spoken language). */
   title: string;
+  /** The moment's checks (they count for this clip only while it has the moment's bounds, R28). */
   checks: MomentChecks | null;
+  /** The moment's bounds; null when the clip has no moment. */
+  momentRange: Range | null;
   tracks: TrackView[];
   /** Cut positions inside the trim window (clip ± 30 s), computed server-side from the transcript. */
   points: { starts: number[]; ends: number[] };
@@ -89,6 +92,9 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [timedOut, setTimedOut] = useState(false);
+  /** Clips whose "Check again" restarted the minute of polling (R29). */
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
+  const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const lang = session.language ?? undefined;
 
   // A router.refresh() brings new server data: fold it in (see merge).
@@ -170,7 +176,23 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
     return () => clearTimeout(timer);
   }, []);
 
-  const pendingChecks = timedOut ? "" : items.filter((i) => i.checks === null).map((i) => i.clip.id).join(",");
+  useEffect(() => () => retryTimers.current.forEach(clearTimeout), []);
+
+  /** "Check again": claims and sends a new check, then polls this clip for another minute. */
+  async function checkAgain(id: string) {
+    setFor(setErrors, id, null);
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      await requestChecks(id);
+      setRetrying((r) => ({ ...r, [id]: true }));
+      retryTimers.current.push(setTimeout(() => setRetrying((r) => ({ ...r, [id]: false })), CHECKS_TIMEOUT_MS));
+    } catch (err) {
+      setFor(setErrors, id, err instanceof Error ? err.message : t("prepare.saveFailed"));
+    }
+    setBusy((b) => ({ ...b, [id]: false }));
+  }
+
+  const pendingChecks = checksToPoll(items.map((i) => ({ id: i.clip.id, checks: i.checks })), timedOut, retrying).join(",");
   useEffect(() => {
     if (!pendingChecks) return;
     const ids = pendingChecks.split(",");
@@ -201,7 +223,7 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
       i.clip.id,
       exportChecklist({
         clip: i.clip,
-        checks: i.checks,
+        moment: i.momentRange ? { ...i.momentRange, checks: i.checks } : null,
         tracks: i.tracks.map((tr) => ({ status: tr.status, burnStatus: tr.burnStatus, approvedAt: tr.approved ? new Date(0) : null })),
         profile: session.profile,
       }),
@@ -250,13 +272,14 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
                 item={item}
                 session={session}
                 defaultCredit={defaultCredit}
-                timedOut={timedOut}
+                timedOut={timedOut && !retrying[item.clip.id]}
                 busy={busy[item.clip.id] ?? false}
                 error={errors[item.clip.id] ?? null}
                 status={statuses[item.clip.id] ?? ""}
                 checklist={checklists.get(item.clip.id)!}
                 onChange={(body, opts) => change(item.clip.id, body, opts)}
                 onUndo={() => void undo(item.clip.id)}
+                onCheckAgain={() => void checkAgain(item.clip.id)}
                 onTrack={(tr) => setTrack(item.clip.id, tr)}
               />
             ))}
@@ -291,11 +314,17 @@ interface ClipCardProps {
   checklist: ReturnType<typeof exportChecklist>;
   onChange: (body: ClipChange, opts?: { refresh?: boolean; announce?: boolean }) => Promise<boolean>;
   onUndo: () => void;
+  onCheckAgain: () => void;
   onTrack: (track: TrackView) => void;
 }
 
-function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, status, checklist, onChange, onUndo, onTrack }: ClipCardProps) {
+function ClipCard({
+  n, item, session, defaultCredit, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
+}: ClipCardProps) {
   const { clip, title } = item;
+  // R30: once the video is removed the clip is frozen; only the acknowledgements can change.
+  const frozen = session.videoRemoved;
+  const { checks, originalCut } = checksForClip(clip, item.momentRange ? { ...item.momentRange, checks: item.checks } : null);
   const lang = session.language ?? undefined;
   const [cropDraft, setCropDraft] = useState<number | null>(null);
   const cropOffset = cropDraft ?? clip.cropOffset;
@@ -338,7 +367,7 @@ function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, stat
           <button
             type="button"
             onClick={onUndo}
-            disabled={!item.canUndo || busy}
+            disabled={!item.canUndo || busy || frozen}
             aria-label={t("prepare.undoLabel", { title: title || t("prepare.clipHeading", { n }) })}
             title={item.canUndo ? undefined : t("prepare.undoNothing")}
             className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
@@ -366,6 +395,7 @@ function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, stat
               revision={clip.updatedAt}
               durationMs={session.durationMs}
               points={item.points}
+              disabled={frozen}
               onCommit={commitBounds}
               onCommitText={(start, end) => onChange({ start, end }, { refresh: true, announce: true })}
             />
@@ -384,19 +414,23 @@ function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, stat
               clipId={clip.id}
               title={title}
               language={lang}
-              checks={item.checks}
+              checks={checks}
+              originalCut={originalCut}
               timedOut={timedOut}
               warningsAck={clip.warningsAck}
               busy={busy}
+              frozen={frozen}
+              checkingAgain={busy}
               onAck={(ack) => void onChange({ warningsAck: ack })}
               onExtend={() => void onChange({ extend: "next" }, { refresh: true, announce: true })}
+              onCheckAgain={onCheckAgain}
             />
             <FormatPicker
               clipId={clip.id}
               format={clip.format}
               cropOffset={cropOffset}
               hasVideo={session.hasVideo}
-              disabled={false}
+              disabled={frozen}
               onFormat={(format: ClipFormat) => void onChange({ format })}
               onCropInput={(v) => {
                 setCropDraft(v);
@@ -410,6 +444,7 @@ function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, stat
               credit={clip.credit}
               noCreditNeeded={clip.noCreditNeeded}
               defaultCredit={defaultCredit}
+              disabled={frozen}
               onCredit={(credit) => void onChange({ credit })}
               onNoCredit={(v) => void onChange({ noCreditNeeded: v })}
             />
@@ -418,7 +453,7 @@ function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, stat
               clipId={clip.id}
               originalLanguage={session.language}
               tracks={item.tracks}
-              disabled={false}
+              frozen={frozen}
               onTrack={onTrack}
             />
             <Checklist
@@ -507,12 +542,13 @@ function ClipPlayer({
 
 /** The credit line (saved on blur or Enter) or "No credit needed". */
 function CreditField({
-  clipId, credit, noCreditNeeded, defaultCredit, onCredit, onNoCredit,
+  clipId, credit, noCreditNeeded, defaultCredit, disabled, onCredit, onNoCredit,
 }: {
   clipId: string;
   credit: string | null;
   noCreditNeeded: boolean;
   defaultCredit: string;
+  disabled: boolean;
   onCredit: (credit: string | null) => void;
   onNoCredit: (v: boolean) => void;
 }) {
@@ -534,7 +570,7 @@ function CreditField({
           id={id}
           value={value}
           maxLength={200}
-          disabled={noCreditNeeded}
+          disabled={noCreditNeeded || disabled}
           placeholder={t("prepare.creditPlaceholder")}
           aria-describedby={`${id}-help`}
           onChange={(e) => setValue(e.target.value)}
@@ -555,7 +591,7 @@ function CreditField({
         {t("prepare.creditHelp")}
       </p>
       <label className="mt-1.5 flex items-center gap-2 text-[13px] font-medium">
-        <Checkbox checked={noCreditNeeded} onCheckedChange={(v) => onNoCredit(v === true)} />
+        <Checkbox checked={noCreditNeeded} disabled={disabled} onCheckedChange={(v) => onNoCredit(v === true)} />
         <span>{t("prepare.noCredit")}</span>
       </label>
     </section>

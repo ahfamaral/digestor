@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LANGUAGES } from "@digestor/core";
 import { Checkbox } from "@/components/ui/checkbox";
+import { WarningIcon } from "@/components/WarningNote";
 import { addTrack, patchTrack } from "@/lib/prepareApi";
 import { subtitleLanguages, type TrackView } from "@/lib/prepareData";
 import { languageName, t } from "@/lib/i18n";
@@ -14,15 +15,19 @@ export interface SubtitlesPanelProps {
   /** The video's spoken language, or null when unknown. */
   originalLanguage: string | null;
   tracks: TrackView[];
-  disabled: boolean;
+  /** The video was removed (R30): lines can't be reviewed, approved or burned any more; adding a language still works. */
+  frozen: boolean;
   onTrack: (track: TrackView) => void;
 }
 
 const ACT =
   "inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
 
-/** Subtitles per language: add a language, download drafts, review and approve lines, and ask for a burned-in version. */
-export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, disabled, onTrack }: SubtitlesPanelProps) {
+/**
+ * Subtitles per language: add a language, download drafts, review and approve lines, and ask for a burned-in version.
+ * A track built for an older cut is "outdated" (R27): no downloads, and Rebuild replaces it.
+ */
+export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, frozen, onTrack }: SubtitlesPanelProps) {
   const options = subtitleLanguages(originalLanguage, tracks.map((tr) => tr.language));
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
@@ -50,7 +55,7 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, di
     setBusy(false);
   }
 
-  /** "Try again" on a failed track: the same add, which replaces the failed track. */
+  /** "Try again" on a failed track and "Rebuild" on an outdated one: the same add, which replaces the old track. */
   async function retry(track: TrackView) {
     setTrackErrors((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== track.id)));
     setRetrying(track.id);
@@ -87,7 +92,7 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, di
             clipId={clipId}
             track={tr}
             label={label(tr.language)}
-            disabled={disabled}
+            frozen={frozen}
             error={trackErrors[tr.id] ?? null}
             onReview={() => setEditing(tr.id)}
             onBurn={(want) => void burn(tr, want)}
@@ -102,7 +107,7 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, di
             {t("prepare.addLanguage")}
             <select
               value={chosen}
-              disabled={disabled || busy}
+              disabled={busy}
               onChange={(e) => setPick(e.target.value)}
               className="h-8 max-w-full rounded-md border border-border bg-white px-2 text-sm font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
@@ -113,7 +118,7 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, di
               ))}
             </select>
           </label>
-          <button type="button" className={`${ACT} h-8`} disabled={disabled || busy || !chosen} onClick={() => void add()}>
+          <button type="button" className={`${ACT} h-8`} disabled={busy || !chosen} onClick={() => void add()}>
             {busy ? t("prepare.adding") : t("prepare.add")}
           </button>
         </div>
@@ -156,13 +161,13 @@ function burnNote(track: TrackView): string | null {
 }
 
 function TrackRow({
-  sessionId, clipId, track, label, disabled, error, onReview, onBurn, retrying, onRetry,
+  sessionId, clipId, track, label, frozen, error, onReview, onBurn, retrying, onRetry,
 }: {
   sessionId: string;
   clipId: string;
   track: TrackView;
   label: string;
-  disabled: boolean;
+  frozen: boolean;
   error: string | null;
   onReview: () => void;
   onBurn: (want: boolean) => void;
@@ -173,7 +178,7 @@ function TrackRow({
   const burnOn = track.burnStatus !== "none";
   const making = track.burnStatus === "queued" || track.burnStatus === "rendering";
   // Turning burn-in on needs approved lines; turning a request off is always allowed (except while it's being made).
-  const burnDisabled = disabled || !ready || making || (!burnOn && !track.approved);
+  const burnDisabled = frozen || !ready || making || (!burnOn && !track.approved);
   const note = burnNote(track);
   const file = (ext: "srt" | "vtt") => `/api/files/${sessionId}/clips/${clipId}.${track.language}.${ext}`;
 
@@ -215,7 +220,7 @@ function TrackRow({
           <button
             type="button"
             className={ACT}
-            disabled={disabled || retrying}
+            disabled={retrying}
             onClick={onRetry}
             aria-label={t("prepare.retryLabel", { language: label })}
           >
@@ -223,9 +228,26 @@ function TrackRow({
           </button>
         </div>
       )}
+      {track.status === "outdated" && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p role="status" className="flex items-center gap-1.5 text-xs font-medium text-stone-900">
+            <WarningIcon className="size-3.5" />
+            {t("prepare.trackOutdated")}
+          </p>
+          <button
+            type="button"
+            className={ACT}
+            disabled={retrying || making}
+            onClick={onRetry}
+            aria-label={t("prepare.rebuildLabel", { language: label })}
+          >
+            {retrying ? t("prepare.adding") : t("prepare.rebuild")}
+          </button>
+        </div>
+      )}
       {ready && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <button type="button" className={ACT} disabled={disabled} onClick={onReview} aria-label={t("prepare.reviewLabel", { language: label })}>
+          <button type="button" className={ACT} disabled={frozen} onClick={onReview} aria-label={t("prepare.reviewLabel", { language: label })}>
             {t("prepare.review")}
           </button>
           <label className="flex items-center gap-1.5 text-xs font-medium" title={!track.approved && !burnOn ? t("prepare.burnNeedsApproval") : undefined}>
@@ -239,7 +261,14 @@ function TrackRow({
           </label>
           {!track.approved && <span className="text-xs text-muted-foreground">{t("prepare.burnNeedsApproval")}</span>}
           {note && (
-            <span className={track.burnStatus === "stale" && track.burnBuilt ? "text-xs font-medium text-amber-800" : "text-xs text-muted-foreground"}>
+            <span
+              className={
+                track.burnStatus === "stale" && track.burnBuilt
+                  ? "inline-flex items-center gap-1 text-xs font-medium text-stone-900"
+                  : "text-xs text-muted-foreground"
+              }
+            >
+              {track.burnStatus === "stale" && track.burnBuilt && <WarningIcon className="size-3.5" />}
               {note}
             </span>
           )}
