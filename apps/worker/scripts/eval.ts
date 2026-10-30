@@ -2,16 +2,15 @@
  * Prints the evaluation table (spec §14a) for an already-analysed session. It never calls the LLM: it only reads
  * the session's current analysis version and compares it with a hand-labelled golden file.
  *
- *   pnpm --filter @digestor/worker exec tsx scripts/eval.ts <sessionId> <golden.json>
- *   (database access: run it in the worker container, e.g.
- *    docker compose exec -w /app/apps/worker worker node --import tsx scripts/eval.ts <sessionId> <golden.json>)
+ *   docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval.ts <sessionId> <golden.json>
  *
- * The session id may also be given as `sessionId` in the golden file.
+ * It runs in the worker container (which has the database URL); the golden path is relative to `apps/worker`. The
+ * session id may also be given as `sessionId` in the golden file.
  */
 import { readFileSync } from "node:fs";
 import { GranularitySchema, HIGHLIGHT_TYPES } from "@digestor/core";
 import { createDb, getCurrentAnalysis } from "@digestor/core/server";
-import { momentRecall, topicBoundaryError, trapHits, type Golden } from "../src/eval/metrics.js";
+import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, type Golden } from "../src/eval/metrics.js";
 
 const [sessionArg, goldenPath] = process.argv.slice(2);
 if (!goldenPath) {
@@ -44,13 +43,8 @@ try {
   }
 
   const goldenTypes = new Set(golden.moments.flatMap((m) => m.types));
-  const wanted = golden.moments.filter((m) => m.types.length > 0);
-  const typeHits = wanted.filter((gm) =>
-    analysis.moments.some(
-      (m) => m.granularity === gm.granularity && Math.min(m.endMs, gm.endMs) - Math.max(m.startMs, gm.startMs) >= 0.5 * (gm.endMs - gm.startMs) && m.highlights.some((h) => gm.types.includes(h.type)),
-    ),
-  );
-  rows.push([`Highlight type matched (${[...goldenTypes].map((t) => HIGHLIGHT_TYPES[t].label).join(", ") || "none"})`, wanted.length ? `${typeHits.length}/${wanted.length}` : "no golden types"]);
+  const types = highlightTypeRecall(golden.moments, analysis.moments);
+  rows.push([`Highlight type matched (${[...goldenTypes].map((t) => HIGHLIGHT_TYPES[t].label).join(", ") || "none"})`, types.total ? `${types.found}/${types.total}` : "no golden types"]);
 
   const traps = trapHits(golden.traps, analysis.moments);
   rows.push(["Check warnings fired on traps", traps.total ? `${traps.fired}/${traps.total}` : "no traps"]);

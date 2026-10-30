@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { momentRecall, topicBoundaryError, trapHits } from "./metrics.js";
+import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits } from "./metrics.js";
 
 const t = (startMs: number, endMs: number) => ({ title: "t", startMs, endMs });
 
@@ -36,7 +36,51 @@ describe("momentRecall", () => {
   });
 });
 
+describe("momentRecall edge cases", () => {
+  const g = (granularity: "exchange" | "passage" | "punchline", startMs: number, endMs: number) => ({ granularity, startMs, endMs });
+  it("a zero-length golden moment is counted but never found", () => {
+    expect(momentRecall([g("passage", 5_000, 5_000)], [g("passage", 0, 10_000)], "passage")).toEqual({ found: 0, total: 1 });
+  });
+  it("total 0 with no golden moments, and nothing found from an empty list", () => {
+    expect(momentRecall([], [g("passage", 0, 10_000)], "passage")).toEqual({ found: 0, total: 0 });
+    expect(momentRecall([g("passage", 0, 10_000)], [], "passage")).toEqual({ found: 0, total: 1 });
+  });
+});
+
+describe("highlightTypeRecall", () => {
+  const gm = (startMs: number, endMs: number, types: ("heated" | "key_point")[], granularity: "passage" | "exchange" = "passage") =>
+    ({ granularity, startMs, endMs, types });
+  const fm = (startMs: number, endMs: number, types: ("heated" | "key_point")[], granularity: "passage" | "exchange" = "passage") =>
+    ({ granularity, startMs, endMs, highlights: types.map((type) => ({ type })) });
+
+  it("needs the same granularity, half the golden length covered and a shared type; untyped golden moments don't count", () => {
+    const golden = [gm(0, 10_000, ["heated"]), gm(20_000, 30_000, ["key_point"]), gm(40_000, 50_000, ["heated"]), gm(60_000, 70_000, [])];
+    const found = [
+      fm(4_000, 14_000, ["heated"]), // 60%, same type -> hit
+      fm(20_000, 30_000, ["heated"]), // wrong type -> miss
+      fm(40_000, 50_000, ["heated"], "exchange"), // wrong granularity -> miss
+      fm(60_000, 70_000, ["heated"]),
+    ];
+    expect(highlightTypeRecall(golden, found)).toEqual({ found: 1, total: 3 });
+  });
+  it("a zero-length golden moment is never a hit (no division by zero)", () => {
+    expect(highlightTypeRecall([gm(5_000, 5_000, ["heated"])], [fm(0, 10_000, ["heated"])])).toEqual({ found: 0, total: 1 });
+  });
+  it("touching but not overlapping is a miss", () => {
+    expect(highlightTypeRecall([gm(0, 10_000, ["heated"])], [fm(10_000, 20_000, ["heated"])])).toEqual({ found: 0, total: 1 });
+  });
+  it("total 0 and an empty found list", () => {
+    expect(highlightTypeRecall([], [fm(0, 10_000, ["heated"])])).toEqual({ found: 0, total: 0 });
+    expect(highlightTypeRecall([gm(0, 10_000, ["heated"])], [])).toEqual({ found: 0, total: 1 });
+  });
+});
+
 describe("trapHits", () => {
+  it("total 0 with no traps, and nothing fired from an empty list", () => {
+    expect(trapHits([], [{ startMs: 0, endMs: 5000, checks: null }])).toEqual({ fired: 0, total: 0 });
+    expect(trapHits([{ kind: "quoted_opponent", startMs: 0, endMs: 5000 }], [])).toEqual({ fired: 0, total: 1 });
+  });
+
   const checks = (over: Partial<MomentChecks>): MomentChecks => ({
     argumentComplete: true,
     continuesWith: null,

@@ -53,6 +53,29 @@ export function momentRecall(
 }
 
 /**
+ * How many typed golden moments were found with a matching highlight type: a found moment of the same granularity
+ * covering at least `minOverlap` of the golden moment's length and carrying one of its types. Golden moments without
+ * types aren't counted; a zero-length golden moment is counted but never found.
+ */
+export function highlightTypeRecall(
+  golden: (Span & { granularity: Granularity; types: HighlightTypeId[] })[],
+  found: (Span & { granularity: Granularity; highlights: { type: HighlightTypeId }[] })[],
+  minOverlap = 0.5,
+): { found: number; total: number } {
+  const typed = golden.filter((g) => g.types.length > 0);
+  const hits = typed.filter((gm) => {
+    const len = gm.endMs - gm.startMs;
+    return (
+      len > 0 &&
+      found.some(
+        (fm) => fm.granularity === gm.granularity && overlapMs(gm, fm) / len >= minOverlap && fm.highlights.some((h) => gm.types.includes(h.type)),
+      )
+    );
+  });
+  return { found: hits.length, total: typed.length };
+}
+
+/**
  * A trap fires when a checked moment overlapping it carries the matching warning: `mid_argument` means the
  * argument-completeness check failed, `quoted_opponent` means reported speech was flagged. Moments whose checks
  * never ran count as not fired.
