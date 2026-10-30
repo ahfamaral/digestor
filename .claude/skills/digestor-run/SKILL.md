@@ -1,6 +1,6 @@
 ---
 name: digestor-run
-description: Launch the Digestor stack (Colima, docker compose, Next.js dev server), seed demo sessions at the context-check or review pause, and drive the web UI with Playwright to take screenshots and catch console errors. Use this whenever you need to see a Digestor screen, confirm a UI or API change works in the real app rather than only in tests, check a layout at phone width, reproduce a UI bug, or prepare screenshots for the capstone README/showcase — even if the user just says "check it works", "how does the inbox look" or "run the app".
+description: Launch the Digestor stack (Colima, docker compose, Next.js dev server), seed demo sessions at the context-check pause or fully analysed (`ready`), and drive the journalist flow (Preview, Full briefing, Prepare, Export), and drive the web UI with Playwright to take screenshots and catch console errors. Use this whenever you need to see a Digestor screen, confirm a UI or API change works in the real app rather than only in tests, check a layout at phone width, reproduce a UI bug, or prepare screenshots for the capstone README/showcase — even if the user just says "check it works", "how does the briefing look" or "run the app".
 ---
 
 # Run and see Digestor
@@ -28,18 +28,20 @@ What you can reach depends on the API keys in `.env`:
 | Keys | Reachable for real |
 |---|---|
 | none | Upload → Processing → "Something went wrong" (`ASSEMBLYAI_API_KEY is not set on the server.`) |
-| both | the whole flow: Processing → Context check → Inbox → Render → Export |
+| both | the whole flow: Processing → Context check → Preview → Full briefing → Prepare → Export (real analysis, translated subtitles, Ask) |
+
+Without keys, anything AI fails with the friendly "`<VAR>` is not set on the server." text (for example a translated subtitle track, shown inline in Prepare). The English track of an English video is the original, so it needs no key. Cutting and rendering need no key, so Prepare → Export works on the seed.
 
 Without keys, **seed** a session (synthetic video, transcript and card):
 
 ```bash
-# finished: ≈ 10 min mayor interview, one complete analysis (3 topics, 14 moments, briefing, checks + thumbnails on the top highlights)
+# ready: ≈ 10 min mayor interview, one complete analysis (3 topics, 14 moments, briefing, checks + thumbnails on the top highlights)
 docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage ready
 # parked at the context check (4.6 min, two open questions)
 docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage awaiting_context
 ```
 
-Each prints `http://localhost:3000/s/<id>`. Seeded sessions have no LangGraph checkpoint, so Continue / Skip are accepted by the API but ignored by the worker — the stage stays where the web moved it. Good for looking at screens and keyboard triage, not for testing the pipeline. For pipeline behaviour, use worker tests or real keys.
+Each prints `http://localhost:3000/s/<id>`. Seeded sessions have no LangGraph checkpoint, so Continue / Skip are accepted by the API but ignored by the worker — the stage stays where the web moved it. Good for looking at screens, keyboard triage, Prepare and Export (renders run for real in the worker container), not for testing the pipeline. Each `--stage ready` run creates a new session, so seed a fresh one for a clean end-to-end pass. For pipeline behaviour, use worker tests or real keys.
 
 A test video to upload (made in the container, written to `./data` on the host):
 
@@ -55,26 +57,33 @@ Playwright is installed outside the repo so it never touches the lockfile. One-t
 
 ```bash
 mkdir -p ~/.cache/digestor-run && cd ~/.cache/digestor-run && ( [ -f package.json ] || npm init -y >/dev/null ) \
-  && npm i playwright@1.56.1 && npx playwright install chromium
+  && npm i playwright@1.56.1
 ```
+
+The scripts launch **Google Chrome** (`channel: "chrome"`), because Playwright's bundled Chromium cannot play H.264 (the proxy and clips). Install Chrome on the host once.
 
 Then (from the repo root):
 
 ```bash
 node .claude/skills/digestor-run/scripts/drive.mjs --out <scratch>/shots \
-  --visit / --visit /s/<contextId> --visit /s/<reviewId> --visit /s/<reviewId>/export \
-  --keys "/s/<reviewId>=a,ArrowDown,n,ArrowDown,r" \
+  --visit / --visit /s/<contextId> --visit /s/<readyId> --visit /s/<readyId>/briefing \
+  --visit /s/<readyId>/prepare --visit /s/<readyId>/export --visit /reports \
+  --keys "/s/<readyId>/briefing=a,ArrowDown,n,ArrowDown,r" \
   --upload ./data/sample.mp4 \
   --mobile
 ```
 
-- `--visit <path>` full-page screenshot; `--keys <path>=k1,k2` presses keys in order with a screenshot after each (inbox keys: `a` approve, `n` neutral, `r` reject, `e` edit times, `ArrowDown`/`ArrowUp`, `Escape`); `--upload <file>` goes through the home page and follows the redirect to `/s/<id>`; `--mobile` adds a 390 px-wide copy of each shot.
+- `--visit <path>` full-page screenshot; `--keys <path>=k1,k2` presses keys in order with a screenshot after each (Full briefing keys: `a` approve, `n` neutral, `r` reject, `e` open in Prepare, `ArrowDown`/`ArrowUp`, `Escape`; `/` opens the Ask drawer on Preview and Full briefing); `--upload <file>` goes through the home page and follows the redirect to `/s/<id>`; `--mobile` adds a 390 px-wide copy of each shot.
 - If `APP_PASSWORD` is set, pass `--password` (or export `APP_PASSWORD`); the script logs in when redirected to `/login`.
 - Console errors, uncaught page errors and 5xx responses go to `<out>/errors.txt`. An empty file is part of "it works".
 
 Then **look at the screenshots** (Read the PNGs) — a screenshot nobody looked at proves nothing. Check: the stepper shows the right step, badges/labels use the spec's wording ("Heated", "Key point", "Light moment"), nothing overflows at 390 px, errors render inline.
 
-For flows the script doesn't cover (time-edit dialog, render button, SSE progress), write a short throwaway Playwright script in your scratch directory using the same `createRequire(~/.cache/digestor-run/package.json)` trick as `drive.mjs`; prefer role/label selectors (`getByRole`, `getByLabel`) the way the components expose them.
+For flows the script doesn't cover (Confirm, trim, 9:16, credit, adding a subtitle language, Export and waiting for "Rendered"), write a short throwaway Playwright script in your scratch directory using the same `createRequire(~/.cache/digestor-run/package.json)` trick as `drive.mjs`; prefer role/label selectors (`getByRole`, `getByLabel`). Handy ones: the Full briefing Confirm button is "Confirm selection → Prepare clips"; the Prepare fields are labelled "Start" / "End", "Crop position", the credit input has the placeholder "e.g. the channel or broadcaster", the language `select` is "Subtitle language" and its button "Add"; the way on to Export is a *link* "Export ready clips →" (on Export itself it is a button); a finished render shows "Rendered".
+
+The full journalist pass to run before calling a UI change done: Preview → `/` Ask drawer → Full briefing (triage 3 moments with `a`, `n`, `r`; pick a highlight-type chip that hides an approved moment to see "N approved · M hidden by filters" and "Show hidden") → Confirm → Prepare (trim, 9:16, credit, add a language) → Export (render), at 1280 and 390 px.
+
+To check a rendered clip's credit line or crop, extract a frame **inside the worker container** (`docker compose exec worker ffmpeg -ss 60 -i /data/<id>/clips/<clipId>.mp4 -frames:v 1 /data/<id>/frame.png`), copy it out, look at it, and delete it. Never run ffmpeg on the host.
 
 ## 4. Report and clean up
 

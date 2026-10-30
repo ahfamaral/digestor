@@ -4,10 +4,12 @@
 //   node drive.mjs --out <dir> [--base http://localhost:3000] [--password <pw>]
 //                  [--visit <path>]... [--upload <file>] [--keys <path>=<k1,k2,...>] [--mobile]
 //
-// --visit   screenshot a page, e.g. /  /s/<id>  /s/<id>/export
+// --visit   screenshot a page, e.g. /  /s/<id> (Preview)  /s/<id>/briefing  /s/<id>/prepare  /s/<id>/export  /reports
 // --upload  upload a file from the home page, follow the redirect to /s/<id>, screenshot it
-// --keys    open a page, press keys in order (Playwright key names: a, n, r, e, ArrowDown, Escape),
-//           screenshot after each key: e.g. /s/<id>=a,ArrowDown,n,ArrowDown,r
+// --keys    open a page, press keys in order (Playwright key names: a, n, r, e, ArrowDown, Escape, "/"),
+//           screenshot after each key: e.g. /s/<id>/briefing=a,ArrowDown,n,ArrowDown,r
+//           ("/" opens the Ask drawer on Preview and Full briefing)
+// Uses Google Chrome (channel "chrome"): Playwright's bundled Chromium cannot play H.264.
 // --mobile  also capture each screenshot at 390 px wide
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -27,7 +29,7 @@ const password = one("--password", process.env.APP_PASSWORD ?? "");
 const mobile = args.includes("--mobile");
 mkdirSync(out, { recursive: true });
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ channel: "chrome" });
 const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
 const page = await context.newPage();
 const errors = [];

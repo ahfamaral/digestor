@@ -5,7 +5,7 @@
  *   docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage ready
  *   docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage awaiting_context
  *
- * - `ready`: a finished interview with one complete analysis version (3 topics, 12 moments across the three
+ * - `ready`: a finished interview with one complete analysis version (3 topics, 14 moments across the three
  *   granularities with highlights, a grounded briefing, checks and thumbnails on the top highlights).
  * - `awaiting_context`: parked at the context-check pause with two open questions.
  *

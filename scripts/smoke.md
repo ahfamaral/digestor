@@ -8,16 +8,34 @@ Setup: `colima start --cpu 4 --memory 8`, `docker compose up -d --build`, `pnpm 
 
 - [ ] Intake: paste the YouTube link (run A) or upload the file (run B).
 - [ ] Processing: the stepper advances through download, ingest, transcribe, context.
-- [ ] Context check: answer one question (or skip) and continue.
-- [ ] Inbox: approve 2 clips, mark 1 neutral, reject 1 (keys `A`, `N`, `R`), edit one clip's times (`E`).
-- [ ] Render the approved clips.
-- [ ] Export: download the MP4 and the SRT.
+- [ ] Context check: answer one question (or skip) and continue; profile is detected or chosen.
+- [ ] Preview: timeline, top highlights and briefing appear; Play a highlight; "Looks right → Full briefing".
+- [ ] Full briefing: approve 2 moments, mark 1 neutral, reject 1 (keys `A`, `N`, `R`); filter by granularity, focus speaker and highlight type; "Confirm selection → Prepare clips".
+- [ ] Prepare clips: trim one clip (handles snap to sentence pauses), switch one to 9:16 and move the crop, add a credit line, add the video's own subtitle language and approve it.
+- [ ] Export: "Export ready clips"; download the MP4, SRT and VTT.
 
 Expected:
 - [ ] Subtitles are in the spoken language.
 - [ ] No clip starts or ends mid-sentence.
-- [ ] Rendered duration matches the snapped start/end times within 0.2 s (check with the player or `docker compose run --rm worker ffprobe`).
+- [ ] Rendered duration matches the snapped start/end times within 0.2 s (check with `docker compose run --rm worker ffprobe`).
+- [ ] 9:16 output is 720x1280 and the credit line is legible bottom-right, not clipped.
 - [ ] Invalid times (end before start, past the video end, `1:2:3x`) show an inline error and save nothing.
+
+## 1b. New-flow extras
+
+- [ ] **Audio-only file** (an mp3 or m4a): the session reaches Preview; Prepare shows "This file has no video: the export shows a waveform in this shape." and the render is a waveform on a dark background (1280x720, or 720x1280 for 9:16). The upload-time warning and acknowledgement checkbox from the brief ("This file has no video. Clips will show a waveform instead of a picture.") are not built; note what you see.
+- [ ] **Translated track**: add a second subtitle language in Prepare; the lines are translated, the editor shows original and subtitle side by side, empty lines block approval, approving then burning in produces a "Burned-in MP4" on Export.
+- [ ] Translate the briefing from Preview ("Read in"); quotes keep the original text first.
+- [ ] Re-analyse from "Something's off" with a different profile: the old results stay until the new version finishes.
+- [ ] Trial profile: the Prepare checklist asks "I checked that no protected person (witness, victim or minor) can be identified."
+- [ ] Retention: with `VIDEO_RETENTION_DAYS=0`-style testing not allowed (it falls back to 14), age a session's `created_at` in the database, run the cleanup, and check Play shows "The video was removed after 14 days. Re-upload it to make new clips." while rendered clips still download.
+
+## Record real vendor fixtures at smoke time
+
+No API keys were available while Plan 2 was built, so every AI fake is shaped from SDK types and docs, not from recorded responses (see `vendor-contract-check`). On the first keyed run, record and commit:
+
+- [ ] A real AssemblyAI transcript for a short non-English clip, a real Claude structured-output response for each of topics, moments, briefing, checks and translation, and one real Chroma query/response, each under `apps/worker/test/fixtures/` with a `*.recorded.json` name, then run them through the real parsers in tests.
+- [ ] A real embedding vector shape from `Xenova/multilingual-e5-small` (dimension, normalisation).
 
 ## 2. Restart test
 
@@ -25,8 +43,8 @@ Expected:
 - [ ] Start it again (`docker compose up -d worker`).
 
 Expected:
-- [ ] The job is retried and the session reaches the context check or the review inbox.
-- [ ] No duplicate clips in the inbox.
+- [ ] The job is retried and the session reaches the context check or the Preview.
+- [ ] No duplicate topics or moments in the Full briefing.
 
 ## 3. Ask (real Claude tool calls)
 

@@ -1,0 +1,17 @@
+{
+  "profile": "interview",
+  "topics": [
+    { "title": "Housing costs", "startMs": 0, "endMs": 210000 },
+    { "title": "Transport", "startMs": 210000, "endMs": 420000 },
+    { "title": "Budget", "startMs": 420000, "endMs": 600000 }
+  ],
+  "moments": [
+    { "granularity": "exchange", "startMs": 0, "endMs": 200000, "types": ["key_point"] },
+    { "granularity": "passage", "startMs": 60000, "endMs": 110000, "types": ["heated"] },
+    { "granularity": "punchline", "startMs": 90000, "endMs": 105000, "types": ["quotable"] }
+  ],
+  "traps": [
+    { "kind": "mid_argument", "startMs": 60000, "endMs": 90000 },
+    { "kind": "quoted_opponent", "startMs": 300000, "endMs": 320000 }
+  ]
+}
