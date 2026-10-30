@@ -6,6 +6,7 @@ export interface Transcriber {
   transcribe(audioPath: string, fallbackDurationMs?: number): Promise<Transcript>;
 }
 
+/** The vendor rejected the file. `message` is the vendor's text: for logs and routing only, never shown to the user. */
 export class TranscriptionError extends Error {
   constructor(message: string) {
     super(message);
@@ -32,7 +33,9 @@ export type RawTranscript = {
 
 export function throwIfError(raw: RawTranscript): void {
   if (raw.status === "error") {
-    throw new TranscriptionError(raw.error ?? "Transcription failed.");
+    const vendor = raw.error ?? "no error text";
+    console.error(`[assemblyai] transcription failed: ${vendor}`);
+    throw new TranscriptionError(vendor);
   }
 }
 

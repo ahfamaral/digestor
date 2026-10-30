@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TranscriptSchema } from "@digestor/core";
 import { FakeTranscriber, mapAssemblyAI, TranscriptionError, throwIfError } from "./assemblyai.js";
 
@@ -74,6 +74,12 @@ describe("mapAssemblyAI", () => {
 });
 
 describe("throwIfError", () => {
+  it("logs the vendor's error text (only the logs see it; the user gets a fixed sentence)", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => throwIfError({ status: "error", error: "Audio too short" })).toThrow(TranscriptionError);
+    expect(spy.mock.calls.flat().map(String).join(" ")).toContain("Audio too short");
+    spy.mockRestore();
+  });
   it("throws TranscriptionError with the vendor message on error status", () => {
     expect(() => throwIfError({ status: "error", error: "Audio too short" })).toThrow(TranscriptionError);
     expect(() => throwIfError({ status: "error", error: "Audio too short" })).toThrow("Audio too short");

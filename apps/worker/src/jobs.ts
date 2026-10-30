@@ -44,9 +44,17 @@ export type JobContext = {
   graph: Pick<ReturnType<typeof buildPipeline>, "invoke" | "getState">;
 };
 
-/** User-facing message for an error that escaped the graph. Unknown errors are logged, not shown. */
+export const TRANSCRIPTION_FAILED = "Transcription failed. Please try again.";
+
+/**
+ * User-facing message for an error that escaped the graph. Vendor text (AssemblyAI's error) and unknown errors are
+ * logged, never shown.
+ */
 export function failureMessage(err: unknown): string {
-  if (err instanceof TranscriptionError) return `Transcription failed: ${err.message}`;
+  if (err instanceof TranscriptionError) {
+    console.error(`[jobs] transcription failed: ${err.message}`);
+    return TRANSCRIPTION_FAILED;
+  }
   if (err instanceof MissingApiKeyError) return err.message;
   console.error(err);
   return "Something went wrong while processing this video. Please try again.";

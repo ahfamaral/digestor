@@ -44,8 +44,13 @@ describe("payloads", () => {
 
 describe("failureMessage", () => {
   it("maps known errors", () => {
-    expect(failureMessage(new TranscriptionError("bad audio"))).toBe("Transcription failed: bad audio");
     expect(failureMessage(new MissingApiKeyError("ANTHROPIC_API_KEY"))).toBe("ANTHROPIC_API_KEY is not set on the server.");
+  });
+  it("shows a fixed sentence for a transcription error and logs the vendor's text (M1)", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(failureMessage(new TranscriptionError("Upstream 0x7f: model shard failed"))).toBe("Transcription failed. Please try again.");
+    expect(spy.mock.calls.flat().map(String).join(" ")).toContain("Upstream 0x7f: model shard failed");
+    spy.mockRestore();
   });
   it("hides unknown errors", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -155,7 +160,7 @@ d("job handlers", () => {
   });
 
   it.each([
-    ["TranscriptionError", new TranscriptionError("boom"), "Transcription failed: boom"],
+    ["TranscriptionError", new TranscriptionError("boom"), "Transcription failed. Please try again."],
     ["MissingApiKeyError", new MissingApiKeyError("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY is not set on the server."],
   ])("a deterministic %s fails the session at once and completes the job (no retry)", async (_name, err, message) => {
     const g = stubGraph({ fail: err });
