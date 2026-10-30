@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="background:#fff;padding:24px;font-family:Inter,system-ui,sans-serif">
+<style>
+  .dg{font-family:Inter,system-ui,sans-serif;background:#f6f5f2;color:#17181c;border-radius:12px;padding:18px;font-size:13.5px;line-height:1.45;max-width:880px;margin:0 auto}
+  .dg .muted{color:#71727a}
+  .dg .mono{font-family:ui-monospace,Menlo,monospace;color:#71727a;font-size:12px}
+  .dg .paper{background:#fff;border:1px solid #e9e6df;border-radius:12px;padding:18px 20px}
+  .dg .chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .dg .heat{background:#ffe3dc;color:#c2381b}.dg .arg{background:#e0ecff;color:#1d4fb8}.dg .lol{background:#fff1cc;color:#8a6100}.dg .long{background:#eceaf6;color:#5b3fb0}.dg .most{background:#e3f4e8;color:#1f7a3d}
+  .dg .strip{display:flex;height:30px;border-radius:7px;overflow:hidden;border:1px solid #e9e6df;background:#fff}
+  .dg .strip div{display:flex;align-items:center;padding-left:6px;font-size:11px;color:#3a3b40;border-right:2px solid #f6f5f2;white-space:nowrap;overflow:hidden;background:#efede7}
+  .dg .strip .sel{background:#17181c;color:#fff}
+  .dg .pins{position:relative;height:16px;margin-top:4px}
+  .dg .pins span{position:absolute;top:2px;width:10px;height:10px;border-radius:50%;transform:translateX(-50%);border:2px solid #fff;box-shadow:0 0 0 1px #e9e6df}
+  .dg .axis{display:flex;justify-content:space-between}
+  .dg h1{font-size:19px;margin:0}
+  .dg h3{font-size:15px;margin:18px 0 4px;display:flex;gap:10px;align-items:baseline}
+  .dg .hl{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px}
+  .dg .hl .c{background:#fff;border:1px solid #e9e6df;border-radius:10px;padding:9px 10px}
+  .dg .hl p{margin:5px 0 3px;font-size:12.5px}
+  .dg blockquote{margin:8px 0;padding:6px 10px;border-left:3px solid #1d4fb8;background:#f8f9fc;font-style:italic}
+  .dg .why{font-size:12px;color:#71727a;margin:2px 0 0 13px}
+  .dg .act{font-size:12px;color:#17181c;border:1px solid #e9e6df;border-radius:6px;padding:2px 8px;background:#fff}
+  .dg .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#71727a;margin-top:2px}
+  .dg .legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+  .dg hr{border:0;border-top:1px solid #f0ede6;margin:14px 0}
+</style>
+
+<h2>Hybrid: B's timeline on top, C's briefing below, A's cards for the top highlights</h2>
+<p class="subtitle">Sober palette: topic bands are neutral; colour is reserved for highlight types. The selected topic (dark band) is the section you're reading.</p>
+
+<div class="dg">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+    <h1>Budget 2027 — plenary debate</h1>
+    <span class="mono">3:12:04 · 14 speakers · Portuguese</span>
+  </div>
+
+  <!-- B: timeline -->
+  <div class="strip">
+    <div style="width:9%">Opening</div>
+    <div style="width:27%" class="sel">Health spending cuts</div>
+    <div style="width:18%">Teacher salaries</div>
+    <div style="width:15%">Housing tax</div>
+    <div style="width:5%">PoO</div>
+    <div style="width:26%">Closing votes</div>
+  </div>
+  <div class="pins">
+    <span style="left:21%;background:#e0532f"></span><span style="left:30%;background:#2f6be0"></span><span style="left:4.5%;background:#7a5cc9"></span><span style="left:72%;background:#e0a400"></span><span style="left:60%;background:#e0532f"></span><span style="left:46%;background:#2f6be0"></span>
+  </div>
+  <div class="axis mono"><span>0:00</span><span>1:00</span><span>2:00</span><span>3:12</span></div>
+  <div class="legend"><span><i style="background:#e0532f"></i>Most heated</span><span><i style="background:#2f6be0"></i>Strong argument</span><span><i style="background:#7a5cc9"></i>Longest speech</span><span><i style="background:#e0a400"></i>Lighter moment</span><span style="margin-left:auto">⚙ Highlight types</span></div>
+
+  <!-- A: top highlights -->
+  <div class="hl">
+    <div class="c"><span class="chip heat">Most heated</span><p>Clash over hospital closures</p><span class="mono">00:41:12 · 2m 40s</span></div>
+    <div class="c"><span class="chip arg">Strong argument</span><p>"Every euro cut here costs three later"</p><span class="mono">00:58:03 · 1m 10s</span></div>
+    <div class="c"><span class="chip long">Longest speech</span><p>Finance minister · 22 min</p><span class="mono">00:04:10</span></div>
+    <div class="c"><span class="chip lol">Lighter moment</span><p>Laughter at the clock joke</p><span class="mono">02:18:30 · 25s</span></div>
+  </div>
+
+  <!-- C: briefing -->
+  <div class="paper" style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="mono">BRIEFING</span>
+      <span style="display:flex;gap:6px"><span class="act">Copy text</span><span class="act">Share link</span><span class="act">Export…</span></span>
+    </div>
+    <p style="margin-top:8px">Most of the session (51 min) went to <b>health spending cuts</b>, followed by teacher salaries and housing tax relief. The sharpest clash came over hospital closures. The budget passed 116–104.</p>
+    <hr>
+    <h3>1 · Opening statements <span class="mono">00:04:10 · 18m</span></h3>
+    <p class="muted">Finance minister presents the budget; opposition leader replies.</p>
+
+    <h3 style="background:#f6f5f2;margin-left:-10px;margin-right:-10px;padding:4px 10px;border-radius:6px">2 · Health spending cuts <span class="mono">00:22:30 · 51m · 6 speakers</span></h3>
+    <p>Opposition presses on hospital closures in the interior; the minister defends the 4% cut as temporary and points to the new primary-care centres.</p>
+    <blockquote>"Every euro cut here costs three later." <span class="mono" style="font-style:normal">— opposition MP · 00:58:03</span></blockquote>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="chip heat">Most heated</span><span>Clash over hospital closures</span><span class="mono">00:41:12 · 2m 40s</span><span class="act">▶ Play</span><span class="act">+ Clip</span></div>
+    <div class="why">Why: three interruptions in 40 s, raised voices, Speaker calls for order.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span class="chip arg">Strong argument</span><span>Cost of cutting prevention</span><span class="mono">00:58:03 · 1m 10s</span><span class="act">▶ Play</span><span class="act">+ Clip</span></div>
+    <div class="why">Why: concrete figure, cites a 2019 audit, minister's reply doesn't address it.</div>
+
+    <h3>3 · Teacher salaries <span class="mono">01:13:05 · 34m</span></h3>
+    <p class="muted">…</p>
+  </div>
+</div>

@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="background:#fff;padding:24px;font-family:Inter,system-ui,sans-serif">
+<style>
+  .dg{font-family:Inter,system-ui,sans-serif;background:#f6f5f2;color:#17181c;border-radius:12px;padding:18px;font-size:13px;line-height:1.45;max-width:960px;margin:0 auto}
+  .dg .muted{color:#71727a}
+  .dg .mono{font-family:ui-monospace,Menlo,monospace;color:#71727a;font-size:11.5px}
+  .dg .paper{background:#fff;border:1px solid #e9e6df;border-radius:12px;padding:14px 16px}
+  .dg .chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;white-space:nowrap}
+  .dg .heat{background:#ffe3dc;color:#c2381b}.dg .arg{background:#e0ecff;color:#1d4fb8}.dg .lol{background:#fff1cc;color:#8a6100}.dg .ok{background:#e3f4e8;color:#1f7a3d}.dg .prov{background:#efede7;color:#5d5e66}.dg .ai{background:#f0e9fb;color:#6a3fb5}
+  .dg .tabs{display:flex;gap:4px;background:#ebe8e1;padding:3px;border-radius:8px;width:max-content}
+  .dg .tabs span{padding:4px 12px;border-radius:6px;font-weight:600;font-size:12px;color:#5d5e66}
+  .dg .tabs .on{background:#fff;color:#17181c;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .dg h3{font-size:14px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline}
+  .dg .grid{display:grid;grid-template-columns:1.25fr 1fr;gap:12px;margin-top:12px}
+  .dg .sess{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 0;border-bottom:1px solid #f0ede6}
+  .dg table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .dg td,.dg th{padding:5px 4px;border-bottom:1px solid #f0ede6;text-align:left}
+  .dg th{font-weight:600;color:#71727a;font-size:11.5px}
+  .dg .num{text-align:right;font-variant-numeric:tabular-nums}
+  .dg .bar{display:inline-block;height:6px;border-radius:3px;background:#17181c;vertical-align:middle}
+  .dg .person{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f0ede6}
+  .dg .ava{width:28px;height:28px;border-radius:50%;background:#e9e6df;flex:none}
+</style>
+
+<h2>(c) What a Monday morning could look like</h2>
+<p class="subtitle">My proposal, fictional names. One "Tracker" home per parliament; every number clicks through to the moments it was counted from.</p>
+
+<div class="dg">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <div class="tabs"><span class="on">🇩🇪 Bundestag</span><span>🇧🇷 Câmara</span><span>🇧🇷 Senado</span></div>
+    <span class="mono">Week 44 · 27 – 31 Oct 2026 ▾</span>
+  </div>
+
+  <div class="grid">
+    <div class="paper">
+      <h3>New sessions <span class="mono">processed automatically</span></h3>
+      <div class="sess"><span><b>Plenary 212 · Budget, health</b></span><span class="chip ok">Names from record</span>
+        <span class="muted">5h 48m · 41 speakers · Top: <span class="chip heat">Heated</span> 02:14:05 · <span class="chip lol">Laughter</span> 04:01:30</span><span class="mono">Thu</span></div>
+      <div class="sess"><span><b>Plenary 211 · Energy prices</b></span><span class="chip ok">Names from record</span>
+        <span class="muted">4h 10m · 33 speakers · Top: <span class="chip arg">Strong argument</span> 01:02:44</span><span class="mono">Wed</span></div>
+      <div class="sess" style="border:0"><span><b>Plenary 213 · Migration</b></span><span class="chip prov">Provisional names</span>
+        <span class="muted">3h 05m · names from captions, record not published yet</span><span class="mono">Fri</span></div>
+      <p class="mono" style="margin:8px 0 0">Open any session → the same Preview → Full briefing → Export flow.</p>
+    </div>
+
+    <div class="paper">
+      <h3>Watchlist <span class="mono">+ add person</span></h3>
+      <div class="person"><div class="ava"></div><div><b>Anna Keller</b> <span class="muted">· Party X</span><br><span class="muted">3 speeches · 21 min · topics: health, budget</span><br><span class="chip heat">Heated</span> <span class="mono">Plenary 212 · 02:14:05</span></div></div>
+      <div class="person" style="border:0"><div class="ava"></div><div><b>Jonas Brandt</b> <span class="muted">· Party Y</span><br><span class="muted">Didn't speak this week</span></div></div>
+    </div>
+  </div>
+
+  <div class="paper" style="margin-top:12px">
+    <h3>Participation this week <span class="mono">sort ▾ · group by person | party · compare…</span></h3>
+    <table>
+      <tr><th>Member</th><th>Party</th><th class="num">Speeches</th><th class="num">Speaking time</th><th></th><th class="num">Interjections made</th><th class="num">Topics</th><th class="num"><span class="chip ai">AI</span> Heated moments</th></tr>
+      <tr><td>Anna Keller</td><td>X</td><td class="num">3</td><td class="num">21m</td><td><span class="bar" style="width:84px"></span></td><td class="num">7</td><td class="num">2</td><td class="num">2</td></tr>
+      <tr><td>Lukas Weber</td><td>Y</td><td class="num">2</td><td class="num">17m</td><td><span class="bar" style="width:68px"></span></td><td class="num">12</td><td class="num">1</td><td class="num">1</td></tr>
+      <tr><td>Mira Hoffmann</td><td>Z</td><td class="num">4</td><td class="num">15m</td><td><span class="bar" style="width:60px"></span></td><td class="num">0</td><td class="num">3</td><td class="num">0</td></tr>
+    </table>
+    <p class="mono" style="margin:8px 0 0">Plain columns are counted (from record/transcript). <span class="chip ai">AI</span> columns are judgments — click a number to see each moment and its "Why:".</p>
+  </div>
+</div>
