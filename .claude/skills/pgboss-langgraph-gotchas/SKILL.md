@@ -31,7 +31,7 @@ Every item below cost a review round on Plan 1. The code that implements each fi
 
 9. **`schedule(name, cron, data, { tz })` needs the queue to exist first**, and the schedule lives in the DB — renaming a cron queue leaves the old schedule behind.
 
-10. **Final-attempt crash is covered by the sweep.** If the last attempt dies without its handler finishing, nothing in the handler marks the session failed. `sweepStaleSessions` (`apps/worker/src/sweep.ts`, queue `session.sweep`, every 15 min) fails sessions in a processing stage with no `created`/`retry`/`active` job in `pgboss.job` for 120 min, and likewise any `running` analysis version with no live job. Keep new job queues that own a session in `LIVE_JOB_QUEUES` there.
+10. **Final-attempt crash is covered by the sweep.** If the last attempt dies without its handler finishing, nothing in the handler marks the session failed. `sweepStaleSessions` (`apps/worker/src/sweep.ts`, queue `session.sweep`, every 15 min) fails sessions in a processing stage with no `created`/`retry`/`active` job in `pgboss.job` for 120 min, and likewise any `running` analysis version with no live job. Keep new job queues that own a session in `LIVE_JOB_QUEUES` there. Rows a job owns are covered too (`sweepStaleJobRows`, R32): translations `pending`, tracks `preparing`, renders and burns `queued`/`rendering` untouched for 30 min with no live job matched on `data->>'analysisId'`/`'language'`, `'trackId'` or `'clipId'` are failed (friendly text in `error` where the row has one). A new job-owned row status belongs there, and its table needs an `updated_at` the sweep can age.
 
 ## LangGraph
 
