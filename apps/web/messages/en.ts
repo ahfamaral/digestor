@@ -1,4 +1,4 @@
-import { HIGHLIGHT_TYPES, PROFILES, type HighlightTypeId, type ProfileId } from "@digestor/core";
+import { HIGHLIGHT_TYPES, PROFILES, UPLOAD_UNSUPPORTED, type HighlightTypeId, type ProfileId } from "@digestor/core";
 
 /** Domain labels live in core; generated here so a new profile or highlight type gets its message key automatically. */
 const profile = Object.fromEntries(Object.entries(PROFILES).map(([id, p]) => [id, p.label])) as { [K in ProfileId]: string };
@@ -26,7 +26,7 @@ export const en = {
   upload: {
     title: "Digest a long video",
     intro: "Drop a video or paste a YouTube link — the language and the kind of event are detected for you.",
-    unsupported: "Unsupported file type. Use MP4, MOV, MKV or WebM.",
+    unsupported: UPLOAD_UNSUPPORTED,
     tabFile: "Upload a file",
     tabYoutube: "Paste a YouTube link",
     dropTitle: "Drop a long video here",

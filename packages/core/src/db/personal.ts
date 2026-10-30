@@ -509,6 +509,11 @@ export async function getAskMessage(db: Db, id: string): Promise<AskMessage | nu
   return row ?? null;
 }
 
+/** Removes ask messages (their actions cascade); used to roll back a question whose job could not be queued. */
+export async function deleteAskMessages(db: Db, ids: string[]): Promise<void> {
+  if (ids.length > 0) await db.delete(askMessages).where(inArray(askMessages.id, ids));
+}
+
 export async function listAskMessages(db: Db, ownerId: string, sessionId: string): Promise<AskMessageWithActions[]> {
   const msgs = await db
     .select()
@@ -529,6 +534,44 @@ export async function createAskAction(
 ): Promise<AskAction> {
   const [row] = await db.insert(askActions).values(a).returning();
   return row!;
+}
+
+export async function getAskAction(db: Db, id: string): Promise<AskAction | null> {
+  const [row] = await db.select().from(askActions).where(eq(askActions.id, id));
+  return row ?? null;
+}
+
+/**
+ * Confirms a `bulk_selection` action: resolves it (compare-and-set from `pending`) and applies the status to every
+ * moment in ONE transaction. Returns false, changing nothing, when the action is no longer pending.
+ * `status` null means back to proposed.
+ */
+export async function confirmBulkSelection(
+  db: Db,
+  ownerId: string,
+  actionId: string,
+  momentIds: string[],
+  status: SelectionStatus | null,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const resolved = await tx
+      .update(askActions)
+      .set({ status: "confirmed" })
+      .where(and(eq(askActions.id, actionId), eq(askActions.status, "pending")))
+      .returning({ id: askActions.id });
+    if (resolved.length === 0) return false;
+    for (const momentId of momentIds) {
+      if (status === null) {
+        await tx.delete(selections).where(and(eq(selections.ownerId, ownerId), eq(selections.momentId, momentId)));
+      } else {
+        await tx
+          .insert(selections)
+          .values({ ownerId, momentId, status })
+          .onConflictDoUpdate({ target: [selections.ownerId, selections.momentId], set: { status, updatedAt: new Date() } });
+      }
+    }
+    return true;
+  });
 }
 
 /** Compare-and-set from `pending`: true only for the caller that resolved it. */

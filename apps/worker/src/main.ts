@@ -27,7 +27,7 @@ import {
   handleResume,
   handleStart,
   MissingApiKeyError,
-  notImplemented,
+  handleTranslateBriefing,
   handleBurnTrack,
   handleRenderClip,
   processJobs,
@@ -110,13 +110,12 @@ async function main() {
   await register(QUEUES.resume, ResumeJobSchema, (j, attempt) => handleResume(ctx, j, attempt));
   await register(QUEUES.reanalyze, ReanalyzeJobSchema, (j, attempt) => handleReanalyze(ctx, j, attempt));
   await register(QUEUES.checkMoment, CheckMomentJobSchema, (j, attempt) => handleCheckMoment(ctx, j, attempt));
-  // The translate consumer lands with Task 17; until then its jobs complete.
   await register(QUEUES.prepareTrack, PrepareTrackJobSchema, (j, attempt) => handlePrepareTrack(ctx, j, attempt));
   await register(QUEUES.burnTrack, BurnTrackJobSchema, (j, attempt) => handleBurnTrack({ db, storage }, j, attempt));
   await register(QUEUES.renderClip, RenderClipJobSchema, (j, attempt) => handleRenderClip({ db, storage }, j, attempt));
   const askDeps = { db, llm: toolLlm, search: (id: string, q: string, k: number) => searchTranscript(deps.search, id, q, k) };
   await register(QUEUES.ask, AskJobSchema, (j, attempt) => handleAsk(askDeps, j, attempt));
-  await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, notImplemented(QUEUES.translateBriefing));
+  await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, (j, attempt) => handleTranslateBriefing({ db, llm }, j, attempt));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     const days = videoRetentionDays();
     const { removed } = await runVideoRetention({ db, storage, checkpointer: saver, chroma }, days);

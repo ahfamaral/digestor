@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { JOB_OPTIONS, QUEUES } from "@digestor/core";
+import { AUDIO_ONLY_WARNING, JOB_OPTIONS, QUEUES, UPLOAD_UNSUPPORTED } from "@digestor/core";
 import { getSession } from "@digestor/core/server";
 import { AUTH_COOKIE, authToken } from "@/lib/auth";
 import { createHarness, type Harness } from "@/test/harness";
@@ -35,7 +35,7 @@ describe("PUT /api/sessions/upload", () => {
   it("rejects unsupported upload type", async () => {
     const res = await upload("filename=x.exe", bytes(10));
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Unsupported file type. Use MP4, MOV, MKV or WebM." });
+    expect(await res.json()).toEqual({ error: UPLOAD_UNSUPPORTED });
     expect(h.send).not.toHaveBeenCalled();
   });
 
@@ -63,6 +63,31 @@ describe("PUT /api/sessions/upload", () => {
       hint: "A panel on housing",
     });
     expect(h.send).toHaveBeenCalledWith(QUEUES.start, { sessionId }, { ...JOB_OPTIONS, singletonKey: sessionId });
+  });
+
+  it("audio upload needs the acknowledgement", async () => {
+    for (const ext of ["mp3", "m4a", "wav"]) {
+      for (const query of [`filename=a.${ext}`, `filename=a.${ext}&audioOnlyAck=0`]) {
+        const res = await upload(query, bytes(10));
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "This file has no video. Clips will show a waveform instead of a picture." });
+      }
+    }
+    expect(AUDIO_ONLY_WARNING).toBe("This file has no video. Clips will show a waveform instead of a picture.");
+    expect(h.send).not.toHaveBeenCalled();
+
+    const ok = await upload("filename=Radio.MP3&audioOnlyAck=1", bytes(50));
+    expect(ok.status).toBe(200);
+    const { sessionId } = (await ok.json()) as { sessionId: string };
+    expect(readFileSync(path.join(h.root, sessionId, "original.mp3")).length).toBe(50);
+    expect(await getSession(h.db, sessionId)).toMatchObject({ title: "Radio", audioOnlyAck: true, originalKey: `${sessionId}/original.mp3` });
+    expect(h.send).toHaveBeenCalledWith(QUEUES.start, { sessionId }, { ...JOB_OPTIONS, singletonKey: sessionId });
+  });
+
+  it("a video upload leaves audioOnlyAck off, and the acknowledgement is not needed", async () => {
+    const res = await upload("filename=a.mp4&audioOnlyAck=1", bytes(10));
+    const { sessionId } = (await res.json()) as { sessionId: string };
+    expect((await getSession(h.db, sessionId))?.audioOnlyAck).toBe(false);
   });
 
   it("rejects uploads over the size cap", async () => {

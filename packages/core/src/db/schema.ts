@@ -157,7 +157,10 @@ export const translations = pgTable(
       .references(() => analysisVersions.id, { onDelete: "cascade" }),
     language: text("language").notNull(),
     kind: text("kind").$type<"briefing">().notNull(),
-    content: jsonb("content").$type<unknown>().notNull(),
+    /** null while `pending` or `failed`. */
+    content: jsonb("content").$type<unknown>(),
+    status: text("status").$type<"pending" | "ready" | "failed">().notNull().default("ready"),
+    error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("translations_analysis_language_kind").on(t.analysisId, t.language, t.kind)],

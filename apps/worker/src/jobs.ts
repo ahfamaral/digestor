@@ -1,7 +1,11 @@
 import { Command } from "@langchain/langgraph";
-import { ProfileIdSchema, type AskJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { ProfileIdSchema, type AskJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   failAnalysisVersion,
+  failTranslation,
+  getBriefing,
+  getTranslation,
+  saveTranslation,
   getAnalysisVersion,
   getContextCard,
   getMoment,
@@ -18,6 +22,8 @@ import {
   type Db,
 } from "@digestor/core/server";
 import { ASK_FAILED, AskRunError, runAsk, type AskDeps } from "./agents/ask.js";
+import { translateBriefing } from "./agents/translateBriefing.js";
+import type { StructuredLLM } from "./llm/structured.js";
 import { checkMoment } from "./agents/checks.js";
 import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
@@ -249,6 +255,40 @@ export async function handleAsk(deps: AskDeps, job: AskJob, attempt: Attempt): P
       console.error(`[jobs] ask ${job.messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, cause);
     }
     if (!deterministic) throw cause;
+  }
+}
+
+export const TRANSLATE_FAILED = "Couldn't translate the briefing. Please try again.";
+
+/**
+ * Translates a briefing and stores it (`ready`). A missing key fails the row at once with its message; any other
+ * error is rethrown for pg-boss to retry and only the final attempt marks the row failed.
+ */
+export async function handleTranslateBriefing(
+  deps: { db: Db; llm: StructuredLLM },
+  job: TranslateBriefingJob,
+  attempt: Attempt,
+): Promise<void> {
+  const { db, llm } = deps;
+  const row = await getTranslation(db, job.analysisId, job.language, "briefing");
+  if (row?.status !== "pending") return; // never requested, already ready, or the version was replaced
+  try {
+    const briefing = await getBriefing(db, job.analysisId);
+    if (!briefing) throw new Error(`No briefing for analysis ${job.analysisId}`);
+    await saveTranslation(db, job.analysisId, job.language, "briefing", await translateBriefing(llm, briefing, job.language));
+  } catch (err) {
+    if (err instanceof MissingApiKeyError) {
+      console.error(`[jobs] translation ${job.analysisId}/${job.language} failed:`, err);
+      await failTranslation(db, job.analysisId, job.language, "briefing", err.message);
+      return;
+    }
+    if (attempt.retryCount >= attempt.retryLimit) {
+      await failTranslation(db, job.analysisId, job.language, "briefing", TRANSLATE_FAILED);
+      console.error(`[jobs] translation ${job.analysisId}/${job.language} failed:`, err);
+    } else {
+      console.error(`[jobs] translation ${job.analysisId}/${job.language} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    }
+    throw err;
   }
 }
 

@@ -28,6 +28,16 @@ export const BriefingContentSchema = z.object({
 });
 export type BriefingContent = z.infer<typeof BriefingContentSchema>;
 
+/** A briefing translated for reading: quotes keep the verbatim `original` next to their `translation`. */
+export interface TranslatedBriefingContent {
+  lead: BriefingSentence[];
+  sections: {
+    topicId: string;
+    summary: BriefingSentence[];
+    keyQuote: { momentId: string; original: string; translation: string } | null;
+  }[];
+}
+
 export type AnalysisStatus = "running" | "complete" | "failed";
 export type MomentOrigin = "ai" | "counted" | "ask" | "user";
 export type HighlightMethod = "ai" | "counted";

@@ -212,6 +212,11 @@ export async function saveBriefing(db: Db, analysisId: string, content: Briefing
     .onConflictDoUpdate({ target: briefings.analysisId, set: { lead: content.lead, sections: content.sections } });
 }
 
+export async function getBriefing(db: Db, analysisId: string): Promise<BriefingContent | null> {
+  const [row] = await db.select().from(briefings).where(eq(briefings.analysisId, analysisId));
+  return row ? { lead: row.lead, sections: row.sections } : null;
+}
+
 export async function setMomentChecks(db: Db, momentId: string, checks: MomentChecks): Promise<void> {
   await db.update(moments).set({ checks }).where(eq(moments.id, momentId));
 }
@@ -225,17 +230,49 @@ export async function getMoment(db: Db, id: string): Promise<Moment | null> {
   return row ?? null;
 }
 
-export async function getTranslation(db: Db, analysisId: string, language: string, kind: "briefing"): Promise<unknown | null> {
+export type TranslationRow = { status: "pending" | "ready" | "failed"; content: unknown | null; error: string | null };
+
+export async function getTranslation(db: Db, analysisId: string, language: string, kind: "briefing"): Promise<TranslationRow | null> {
   const [row] = await db
-    .select()
+    .select({ status: translations.status, content: translations.content, error: translations.error })
     .from(translations)
     .where(and(eq(translations.analysisId, analysisId), eq(translations.language, language), eq(translations.kind, kind)));
-  return row ? row.content : null;
+  return row ?? null;
 }
 
+const translationKey = [translations.analysisId, translations.language, translations.kind];
+
+/** Stores the finished translation (status `ready`, error cleared). */
 export async function saveTranslation(db: Db, analysisId: string, language: string, kind: "briefing", content: unknown): Promise<void> {
   await db
     .insert(translations)
-    .values({ analysisId, language, kind, content })
-    .onConflictDoUpdate({ target: [translations.analysisId, translations.language, translations.kind], set: { content } });
+    .values({ analysisId, language, kind, content, status: "ready", error: null })
+    .onConflictDoUpdate({ target: translationKey, set: { content, status: "ready", error: null } });
+}
+
+/** Marks the translation `pending` (clearing any error), unless it is already `ready`. */
+export async function requestTranslation(db: Db, analysisId: string, language: string, kind: "briefing"): Promise<void> {
+  await db
+    .insert(translations)
+    .values({ analysisId, language, kind, content: null, status: "pending", error: null })
+    .onConflictDoUpdate({
+      target: translationKey,
+      set: { content: null, status: "pending", error: null },
+      setWhere: ne(translations.status, "ready"),
+    });
+}
+
+/** Marks a `pending` translation failed with a user-facing message; a ready one is left alone. */
+export async function failTranslation(db: Db, analysisId: string, language: string, kind: "briefing", error: string): Promise<void> {
+  await db
+    .update(translations)
+    .set({ status: "failed", error })
+    .where(and(eq(translations.analysisId, analysisId), eq(translations.language, language), eq(translations.kind, kind), ne(translations.status, "ready")));
+}
+
+/** Removes a translation row (rolls back a request whose job could not be queued), unless it is `ready`. */
+export async function deletePendingTranslation(db: Db, analysisId: string, language: string, kind: "briefing"): Promise<void> {
+  await db
+    .delete(translations)
+    .where(and(eq(translations.analysisId, analysisId), eq(translations.language, language), eq(translations.kind, kind), eq(translations.status, "pending")));
 }

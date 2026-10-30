@@ -1,8 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command } from "@langchain/langgraph";
-import { createDb, createSession, getSession, setStage, type Db } from "@digestor/core/server";
+import {
+  completeAnalysisVersion, createDb, createSession, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
+  setStage, startAnalysisVersion, type Db,
+} from "@digestor/core/server";
+import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
-import { MissingApiKeyError, failureMessage, handleResume, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
+import { MissingApiKeyError, failureMessage, handleResume, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -177,6 +181,66 @@ d("job handlers", () => {
     await expect(handleResume(ctxFor(keyless), { sessionId: id2, payload }, FIRST)).resolves.toBeUndefined();
     expect(await getSession(db, id2)).toMatchObject({ stage: "failed", error: "ANTHROPIC_API_KEY is not set on the server." });
     log.mockRestore();
+  });
+});
+
+d("handleTranslateBriefing", () => {
+  let db: Db;
+  let close: () => Promise<void>;
+  beforeAll(() => {
+    ({ db, close } = createDb(url!));
+  });
+  afterAll(() => close());
+
+  async function analysis() {
+    const s = await createSession(db, { source: "upload", title: "t" });
+    const v = await startAnalysisVersion(db, s.id, { profile: "interview", reason: "t", models: {}, promptVersions: {} });
+    await saveBriefing(db, v.id, { lead: [{ text: "Hello.", momentIds: [] }], sections: [] });
+    await completeAnalysisVersion(db, v.id);
+    return v.id;
+  }
+  const echo = (c: { user: string }) => ({ lines: [...c.user.matchAll(/^(\d+)\. (.*)$/gm)].map((m) => ({ n: Number(m[1]), text: `PT:${m[2]}` })) });
+
+  it("saves a ready translation", async () => {
+    const analysisId = await analysis();
+    await requestTranslation(db, analysisId, "pt", "briefing");
+    await handleTranslateBriefing({ db, llm: new FakeLLM([echo]) }, { analysisId, language: "pt" }, FIRST);
+    expect(await getTranslation(db, analysisId, "pt", "briefing")).toEqual({
+      status: "ready", error: null, content: { lead: [{ text: "PT:Hello.", momentIds: [] }], sections: [] },
+    });
+  });
+
+  it("a missing key fails at once with its message and is not retried", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const analysisId = await analysis();
+    await requestTranslation(db, analysisId, "pt", "briefing");
+    const llm = new FakeLLM([() => { throw new MissingApiKeyError("ANTHROPIC_API_KEY"); }]);
+    await expect(handleTranslateBriefing({ db, llm }, { analysisId, language: "pt" }, FIRST)).resolves.toBeUndefined();
+    expect(await getTranslation(db, analysisId, "pt", "briefing")).toEqual({ status: "failed", content: null, error: "ANTHROPIC_API_KEY is not set on the server." });
+    log.mockRestore();
+  });
+
+  it("other errors are retried and only the final attempt marks the row failed", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const analysisId = await analysis();
+    await requestTranslation(db, analysisId, "pt", "briefing");
+    const boom = () => new FakeLLM([() => { throw new Error("overloaded"); }]);
+    await expect(handleTranslateBriefing({ db, llm: boom() }, { analysisId, language: "pt" }, FIRST)).rejects.toThrow("overloaded");
+    expect((await getTranslation(db, analysisId, "pt", "briefing"))?.status).toBe("pending");
+    await expect(handleTranslateBriefing({ db, llm: boom() }, { analysisId, language: "pt" }, LAST)).rejects.toThrow("overloaded");
+    expect(await getTranslation(db, analysisId, "pt", "briefing")).toEqual({ status: "failed", content: null, error: TRANSLATE_FAILED });
+    expect(TRANSLATE_FAILED).toBe("Couldn't translate the briefing. Please try again.");
+    log.mockRestore();
+  });
+
+  it("does nothing without a pending row (never requested, or already ready)", async () => {
+    const analysisId = await analysis();
+    const llm = new FakeLLM([]);
+    await handleTranslateBriefing({ db, llm }, { analysisId, language: "pt" }, FIRST);
+    expect(await getTranslation(db, analysisId, "pt", "briefing")).toBeNull();
+    await saveTranslation(db, analysisId, "pt", "briefing", { done: true });
+    await handleTranslateBriefing({ db, llm }, { analysisId, language: "pt" }, FIRST);
+    expect(llm.calls).toHaveLength(0);
   });
 });
 

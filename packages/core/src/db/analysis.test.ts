@@ -3,7 +3,7 @@ import pg from "pg";
 import { createDb, type Db } from "./client.ts";
 import {
   completeAnalysisVersion, failAnalysisVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation, listAnalysisVersions,
-  saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
+  deletePendingTranslation, failTranslation, requestTranslation, saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
   type NewMoment,
 } from "./analysis.ts";
 import { createSession, deleteSession, getSession, setStage, transitionStage, updateSession, type Session } from "./repo.ts";
@@ -153,9 +153,29 @@ describe("analysis versions", () => {
     expect(await getTranslation(db, v.id, "pt", "briefing")).toBeNull();
     await saveTranslation(db, v.id, "pt", "briefing", { a: 1 });
     await saveTranslation(db, v.id, "pt", "briefing", { a: 2 });
-    expect(await getTranslation(db, v.id, "pt", "briefing")).toEqual({ a: 2 });
+    expect(await getTranslation(db, v.id, "pt", "briefing")).toEqual({ status: "ready", content: { a: 2 }, error: null });
     await deleteSession(db, s.id);
     expect(await getRunningAnalysis(db, s.id)).toBeNull();
+  });
+});
+
+describe("translation lifecycle", () => {
+  it("pending → failed → pending → ready; a ready row is never reset or failed", async () => {
+    const v = await startAnalysisVersion(db, s.id, META);
+    await requestTranslation(db, v.id, "fr", "briefing");
+    expect(await getTranslation(db, v.id, "fr", "briefing")).toEqual({ status: "pending", content: null, error: null });
+    await failTranslation(db, v.id, "fr", "briefing", "nope");
+    expect(await getTranslation(db, v.id, "fr", "briefing")).toEqual({ status: "failed", content: null, error: "nope" });
+    await requestTranslation(db, v.id, "fr", "briefing");
+    expect(await getTranslation(db, v.id, "fr", "briefing")).toEqual({ status: "pending", content: null, error: null });
+    await saveTranslation(db, v.id, "fr", "briefing", { ok: 1 });
+    await requestTranslation(db, v.id, "fr", "briefing");
+    await failTranslation(db, v.id, "fr", "briefing", "late");
+    await deletePendingTranslation(db, v.id, "fr", "briefing");
+    expect(await getTranslation(db, v.id, "fr", "briefing")).toEqual({ status: "ready", content: { ok: 1 }, error: null });
+    await requestTranslation(db, v.id, "es", "briefing");
+    await deletePendingTranslation(db, v.id, "es", "briefing");
+    expect(await getTranslation(db, v.id, "es", "briefing")).toBeNull();
   });
 });
 
