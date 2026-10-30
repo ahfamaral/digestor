@@ -1,0 +1,2 @@
+ALTER TABLE "subtitle_tracks" ADD COLUMN "updated_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+ALTER TABLE "translations" ADD COLUMN "updated_at" timestamp with time zone DEFAULT now() NOT NULL;

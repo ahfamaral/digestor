@@ -152,6 +152,8 @@ export const translations = pgTable(
     status: text("status").$type<"pending" | "ready" | "failed">().notNull().default("ready"),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Last change (request, result, failure): the sweep fails a `pending` row untouched for 30 min with no live job. */
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [unique("translations_analysis_language_kind").on(t.analysisId, t.language, t.kind)],
 );
@@ -227,6 +229,8 @@ export const subtitleTracks = pgTable(
     /** The clip range the cues were built for (cues are clip-relative); null until prepared. */
     builtStartMs: integer("built_start_ms"),
     builtEndMs: integer("built_end_ms"),
+    /** Last change to the row: the sweep fails a `preparing` track or a queued/rendering burn untouched for 30 min with no live job. */
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [unique("subtitle_tracks_clip_language").on(t.clipId, t.language)],
 );

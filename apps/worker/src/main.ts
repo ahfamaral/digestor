@@ -41,7 +41,7 @@ import { createAnthropicLLM, type StructuredLLM } from "./llm/structured.js";
 import { createAnthropicToolLLM, type ToolLLM } from "./llm/tools.js";
 import { createE5Embedder } from "./search/embed.js";
 import { searchTranscript } from "./search/index.js";
-import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleSessions } from "./sweep.js";
+import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 import { downloadYouTube } from "./youtube/ytdlp.js";
 
 const envFile = fileURLToPath(new URL("../../../.env", import.meta.url));
@@ -124,6 +124,8 @@ async function main() {
   await boss.work(SWEEP_QUEUE, { batchSize: 1 }, async () => {
     const ids = await sweepStaleSessions(db);
     if (ids.length > 0) console.log(`sweep: marked ${ids.length} stale session(s) failed`);
+    const rows = await sweepStaleJobRows(db);
+    if (Object.values(rows).some((n) => n > 0)) console.log("sweep: marked stuck job rows failed", rows);
   });
 
   let stopping = false;

@@ -43,6 +43,13 @@
       "when": 1793378650965,
       "tag": "0005_built_range_checks_requested",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793379548019,
+      "tag": "0006_row_updated_at",
+      "breakpoints": true
     }
   ]
 }

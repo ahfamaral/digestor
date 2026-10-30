@@ -7,6 +7,8 @@ export const SWEEP_QUEUE = "session.sweep";
 export const SWEEP_CRON = "*/15 * * * *";
 
 export const SWEEP_MESSAGE = "Processing stopped unexpectedly. Please start over.";
+/** Written to a stuck job row's error field (R32); the row's own retry path ("Try again", export again) works after it. */
+export const STUCK_MESSAGE = "This took too long and was stopped. Please try again.";
 
 /** Stages where a worker job is expected to be running (`awaiting_context` is a human pause, not one of them). */
 const IN_PROGRESS = [
@@ -28,6 +30,14 @@ const hasLiveJob = (idCol: ReturnType<typeof sql.raw>) => sql`exists (
   where j.name in (${sql.join(LIVE_JOB_QUEUES.map((q) => sql`${q}`), sql`, `)})
     and j.state in ('created', 'retry', 'active')
     and j.data->>'sessionId' = ${idCol}::text
+)`;
+
+/** SQL: a pg-boss job in `queue` that may still run, whose payload matches every `data->>key = column` pair. */
+const hasLiveJobFor = (queue: string, match: Record<string, string>) => sql`exists (
+  select 1 from pgboss.job j
+  where j.name = ${queue}
+    and j.state in ('created', 'retry', 'active')
+    ${sql.join(Object.entries(match).map(([key, col]) => sql`and j.data->>${key} = ${sql.raw(col)}::text`), sql` `)}
 )`;
 
 /**
@@ -64,4 +74,47 @@ export async function sweepStaleSessions(db: Db, now: Date = new Date(), staleMi
   for (const v of stale.rows) await failAnalysisVersion(db, v.id);
 
   return ids;
+}
+
+/**
+ * R32: the same gap for rows a job owns. A row still waiting on a job, untouched for `staleMinutes`, whose queue holds
+ * no live job for it (the job died on its last attempt, or was never sent) is failed, so its normal retry path works:
+ * - a `pending` briefing translation → `failed` with STUCK_MESSAGE (the Preview offers to try again);
+ * - a `preparing` subtitle track → `failed` with STUCK_MESSAGE ("Try again" replaces it);
+ * - a clip render or track burn `queued`/`rendering` → `failed` (exporting again re-claims it).
+ * Returns how many rows of each kind were failed.
+ */
+export async function sweepStaleJobRows(
+  db: Db,
+  now: Date = new Date(),
+  staleMinutes = 30,
+): Promise<{ translations: number; tracks: number; renders: number; burns: number }> {
+  const cutoff = sql`${new Date(now.getTime() - staleMinutes * 60_000).toISOString()}::timestamptz`;
+
+  const translations = await db.execute(sql`
+    update translations t set status = 'failed', error = ${STUCK_MESSAGE}, updated_at = now()
+    where t.status = 'pending' and t.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.translateBriefing, { analysisId: "t.analysis_id", language: "t.language" })}
+  `);
+  const tracks = await db.execute(sql`
+    update subtitle_tracks t set status = 'failed', error = ${STUCK_MESSAGE}, updated_at = now()
+    where t.status = 'preparing' and t.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.prepareTrack, { trackId: "t.id" })}
+  `);
+  const renders = await db.execute(sql`
+    update clips c set render_status = 'failed', updated_at = now()
+    where c.render_status in ('queued', 'rendering') and c.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.renderClip, { clipId: "c.id" })}
+  `);
+  const burns = await db.execute(sql`
+    update subtitle_tracks t set burn_status = 'failed', updated_at = now()
+    where t.burn_status in ('queued', 'rendering') and t.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.burnTrack, { trackId: "t.id" })}
+  `);
+  return {
+    translations: translations.rowCount ?? 0,
+    tracks: tracks.rowCount ?? 0,
+    renders: renders.rowCount ?? 0,
+    burns: burns.rowCount ?? 0,
+  };
 }

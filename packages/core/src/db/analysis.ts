@@ -278,7 +278,7 @@ export async function saveTranslation(db: Db, analysisId: string, language: stri
   await db
     .insert(translations)
     .values({ analysisId, language, kind, content, status: "ready", error: null })
-    .onConflictDoUpdate({ target: translationKey, set: { content, status: "ready", error: null } });
+    .onConflictDoUpdate({ target: translationKey, set: { content, status: "ready", error: null, updatedAt: new Date() } });
 }
 
 /** Marks the translation `pending` (clearing any error), unless it is already `ready`. */
@@ -288,7 +288,7 @@ export async function requestTranslation(db: Db, analysisId: string, language: s
     .values({ analysisId, language, kind, content: null, status: "pending", error: null })
     .onConflictDoUpdate({
       target: translationKey,
-      set: { content: null, status: "pending", error: null },
+      set: { content: null, status: "pending", error: null, updatedAt: new Date() },
       setWhere: ne(translations.status, "ready"),
     });
 }

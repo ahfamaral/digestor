@@ -3,9 +3,10 @@ import { sql } from "drizzle-orm";
 import { PgBoss } from "pg-boss";
 import { QUEUES } from "@digestor/core";
 import {
-  createDb, createSession, getAnalysisVersion, getSession, startAnalysisVersion, updateSession, type Db, type Stage,
+  claimClipRender, createClip, createDb, createSession, createTrack, getAnalysisVersion, getClip, getSession, getTrack,
+  getTranslation, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
 } from "@digestor/core/server";
-import { sweepStaleSessions } from "./sweep.js";
+import { STUCK_MESSAGE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -20,7 +21,9 @@ d("sweepStaleSessions", () => {
     const boss = new PgBoss(url!);
     boss.on("error", () => {});
     await boss.start();
-    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze]) await boss.createQueue(q);
+    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack]) {
+      await boss.createQueue(q);
+    }
     await boss.stop({ graceful: false });
   });
   afterAll(async () => {
@@ -36,7 +39,10 @@ d("sweepStaleSessions", () => {
     return s.id;
   }
   async function job(queue: string, sessionId: string, state: string) {
-    const data = JSON.stringify({ sessionId, testSweep: "yes" });
+    await jobWith(queue, { sessionId }, state);
+  }
+  async function jobWith(queue: string, payload: Record<string, string>, state: string) {
+    const data = JSON.stringify({ ...payload, testSweep: "yes" });
     await db.execute(sql`insert into pgboss.job (name, data, state) values (${queue}, ${data}::jsonb, ${state}::pgboss.job_state)`);
   }
   const META = { profile: "general", reason: "initial", models: {}, promptVersions: {} };
@@ -88,5 +94,89 @@ d("sweepStaleSessions", () => {
     const v = await runningVersion(id, 1); // version is recent, but the session is dead
     expect(await sweepStaleSessions(db)).toContain(id);
     expect((await getAnalysisVersion(db, v))?.status).toBe("failed");
+  });
+});
+
+d("sweepStaleJobRows (R32)", () => {
+  let db: Db;
+  let close: () => Promise<void>;
+  beforeAll(() => {
+    ({ db, close } = createDb(url!));
+  });
+  afterAll(async () => {
+    await db.execute(sql`delete from pgboss.job where data->>'testSweep' = 'yes'`);
+    await close();
+  });
+
+  const ago = (min: number) => new Date(Date.now() - min * MIN).toISOString();
+  async function jobWith(queue: string, payload: Record<string, string>, state: string) {
+    const data = JSON.stringify({ ...payload, testSweep: "yes" });
+    await db.execute(sql`insert into pgboss.job (name, data, state) values (${queue}, ${data}::jsonb, ${state}::pgboss.job_state)`);
+  }
+  async function clipIn() {
+    const s = await createSession(db, { source: "upload", title: "rows" });
+    return createClip(db, { sessionId: s.id, ownerId: "owner", startMs: 0, endMs: 30_000, actor: "user" });
+  }
+
+  it("fails stuck translations, tracks, renders and burns older than 30 min with no live job", async () => {
+    const s = await createSession(db, { source: "upload", title: "rows" });
+    const v = await startAnalysisVersion(db, s.id, { profile: "general", reason: "initial", models: {}, promptVersions: {} });
+    await requestTranslation(db, v.id, "pt", "briefing");
+    await requestTranslation(db, v.id, "de", "briefing");
+    await requestTranslation(db, v.id, "fr", "briefing");
+    await db.execute(sql`update translations set updated_at = ${ago(45)}::timestamptz where analysis_id = ${v.id} and language in ('pt', 'de')`);
+    await jobWith(QUEUES.translateBriefing, { analysisId: v.id, language: "de" }, "retry"); // de is alive, fr is recent
+
+    const clip = await clipIn();
+    const stuckTrack = (await createTrack(db, clip.id, "pt"))!;
+    const liveTrack = (await createTrack(db, clip.id, "de"))!;
+    const freshTrack = (await createTrack(db, clip.id, "fr"))!;
+    await db.execute(sql`update subtitle_tracks set updated_at = ${ago(45)}::timestamptz where id in (${stuckTrack.id}, ${liveTrack.id})`);
+    await jobWith(QUEUES.prepareTrack, { trackId: liveTrack.id }, "active");
+
+    const stuckClip = await clipIn();
+    const liveClip = await clipIn();
+    for (const c of [stuckClip, liveClip]) await claimClipRender(db, c.id);
+    await db.execute(sql`update clips set render_status = 'rendering' where id = ${stuckClip.id}`);
+    await db.execute(sql`update clips set updated_at = ${ago(45)}::timestamptz where id in (${stuckClip.id}, ${liveClip.id})`);
+    await jobWith(QUEUES.renderClip, { clipId: liveClip.id }, "created");
+
+    const burnClip = await clipIn();
+    const stuckBurn = (await createTrack(db, burnClip.id, "pt"))!;
+    const doneJobBurn = (await createTrack(db, burnClip.id, "de"))!;
+    await setTrackBurnStatus(db, stuckBurn.id, "queued");
+    await setTrackBurnStatus(db, doneJobBurn.id, "rendering");
+    await db.execute(sql`update subtitle_tracks set status = 'ready', updated_at = ${ago(45)}::timestamptz where clip_id = ${burnClip.id}`);
+    await jobWith(QUEUES.burnTrack, { trackId: doneJobBurn.id }, "completed"); // a finished job is not live
+
+    const counts = await sweepStaleJobRows(db);
+    expect(counts).toMatchObject({ translations: 1, tracks: 1, renders: 1, burns: 2 });
+
+    expect(await getTranslation(db, v.id, "pt", "briefing")).toMatchObject({ status: "failed", error: STUCK_MESSAGE });
+    expect((await getTranslation(db, v.id, "de", "briefing"))?.status).toBe("pending");
+    expect((await getTranslation(db, v.id, "fr", "briefing"))?.status).toBe("pending");
+    expect(await getTrack(db, stuckTrack.id)).toMatchObject({ status: "failed", error: STUCK_MESSAGE });
+    expect((await getTrack(db, liveTrack.id))?.status).toBe("preparing");
+    expect((await getTrack(db, freshTrack.id))?.status).toBe("preparing");
+    expect((await getClip(db, stuckClip.id))?.renderStatus).toBe("failed");
+    expect((await getClip(db, liveClip.id))?.renderStatus).toBe("queued");
+    expect((await getTrack(db, stuckBurn.id))?.burnStatus).toBe("failed");
+    expect((await getTrack(db, doneJobBurn.id))?.burnStatus).toBe("failed");
+    expect((await getTrack(db, stuckBurn.id))?.status).toBe("ready"); // the subtitles themselves are untouched
+
+    // the existing retry paths work again: a failed render can be claimed, a failed translation re-requested
+    expect(await claimClipRender(db, stuckClip.id)).toBe(true);
+    await requestTranslation(db, v.id, "pt", "briefing");
+    expect(await getTranslation(db, v.id, "pt", "briefing")).toMatchObject({ status: "pending", error: null });
+  });
+
+  it("a re-requested translation counts as fresh (its job is about to be sent)", async () => {
+    const s = await createSession(db, { source: "upload", title: "rows" });
+    const v = await startAnalysisVersion(db, s.id, { profile: "general", reason: "initial", models: {}, promptVersions: {} });
+    await requestTranslation(db, v.id, "pt", "briefing");
+    await db.execute(sql`update translations set status = 'failed', updated_at = ${ago(300)}::timestamptz where analysis_id = ${v.id}`);
+    await requestTranslation(db, v.id, "pt", "briefing");
+    await sweepStaleJobRows(db);
+    expect((await getTranslation(db, v.id, "pt", "briefing"))?.status).toBe("pending");
   });
 });
