@@ -5,7 +5,7 @@ import {
   type AnalysisBundle, type AskToolCallRecord, type Boundary, type ContextCard, type SelectionStatus, type Transcript,
 } from "@digestor/core";
 import {
-  createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskMessage, getClip, getContextCard,
+  claimAskMessage, createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskMessage, getClip, getContextCard,
   getCurrentAnalysis, getMoment, getSession, getTranscript, listAskMessages, listPersonalMoments, listSelections,
   setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
@@ -19,8 +19,12 @@ export const HISTORY_LIMIT = 10;
 const MAX_CALLS_PER_STEP = 10;
 const MAX_TRANSCRIPT_RANGE_MS = 10 * 60_000;
 const MAX_MOMENTS_LISTED = 30;
-/** At most this many selection changes apply at once; more need the user's confirmation. */
-const MAX_DIRECT_SELECTIONS = 3;
+/**
+ * At most this many changes apply directly per run, counting every mutating call (R31): each moment of a direct
+ * set_selection, each propose_clip and each trim_clip. Beyond it, selections wait for the user's confirmation and
+ * clip calls are refused with a note to ask first.
+ */
+const MAX_DIRECT_CHANGES = 3;
 const MAX_SEARCH_K = 10;
 const DEFAULT_SEARCH_K = 6;
 const MAX_TITLE_CHARS = 120;
@@ -32,6 +36,7 @@ export const NOT_IN_DATA = "That isn't in this video's data.";
 export const SEARCH_UNAVAILABLE = "Search isn't available for this video.";
 export const OUT_OF_STEPS = "I couldn't finish looking this up within my step limit. Please ask a narrower question.";
 export const ASK_FAILED = "Couldn't answer this question. Please try again.";
+const CONFIRM_FIRST = `this question already made ${MAX_DIRECT_CHANGES} changes, the most allowed at once. Nothing was changed: tell the user what you would do and ask them to confirm it in a new message.`;
 const NO_ANALYSIS = "This video has no analysis yet.";
 const TRUNCATED = "\n[…truncated: ask for a shorter range or fewer results]";
 
@@ -72,8 +77,8 @@ type AskContext = {
   wrote: boolean;
   /** The same, for the tool call that is running (its chip is kept if it fails partway). */
   callWrote: boolean;
-  /** Selection changes applied without confirmation in this run (at most MAX_DIRECT_SELECTIONS). */
-  directSelections: number;
+  /** Changes applied without confirmation in this run (at most MAX_DIRECT_CHANGES, R31). */
+  directChanges: number;
 };
 
 type ToolResult = { text: string } & Pick<AskToolCallRecord, "undo" | "clipId">;
@@ -139,6 +144,11 @@ function snapClip(ctx: AskContext, a: { start: string | number; end: string | nu
     );
   }
   return snapped;
+}
+
+/** A clip call past the per-run cap changes nothing and tells the model to ask the user first (R31). */
+function requireDirectChange(ctx: AskContext): void {
+  if (ctx.directChanges + 1 > MAX_DIRECT_CHANGES) throw new ToolInputError(CONFIRM_FIRST);
 }
 
 function willWrite(ctx: AskContext): void {
@@ -240,14 +250,15 @@ const tools: Tool[] = [
         return `${m.id} ${span(m)} ${meta.join("; ")}: ${m.title}${m.why ? ` — ${m.why}` : ""}`;
       });
       const head = all.length > MAX_MOMENTS_LISTED ? `${all.length} moments match; the ${MAX_MOMENTS_LISTED} most relevant:\n` : "";
-      return { text: head + lines.join("\n") };
+      // Titles and reasons were written from the transcript (or by a user): evidence, never instructions (R31).
+      return { text: head + evidence(lines.join("\n")) };
     },
   },
   {
     spec: {
       name: "propose_clip",
       description:
-        "Create a clip for the user (only when they ask for one). Times are snapped to whole sentences. Returns the clip id.",
+        `Create a clip for the user (only when they ask for one). Times are snapped to whole sentences. Returns the clip id. Counts toward the ${MAX_DIRECT_CHANGES} changes allowed per question.`,
       schema: z.object({ start: TimeArg, end: TimeArg, title: z.string().describe("Short title in the language of the video") }),
     },
     async run(ctx, a: { start: string | number; end: string | number; title: string }) {
@@ -256,7 +267,9 @@ const tools: Tool[] = [
       const title = a.title.trim().slice(0, MAX_TITLE_CHARS);
       if (!title) throw new ToolInputError("title is empty.");
       const range = snapClip(ctx, a);
+      requireDirectChange(ctx);
       willWrite(ctx);
+      ctx.directChanges += 1;
       const moment = await createPersonalMoment(ctx.db, { analysisId: analysis.version.id, ownerId: ctx.ownerId, ...range, title, origin: "ask" });
       const clip = await createClip(ctx.db, { sessionId: ctx.session.id, ownerId: ctx.ownerId, momentId: moment.id, ...range, actor: "ask" });
       return {
@@ -268,7 +281,7 @@ const tools: Tool[] = [
   {
     spec: {
       name: "trim_clip",
-      description: "Change the start and end of one of the user's clips (only when they ask). Times are snapped to whole sentences.",
+      description: `Change the start and end of one of the user's clips (only when they ask). Times are snapped to whole sentences. Counts toward the ${MAX_DIRECT_CHANGES} changes allowed per question.`,
       schema: z.object({ clipId: z.string().uuid(), start: TimeArg, end: TimeArg }),
     },
     async run(ctx, a: { clipId: string; start: string | number; end: string | number }) {
@@ -278,16 +291,18 @@ const tools: Tool[] = [
       }
       requireVideo(ctx);
       const range = snapClip(ctx, a);
+      requireDirectChange(ctx);
       willWrite(ctx);
+      ctx.directChanges += 1;
       await updateClip(ctx.db, clip.id, range, "ask");
-      return { text: `Clip ${clip.id} now runs ${span(range)}, snapped to whole sentences.` };
+      return { text: `Clip ${clip.id} now runs ${span(range)}, snapped to whole sentences.`, clipId: clip.id };
     },
   },
   {
     spec: {
       name: "set_selection",
       description:
-        `Mark moments approved, neutral or rejected, or back to proposed (only when the user asks). Send every moment of one request in a single call. Per question, only the first ${MAX_DIRECT_SELECTIONS} changes apply at once; a call that would go beyond that waits for the user's confirmation instead.`,
+        `Mark moments approved, neutral or rejected, or back to proposed (only when the user asks). Send every moment of one request in a single call. Per question, only ${MAX_DIRECT_CHANGES} changes apply at once (clips count too); a call that would go beyond that waits for the user's confirmation instead.`,
       schema: z.object({
         momentIds: z.array(z.string().uuid()).min(1).max(200),
         status: z.enum(["approved", "neutral", "rejected", "proposed"]),
@@ -302,7 +317,7 @@ const tools: Tool[] = [
       );
       if (unknown.length > 0) throw new ToolInputError(`unknown moment ids: ${unknown.slice(0, 5).join(", ")}. Nothing was changed.`);
       const status = a.status === "proposed" ? null : a.status;
-      if (ctx.directSelections + ids.length > MAX_DIRECT_SELECTIONS) {
+      if (ctx.directChanges + ids.length > MAX_DIRECT_CHANGES) {
         willWrite(ctx);
         await createAskAction(ctx.db, { messageId: ctx.messageId, kind: "bulk_selection", payload: { momentIds: ids, status } });
         return { text: `Waiting for the user to confirm ${ids.length} changes.` };
@@ -310,7 +325,7 @@ const tools: Tool[] = [
       const before = await listSelections(ctx.db, ctx.ownerId, ctx.session.id);
       const undo = Object.fromEntries(ids.map((id) => [id, before[id] ?? null]));
       willWrite(ctx);
-      ctx.directSelections += ids.length;
+      ctx.directChanges += ids.length;
       for (const id of ids) await setSelection(ctx.db, ctx.ownerId, id, status);
       return { text: `Set ${ids.length} moment${ids.length === 1 ? "" : "s"} to ${a.status}.`, undo };
     },
@@ -406,13 +421,21 @@ const record = (call: ToolCallRequest, out: ToolResult & { ok: boolean }): AskTo
 };
 
 /**
- * Answers the pending assistant message `messageId`: up to MAX_ASK_STEPS model turns, running the tools it calls.
- * A message that isn't pending (a duplicate or finished job) is left alone. Errors are thrown as AskRunError.
+ * Answers the pending assistant message `messageId`: claims it (`pending` → `running`), then runs up to MAX_ASK_STEPS
+ * model turns with the tools it calls. A message already claimed or finished (a duplicate job) is left alone; one left
+ * `running` by a crashed attempt is failed. Errors are thrown as AskRunError.
  */
 export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
   const { db } = deps;
   const msg = await getAskMessage(db, messageId);
-  if (!msg || msg.role !== "assistant" || msg.status !== "pending") {
+  if (msg?.role === "assistant" && msg.status === "running") {
+    // An earlier attempt claimed it and died partway (a handled error puts it back to pending): its tools may already
+    // have changed something, so it is never run twice.
+    console.error(`[ask] message ${messageId} was left running by an earlier attempt; failing it`);
+    await finishAskMessage(db, msg.id, { text: ASK_FAILED, toolCalls: msg.toolCalls ?? [], status: "failed" });
+    return;
+  }
+  if (!msg || msg.role !== "assistant" || msg.status !== "pending" || !(await claimAskMessage(db, msg.id))) {
     console.log(`[ask] ignoring message ${messageId}: ${msg ? `${msg.role} ${msg.status}` : "not found"}`);
     return;
   }
@@ -439,7 +462,7 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     boundaries: transcript && transcript.words.length > 0 ? findBoundaries(transcript.words, transcript.durationMs) : [],
     wrote: false,
     callWrote: false,
-    directSelections: 0,
+    directChanges: 0,
   };
   const system = buildSystem(session, transcript, analysis, stored?.card ?? null);
   const specs = tools.map((t) => t.spec);

@@ -88,7 +88,9 @@ export function planSelectionUndo(
   current: Record<string, SelectionStatus | undefined>,
 ): { restore: Record<string, SelectionStatus | null>; skipped: number } {
   const args = call.args as { status?: unknown } | null;
-  const set = typeof args === "object" && args !== null && "status" in args ? args.status : undefined;
+  const raw = typeof args === "object" && args !== null && "status" in args ? args.status : undefined;
+  const set = raw === "proposed" ? null : raw; // the tool's "proposed" is stored as no selection
+
   const restore: Record<string, SelectionStatus | null> = {};
   let skipped = 0;
   for (const [id, previous] of Object.entries(call.undo ?? {})) {
@@ -96,6 +98,11 @@ export function planSelectionUndo(
     else skipped += 1;
   }
   return { restore, skipped };
+}
+
+/** An answer still being worked on: `pending` (queued) or `running` (a worker claimed it). */
+export function isAnswering(status: string): boolean {
+  return status === "pending" || status === "running";
 }
 
 /** A pending answer older than this is given up on (the worker is down or the job was lost). */

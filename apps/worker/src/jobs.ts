@@ -18,6 +18,7 @@ import {
   failTrackBurn,
   finishAskMessage,
   getAskMessage,
+  releaseAskMessage,
   setMomentChecks,
   setStage,
   type Db,
@@ -240,9 +241,10 @@ export const handleBurnTrack = (deps: RenderDeps, job: BurnTrackJob, attempt: At
   runRender("track burn", job.trackId, attempt, () => burnTrack(deps, job.trackId), () => failTrackBurn(deps.db, job.trackId));
 
 /**
- * Answers one Ask question (the pending assistant message). The message goes `pending` → `done`, or `failed` with a
- * friendly line. A missing key, or an error after a tool already changed something (a retry would repeat the change),
- * fails at once without a retry; any other error is rethrown for pg-boss and only the final attempt marks it failed.
+ * Answers one Ask question (the pending assistant message). The message goes `pending` → `running` → `done`, or
+ * `failed` with a friendly line. A missing key, or an error after a tool already changed something (a retry would
+ * repeat the change), fails at once without a retry; any other error puts the message back to `pending` and is
+ * rethrown for pg-boss, and only the final attempt marks it failed. A crash leaves it `running`: the retry fails it.
  */
 export async function handleAsk(deps: AskDeps, job: AskJob, attempt: Attempt): Promise<void> {
   try {
@@ -254,12 +256,13 @@ export async function handleAsk(deps: AskDeps, job: AskJob, attempt: Attempt): P
     if (deterministic || attempt.retryCount >= attempt.retryLimit) {
       console.error(`[jobs] ask ${job.messageId} failed:`, cause);
       const msg = await getAskMessage(deps.db, job.messageId);
-      if (msg?.status === "pending") {
+      if (msg?.status === "pending" || msg?.status === "running") {
         // A missing key says which one (as sessions do); anything else gets the generic line.
         const text = cause instanceof MissingApiKeyError ? cause.message : ASK_FAILED;
         await finishAskMessage(deps.db, job.messageId, { text, toolCalls: run?.toolCalls ?? [], status: "failed" });
       }
     } else {
+      await releaseAskMessage(deps.db, job.messageId); // nothing changed: the retry may run it again
       console.error(`[jobs] ask ${job.messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, cause);
     }
     if (!deterministic) throw cause;

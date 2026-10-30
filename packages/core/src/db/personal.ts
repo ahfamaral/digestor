@@ -600,7 +600,7 @@ export async function addAskMessage(
 export async function finishAskMessage(
   db: Db,
   id: string,
-  a: { text: string; toolCalls?: unknown; status: Exclude<AskMessageStatus, "pending"> },
+  a: { text: string; toolCalls?: unknown; status: Exclude<AskMessageStatus, "pending" | "running"> },
 ): Promise<AskMessage> {
   const [row] = await db
     .update(askMessages)
@@ -609,6 +609,27 @@ export async function finishAskMessage(
     .returning();
   if (!row) throw new Error(`Ask message not found: ${id}`);
   return row;
+}
+
+/**
+ * Compare-and-set `pending` → `running` before a worker answers (T14): true only for the caller that claimed it. A
+ * retry that finds the message already `running` knows an earlier attempt died partway.
+ */
+export async function claimAskMessage(db: Db, id: string): Promise<boolean> {
+  const rows = await db
+    .update(askMessages)
+    .set({ status: "running" })
+    .where(and(eq(askMessages.id, id), eq(askMessages.status, "pending")))
+    .returning({ id: askMessages.id });
+  return rows.length > 0;
+}
+
+/** `running` → `pending`: the run failed before changing anything, so pg-boss's retry may answer it again. */
+export async function releaseAskMessage(db: Db, id: string): Promise<void> {
+  await db
+    .update(askMessages)
+    .set({ status: "pending" })
+    .where(and(eq(askMessages.id, id), eq(askMessages.status, "running")));
 }
 
 export async function getAskMessage(db: Db, id: string): Promise<AskMessage | null> {

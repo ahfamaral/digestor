@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASK_PENDING_LIMIT_MS, asToolCalls, formatToolCall, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
+import { ASK_PENDING_LIMIT_MS, asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
 
 describe("linkifyTimestamps", () => {
   it("splits text and times", () => {
@@ -79,6 +79,10 @@ describe("planSelectionUndo", () => {
     expect(planSelectionUndo(call("approved", { a: null, b: "neutral" }), { a: "approved", b: "rejected" })).toEqual({ restore: { a: null }, skipped: 1 });
   });
 
+  it("a call that set moments back to proposed restores those still without a selection (I5)", () => {
+    expect(planSelectionUndo(call("proposed", { a: "approved", b: "neutral" }), { b: "rejected" })).toEqual({ restore: { a: "approved" }, skipped: 1 });
+  });
+
   it("treats no selection as proposed (null) and skips everything when nothing matches", () => {
     expect(planSelectionUndo(call(null, { a: "rejected" }), {})).toEqual({ restore: { a: "rejected" }, skipped: 0 });
     expect(planSelectionUndo(call("neutral", { a: null }), {})).toEqual({ restore: {}, skipped: 1 });
@@ -95,5 +99,14 @@ describe("isStalePending", () => {
     expect(isStalePending(created.toISOString(), created.getTime() + ASK_PENDING_LIMIT_MS - 1)).toBe(false);
     expect(isStalePending(created.toISOString(), created.getTime() + ASK_PENDING_LIMIT_MS + 1)).toBe(true);
     expect(isStalePending("not a date", Date.now())).toBe(false);
+  });
+});
+
+describe("isAnswering (T14)", () => {
+  it("a running answer is still being worked on, like a pending one", () => {
+    expect(isAnswering("pending")).toBe(true);
+    expect(isAnswering("running")).toBe(true);
+    expect(isAnswering("done")).toBe(false);
+    expect(isAnswering("failed")).toBe(false);
   });
 });

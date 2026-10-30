@@ -6,7 +6,7 @@ import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskTo
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { asToolCalls, formatToolCall, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "@/lib/askText";
+import { asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "@/lib/askText";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { isTyping, opensAsk } from "@/lib/review";
@@ -78,7 +78,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     if (open) void load(false);
   }, [open, load]);
 
-  const isWaiting = (m: Message) => m.role === "assistant" && m.status === "pending" && !isStalePending(m.createdAt, now);
+  const isWaiting = (m: Message) => m.role === "assistant" && isAnswering(m.status) && !isStalePending(m.createdAt, now);
   const hasPending = messages.some(isWaiting);
   useEffect(() => {
     if (!open || !hasPending) return;
@@ -253,7 +253,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
                   message={m}
                   lang={lang}
                   videoRemoved={videoRemoved}
-                  stale={m.status === "pending" && !isWaiting(m)}
+                  stale={isAnswering(m.status) && !isWaiting(m)}
                   undone={undone}
                   busy={busy}
                   errors={errors}
@@ -337,8 +337,8 @@ function MessageItem({
   return (
     <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
       <span className="sr-only">{t("ask.answer")}: </span>
-      {message.status === "pending" && !stale && <p className="text-muted-foreground">{t("ask.thinking")}</p>}
-      {message.status === "pending" && stale && (
+      {isAnswering(message.status) && !stale && <p className="text-muted-foreground">{t("ask.thinking")}</p>}
+      {isAnswering(message.status) && stale && (
         <p role="alert" className="text-red-700">
           {t("ask.tooSlow")}
         </p>

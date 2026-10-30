@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  claimMomentCheck, releaseMomentCheck,
+  claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -375,6 +375,20 @@ describe("ask and reports", () => {
     expect(got!.actions[0]!.status).toBe("confirmed");
     expect(await getAskMessage(db, m.id)).toMatchObject({ id: m.id, sessionId: s.id, role: "assistant", status: "done" });
     expect(await getAskMessage(db, "00000000-0000-0000-0000-000000000000")).toBeNull();
+  });
+
+  it("claimAskMessage takes a pending answer once; release puts a running one back (T14)", async () => {
+    const m = await addAskMessage(db, { sessionId: s.id, ownerId: OWNER, role: "assistant", text: "", status: "pending" });
+    const [a, b] = await Promise.all([claimAskMessage(db, m.id), claimAskMessage(db, m.id)]);
+    expect([a, b].sort()).toEqual([false, true]);
+    expect((await getAskMessage(db, m.id))!.status).toBe("running");
+    await releaseAskMessage(db, m.id);
+    expect((await getAskMessage(db, m.id))!.status).toBe("pending");
+    expect(await claimAskMessage(db, m.id)).toBe(true);
+    await finishAskMessage(db, m.id, { text: "Done", status: "done" });
+    await releaseAskMessage(db, m.id);
+    expect((await getAskMessage(db, m.id))!.status).toBe("done");
+    expect(await claimAskMessage(db, m.id)).toBe(false);
   });
 
   it("problem reports are listed per owner", async () => {

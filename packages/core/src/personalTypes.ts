@@ -8,7 +8,8 @@ export type ClipEventKind = "create" | "bounds" | "format" | "delete";
 /** `outdated`: built for clip bounds that have since changed (Rebuild replaces it). */
 export type TrackStatus = "preparing" | "ready" | "failed" | "outdated";
 export type AskRole = "user" | "assistant";
-export type AskMessageStatus = "pending" | "done" | "failed";
+/** `running`: a worker claimed it (claimAskMessage); the UI treats it like `pending`. */
+export type AskMessageStatus = "pending" | "running" | "done" | "failed";
 export type AskActionKind = "bulk_selection";
 export type AskActionStatus = "pending" | "confirmed" | "dismissed";
 export type ProblemTargetKind = "moment" | "topic" | "briefing" | "quote" | "clip" | "track";
