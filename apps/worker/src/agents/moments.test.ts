@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Boundary, ContextCard, Fact, Topic, Transcript, Word } from "@digestor/core";
-import { findMoments, normalizeMoments } from "./moments.js";
+import { PASS_CONCURRENCY, findMoments, normalizeMoments } from "./moments.js";
 import { FakeLLM, type StructuredLLM } from "../llm/structured.js";
 import { MissingApiKeyError } from "../errors.js";
 
@@ -48,15 +48,16 @@ function card(profile: ContextCard["profile"]["value"] = "parliament"): ContextC
   };
 }
 /** One sentence-ending word per second; speaker A until `switchAtS`, then B. */
-function makeTranscript(switchAtS = 1500): Transcript {
-  const words: Word[] = Array.from({ length: DURATION / 1000 }, (_, i) => ({
+function makeTranscript(switchAtS = 1500, minutes = 40): Transcript {
+  const durationMs = minutes * MIN;
+  const words: Word[] = Array.from({ length: durationMs / 1000 }, (_, i) => ({
     text: "word.",
     startMs: i * 1000,
     endMs: i * 1000 + 500,
     speaker: i < switchAtS ? "A" : "B",
     confidence: 0.99,
   }));
-  return { words, durationMs: DURATION, language: "en", languageConfidence: 0.99 };
+  return { words, durationMs, language: "en", languageConfidence: 0.99 };
 }
 const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
   id,
@@ -67,6 +68,12 @@ const topic = (id: string, idx: number, startMs: number, endMs: number): Topic =
   title: `Topic ${id}`,
   summary: "",
 });
+/** `n` topics of 8 minutes; exchange i of topic k is `E<k>-<i>`, 62 s long (snapping can shave a second), 8 per topic. */
+const bigTopics = (n: number) => Array.from({ length: n }, (_, k) => topic(`t${k}`, k, k * 8 * MIN, (k + 1) * 8 * MIN));
+const exchangesFor = (k: number, rel: (i: number) => number) =>
+  Array.from({ length: 8 }, (_, i) =>
+    m({ a: k * 8 * MIN + i * 57_000, b: k * 8 * MIN + i * 57_000 + 62_000, title: `E${k}-${i}`, relevance: rel(i) }),
+  );
 const twoTopics = [topic("t1", 0, 0, 20 * MIN), topic("t2", 1, 20 * MIN, DURATION)];
 const oneTopic = [topic("t1", 0, 0, DURATION)];
 
@@ -199,6 +206,80 @@ describe("findMoments", () => {
     const parent = out.findIndex((x) => x.title === "E14");
     for (const p of pls) expect(p.insideIdx).toBe(parent);
     expect(fake.calls.filter((c) => c.name === "punchlines")).toHaveLength(8);
+  });
+
+  it("punchline calls are limited to the 40 most relevant exchanges", async () => {
+    // 6 topics x 8 exchanges = 48; relevance 1..48 is unique, so the top 40 are 9..48.
+    const topics = bigTopics(6);
+    const llm = new FakeLLM({
+      byName: {
+        moments: topics.map((_, k) => ({ moments: exchangesFor(k, (i) => k * 8 + i + 1) })),
+        punchlines: Array.from({ length: 48 }, () => ({ punchlines: [] })),
+      },
+    });
+    await findMoments(llm, { card: card("interview"), transcript: makeTranscript(1500, 48), topics });
+    const calls = llm.calls.filter((c) => c.name === "punchlines");
+    expect(calls).toHaveLength(40);
+    const picked = calls.map((c) => {
+      const [k, i] = /Exchange: "E(\d+)-(\d+)"/.exec(c.user)!.slice(1).map(Number) as [number, number];
+      return k * 8 + i + 1;
+    });
+    expect(picked.sort((x, y) => x - y)).toEqual(Array.from({ length: 40 }, (_, i) => i + 9));
+  });
+
+  it("MissingApiKeyError stops further punchline calls", async () => {
+    const topics = bigTopics(6);
+    let punchCalls = 0;
+    const llm: StructuredLLM = {
+      generate: async (a) => {
+        if (a.name === "moments") {
+          const k = Number(/Topic t(\d+)/.exec(a.user)![1]);
+          return a.schema.parse({ moments: exchangesFor(k, () => 50) });
+        }
+        punchCalls++;
+        throw new MissingApiKeyError("ANTHROPIC_API_KEY");
+      },
+    };
+    await expect(
+      findMoments(llm, { card: card("interview"), transcript: makeTranscript(1500, 48), topics }),
+    ).rejects.toBeInstanceOf(MissingApiKeyError);
+    expect(punchCalls).toBeLessThanOrEqual(PASS_CONCURRENCY); // only the calls already in flight
+  });
+
+  it("drops the punchlines of an exchange the 200 cap cut", async () => {
+    // 15 topics: 8 exchanges (relevance 40) + 12 passages (relevance 90) each. Punchlines (55) outrank exchanges,
+    // but the 200 cap keeps the 180 passages plus only 20 more, so every exchange is cut and no punchline may remain.
+    const topics = bigTopics(15);
+    const llm: StructuredLLM = {
+      generate: async (a) => {
+        if (a.name === "moments") {
+          const k = Number(/Topic t(\d+)/.exec(a.user)![1]);
+          const passages = Array.from({ length: 12 }, (_, i) =>
+            m({ a: k * 8 * MIN + i * 35_000, b: k * 8 * MIN + i * 35_000 + 30_000, title: `P${k}-${i}`, granularity: "passage", relevance: 90 }),
+          );
+          return a.schema.parse({ moments: [...exchangesFor(k, () => 40), ...passages] });
+        }
+        const [k, i] = /Exchange: "E(\d+)-(\d+)"/.exec(a.user)!.slice(1).map(Number) as [number, number];
+        const s0 = k * 8 * MIN + i * 57_000 + 10_000;
+        return a.schema.parse({ punchlines: [m({ a: s0, b: s0 + 15_000, title: `L${k}-${i}`, granularity: "punchline", relevance: 55 })] });
+      },
+    };
+    const out = await findMoments(llm, { card: card("interview"), transcript: makeTranscript(1500, 120), topics });
+    // 180 passages + 20 punchlines made the cut, but their exchanges did not, so the punchlines went too.
+    expect(out).toHaveLength(180);
+    expect(out.every((n) => n.granularity === "passage")).toBe(true);
+  });
+
+  it("a non-numeric relevance drops only that item; numeric strings are coerced", () => {
+    const out = normalizeMoments(
+      [
+        m({ a: 0, b: 2 * MIN, title: "str", relevance: "72" }),
+        m({ a: 3 * MIN, b: 5 * MIN, title: "bad", relevance: "high" }),
+        m({ a: 6 * MIN, b: 8 * MIN, title: "ok", relevance: 10 }),
+      ] as never,
+      { durationMs: DURATION, boundaries, within: { startMs: 0, endMs: DURATION }, allowed: ["exchange"], types: ["heated"] },
+    );
+    expect(out.map((x) => [x.title, x.relevance])).toEqual([["str", 72], ["ok", 10]]);
   });
 
   it("adds the counted longest speech for parliament only", async () => {

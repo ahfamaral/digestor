@@ -35,6 +35,8 @@ export const MAX_EXCHANGES_PER_TOPIC = 8;
 export const MAX_PASSAGES_PER_TOPIC = 12;
 export const MAX_PUNCHLINES_PER_EXCHANGE = 4;
 export const MAX_MOMENTS = 200;
+/** Cost cap (Ruling R9): only the most relevant exchanges session-wide get a punchline call. */
+export const MAX_PUNCHLINE_PARENTS = 40;
 /** Slack when checking that a model range lies inside its topic/exchange; the result is clamped to the parent anyway. */
 const WITHIN_SLACK_MS = 2_000;
 
@@ -46,7 +48,7 @@ export const LlmMomentSchema = z.object({
   title: z.string().describe("Short title, in the original language of the session"),
   why: z.string().describe("One or two sentences: why this moment matters. Write this first."),
   highlightTypes: z.array(z.string()).describe("Ids of the highlight types that apply, from the list in the prompt"),
-  relevance: z.number().describe("0-100: how worth showing this moment is"),
+  relevance: z.union([z.number(), z.string()]).describe("0-100: how worth showing this moment is"),
   granularity: z.string().describe("exchange, passage or punchline"),
   start: z.string().describe("hh:mm:ss, where the moment begins"),
   end: z.string().describe("hh:mm:ss, where the moment ends"),
@@ -106,12 +108,14 @@ export function normalizeMoments(
     );
     const title = r.title.trim();
     if (title === "") continue;
+    const relevance = typeof r.relevance === "number" ? r.relevance : r.relevance.trim() === "" ? NaN : Number(r.relevance);
+    if (!Number.isFinite(relevance)) continue;
     out.push({
       title,
       why: r.why.trim(),
       granularity: g,
       ...range,
-      relevance: Number.isFinite(r.relevance) ? Math.round(Math.min(100, Math.max(0, r.relevance))) : 0,
+      relevance: Math.round(Math.min(100, Math.max(0, relevance))),
       highlightTypes: types,
       evidence: r.evidence.map((e) => e.trim()).filter((e) => e !== ""),
     });
@@ -285,8 +289,13 @@ export async function findMoments(
   const pool: Node[] = perTopic.flat();
 
   // Pass B: punchlines, one call per kept exchange.
-  const exchanges = pool.filter((n) => n.granularity === "exchange");
+  const exchanges = pool
+    .filter((n) => n.granularity === "exchange")
+    .sort((x, y) => y.relevance - x.relevance || x.startMs - y.startMs)
+    .slice(0, MAX_PUNCHLINE_PARENTS);
+  let keyError: MissingApiKeyError | null = null; // once set, the pool issues no further calls
   const perExchange = await mapPool(exchanges, PASS_CONCURRENCY, async (ex): Promise<Node[]> => {
+    if (keyError) return [];
     try {
       const res = await llm.generate({
         schema: PunchlinesOutput,
@@ -304,7 +313,10 @@ export async function findMoments(
         .slice(0, MAX_PUNCHLINES_PER_EXCHANGE)
         .map((d) => ({ ...toNode(d, ex.topicId), parent: ex }));
     } catch (err) {
-      if (err instanceof MissingApiKeyError) throw err; // deterministic: fail the session (Ruling R8)
+      if (err instanceof MissingApiKeyError) {
+        keyError ??= err;
+        throw err; // deterministic: fail the session (Ruling R8)
+      }
       console.error(`[moments] punchline call failed for "${ex.title}":`, err);
       return [];
     }
@@ -323,7 +335,7 @@ export async function findMoments(
       granularity: "exchange",
       ...r,
       title: `Longest speech: ${speech.speaker}`,
-      why: `Why: the longest uninterrupted speech in the session, by ${speech.speaker}, ${formatTimestamp(r.endMs - r.startMs)} long (counted from the transcript).`,
+      why: `The longest uninterrupted speech in the session, by ${speech.speaker}, ${formatTimestamp(r.endMs - r.startMs)} long (counted from the transcript).`,
       relevance: 100,
       speakers: [speech.speaker],
       evidence: [],
@@ -332,13 +344,16 @@ export async function findMoments(
     });
   }
 
-  const ranked = [...pool]
+  const top = [...pool]
     .sort((x, y) => y.relevance - x.relevance || x.startMs - y.startMs)
     .slice(0, MAX_MOMENTS - counted.length);
+  // Punchlines go with their exchange when the cap cuts it; a passage stays, just unlinked.
+  const topSet = new Set(top);
+  const ranked = top.filter((n) => n.granularity !== "punchline" || !n.parent || topSet.has(n.parent));
   const all = [...counted, ...ranked].sort((x, y) => y.relevance - x.relevance || x.startMs - y.startMs);
   const index = new Map(all.map((n, i) => [n, i]));
   return all.map(({ parent, ...n }) => {
-    const idx = parent ? index.get(parent) : undefined; // a parent cut by the cap leaves the child unlinked
+    const idx = parent ? index.get(parent) : undefined;
     return idx === undefined ? n : { ...n, insideIdx: idx };
   });
 }
