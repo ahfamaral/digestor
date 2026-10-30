@@ -145,6 +145,12 @@ export async function getClip(db: Db, id: string): Promise<Clip | null> {
   return row ?? null;
 }
 
+/** Like `getClip` but also returns a soft-deleted clip (undo needs to find it). */
+export async function getClipAny(db: Db, id: string): Promise<Clip | null> {
+  const [row] = await db.select().from(clips).where(eq(clips.id, id));
+  return row ?? null;
+}
+
 export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: ClipActor): Promise<Clip> {
   return db.transaction(async (tx) => {
     const before = await lockClip(tx, id);
@@ -302,6 +308,24 @@ export async function listTracks(db: Db, clipId: string): Promise<Track[]> {
 export async function createTrack(db: Db, clipId: string, language: string): Promise<Track | null> {
   const [row] = await db.insert(subtitleTracks).values({ clipId, language }).onConflictDoNothing().returning();
   return row ?? null;
+}
+
+/** Removes a track that never got going (its prepare job couldn't be queued); only while `preparing`. */
+export async function deleteTrack(db: Db, id: string): Promise<void> {
+  await db.delete(subtitleTracks).where(and(eq(subtitleTracks.id, id), eq(subtitleTracks.status, "preparing")));
+}
+
+/**
+ * Records whether the user wants a burned-in version of this track. A request is a `burnStatus` other than `none`:
+ * `stale` means "requested, not built (or out of date)". Never touches a burn that is queued, rendering or done.
+ * Returns the track, or null when it doesn't exist.
+ */
+export async function requestTrackBurn(db: Db, id: string, want: boolean): Promise<Track | null> {
+  await db
+    .update(subtitleTracks)
+    .set({ burnStatus: want ? "stale" : "none" })
+    .where(and(eq(subtitleTracks.id, id), inArray(subtitleTracks.burnStatus, want ? ["none"] : ["stale", "failed"])));
+  return getTrack(db, id);
 }
 
 async function lockTrack(tx: Tx, id: string): Promise<Track> {

@@ -2,8 +2,9 @@ import { mkdirSync, writeFileSync, type ReadStream } from "node:fs";
 import { once } from "node:events";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createSession } from "@digestor/core/server";
+import { createClip, createSession, createTrack, setTrackCues, updateSession } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
+import { readySession } from "@/test/personalFixture";
 import { GET } from "./[id]/[...file]/route";
 
 // Records every fs stream the route opens, so a test can check the file gets closed.
@@ -35,7 +36,7 @@ beforeAll(async () => {
   writeFileSync(path.join(dir, "original.mp4"), "secret");
   writeFileSync(path.join(dir, "thumbs", `${clipId}.jpg`), "jpg");
   writeFileSync(path.join(dir, "clips", `${clipId}.mp4`), "mp4");
-  writeFileSync(path.join(dir, "clips", `${clipId}.srt`), "1\n00:00:00,000 --> 00:00:01,000\nHi\n");
+  writeFileSync(path.join(dir, "clips", `${clipId}.pt.burned.mp4`), "burned");
 });
 afterAll(() => h.cleanup());
 
@@ -105,18 +106,70 @@ describe("GET /api/files/[id]/[...file]", () => {
     }
   });
 
-  it("serves clip renders and subtitles, as attachments when download=1", async () => {
+  it("serves clip renders as attachments when download=1", async () => {
     const mp4 = await get(`clips/${clipId}.mp4`);
     expect(mp4.headers.get("Content-Type")).toBe("video/mp4");
     expect(mp4.headers.get("Content-Disposition")).toBeNull();
-
-    const srt = await get(`clips/${clipId}.srt`, { query: "?download=1" });
-    expect(srt.status).toBe(200);
-    expect(srt.headers.get("Content-Type")).toBe("application/x-subrip");
-    expect(srt.headers.get("Content-Disposition")).toBe('attachment; filename="clip.srt"');
-
     const dl = await get(`clips/${clipId}.mp4`, { query: "?download=1" });
-    expect(dl.headers.get("Content-Disposition")).toBe('attachment; filename="clip.mp4"');
+    expect(dl.headers.get("Content-Disposition")).toBe(`attachment; filename="clip.mp4"; filename*=UTF-8''clip.mp4`);
+    const burned = await get(`clips/${clipId}.pt.burned.mp4`, { range: "bytes=0-2" });
+    expect(burned.status).toBe(206);
+    expect(new TextDecoder().decode(await body(burned))).toBe("bur");
+  });
+
+  describe("with a real clip and track", () => {
+    let realClip: string;
+    let realSession: string;
+    beforeAll(async () => {
+      const s = await createSession(h.db, { title: "Talk", source: "upload" });
+      realSession = s.id;
+      await updateSession(h.db, s.id, { stage: "ready", language: "en" });
+      const clip = await createClip(h.db, { sessionId: s.id, ownerId: "owner", startMs: 0, endMs: 5000, actor: "user" });
+      realClip = clip.id;
+      const track = (await createTrack(h.db, clip.id, "pt"))!;
+      await setTrackCues(h.db, track.id, [{ startMs: 0, endMs: 1500, original: "Hello", text: "Olá <mundo> & amigos", missing: false }], "ready");
+      await createTrack(h.db, clip.id, "fr"); // no cues yet
+      const dir = path.join(h.root, s.id, "clips");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, `${clip.id}.mp4`), "mp4");
+    });
+
+    it("renders SRT and VTT from the track's cues on every request", async () => {
+      const srt = await get(`clips/${realClip}.pt.srt`, { id: realSession });
+      expect(srt.status).toBe(200);
+      expect(srt.headers.get("Content-Type")).toBe("application/x-subrip; charset=utf-8");
+      expect(await srt.text()).toBe("1\n00:00:00,000 --> 00:00:01,500\nOlá <mundo> & amigos\n");
+      const vtt = await get(`clips/${realClip}.pt.vtt`, { id: realSession });
+      expect(vtt.headers.get("Content-Type")).toBe("text/vtt; charset=utf-8");
+      expect(await vtt.text()).toBe("WEBVTT\n\n00:00:00.000 --> 00:00:01.500\nOlá &lt;mundo> &amp; amigos\n");
+    });
+
+    it("404s when the track doesn't exist, has no cues, or the clip is in another session", async () => {
+      expect((await get(`clips/${realClip}.de.srt`, { id: realSession })).status).toBe(404);
+      expect((await get(`clips/${realClip}.fr.srt`, { id: realSession })).status).toBe(404);
+      expect((await get(`clips/${realClip}.pt.srt`)).status).toBe(404);
+    });
+
+    it("filename* carries the UTF-8 title", async () => {
+      const title = `Écoute — « l'été » "ok"/..`;
+      const { moments } = await readySession(h.db, [[1000, 9000, title]]);
+      const clip = await createClip(h.db, { sessionId: realSession, ownerId: "owner", momentId: moments[0]!.id, startMs: 0, endMs: 1000, actor: "user" });
+      const track = (await createTrack(h.db, clip.id, "pt"))!;
+      await setTrackCues(h.db, track.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready");
+      writeFileSync(path.join(h.root, realSession, "clips", `${clip.id}.mp4`), "mp4");
+
+      const mp4 = await get(`clips/${clip.id}.mp4`, { id: realSession, query: "?download=1" });
+      const cd = mp4.headers.get("Content-Disposition")!;
+      expect(cd).toContain("filename*=UTF-8''%C3%89coute%20%E2%80%94%20%C2%AB%20l%27%C3%A9t%C3%A9%20%C2%BB%20ok%20..");
+      expect(cd.endsWith(".mp4")).toBe(true);
+      const ascii = /filename="([^"]*)"/.exec(cd)![1]!;
+      expect(ascii).toBe("_coute _ _ l'_t_ _ ok ...mp4");
+      expect(ascii).not.toMatch(/[^\x20-\x7e]|["\\/]/);
+
+      const srt = await get(`clips/${clip.id}.pt.srt`, { id: realSession, query: "?download=1" });
+      expect(srt.headers.get("Content-Disposition")).toContain(".pt.srt");
+      expect(decodeURIComponent(/filename\*=UTF-8''(.*)$/.exec(srt.headers.get("Content-Disposition")!)![1]!)).toBe("Écoute — « l'été » ok ...pt.srt");
+    });
   });
 
   it("rejects path traversal in file param", async () => {

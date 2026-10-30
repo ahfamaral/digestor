@@ -1,0 +1,37 @@
+import { JOB_OPTIONS, QUEUES } from "@digestor/core";
+import { getAnalysisVersion, getMoment, getSession, type Db, type Session } from "@digestor/core/server";
+import { errorResponse } from "./http";
+import type { JobSender } from "./server";
+
+export const NOT_READY = "This video isn't ready yet.";
+export const VIDEO_REMOVED = "The video was removed after 14 days. Re-upload it to make new clips.";
+export const QUEUE_FAILED = "Couldn't queue the job. Please try again.";
+
+/** The session when it exists and is `ready`; otherwise the error response to return (404 / 409). */
+export async function readySession(db: Db, sessionId: string): Promise<{ session: Session } | { error: Response }> {
+  const session = await getSession(db, sessionId);
+  if (!session) return { error: errorResponse(404, "Session not found.") };
+  if (session.stage !== "ready") return { error: errorResponse(409, NOT_READY) };
+  return { session };
+}
+
+/** The moment's session id, or null when the moment (or its analysis) doesn't exist. */
+export async function sessionIdOfMoment(db: Db, momentId: string): Promise<string | null> {
+  const moment = await getMoment(db, momentId);
+  if (!moment) return null;
+  return (await getAnalysisVersion(db, moment.analysisId))?.sessionId ?? null;
+}
+
+/** Asks the worker to run the clip checks for a moment; only one is queued while another is waiting. */
+export function sendMomentCheck(boss: JobSender, momentId: string): Promise<string | null> {
+  return boss.send(QUEUES.checkMoment, { momentId }, { ...JOB_OPTIONS, singletonKey: momentId });
+}
+
+/** Checks are lazy and best-effort: a failed enqueue is logged, never shown (export asks again). */
+export async function sendMomentCheckQuietly(boss: JobSender, momentId: string): Promise<void> {
+  try {
+    await sendMomentCheck(boss, momentId);
+  } catch (err) {
+    console.error("moment check: enqueue failed", err);
+  }
+}

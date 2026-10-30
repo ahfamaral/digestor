@@ -10,7 +10,7 @@ import {
   addAskMessage, addProblemReport, approveTrack, claimClipRender, claimTrackBurn, createAskAction, createClip,
   createPersonalMoment, burnSignature, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
-  resolveAskAction, setSelection, setTrackCues, undoLastEvent, updateClip,
+  resolveAskAction, deleteTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
 } from "./personal.ts";
 import type { TrackCue } from "../personalTypes.ts";
 
@@ -241,5 +241,29 @@ describe("ask and reports", () => {
     await addProblemReport(db, { ownerId: OWNER, sessionId: s.id, targetKind: "quote", targetId: "q", note: "wrong" });
     expect((await listProblemReports(db, OWNER)).map((r) => r.note)).toEqual(["wrong"]);
     expect(await listProblemReports(db, "x")).toEqual([]);
+  });
+});
+
+describe("Task 16 helpers", () => {
+  it("getClipAny returns a soft-deleted clip that getClip hides", async () => {
+    const c = await newClip();
+    await deleteClip(db, c.id, "user");
+    expect(await getClip(db, c.id)).toBeNull();
+    expect((await getClipAny(db, c.id))?.deletedAt).not.toBeNull();
+  });
+  it("requestTrackBurn toggles only none <-> stale/failed; deleteTrack only removes a preparing track", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    expect((await requestTrackBurn(db, t.id, true))?.burnStatus).toBe("stale");
+    await setTrackBurnStatus(db, t.id, "queued");
+    expect((await requestTrackBurn(db, t.id, false))?.burnStatus).toBe("queued");
+    await setTrackBurnStatus(db, t.id, "failed");
+    expect((await requestTrackBurn(db, t.id, false))?.burnStatus).toBe("none");
+    await setTrackCues(db, t.id, [cue("x")], "ready");
+    await deleteTrack(db, t.id);
+    expect(await getTrack(db, t.id)).not.toBeNull();
+    const p = (await createTrack(db, c.id, "fr"))!;
+    await deleteTrack(db, p.id);
+    expect(await getTrack(db, p.id)).toBeNull();
   });
 });
