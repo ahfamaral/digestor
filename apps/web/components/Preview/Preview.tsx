@@ -8,6 +8,7 @@ import {
   type ProfileId, type Topic,
 } from "@digestor/core";
 import { AskDrawer } from "@/components/Ask/AskDrawer";
+import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { ContextBanner } from "@/components/ContextBanner";
 import { ReportProblem, previewTargets } from "@/components/ReportProblem";
 import { Button } from "@/components/ui/button";
@@ -192,8 +193,9 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
         </p>
       )}
       {PROFILES[analysis.profile].sensitive && (
-        <p role="note" className={`${NOTICE} border-amber-300 bg-amber-50 text-amber-950`}>
-          {t("preview.sensitive")}
+        <p role="note" className={`${NOTICE} flex items-start gap-2 ${WARNING_BOX}`}>
+          <WarningIcon className="mt-0.5" />
+          <span>{t("preview.sensitive")}</span>
         </p>
       )}
 

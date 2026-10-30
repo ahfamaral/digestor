@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UploadIcon, XIcon } from "lucide-react";
+import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -289,8 +290,11 @@ export function UploadForm() {
             </Card>
           )}
           {audioOnly && (
-            <div className="flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              <p role="status">{t("upload.audioOnlyWarning")}</p>
+            <div className={`flex flex-col gap-2 rounded-xl border p-3 text-sm ${WARNING_BOX}`}>
+              <p role="status" className="flex items-start gap-2">
+                <WarningIcon className="mt-0.5" />
+                <span>{t("upload.audioOnlyWarning")}</span>
+              </p>
               <label className="flex items-start gap-2 font-medium">
                 <Checkbox
                   checked={audioAck}

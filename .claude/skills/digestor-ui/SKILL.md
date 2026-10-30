@@ -39,6 +39,7 @@ Use tokens, not new hex literals. Highlight colours live in one place: each type
 | Highlight type | the type's `tone` (red, blue, amber, violet, green, teal, slate, pink) | `HighlightChip`, timeline pins, legend |
 | Approved | green | status buttons, "Approved ✓" |
 | Rejected / error | red | status buttons, `role="alert"` boxes |
+| Warning | **neutral + ⚠**: stone border/background (`WARNING_BOX`) with the ⚠ icon (`WarningIcon`) and text — never amber (amber is a highlight tone) | `components/WarningNote.tsx`: clip checks, sensitive-profile notice, audio-only upload, "out of date", "Subtitles are for the old cut." |
 | Human-in-the-loop, "from you" | purple | context badge, edited facts, the pause screens' accent |
 | Source badges | "from video" / "from audio" green; "from metadata" grey; "from you" purple; "suggested by AI" neutral; "missing" red | context check and context banner (`lib/contextBadge.ts`) |
 | AI-judged item | "AI" badge on the chip, plus a "Why:" line | Preview, Full briefing |
