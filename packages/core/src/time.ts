@@ -17,6 +17,15 @@ export function formatTimestamp(ms: number, opts: { tenths?: boolean } = {}): st
   return opts.tenths ? `${base}.${Math.floor((totalMs % 1000) / 100)}` : base;
 }
 
+/** A length for people: "25s", "2m 40s", "1h 12m" (rounded to the second, or to the minute past an hour). */
+export function formatLength(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return s % 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s / 60}m`;
+  const m = Math.round(s / 60);
+  return m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`;
+}
+
 const TIMESTAMP_RE = /^(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:\.(\d))?$/;
 
 export function parseTimestamp(s: string): number {

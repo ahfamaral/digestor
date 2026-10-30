@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTimestamp, InvalidTimestampError, parseTimestamp } from "./time.ts";
+import { formatLength, formatTimestamp, InvalidTimestampError, parseTimestamp } from "./time.ts";
 
 describe("formatTimestamp", () => {
   it("formats hh:mm:ss with optional tenths", () => {
@@ -26,5 +26,16 @@ describe("parseTimestamp", () => {
     expect(() => parseTimestamp("00:00:01.25")).toThrow(InvalidTimestampError);
     expect(() => parseTimestamp("")).toThrow(InvalidTimestampError);
     expect(() => parseTimestamp("42")).toThrow(InvalidTimestampError);
+  });
+});
+
+describe("formatLength", () => {
+  it("shows seconds, minutes and seconds, or hours and minutes", () => {
+    expect(formatLength(25_400)).toBe("25s");
+    expect(formatLength(160_000)).toBe("2m 40s");
+    expect(formatLength(120_000)).toBe("2m");
+    expect(formatLength(4_320_000)).toBe("1h 12m");
+    expect(formatLength(3_600_000)).toBe("1h");
+    expect(formatLength(0)).toBe("0s");
   });
 });

@@ -1,39 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { XIcon } from "lucide-react";
 import { type ContextCard } from "@digestor/core";
-import { t } from "@/lib/i18n";
+import { browserStorage, readBannerDismissed, writeBannerDismissed } from "@/lib/bannerDismiss";
+import { languageName, t } from "@/lib/i18n";
 
-function languageName(code: string): string {
-  try {
-    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
-  } catch {
-    return code;
-  }
+function subscribeStorage(onChange: () => void): () => void {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
 }
-
-const bannerKey = (sessionId: string) => `digestor:banner:${sessionId}`;
 
 /** One-line summary of the context card above the briefing: profile · language · date · setting · title. Dismissible; the choice is remembered per session in this browser. */
 export function ContextBanner({ sessionId, card }: { sessionId: string; card: ContextCard }) {
-  const [dismissed, setDismissed] = useState(false);
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(bannerKey(sessionId)) === "1") setDismissed(true);
-    } catch {
-      // storage unavailable: the banner just shows
-    }
-  }, [sessionId]);
+  // null on the server and before hydration, so a dismissed banner never flashes in.
+  const stored = useSyncExternalStore(subscribeStorage, () => readBannerDismissed(browserStorage(), sessionId), () => null);
+  const [hidden, setHidden] = useState(false);
   function dismiss() {
-    setDismissed(true);
-    try {
-      localStorage.setItem(bannerKey(sessionId), "1");
-    } catch {
-      // not remembered, still hidden for this view
-    }
+    setHidden(true);
+    writeBannerDismissed(browserStorage(), sessionId); // if not stored, it is still hidden for this view
   }
-  if (dismissed) return null;
+  if (stored !== false || hidden) return null;
 
   const parts = [
     t(`profile.${card.profile.value}`),

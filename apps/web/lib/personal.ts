@@ -1,10 +1,10 @@
-import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
 import { getAnalysisVersion, getClip, getClipAny, getMoment, getSession, type Clip, type Db, type Session } from "@digestor/core/server";
 import { errorResponse } from "./http";
 import type { JobSender } from "./server";
 
 export const NOT_READY = "This video isn't ready yet.";
-export const VIDEO_REMOVED = "The video was removed after 14 days. Re-upload it to make new clips.";
+export { VIDEO_REMOVED };
 export const QUEUE_FAILED = "Couldn't queue the job. Please try again.";
 
 /** The session when it exists and is `ready`; otherwise the error response to return (404 / 409). */

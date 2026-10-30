@@ -1,8 +1,13 @@
-import { AUDIO_ONLY_CHECKBOX, AUDIO_ONLY_WARNING, HIGHLIGHT_TYPES, PROFILES, UPLOAD_UNSUPPORTED, type HighlightTypeId, type ProfileId } from "@digestor/core";
+import {
+  AUDIO_ONLY_CHECKBOX, AUDIO_ONLY_WARNING, HIGHLIGHT_TYPES, PROFILES, UPLOAD_UNSUPPORTED, VIDEO_REMOVED, type HighlightTypeId, type ProfileId,
+} from "@digestor/core";
 
 /** Domain labels live in core; generated here so a new profile or highlight type gets its message key automatically. */
 const profile = Object.fromEntries(Object.entries(PROFILES).map(([id, p]) => [id, p.label])) as { [K in ProfileId]: string };
 const highlight = Object.fromEntries(Object.entries(HIGHLIGHT_TYPES).map(([id, h]) => [id, h.label])) as {
+  [K in HighlightTypeId]: string;
+};
+const highlightCard = Object.fromEntries(Object.entries(HIGHLIGHT_TYPES).map(([id, h]) => [id, h.cardLabel])) as {
   [K in HighlightTypeId]: string;
 };
 
@@ -13,6 +18,7 @@ export const en = {
   },
   profile,
   highlight,
+  highlightCard,
   appBar: {
     progress: "Progress",
     step: {
@@ -126,12 +132,92 @@ export const en = {
     errorNetwork: "Couldn't reach the server. Please try again.",
   },
   session: {
-    analysisReady: "Analysis ready.",
     contextMissing: "The context card is missing for this video. Start over from the upload page.",
     failedTitle: "Something went wrong",
     failedFallback: "The video could not be processed.",
     startOver: "Start over",
     exportSoon: "Export is coming soon.",
+    prepareSoon: "Clip preparation is coming soon.",
+    analysisMissing: "The analysis for this video is missing. Start over from the upload page.",
+  },
+  preview: {
+    speakersOne: "1 speaker",
+    speakersMany: "{n} speakers",
+    analysisVersion: "Analysis v{n}",
+    rerunProfile: "Re-run: profile changed to {profile}",
+    rerunReason: "Re-run: {reason}",
+    running: "Re-analysing… the current results stay until it finishes.",
+    videoRemoved: VIDEO_REMOVED,
+    sensitive: "People in this video may need protection. Check before publishing.",
+    timeline: "Session timeline",
+    timelineBand: "Topic {n}: {title}, from {time}",
+    timelinePin: "{type}: {title}, at {time}",
+    legend: "Highlight types",
+    topHighlights: "Top highlights",
+    mostDiscussed: "Most discussed",
+    briefing: "Briefing",
+    briefingActions: "Briefing actions",
+    copyText: "Copy text",
+    copied: "Copied.",
+    copyFailed: "Couldn't copy. Select the text and copy it yourself.",
+    export: "Export…",
+    shareLink: "Share link",
+    linkCopied: "Link copied. Anyone with the app password can open it.",
+    shareNote: "Anyone with the app password can open it.",
+    readIn: "Read in",
+    readInOriginal: "Original ({language})",
+    readInOriginalUnknown: "Original",
+    translating: "Translating the briefing…",
+    translationFailed: "Couldn't translate the briefing. Please try again.",
+    translationNote: "Machine translation. Quotes show the original first.",
+    retry: "Try again",
+    noBriefing: "The briefing couldn't be written for this analysis, so each topic shows its own summary.",
+    why: "Why: {why}",
+    badgeAi: "AI",
+    badgeCounted: "counted",
+    play: "▶ Play",
+    playLabel: "Play {title}",
+    stop: "■ Stop",
+    stopLabel: "Stop {title}",
+    clip: "+ Clip",
+    clipLabel: "Clip {title}",
+    clipBusy: "Adding…",
+    playerLabel: "Preview of {title}",
+    looksRight: "Looks right → Full briefing",
+    somethingOff: "Something's off",
+    backToContext: "Back to context check",
+    reportProblem: "Report a problem",
+    reanalyzeBody: "This runs a new AI pass on the whole session.",
+    reanalyzeProfile: "What kind of video is this?",
+    reanalyzeConfirm: "Run a new analysis",
+    reanalyzeBusy: "Starting…",
+    cancel: "Cancel",
+    reportTarget: "What has the problem?",
+    reportNote: "Note (optional)",
+    reportNotePlaceholder: "What looks wrong?",
+    reportSend: "Send report",
+    reportBusy: "Sending…",
+    reportSent: "Thanks, your report was saved.",
+    reportsLink: "See all reports",
+    targetBriefing: "The briefing as a whole",
+    targetTopic: "Topic {n}: {title}",
+    targetQuote: "Key quote in topic {n}",
+    targetMoment: "Highlight: {title}",
+    errorGeneric: "Something went wrong. Please try again.",
+  },
+  reports: {
+    title: "Reported problems",
+    empty: "No problems reported yet.",
+    noNote: "No note.",
+    unknownSession: "A deleted session",
+    kind: {
+      moment: "Highlight",
+      topic: "Topic",
+      briefing: "Briefing",
+      quote: "Quote",
+      clip: "Clip",
+      track: "Subtitles",
+    },
   },
 } as const;
 

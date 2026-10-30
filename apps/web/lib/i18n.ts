@@ -36,3 +36,12 @@ export function localeFromHeaders(h: Headers): string {
     return "en";
   }
 }
+
+/** English name of a BCP-47 language code ("pt" → "Portuguese"); the code itself when unknown. */
+export function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
