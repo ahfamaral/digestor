@@ -152,6 +152,7 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
     const changed = <K extends keyof ClipPatch>(k: K) => patch[k] !== undefined && patch[k] !== before[k];
     const boundsChanged = changed("startMs") || changed("endMs");
     const formatChanged = changed("format") || changed("cropOffset");
+    const creditChanged = changed("credit") || changed("noCreditNeeded");
     const [row] = await tx
       .update(clips)
       .set({ ...patch, updatedAt: new Date() })
@@ -175,7 +176,7 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
         after: { format: row!.format, cropOffset: row!.cropOffset },
       });
     }
-    if (boundsChanged || formatChanged) {
+    if (boundsChanged || formatChanged || creditChanged) {
       await staleIfDone(tx, id);
       const [fresh] = await tx.select().from(clips).where(eq(clips.id, id));
       return fresh!;
@@ -232,7 +233,7 @@ export async function listClipEvents(db: Db, clipId: string): Promise<ClipEvent[
 
 /** Worker progress/failure markers (`rendering`, `failed`). */
 export async function setClipRenderStatus(db: Db, id: string, status: RenderStatus): Promise<void> {
-  await db.update(clips).set({ renderStatus: status, updatedAt: new Date() }).where(eq(clips.id, id));
+  await db.update(clips).set({ renderStatus: status, updatedAt: new Date() }).where(and(eq(clips.id, id), alive));
 }
 
 /** Atomic claim before enqueueing a render: `queued` only from none, failed or stale. */
@@ -246,31 +247,38 @@ export async function claimClipRender(db: Db, id: string): Promise<boolean> {
 }
 
 /**
- * Records a finished render in one statement: `done` only if bounds, format and crop are still exactly what was
+ * Records a finished render in one statement: `done` only if bounds, format, crop and credit are still exactly what was
  * rendered, otherwise `stale`. The key is stored either way. Null when the clip no longer exists.
  */
 export async function finishClipRender(
   db: Db,
   id: string,
-  rendered: { startMs: number; endMs: number; format: ClipFormat; cropOffset: number },
+  rendered: { startMs: number; endMs: number; format: ClipFormat; cropOffset: number; credit: string | null },
   keys: { renderKey: string },
 ): Promise<"done" | "stale" | null> {
   const [row] = await db
     .update(clips)
     .set({
       renderKey: keys.renderKey,
-      renderStatus: sql`CASE WHEN ${clips.startMs} = ${rendered.startMs} AND ${clips.endMs} = ${rendered.endMs} AND ${clips.format} = ${rendered.format} AND ${clips.cropOffset} = ${rendered.cropOffset} THEN 'done' ELSE 'stale' END`,
+      renderStatus: sql`CASE WHEN ${clips.startMs} = ${rendered.startMs} AND ${clips.endMs} = ${rendered.endMs} AND ${clips.format} = ${rendered.format} AND ${clips.cropOffset} = ${rendered.cropOffset} AND ${clips.credit} IS NOT DISTINCT FROM ${rendered.credit}::text THEN 'done' ELSE 'stale' END`,
       updatedAt: new Date(),
     })
-    .where(eq(clips.id, id))
+    .where(and(eq(clips.id, id), alive))
     .returning({ renderStatus: clips.renderStatus });
   return row ? (row.renderStatus as "done" | "stale") : null;
 }
 
 // ---------------------------------------------------------------- subtitle tracks
 
-export function cuesHash(cues: TrackCue[]): string {
-  return createHash("sha1").update(JSON.stringify(cues.map((c) => c.text))).digest("hex");
+/** What a burned-in render depends on: the cue texts plus the clip geometry and credit. */
+export function burnSignature(
+  track: { cues: TrackCue[] },
+  clip: { startMs: number; endMs: number; format: ClipFormat; cropOffset: number; credit: string | null },
+): string {
+  const { startMs, endMs, format, cropOffset, credit } = clip;
+  return createHash("sha1")
+    .update(JSON.stringify({ texts: track.cues.map((c) => c.text), startMs, endMs, format, cropOffset, credit }))
+    .digest("hex");
 }
 
 export async function getTrack(db: Db, id: string): Promise<Track | null> {
@@ -297,7 +305,12 @@ async function lockTrack(tx: Tx, id: string): Promise<Track> {
 export async function setTrackCues(db: Db, id: string, cues: TrackCue[], status: TrackStatus): Promise<Track> {
   const [row] = await db
     .update(subtitleTracks)
-    .set({ cues, status, approvedAt: null })
+    .set({
+      cues,
+      status,
+      approvedAt: null,
+      burnStatus: sql`CASE WHEN ${subtitleTracks.burnStatus} = 'done' THEN 'stale' ELSE ${subtitleTracks.burnStatus} END`,
+    })
     .where(eq(subtitleTracks.id, id))
     .returning();
   if (!row) throw new Error(`Track not found: ${id}`);
@@ -351,6 +364,7 @@ export async function claimTrackBurn(db: Db, id: string): Promise<boolean> {
       and(
         eq(subtitleTracks.id, id),
         sql`${subtitleTracks.approvedAt} is not null`,
+        sql`exists (select 1 from ${clips} where ${clips.id} = ${subtitleTracks.clipId} and ${clips.deletedAt} is null)`,
         inArray(subtitleTracks.burnStatus, ["none", "failed", "stale"]),
       ),
     )
@@ -362,17 +376,23 @@ export async function setTrackBurnStatus(db: Db, id: string, status: RenderStatu
   await db.update(subtitleTracks).set({ burnStatus: status }).where(eq(subtitleTracks.id, id));
 }
 
-/** `done` only if the cues still hash to what was burned; the key is stored either way. */
+/**
+ * `done` only if the track's cues and the clip's geometry/credit still match the signature the burn was made from;
+ * the key is stored either way. Null when the track is missing or its clip was deleted.
+ */
 export async function finishTrackBurn(
   db: Db,
   id: string,
-  burnedCuesHash: string,
+  signature: string,
   key: string,
 ): Promise<"done" | "stale" | null> {
   return db.transaction(async (tx) => {
+    const [peek] = await tx.select({ clipId: subtitleTracks.clipId }).from(subtitleTracks).where(eq(subtitleTracks.id, id));
+    if (!peek) return null;
+    const clip = await lockClip(tx, peek.clipId); // same order as updateClip: clip, then track
     const [track] = await tx.select().from(subtitleTracks).where(eq(subtitleTracks.id, id)).for("update");
-    if (!track) return null;
-    const status = cuesHash(track.cues) === burnedCuesHash ? "done" : "stale";
+    if (!clip || clip.deletedAt || !track) return null;
+    const status = burnSignature(track, clip) === signature ? "done" : "stale";
     await tx.update(subtitleTracks).set({ burnKey: key, burnStatus: status }).where(eq(subtitleTracks.id, id));
     return status;
   });

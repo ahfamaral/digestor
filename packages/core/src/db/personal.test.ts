@@ -8,8 +8,8 @@ import { sql } from "drizzle-orm";
 import { clipEvents, subtitleTracks } from "./schema.ts";
 import {
   addAskMessage, addProblemReport, approveTrack, claimClipRender, claimTrackBurn, createAskAction, createClip,
-  createPersonalMoment, createTrack, cuesHash, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
-  finishTrackBurn, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
+  createPersonalMoment, burnSignature, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
+  finishTrackBurn, setTrackBurnStatus, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   resolveAskAction, setSelection, setTrackCues, undoLastEvent, updateClip,
 } from "./personal.ts";
 import type { TrackCue } from "../personalTypes.ts";
@@ -76,7 +76,7 @@ describe("clips", () => {
   it("updateClip records before/after and marks done renders stale", async () => {
     const c = await newClip();
     await claimClipRender(db, c.id);
-    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0 }, { renderKey: "k.mp4" })).toBe("done");
+    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k.mp4" })).toBe("done");
     const t = (await createTrack(db, c.id, "pt"))!;
     await db.execute(sqlBurnDone(t.id));
     const u = await updateClip(db, c.id, { startMs: 11_000 }, "user");
@@ -119,12 +119,24 @@ describe("clips", () => {
     expect(ev.map((e) => e.kind).sort()).toEqual(["bounds", "create", "delete"]);
   });
 
+  it("credit change during a render is stale; unchanged is done; credit change stales a done render", async () => {
+    const c = await newClip();
+    const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null };
+    await claimClipRender(db, c.id);
+    await updateClip(db, c.id, { credit: "Parliament TV" }, "user");
+    expect(await finishClipRender(db, c.id, geo, { renderKey: "k" })).toBe("stale");
+    await claimClipRender(db, c.id);
+    expect(await finishClipRender(db, c.id, { ...geo, credit: "Parliament TV" }, { renderKey: "k" })).toBe("done");
+    await updateClip(db, c.id, { noCreditNeeded: true }, "user");
+    expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
+  });
+
   it("claimClipRender is exclusive; finish is stale when bounds, format or crop changed", async () => {
     const c = await newClip();
     expect(await claimClipRender(db, c.id)).toBe(true);
     expect(await claimClipRender(db, c.id)).toBe(false);
     await updateClip(db, c.id, { cropOffset: 0.2 }, "user");
-    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0 }, { renderKey: "k" })).toBe("stale");
+    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" })).toBe("stale");
     expect((await getClip(db, c.id))!.renderKey).toBe("k");
     expect(await claimClipRender(db, c.id)).toBe(true);
   });
@@ -166,12 +178,48 @@ describe("tracks", () => {
     await approveTrack(db, t.id);
     expect(await claimTrackBurn(db, t.id)).toBe(true);
     expect(await claimTrackBurn(db, t.id)).toBe(false);
-    const hash = cuesHash([cue("Oi")]);
+    const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null };
+    const sig = burnSignature({ cues: [cue("Oi")] }, geo);
     await editTrackCues(db, t.id, [{ i: 0, text: "Olá" }]);
-    expect(await finishTrackBurn(db, t.id, hash, "b.mp4")).toBe("stale");
+    expect(await finishTrackBurn(db, t.id, sig, "b.mp4")).toBe("stale");
     await approveTrack(db, t.id);
     await claimTrackBurn(db, t.id);
-    expect(await finishTrackBurn(db, t.id, cuesHash([cue("Olá")]), "b2.mp4")).toBe("done");
+    expect(await finishTrackBurn(db, t.id, burnSignature({ cues: [cue("Olá")] }, geo), "b2.mp4")).toBe("done");
+  });
+
+  it("finishTrackBurn is stale when the clip is trimmed during the burn", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready");
+    await approveTrack(db, t.id);
+    await claimTrackBurn(db, t.id);
+    const sig = burnSignature({ cues: [cue("Oi")] }, c);
+    await updateClip(db, c.id, { startMs: 11_000 }, "user");
+    expect(await finishTrackBurn(db, t.id, sig, "b.mp4")).toBe("stale");
+    await setTrackBurnStatus(db, t.id, "none");
+    await claimTrackBurn(db, t.id);
+    const now = (await getClip(db, c.id))!;
+    expect(await finishTrackBurn(db, t.id, burnSignature({ cues: [cue("Oi")] }, now), "b.mp4")).toBe("done");
+  });
+
+  it("setTrackCues stales a done burn", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await db.execute(sqlBurnDone(t.id));
+    await setTrackCues(db, t.id, [cue("Oi")], "ready");
+    expect((await getTrack(db, t.id))!.burnStatus).toBe("stale");
+  });
+
+  it("soft-deleted clips can't be claimed or finished", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready");
+    await approveTrack(db, t.id);
+    await deleteClip(db, c.id, "user");
+    expect(await claimClipRender(db, c.id)).toBe(false);
+    expect(await claimTrackBurn(db, t.id)).toBe(false);
+    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" })).toBeNull();
+    expect(await finishTrackBurn(db, t.id, "x", "k")).toBeNull();
   });
 });
 
