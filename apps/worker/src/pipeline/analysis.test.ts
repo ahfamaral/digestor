@@ -339,6 +339,30 @@ describe("re-analysis and check jobs", () => {
     }
   });
 
+  it("a reanalysis whose session is no longer ready fails the version it carries (T17)", async () => {
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) });
+      const { deps } = mkDeps(fake);
+      const id = await seed();
+      await runAnalysis(deps, id, { profile: "interview", reason: "initial" });
+      const claimed = (await claimAnalysisVersion(db, id, { profile: "trial", reason: "x" }))!;
+      const other = await seed();
+      await runAnalysis(deps, other, { profile: "interview", reason: "initial" });
+      const othersClaim = (await claimAnalysisVersion(db, other, { profile: "trial", reason: "x" }))!;
+      await updateSession(db, id, { stage: "failed" });
+      const calls = fake.calls.length;
+      await handleReanalyze(ctxFor(deps), { sessionId: id, profile: "trial", reason: "x", analysisId: claimed.id }, { retryCount: 0, retryLimit: 2 });
+      expect(fake.calls).toHaveLength(calls);
+      expect((await versionsOf(id)).find((v) => v.id === claimed.id)?.status).toBe("failed");
+      // a carried id from another session is never touched
+      await handleReanalyze(ctxFor(deps), { sessionId: id, profile: "trial", reason: "x", analysisId: othersClaim.id }, { retryCount: 0, retryLimit: 2 });
+      expect((await getRunningAnalysis(db, other))?.id).toBe(othersClaim.id);
+    } finally {
+      out.mockRestore();
+    }
+  });
+
   it("check job is idempotent", async () => {
     const out = vi.spyOn(console, "log").mockImplementation(() => {});
     try {

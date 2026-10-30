@@ -144,6 +144,10 @@ export async function handleReanalyze(ctx: JobContext, job: ReanalyzeJob, attemp
   const session = await getSession(ctx.db, job.sessionId);
   if (session?.stage !== "ready") {
     console.log(`Ignoring reanalysis of ${job.sessionId}: the session is ${session ? session.stage : "gone"}, not ready`);
+    // The web route claimed a `running` version for this job: fail it now instead of leaving it for the sweep (T17).
+    if (job.analysisId && (await getAnalysisVersion(ctx.db, job.analysisId))?.sessionId === job.sessionId) {
+      await failAnalysisVersion(ctx.db, job.analysisId);
+    }
     return;
   }
   try {
