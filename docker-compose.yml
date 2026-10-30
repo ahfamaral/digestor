@@ -24,6 +24,17 @@ services:
       - "8000:8000"
     volumes:
       - chromadata:/data
+    # The image has no curl/wget: bash's /dev/tcp asks the heartbeat endpoint for a 200.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8000 && printf "GET /api/v2/heartbeat HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && timeout 3 head -n1 <&3 | grep -q " 200 "'
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   worker:
     build:
@@ -38,7 +49,7 @@ services:
       postgres:
         condition: service_healthy
       chroma:
-        condition: service_started
+        condition: service_healthy
     environment:
       DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
       CHROMA_URL: http://chroma:8000
