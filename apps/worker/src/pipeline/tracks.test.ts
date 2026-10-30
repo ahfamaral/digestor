@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Word } from "@digestor/core";
 import {
-  LocalStorage, createClip, editTrackCues, setTrackCues, createDb, createSession, createTrack, getTrack, saveTranscript, updateSession, type Db,
+  LocalStorage, createClip, editTrackCues, setTrackCues, updateClip, createDb, createSession, createTrack, getTrack, saveTranscript, updateSession, type Db,
 } from "@digestor/core/server";
 import { FakeLLM } from "../llm/structured.js";
 import { MissingApiKeyError } from "../errors.js";
@@ -62,6 +62,25 @@ describe("prepareTrack", () => {
     expect(t.cues.length).toBe(2);
     expect(t.cues[1]).toMatchObject({ text: "", missing: true });
     expect(t.status).toBe("ready");
+  });
+});
+
+describe("prepareTrack records the cut it was built for (R27)", () => {
+  it("stores the clip's bounds with the cues", async () => {
+    const { track } = await seed("en");
+    await prepareTrack(deps(new FakeLLM([])), track.id);
+    expect(await getTrack(db, track.id)).toMatchObject({ status: "ready", builtStartMs: 9_000, builtEndMs: 15_000 });
+  });
+  it("a trim that lands while the cues are being translated leaves the track outdated", async () => {
+    const { clip, track } = await seed("pt");
+    const llm = new FakeLLM([
+      async () => {
+        await updateClip(db, clip.id, { endMs: 14_000 }, "user");
+        return { lines: [{ n: 1, text: "Olá." }, { n: 2, text: "Segunda." }] };
+      },
+    ]);
+    await prepareTrack(deps(llm), track.id);
+    expect(await getTrack(db, track.id)).toMatchObject({ status: "outdated", builtStartMs: 9_000, builtEndMs: 15_000 });
   });
 });
 

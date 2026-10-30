@@ -40,6 +40,6 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     wanted.push(moment);
   }
   const result = await confirmClips(db, OWNER_ID, id, wanted);
-  for (const moment of wanted) if (moment.checks === null) await sendMomentCheckQuietly(boss, moment.id);
+  for (const moment of wanted) if (moment.checks === null) await sendMomentCheckQuietly(db, boss, moment.id);
   return Response.json({ clips: result });
 }

@@ -12,6 +12,7 @@ import {
   getRunningAnalysis,
   getSession,
   getTranscript,
+  releaseMomentCheck,
   failTrack,
   failClipRender,
   failTrackBurn,
@@ -150,8 +151,12 @@ export async function handleReanalyze(ctx: JobContext, job: ReanalyzeJob, attemp
   }
 }
 
-/** Checks for one moment on demand. Idempotent: a moment that already has checks costs no model call. */
-export async function handleCheckMoment(ctx: JobContext, job: CheckMomentJob, _attempt: Attempt): Promise<void> {
+/**
+ * Checks for one moment on demand. Idempotent: a moment that already has checks costs no model call. When the job gives
+ * up on its final attempt, the sender's claim (R29) is freed so "Check again" can send a new one; a missing key keeps
+ * it, so polling can't queue a job every few seconds while nothing could succeed.
+ */
+export async function handleCheckMoment(ctx: JobContext, job: CheckMomentJob, attempt: Attempt): Promise<void> {
   const { db } = ctx;
   const moment = await getMoment(db, job.momentId);
   if (!moment) {
@@ -175,7 +180,10 @@ export async function handleCheckMoment(ctx: JobContext, job: CheckMomentJob, _a
     const checks = await checkMoment(ctx.deps.llm, { card: withProfile(stored.card, profile.data), moment, words: transcript.words });
     await setMomentChecks(db, moment.id, checks);
   } catch (err) {
-    if (!(err instanceof MissingApiKeyError)) throw err; // transient: pg-boss retries
+    if (!(err instanceof MissingApiKeyError)) {
+      if (attempt.retryCount >= attempt.retryLimit) await releaseMomentCheck(db, moment.id);
+      throw err; // transient: pg-boss retries
+    }
     console.error(`[jobs] check of moment ${job.momentId} skipped: ${err.message}`);
   }
 }

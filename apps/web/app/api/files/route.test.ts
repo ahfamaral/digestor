@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync, type ReadStream } from "node:fs";
 import { once } from "node:events";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createClip, createSession, createTrack, setTrackCues, updateSession } from "@digestor/core/server";
+import { createClip, createSession, createTrack, setTrackCues, updateClip, updateSession } from "@digestor/core/server";
+import { PATCH as patchClip } from "../clips/[id]/route";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
 import { GET } from "./[id]/[...file]/route";
@@ -148,6 +149,32 @@ describe("GET /api/files/[id]/[...file]", () => {
       expect((await get(`clips/${realClip}.de.srt`, { id: realSession })).status).toBe(404);
       expect((await get(`clips/${realClip}.fr.srt`, { id: realSession })).status).toBe(404);
       expect((await get(`clips/${realClip}.pt.srt`)).status).toBe(404);
+    });
+
+    it("an outdated track's SRT and VTT are 404 (R27)", async () => {
+      const clip = await createClip(h.db, { sessionId: realSession, ownerId: "owner", startMs: 0, endMs: 5000, actor: "user" });
+      const track = (await createTrack(h.db, clip.id, "pt"))!;
+      await setTrackCues(h.db, track.id, [{ startMs: 0, endMs: 1500, original: "Hello", text: "Olá", missing: false }], "ready", { startMs: 0, endMs: 5000 });
+      expect((await get(`clips/${clip.id}.pt.srt`, { id: realSession })).status).toBe(200);
+      await updateClip(h.db, clip.id, { endMs: 4000 }, "user");
+      expect((await get(`clips/${clip.id}.pt.srt`, { id: realSession })).status).toBe(404);
+      expect((await get(`clips/${clip.id}.pt.vtt`, { id: realSession })).status).toBe(404);
+    });
+
+    it("a kept clip's MP4 still downloads after an edit was refused because the video is gone (R30)", async () => {
+      const s = await createSession(h.db, { title: "Old", source: "upload" });
+      await updateSession(h.db, s.id, { stage: "ready", language: "en", durationMs: 10_000, videoDeletedAt: new Date() });
+      const clip = await createClip(h.db, { sessionId: s.id, ownerId: "owner", startMs: 0, endMs: 5000, actor: "user" });
+      mkdirSync(path.join(h.root, s.id, "clips"), { recursive: true });
+      writeFileSync(path.join(h.root, s.id, "clips", `${clip.id}.mp4`), "kept");
+      const edit = await patchClip(
+        new Request("http://localhost/x", { method: "PATCH", body: JSON.stringify({ format: "9:16" }) }),
+        { params: Promise.resolve({ id: clip.id }) },
+      );
+      expect(edit.status).toBe(409);
+      const res = await get(`clips/${clip.id}.mp4`, { id: s.id, query: "?download=1" });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("kept");
     });
 
     it("filename* carries the UTF-8 title", async () => {

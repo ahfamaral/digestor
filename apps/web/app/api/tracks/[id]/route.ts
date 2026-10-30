@@ -2,7 +2,7 @@ import { z } from "zod";
 import { approveTrack, editTrackCues, getTrack, requestTrackBurn } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { readyClip } from "@/lib/personal";
+import { frozenError, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.union([
@@ -11,7 +11,7 @@ const BodySchema = z.union([
   z.object({ burn: z.boolean() }).strict(),
 ]);
 
-/** PATCH /api/tracks/[id] — edit lines, approve the track, or ask for (or drop) a burned-in version. */
+/** PATCH /api/tracks/[id] — edit lines, approve the track, or ask for (or drop) a burned-in version. 409 once the video is removed (R30). */
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   if (!isUuid(id)) return errorResponse(404, "Subtitles not found.");
@@ -32,6 +32,8 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   if ("error" in found) {
     return found.error.status === 404 ? errorResponse(404, "Subtitles not found.") : found.error;
   }
+  const frozen = frozenError(found.session);
+  if (frozen) return frozen;
 
   if ("burn" in body) {
     const updated = await requestTrackBurn(db, id, body.burn);

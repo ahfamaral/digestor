@@ -36,6 +36,13 @@
       "when": 1793369374886,
       "tag": "0004_translation_status",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793378650965,
+      "tag": "0005_built_range_checks_requested",
+      "breakpoints": true
     }
   ]
 }

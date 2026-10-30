@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "./analysisTypes.ts";
-import { exportChecklist } from "./checklist.ts";
+import { checksForClip, exportChecklist } from "./checklist.ts";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
 };
-const clip = { credit: "Parliament TV", noCreditNeeded: false, warningsAck: false, protectedAck: false };
-const run = (over: Partial<Parameters<typeof exportChecklist>[0]> = {}) =>
-  Object.fromEntries(exportChecklist({ clip, checks: clean, tracks: [], profile: "interview", ...over }).map((i) => [i.id, i.ok]));
+const clip = { credit: "Parliament TV", noCreditNeeded: false, warningsAck: false, protectedAck: false, startMs: 10_000, endMs: 40_000 };
+const moment = (checks: MomentChecks | null) => ({ startMs: 10_000, endMs: 40_000, checks });
+type Over = Partial<Omit<Parameters<typeof exportChecklist>[0], "moment">> & { checks?: MomentChecks | null };
+const run = ({ checks = clean, ...over }: Over = {}) =>
+  Object.fromEntries(
+    exportChecklist({ clip, moment: moment(checks), tracks: [], profile: "interview", ...over }).map((i) => [i.id, i.ok]),
+  );
 
 describe("exportChecklist", () => {
   it("passes a clean clip", () => {
@@ -41,6 +45,23 @@ describe("exportChecklist", () => {
   it("subtitles: an approved track that isn't ready still fails", () => {
     const track = { burnStatus: "stale" as const, approvedAt: new Date(), status: "failed" as const };
     expect(run({ tracks: [track] }).subtitles).toBe(false);
+  });
+  it("subtitles: an outdated track fails even without a burn request", () => {
+    const t = (status: "ready" | "outdated") => ({ burnStatus: "none" as const, approvedAt: null, status });
+    expect(run({ tracks: [t("ready")] }).subtitles).toBe(true);
+    expect(run({ tracks: [t("ready"), t("outdated")] }).subtitles).toBe(false);
+  });
+  it("checks apply only while the clip has its moment's bounds (R28)", () => {
+    const trimmed = { ...clip, endMs: 38_000 };
+    expect(run({ clip: trimmed })).toMatchObject({ argument: false, context: false, flags: false });
+    expect(run({ clip: { ...trimmed, warningsAck: true } })).toMatchObject({ argument: true, context: true, flags: true });
+    expect(exportChecklist({ clip: trimmed, moment: null, tracks: [], profile: "interview" }).find((i) => i.id === "argument")?.ok).toBe(false);
+  });
+  it("checksForClip says whether the checks belong to this cut", () => {
+    expect(checksForClip(clip, moment(clean))).toEqual({ checks: clean, originalCut: false });
+    expect(checksForClip(clip, moment(null))).toEqual({ checks: null, originalCut: false });
+    expect(checksForClip({ ...clip, startMs: 9_000 }, moment(clean))).toEqual({ checks: null, originalCut: true });
+    expect(checksForClip(clip, null)).toEqual({ checks: null, originalCut: false });
   });
   it("credit: text or the no-credit box", () => {
     expect(run({ clip: { ...clip, credit: null } }).credit).toBe(false);

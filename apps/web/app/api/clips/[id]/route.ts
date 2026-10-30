@@ -3,7 +3,7 @@ import { InvalidTimestampError, endsSentence, findBoundaries, parseTimestamp, sn
 import { getTranscript, updateClip, type ClipPatch } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { readyClip } from "@/lib/personal";
+import { frozenError, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.union([
@@ -25,7 +25,10 @@ const NO_TRANSCRIPT = "This video has no transcript to snap the cut to.";
 const BAD_BODY = "Send one change: new times, format and crop, credit, or an acknowledgement.";
 const NOTHING_TO_EXTEND = "There is no later sentence to extend to.";
 
-/** PATCH /api/clips/[id] — one change per request (see BodySchema). Cut times are always snapped to sentence boundaries. */
+/**
+ * PATCH /api/clips/[id] — one change per request (see BodySchema). Cut times are always snapped to sentence boundaries.
+ * Once the video is removed, everything but the acknowledgements answers 409.
+ */
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   if (!isUuid(id)) return errorResponse(404, "Clip not found.");
@@ -43,6 +46,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const found = await readyClip(db, id);
   if ("error" in found) return found.error;
   const { clip, session } = found;
+  // R30: after the video is removed only the acknowledgements may change.
+  const frozen = "warningsAck" in body || "protectedAck" in body ? null : frozenError(session);
+  if (frozen) return frozen;
 
   let patch: ClipPatch;
   if ("start" in body || "extend" in body) {

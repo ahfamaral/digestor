@@ -11,7 +11,8 @@ export type TrackDeps = { db: Db; llm: StructuredLLM };
 /**
  * Builds a track's cues from the clip's words (translating when the language differs from the session's), stores them
  (SRT/VTT are rendered from the cues on download, so edits always show). Does nothing unless the
- * track is still `preparing`, so a duplicate job never wipes edits. Throws on failure: the job handler decides between retry and marking it failed.
+ * track is still `preparing`, so a duplicate job never wipes edits. The clip range the cues were built for is stored
+ * with them. Throws on failure: the job handler decides between retry and marking it failed.
  * Idempotent: a retry rebuilds the same rows and files.
  */
 export async function prepareTrack(deps: TrackDeps, trackId: string): Promise<void> {
@@ -48,5 +49,7 @@ export async function prepareTrack(deps: TrackDeps, trackId: string): Promise<vo
   const cues: TrackCue[] = base.map((c, i) => ({
     startMs: c.startMs, endMs: c.endMs, original: original[i]!, text: texts[i]!.text, missing: texts[i]!.missing,
   }));
-  await setTrackCues(db, trackId, cues, "ready");
+  // Cues are clip-relative: record the cut they were built for, so a later trim marks them outdated (R27). A trim
+  // that landed while this ran makes them outdated at once.
+  await setTrackCues(db, trackId, cues, "ready", { startMs: clip.startMs, endMs: clip.endMs });
 }

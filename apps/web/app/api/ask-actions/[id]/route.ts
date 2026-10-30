@@ -55,6 +55,6 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   }
   const { status } = payload.data;
   if (!(await confirmBulkSelection(db, OWNER_ID, id, moments.map((m) => m.id), status))) return errorResponse(409, NOT_PENDING);
-  if (status === "approved") for (const m of moments) if (m.checks === null) await sendMomentCheckQuietly(boss, m.id);
+  if (status === "approved") for (const m of moments) if (m.checks === null) await sendMomentCheckQuietly(db, boss, m.id);
   return Response.json({ status: "confirmed", applied: moments.length });
 }

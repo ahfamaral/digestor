@@ -10,6 +10,12 @@ const track = (over: Partial<Parameters<typeof exportRows>[1][number]> = {}) => 
 });
 
 describe("exportRows", () => {
+  it("an outdated track has no subtitle links and says so (R27)", () => {
+    const [row] = exportRows([clip()], [track({ status: "outdated" })]);
+    expect(row!.languages[0]).toMatchObject({ srt: null, vtt: null, outdated: true });
+    expect(exportRows([clip()], [track()])[0]!.languages[0]).toMatchObject({ outdated: false });
+  });
+
   it("groups files per clip and language", () => {
     const rows = exportRows(
       [clip(), clip({ id: "c2", renderStatus: "none", renderKey: null })],

@@ -45,7 +45,7 @@ describe("POST /api/sessions/[id]/export", () => {
     expect(body.blocked).toEqual([{ clipId: bad.id, failing: ["argument", "context", "flags", "credit"] }]);
     expect(sends(QUEUES.renderClip)).toEqual([[QUEUES.renderClip, { clipId: good.id }, { ...JOB_OPTIONS, singletonKey: good.id }]]);
     // the unchecked moment gets its check queued
-    expect(sends(QUEUES.checkMoment)).toEqual([[QUEUES.checkMoment, { momentId: moments[1]!.id }, { ...JOB_OPTIONS, singletonKey: moments[1]!.id }]]);
+    expect(sends(QUEUES.checkMoment)).toEqual([[QUEUES.checkMoment, { momentId: moments[1]!.id }, JOB_OPTIONS]]);
     expect((await getClip(h.db, good.id))?.renderStatus).toBe("queued");
     expect((await getClip(h.db, bad.id))?.renderStatus).toBe("none");
   });
@@ -104,6 +104,27 @@ describe("POST /api/sessions/[id]/export", () => {
     expect(await res.json()).toEqual({ error: "Couldn't queue the job. Please try again." });
     expect((await getClip(h.db, good.id))?.renderStatus).toBe("none");
     expect((await post(sessionId, { clipIds: [good.id] })).status).toBe(200);
+  });
+
+  it("checks stop counting once the clip is trimmed away from its moment's bounds (R28)", async () => {
+    const { sessionId, good } = await twoClips();
+    await updateClip(h.db, good.id, { warningsAck: true }, "user");
+    await updateClip(h.db, good.id, { endMs: 29_000 }, "user"); // resets the acknowledgement too
+    const res = await post(sessionId, { clipIds: [good.id] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).blocked).toEqual([{ clipId: good.id, failing: ["argument", "context", "flags"] }]);
+    await updateClip(h.db, good.id, { warningsAck: true }, "user");
+    expect((await post(sessionId, { clipIds: [good.id] })).status).toBe(200);
+  });
+
+  it("an outdated subtitle track blocks the clip (R27)", async () => {
+    const { sessionId, good } = await twoClips();
+    const track = (await createTrack(h.db, good.id, "pt"))!;
+    await setTrackCues(h.db, track.id, [{ startMs: 0, endMs: 1000, original: "Hi", text: "Olá", missing: false }], "ready", { startMs: 1, endMs: 2 });
+    expect((await getTrack(h.db, track.id))?.status).toBe("outdated");
+    const res = await post(sessionId, { clipIds: [good.id] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).blocked).toEqual([{ clipId: good.id, failing: ["subtitles"] }]);
   });
 
   it("rejects bad bodies, unknown clips and unready sessions", async () => {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { MomentWithHighlights } from "../analysisTypes.ts";
 import type {
   AskActionKind, AskAction, AskMessage, AskMessageStatus, AskMessageWithActions, AskRole, Clip, ClipActor, ClipFormat,
@@ -104,6 +104,36 @@ export async function countSelectionsByAnalysis(
     .groupBy(analysisVersions.id, analysisVersions.version);
 }
 
+// ---------------------------------------------------------------- moment checks
+
+/** A claim older than this is presumed lost (its job died) and may be taken again. */
+const CHECK_CLAIM_MS = 10 * 60_000;
+
+/**
+ * Compare-and-set before sending `moment.check` (R29): true only for the caller that may send it — the moment has no
+ * checks and no claim younger than 10 minutes. pg-boss's singletonKey doesn't dedupe on our standard queues.
+ */
+export async function claimMomentCheck(db: Db, momentId: string): Promise<boolean> {
+  const now = new Date();
+  const rows = await db
+    .update(moments)
+    .set({ checksRequestedAt: now })
+    .where(
+      and(
+        eq(moments.id, momentId),
+        isNull(moments.checks),
+        or(isNull(moments.checksRequestedAt), lt(moments.checksRequestedAt, new Date(now.getTime() - CHECK_CLAIM_MS))),
+      ),
+    )
+    .returning({ id: moments.id });
+  return rows.length > 0;
+}
+
+/** Drops a claim whose job couldn't be sent or gave up, so the next request (e.g. "Check again") can claim it. */
+export async function releaseMomentCheck(db: Db, momentId: string): Promise<void> {
+  await db.update(moments).set({ checksRequestedAt: null }).where(and(eq(moments.id, momentId), isNull(moments.checks)));
+}
+
 // ---------------------------------------------------------------- clips
 
 export type ClipPatch = Partial<
@@ -127,6 +157,31 @@ async function staleIfDone(tx: Tx, clipId: string): Promise<void> {
     .update(subtitleTracks)
     .set({ burnStatus: "stale" })
     .where(and(eq(subtitleTracks.clipId, clipId), eq(subtitleTracks.burnStatus, "done")));
+}
+
+/**
+ * Cues are clip-relative, so a bounds change outdates every `ready` track built for other bounds and clears its
+ * approval (R27). An `outdated` track whose built range matches again (an undo) comes back as `ready`, unapproved.
+ */
+async function outdateTracks(tx: Tx, clipId: string, bounds: { startMs: number; endMs: number }): Promise<void> {
+  const same = and(eq(subtitleTracks.builtStartMs, bounds.startMs), eq(subtitleTracks.builtEndMs, bounds.endMs));
+  await tx
+    .update(subtitleTracks)
+    .set({ status: "outdated", approvedAt: null })
+    .where(and(eq(subtitleTracks.clipId, clipId), eq(subtitleTracks.status, "ready"), sql`not coalesce(${same}, false)`));
+  await tx
+    .update(subtitleTracks)
+    .set({ status: "ready", approvedAt: null })
+    .where(and(eq(subtitleTracks.clipId, clipId), eq(subtitleTracks.status, "outdated"), same));
+}
+
+/**
+ * Everything a bounds change invalidates, in the caller's transaction: the render and burns (stale), the tracks
+ * (outdated, R27) and the warnings acknowledgement (R28: checks were made for the original cut).
+ */
+async function afterBoundsChange(tx: Tx, clipId: string, bounds: { startMs: number; endMs: number }): Promise<void> {
+  await tx.update(clips).set({ warningsAck: false }).where(eq(clips.id, clipId));
+  await outdateTracks(tx, clipId, bounds);
 }
 
 type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor };
@@ -231,6 +286,7 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
         after: { format: row!.format, cropOffset: row!.cropOffset },
       });
     }
+    if (boundsChanged) await afterBoundsChange(tx, id, row!);
     if (boundsChanged || formatChanged || creditChanged) {
       await staleIfDone(tx, id);
       const [fresh] = await tx.select().from(clips).where(eq(clips.id, id));
@@ -277,6 +333,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
     await tx.update(clips).set(set).where(eq(clips.id, clipId));
     await tx.update(clipEvents).set({ undoneAt: now }).where(eq(clipEvents.id, ev.id));
     if (ev.kind === "bounds" || ev.kind === "format") await staleIfDone(tx, clipId);
+    if (ev.kind === "bounds") await afterBoundsChange(tx, clipId, ev.before as { startMs: number; endMs: number });
     const [fresh] = await tx.select().from(clips).where(eq(clips.id, clipId));
     return fresh!;
   });
@@ -365,13 +422,20 @@ export async function deleteTrack(db: Db, id: string): Promise<void> {
 }
 
 /**
- * Removes a failed track so the language can be tried again. Only a `failed` track goes (it was never approved and has
- * no burn), so it can never race an approval, a burn claim or a finished prepare. True when a row was deleted.
+ * Removes a failed or outdated track so the language can be built again ("Try again", "Rebuild"). Neither status can
+ * be approved, so this never races an approval or a burn claim; a burn still being made keeps the row. True when a
+ * row was deleted.
  */
 export async function deleteFailedTrack(db: Db, id: string): Promise<boolean> {
   const rows = await db
     .delete(subtitleTracks)
-    .where(and(eq(subtitleTracks.id, id), eq(subtitleTracks.status, "failed")))
+    .where(
+      and(
+        eq(subtitleTracks.id, id),
+        inArray(subtitleTracks.status, ["failed", "outdated"]),
+        sql`${subtitleTracks.burnStatus} not in ('queued', 'rendering')`,
+      ),
+    )
     .returning({ id: subtitleTracks.id });
   return rows.length > 0;
 }
@@ -396,12 +460,25 @@ async function lockTrack(tx: Tx, id: string): Promise<Track> {
   return row;
 }
 
-export async function setTrackCues(db: Db, id: string, cues: TrackCue[], status: TrackStatus): Promise<Track> {
+/**
+ * Stores a track's cues. `built` is the clip range they were made for: when the clip's bounds no longer match it (a
+ * trim landed while the track was preparing), the track is stored `outdated` instead of `status`.
+ */
+export async function setTrackCues(
+  db: Db,
+  id: string,
+  cues: TrackCue[],
+  status: TrackStatus,
+  built?: { startMs: number; endMs: number },
+): Promise<Track> {
   const [row] = await db
     .update(subtitleTracks)
     .set({
       cues,
-      status,
+      status: built
+        ? sql`CASE WHEN exists (select 1 from ${clips} where ${clips.id} = ${subtitleTracks.clipId} and ${clips.startMs} = ${built.startMs} and ${clips.endMs} = ${built.endMs}) THEN ${status} ELSE 'outdated' END`
+        : status,
+      ...(built ? { builtStartMs: built.startMs, builtEndMs: built.endMs } : {}),
       error: null,
       approvedAt: null,
       burnStatus: sql`CASE WHEN ${subtitleTracks.burnStatus} = 'done' THEN 'stale' ELSE ${subtitleTracks.burnStatus} END`,

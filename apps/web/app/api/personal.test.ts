@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import {
   createClip, createTrack, deleteClip, failTrack, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
+  approveTrack, updateClip, setSelection,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
@@ -48,7 +49,7 @@ describe("PUT /api/moments/[id]/selection", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "approved" });
     expect(h.send).toHaveBeenCalledTimes(1);
-    expect(h.send).toHaveBeenCalledWith(QUEUES.checkMoment, { momentId: m.id }, { ...JOB_OPTIONS, singletonKey: m.id });
+    expect(h.send).toHaveBeenCalledWith(QUEUES.checkMoment, { momentId: m.id }, JOB_OPTIONS);
     // neutral does not enqueue; checks already present do not enqueue
     await putSelection(req({ status: "neutral" }, "PUT"), ctx(m.id));
     await setMomentChecks(h.db, m.id, cleanChecks);
@@ -76,10 +77,10 @@ describe("POST /api/sessions/[id]/clips", () => {
   it("confirm creates one clip per approved moment and is idempotent", async () => {
     const { sessionId, moments } = await seedReadySession(h.db, [[10_000, 30_000], [40_000, 60_000], [70_000, 90_000]]);
     const [a, b, c] = moments as [(typeof moments)[0], (typeof moments)[0], (typeof moments)[0]];
-    await putSelection(req({ status: "approved" }, "PUT"), ctx(a.id));
-    await putSelection(req({ status: "approved" }, "PUT"), ctx(b.id));
-    await putSelection(req({ status: "rejected" }, "PUT"), ctx(c.id));
-    h.send.mockClear();
+    // selections set directly (an approve through the route would already have claimed and sent the checks)
+    await setSelection(h.db, OWNER_ID, a.id, "approved");
+    await setSelection(h.db, OWNER_ID, b.id, "approved");
+    await setSelection(h.db, OWNER_ID, c.id, "rejected");
 
     const ids = [a.id, b.id, c.id];
     const first = await (await confirm(req({ momentIds: ids }), ctx(sessionId))).json();
@@ -89,6 +90,7 @@ describe("POST /api/sessions/[id]/clips", () => {
     expect(h.send.mock.calls.filter((call) => call[0] === QUEUES.checkMoment)).toHaveLength(2);
 
     const second = await (await confirm(req({ momentIds: ids }), ctx(sessionId))).json();
+    expect(h.send.mock.calls.filter((call) => call[0] === QUEUES.checkMoment)).toHaveLength(2); // claimed: not sent again
     expect(second.clips.map((x: { id: string }) => x.id).sort()).toEqual(first.clips.map((x: { id: string }) => x.id).sort());
     expect(await listClips(h.db, OWNER_ID, sessionId)).toHaveLength(2);
   });
@@ -318,5 +320,91 @@ describe("tracks", () => {
     expect(await (await patchTrack(req({ burn: true }, "PATCH"), ctx(track.id))).json()).toMatchObject({ burnStatus: "stale" });
     expect(await (await patchTrack(req({ burn: false }, "PATCH"), ctx(track.id))).json()).toMatchObject({ burnStatus: "none" });
     expect((await patchTrack(req({ edits: [{ i: 0, text: "x" }] }, "PATCH"), ctx(track.id))).status).toBe(409); // still preparing
+  });
+});
+
+describe("moment checks are claimed in the database (R29)", () => {
+  it("approve, neutral, approve again sends one check while the claim is fresh", async () => {
+    const { moments } = await seedReadySession(h.db);
+    const m = moments[0]!;
+    await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
+    await putSelection(req({ status: "neutral" }, "PUT"), ctx(m.id));
+    await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
+    expect(h.send.mock.calls.filter((c) => c[0] === QUEUES.checkMoment)).toHaveLength(1);
+  });
+
+  it("a send that fails releases the claim, so the next approve sends", async () => {
+    const { moments } = await seedReadySession(h.db);
+    const m = moments[0]!;
+    h.send.mockRejectedValueOnce(new Error("boom"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id))).status).toBe(200);
+    log.mockRestore();
+    await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
+    expect(h.send.mock.calls.filter((c) => c[0] === QUEUES.checkMoment)).toHaveLength(2);
+  });
+});
+
+describe("tracks follow the cut (R27)", () => {
+  it("Rebuild replaces an outdated track and queues one prepare job", async () => {
+    const { clip } = await clipFor();
+    const old = (await createTrack(h.db, clip.id, "pt"))!;
+    await setTrackCues(h.db, old.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready", { startMs: 10_000, endMs: 30_000 });
+    await approveTrack(h.db, old.id);
+    const trimmed = await patchClip(req({ extend: "next" }, "PATCH"), ctx(clip.id));
+    expect(trimmed.status).toBe(200);
+    expect(await getTrack(h.db, old.id)).toMatchObject({ status: "outdated", approvedAt: null });
+    h.send.mockClear();
+    const res = await postTrack(req({ language: "pt" }), ctx(clip.id));
+    expect(res.status).toBe(201);
+    const fresh = await res.json();
+    expect(fresh).toMatchObject({ language: "pt", status: "preparing" });
+    expect(await getTrack(h.db, old.id)).toBeNull();
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.prepareTrack, { trackId: fresh.id }, { ...JOB_OPTIONS, singletonKey: fresh.id });
+  });
+
+  it("an outdated track can't be edited or approved", async () => {
+    const { clip } = await clipFor();
+    const tr = (await createTrack(h.db, clip.id, "pt"))!;
+    await setTrackCues(h.db, tr.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready", { startMs: 10_000, endMs: 30_000 });
+    await updateClip(h.db, clip.id, { endMs: 40_000 }, "user");
+    expect((await patchTrack(req({ approve: true }, "PATCH"), ctx(tr.id))).status).toBe(409);
+    expect((await patchTrack(req({ edits: [{ i: 0, text: "x" }] }, "PATCH"), ctx(tr.id))).status).toBe(409);
+  });
+});
+
+describe("kept clips are frozen once the video is removed (R30)", () => {
+  const REMOVED = { error: "The video was removed after 14 days. Re-upload it to make new clips." };
+
+  it("bounds, extend, format, crop, credit, undo and track changes answer 409; acknowledgements still save", async () => {
+    const { sessionId, clip } = await clipFor();
+    await updateClip(h.db, clip.id, { endMs: 40_000 }, "user"); // something to undo
+    const tr = (await createTrack(h.db, clip.id, "pt"))!;
+    await setTrackCues(h.db, tr.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready", { startMs: 10_000, endMs: 40_000 });
+    await updateSession(h.db, sessionId, { videoDeletedAt: new Date() });
+    const before = await getClip(h.db, clip.id);
+
+    for (const body of [
+      { start: "00:00:10", end: "00:00:30" }, { extend: "next" }, { format: "9:16" }, { cropOffset: 0.5 },
+      { credit: "TV" }, { noCreditNeeded: true },
+    ]) {
+      const res = await patchClip(req(body, "PATCH"), ctx(clip.id));
+      expect(res.status, JSON.stringify(body)).toBe(409);
+      expect(await res.json()).toEqual(REMOVED);
+    }
+    const u = await undo(req({}), ctx(clip.id));
+    expect(u.status).toBe(409);
+    expect(await u.json()).toEqual(REMOVED);
+    for (const body of [{ edits: [{ i: 0, text: "x" }] }, { approve: true }, { burn: true }]) {
+      const res = await patchTrack(req(body, "PATCH"), ctx(tr.id));
+      expect(res.status, JSON.stringify(body)).toBe(409);
+      expect(await res.json()).toEqual(REMOVED);
+    }
+    expect(await getClip(h.db, clip.id)).toMatchObject({ startMs: before!.startMs, endMs: before!.endMs, format: before!.format, credit: before!.credit });
+    expect(await getTrack(h.db, tr.id)).toMatchObject({ approvedAt: null, burnStatus: "none" });
+
+    expect((await patchClip(req({ warningsAck: true }, "PATCH"), ctx(clip.id))).status).toBe(200);
+    expect((await patchClip(req({ protectedAck: true }, "PATCH"), ctx(clip.id))).status).toBe(200);
   });
 });

@@ -9,18 +9,19 @@ import { getServer } from "@/lib/server";
 const BodySchema = z.object({ language: z.string().min(2).max(35) }).strict();
 
 /**
- * A new track for the language; when one exists and has failed, it is replaced ("Try again"). Null when a track in
- * that language is preparing or ready.
+ * A new track for the language; when one exists and has failed or is outdated (built for an older cut), it is
+ * replaced ("Try again", "Rebuild"). Null when a track in that language is preparing or ready.
  */
 async function createOrRetry(db: Db, clipId: string, language: string): Promise<Track | null> {
   const created = await createTrack(db, clipId, language);
   if (created) return created;
   const existing = (await listTracks(db, clipId)).find((t) => t.language === language);
-  if (!existing || existing.status !== "failed" || !(await deleteFailedTrack(db, existing.id))) return null;
+  const replaceable = existing?.status === "failed" || existing?.status === "outdated";
+  if (!existing || !replaceable || !(await deleteFailedTrack(db, existing.id))) return null;
   return createTrack(db, clipId, language); // null if a parallel retry got there first
 }
 
-/** POST /api/clips/[id]/tracks — `{ language }`: starts a subtitle track (one per clip and language), or retries a failed one. */
+/** POST /api/clips/[id]/tracks — `{ language }`: starts a subtitle track (one per clip and language), or rebuilds a failed or outdated one. */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   if (!isUuid(id)) return errorResponse(404, "Clip not found.");

@@ -1,5 +1,8 @@
 import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
-import { getAnalysisVersion, getClip, getClipAny, getMoment, getSession, type Clip, type Db, type Session } from "@digestor/core/server";
+import {
+  claimMomentCheck, getAnalysisVersion, getClip, getClipAny, getMoment, getSession, releaseMomentCheck, type Clip, type Db,
+  type Session,
+} from "@digestor/core/server";
 import { errorResponse } from "./http";
 import type { JobSender } from "./server";
 
@@ -38,16 +41,32 @@ export async function sessionIdOfMoment(db: Db, momentId: string): Promise<strin
   return (await getAnalysisVersion(db, moment.analysisId))?.sessionId ?? null;
 }
 
-/** Asks the worker to run the clip checks for a moment; only one is queued while another is waiting. */
-export function sendMomentCheck(boss: JobSender, momentId: string): Promise<string | null> {
-  return boss.send(QUEUES.checkMoment, { momentId }, { ...JOB_OPTIONS, singletonKey: momentId });
+/**
+ * Asks the worker to run the clip checks for a moment. The send is claimed in the database first (R29), so parallel
+ * or repeated requests queue one job; false when there was nothing to send (checks exist, or a claim is waiting). A
+ * failed send frees the claim and rethrows.
+ */
+export async function sendMomentCheck(db: Db, boss: JobSender, momentId: string): Promise<boolean> {
+  if (!(await claimMomentCheck(db, momentId))) return false;
+  try {
+    await boss.send(QUEUES.checkMoment, { momentId }, JOB_OPTIONS);
+  } catch (err) {
+    await releaseMomentCheck(db, momentId).catch((e: unknown) => console.error("moment check: release failed", e));
+    throw err;
+  }
+  return true;
 }
 
-/** Checks are lazy and best-effort: a failed enqueue is logged, never shown (export asks again). */
-export async function sendMomentCheckQuietly(boss: JobSender, momentId: string): Promise<void> {
+/** Checks are lazy and best-effort: a failed enqueue is logged, never shown (export and Prepare ask again). */
+export async function sendMomentCheckQuietly(db: Db, boss: JobSender, momentId: string): Promise<void> {
   try {
-    await sendMomentCheck(boss, momentId);
+    await sendMomentCheck(db, boss, momentId);
   } catch (err) {
     console.error("moment check: enqueue failed", err);
   }
+}
+
+/** R30: once the video is removed, a kept clip and its subtitles are frozen (their rendered files still download). */
+export function frozenError(session: Session): Response | null {
+  return session.videoDeletedAt ? errorResponse(409, VIDEO_REMOVED) : null;
 }

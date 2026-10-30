@@ -5,7 +5,8 @@ export type ClipFormat = "16:9" | "9:16";
 export type RenderStatus = "none" | "queued" | "rendering" | "done" | "failed" | "stale";
 export type ClipActor = "user" | "ask";
 export type ClipEventKind = "create" | "bounds" | "format" | "delete";
-export type TrackStatus = "preparing" | "ready" | "failed";
+/** `outdated`: built for clip bounds that have since changed (Rebuild replaces it). */
+export type TrackStatus = "preparing" | "ready" | "failed" | "outdated";
 export type AskRole = "user" | "assistant";
 export type AskMessageStatus = "pending" | "done" | "failed";
 export type AskActionKind = "bulk_selection";
@@ -65,6 +66,9 @@ export interface Track {
   srtKey: string | null;
   vttKey: string | null;
   error: string | null;
+  /** The clip range the cues were built for; null until prepared. */
+  builtStartMs: number | null;
+  builtEndMs: number | null;
 }
 
 export interface AskAction {

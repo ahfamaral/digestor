@@ -12,7 +12,10 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
+  claimMomentCheck, releaseMomentCheck,
 } from "./personal.ts";
+import { getMoment, setMomentChecks } from "./analysis.ts";
+import { moments as momentsTable } from "./schema.ts";
 import type { TrackCue } from "../personalTypes.ts";
 
 const OWNER = "owner";
@@ -246,6 +249,117 @@ describe("tracks", () => {
     expect(await claimTrackBurn(db, t.id)).toBe(false);
     expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" })).toBeNull();
     expect(await finishTrackBurn(db, t.id, "x", "k")).toBeNull();
+  });
+});
+
+describe("tracks follow the cut (R27) and checks need a fresh ack (R28)", () => {
+  const built = { startMs: 10_000, endMs: 50_000 };
+
+  it("prepare records the built range; a matching clip stays ready", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    const r = await setTrackCues(db, t.id, [cue("Oi")], "ready", built);
+    expect(r).toMatchObject({ status: "ready", builtStartMs: 10_000, builtEndMs: 50_000 });
+  });
+
+  it("a prepare that finishes after the clip was trimmed is outdated at once", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await updateClip(db, c.id, { startMs: 12_000 }, "user");
+    const r = await setTrackCues(db, t.id, [cue("Oi")], "ready", built);
+    expect(r.status).toBe("outdated");
+  });
+
+  it("a bounds change outdates every ready track built for other bounds, clears approval and the warnings ack", async () => {
+    const c = await newClip();
+    await updateClip(db, c.id, { warningsAck: true }, "user");
+    const a = (await createTrack(db, c.id, "pt"))!;
+    const b = (await createTrack(db, c.id, "en"))!;
+    const f = (await createTrack(db, c.id, "fr"))!;
+    await setTrackCues(db, a.id, [cue("Oi")], "ready", built);
+    await setTrackCues(db, b.id, [cue("Hi")], "ready", built);
+    await approveTrack(db, a.id);
+    await failTrack(db, f.id, "x");
+    const u = await updateClip(db, c.id, { endMs: 48_000 }, "ask");
+    expect(u.warningsAck).toBe(false);
+    expect(await getTrack(db, a.id)).toMatchObject({ status: "outdated", approvedAt: null });
+    expect((await getTrack(db, b.id))!.status).toBe("outdated");
+    expect((await getTrack(db, f.id))!.status).toBe("failed");
+  });
+
+  it("format, crop and credit changes leave tracks and the ack alone", async () => {
+    const c = await newClip();
+    await updateClip(db, c.id, { warningsAck: true }, "user");
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready", built);
+    const u = await updateClip(db, c.id, { format: "9:16", credit: "TV" }, "user");
+    expect(u.warningsAck).toBe(true);
+    expect((await getTrack(db, t.id))!.status).toBe("ready");
+  });
+
+  it("undo of a trim resets the ack and brings an outdated track back to ready (unapproved)", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready", built);
+    await approveTrack(db, t.id);
+    await updateClip(db, c.id, { startMs: 12_000 }, "user");
+    await updateClip(db, c.id, { warningsAck: true }, "user");
+    expect((await getTrack(db, t.id))!.status).toBe("outdated");
+    const back = await undoLastEvent(db, c.id); // the ack is not an event: this undoes the trim
+    expect(back).toMatchObject({ startMs: 10_000, warningsAck: false });
+    expect(await getTrack(db, t.id)).toMatchObject({ status: "ready", approvedAt: null });
+  });
+
+  it("an outdated track can be replaced (Rebuild), unless its burn is being made", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready", built);
+    await updateClip(db, c.id, { startMs: 12_000 }, "user");
+    await setTrackBurnStatus(db, t.id, "rendering");
+    expect(await deleteFailedTrack(db, t.id)).toBe(false);
+    await setTrackBurnStatus(db, t.id, "stale");
+    expect(await deleteFailedTrack(db, t.id)).toBe(true);
+    expect(await getTrack(db, t.id)).toBeNull();
+  });
+});
+
+describe("claimMomentCheck (R29)", () => {
+  async function moment() {
+    const [m] = await saveMoments(db, analysisId, [
+      { topicId: null, granularity: "passage", startMs: 0, endMs: 40_000, title: "M", why: "w", relevance: 50, speakers: [], evidence: [], origin: "ai", highlights: [] },
+    ]);
+    return m!.id;
+  }
+  const age = (id: string, minutes: number) =>
+    db.update(momentsTable).set({ checksRequestedAt: new Date(Date.now() - minutes * 60_000) }).where(eq(momentsTable.id, id));
+
+  it("claims once; a second claim within 10 minutes is refused", async () => {
+    const id = await moment();
+    const [a, b] = await Promise.all([claimMomentCheck(db, id), claimMomentCheck(db, id)]);
+    expect([a, b].sort()).toEqual([false, true]);
+    expect(await claimMomentCheck(db, id)).toBe(false);
+  });
+
+  it("a claim older than 10 minutes can be taken again", async () => {
+    const id = await moment();
+    expect(await claimMomentCheck(db, id)).toBe(true);
+    await age(id, 9);
+    expect(await claimMomentCheck(db, id)).toBe(false);
+    await age(id, 11);
+    expect(await claimMomentCheck(db, id)).toBe(true);
+  });
+
+  it("never claims a moment that has checks; a released claim can be taken again", async () => {
+    const id = await moment();
+    expect(await claimMomentCheck(db, id)).toBe(true);
+    await releaseMomentCheck(db, id);
+    expect(await claimMomentCheck(db, id)).toBe(true);
+    await setMomentChecks(db, id, {
+      argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
+    });
+    await releaseMomentCheck(db, id);
+    expect(await claimMomentCheck(db, id)).toBe(false);
+    expect((await getMoment(db, id))!.checks).not.toBeNull();
   });
 });
 

@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { OWNER_ID } from "@digestor/core";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import { createClip, createTrack, deleteClip, setMomentChecks, updateSession } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
-import { GET as getChecks } from "./clips/[id]/checks/route";
+import { GET as getChecks, POST as checkAgain } from "./clips/[id]/checks/route";
 import { GET as getTracks } from "./clips/[id]/tracks/route";
 
 let h: Harness;
@@ -11,6 +11,7 @@ beforeAll(() => {
   h = createHarness();
 });
 afterAll(() => h.cleanup());
+afterEach(() => h.send.mockReset().mockResolvedValue("job-id"));
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const get = () => new Request("http://localhost/x");
@@ -47,6 +48,43 @@ describe("GET /api/clips/[id]/checks", () => {
     const res = await getChecks(get(), ctx(clip.id));
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "This video isn't ready yet." });
+  });
+});
+
+describe("checks are asked for quietly, once per claim (R29)", () => {
+  const checkSends = () => h.send.mock.calls.filter((c) => c[0] === QUEUES.checkMoment);
+  const post = () => new Request("http://localhost/x", { method: "POST" });
+
+  it("GET sends one check when the moment has none (e.g. an Ask clip), not on every poll", async () => {
+    const { moment, clip } = await clipOf();
+    await getChecks(get(), ctx(clip.id));
+    await getChecks(get(), ctx(clip.id));
+    expect(checkSends()).toEqual([[QUEUES.checkMoment, { momentId: moment.id }, JOB_OPTIONS]]);
+    await setMomentChecks(h.db, moment.id, checks);
+    await getChecks(get(), ctx(clip.id));
+    expect(checkSends()).toHaveLength(1);
+  });
+
+  it("Check again sends when the claim is free, and says so when one is already waiting", async () => {
+    const { moment, clip } = await clipOf();
+    const first = await checkAgain(post(), ctx(clip.id));
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ queued: true });
+    const second = await checkAgain(post(), ctx(clip.id));
+    expect(await second.json()).toEqual({ queued: false });
+    expect(checkSends()).toEqual([[QUEUES.checkMoment, { momentId: moment.id }, JOB_OPTIONS]]);
+    expect((await checkAgain(post(), ctx("nope"))).status).toBe(404);
+  });
+
+  it("Check again answers 503 and frees the claim when the job can't be queued", async () => {
+    const { moment, clip } = await clipOf();
+    h.send.mockRejectedValueOnce(new Error("boom"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await checkAgain(post(), ctx(clip.id));
+    log.mockRestore();
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "Couldn't queue the job. Please try again." });
+    expect(await (await checkAgain(post(), ctx(clip.id))).json()).toEqual({ queued: true });
   });
 });
 

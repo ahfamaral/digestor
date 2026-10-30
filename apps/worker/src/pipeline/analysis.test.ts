@@ -6,6 +6,7 @@ import type { ContextCard, Fact, Transcript, Word } from "@digestor/core";
 import {
   LocalStorage,
   claimAnalysisVersion,
+  claimMomentCheck,
   createDb,
   failAnalysisVersion,
   createSession,
@@ -382,6 +383,30 @@ describe("re-analysis and check jobs", () => {
       const flaky = mkDeps({ generate: async () => { throw new Error("overloaded"); } }).deps;
       await expect(handleCheckMoment(ctxFor(flaky), { momentId: unchecked.id }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow("overloaded");
       expect((await getMoment(db, unchecked.id))!.checks).toBeNull();
+    } finally {
+      out.mockRestore();
+      err.mockRestore();
+    }
+  });
+
+  it("check job: giving up on the final attempt frees the claim so Check again can send (R29)", async () => {
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { deps } = mkDeps(new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) }));
+      const id = await seed();
+      await runAnalysis(deps, id, { profile: "interview", reason: "initial" });
+      const unchecked = (await getCurrentAnalysis(db, id))!.moments.find((m) => m.checks === null)!;
+      expect(await claimMomentCheck(db, unchecked.id)).toBe(true);
+      const flaky = mkDeps({ generate: async () => { throw new Error("overloaded"); } }).deps;
+      await expect(handleCheckMoment(ctxFor(flaky), { momentId: unchecked.id }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow();
+      expect(await claimMomentCheck(db, unchecked.id)).toBe(false); // a retry is coming: still claimed
+      await expect(handleCheckMoment(ctxFor(flaky), { momentId: unchecked.id }, { retryCount: 2, retryLimit: 2 })).rejects.toThrow();
+      expect(await claimMomentCheck(db, unchecked.id)).toBe(true); // gave up: free again
+      // a missing key keeps the claim (nothing could succeed yet; the 10-minute window throttles new sends)
+      const keyless = mkDeps({ generate: async () => { throw new MissingApiKeyError("ANTHROPIC_API_KEY"); } }).deps;
+      await handleCheckMoment(ctxFor(keyless), { momentId: unchecked.id }, { retryCount: 0, retryLimit: 2 });
+      expect(await claimMomentCheck(db, unchecked.id)).toBe(false);
     } finally {
       out.mockRestore();
       err.mockRestore();

@@ -81,14 +81,17 @@ async function clipTitle(clipId: string): Promise<string> {
   return moment?.title ?? "clip";
 }
 
-/** SRT / VTT are rendered from the track's cues on every request, so they are always current (no file on disk). */
+/**
+ * SRT / VTT are rendered from the track's cues on every request, so they are always current (no file on disk). An
+ * outdated track (built for an older cut, R27) has none: its times no longer match the clip.
+ */
 async function subtitleResponse(sessionId: string, match: Match, download: boolean): Promise<Response> {
   const { db } = getServer();
   const clip = await getClip(db, match.clipId!);
   if (!clip || clip.sessionId !== sessionId) return errorResponse(404, "Not found.");
   const lang = match.lang!.toLowerCase();
   const track = (await listTracks(db, clip.id)).find((t) => t.language.toLowerCase() === lang);
-  if (!track || track.cues.length === 0) return errorResponse(404, "Not found.");
+  if (!track || track.status === "outdated" || track.cues.length === 0) return errorResponse(404, "Not found.");
   const cues = trackToCues(track.cues);
   if (cues.length === 0) return errorResponse(404, "Not found.");
   const headers = new Headers({ "Content-Type": CONTENT_TYPES[match.ext]! });

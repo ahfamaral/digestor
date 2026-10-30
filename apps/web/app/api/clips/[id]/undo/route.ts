@@ -1,7 +1,7 @@
 import { listClipEvents, undoLastEvent } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { readyClip } from "@/lib/personal";
+import { frozenError, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const NOTHING_TO_UNDO = "There is nothing to undo.";
@@ -9,7 +9,7 @@ const NOTHING_TO_UNDO = "There is nothing to undo.";
 /**
  * POST /api/clips/[id]/undo — reverts the latest change (also brings back a deleted clip). An optional body
  * `{ "ifActor": "ask" }` makes it conditional: the latest change must have been made by the Ask agent, so the
- * Ask drawer's Undo never reverts something the user did afterwards.
+ * Ask drawer's Undo never reverts something the user did afterwards. 409 once the video is removed (R30).
  */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
@@ -17,6 +17,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const { db } = getServer();
   const found = await readyClip(db, id, { includeDeleted: true });
   if ("error" in found) return found.error;
+  const frozen = frozenError(found.session);
+  if (frozen) return frozen;
   const body: unknown = await request.json().catch(() => null);
   if ((body as { ifActor?: unknown } | null)?.ifActor === "ask") {
     const latest = (await listClipEvents(db, id)).filter((e) => e.undoneAt === null).at(-1);

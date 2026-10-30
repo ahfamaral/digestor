@@ -30,7 +30,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
   const data: ExportClipData[] = await Promise.all(
     clips.map(async (clip) => {
       const [moment, tracks] = await Promise.all([clip.momentId ? getMoment(db, clip.momentId) : null, listTracks(db, clip.id)]);
-      const failing = exportChecklist({ clip, checks: moment?.checks ?? null, tracks, profile })
+      const failing = exportChecklist({ clip, moment, tracks, profile })
         .filter((i) => !i.ok)
         .map((i) => i.id);
       return {

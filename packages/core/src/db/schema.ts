@@ -108,6 +108,8 @@ export const moments = pgTable(
     insideMomentId: uuid("inside_moment_id"),
     evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
     checks: jsonb("checks").$type<MomentChecks>(),
+    /** When a `moment.check` job was last claimed (claimMomentCheck); null = never, or released after a failure. */
+    checksRequestedAt: timestamp("checks_requested_at", { withTimezone: true }),
     thumbKey: text("thumb_key"),
     ownerId: text("owner_id"),
     origin: text("origin").$type<MomentOrigin>().notNull().default("ai"),
@@ -222,6 +224,9 @@ export const subtitleTracks = pgTable(
     srtKey: text("srt_key"),
     vttKey: text("vtt_key"),
     error: text("error"),
+    /** The clip range the cues were built for (cues are clip-relative); null until prepared. */
+    builtStartMs: integer("built_start_ms"),
+    builtEndMs: integer("built_end_ms"),
   },
   (t) => [unique("subtitle_tracks_clip_language").on(t.clipId, t.language)],
 );

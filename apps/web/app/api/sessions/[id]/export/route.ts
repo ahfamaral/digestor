@@ -44,9 +44,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   for (const clip of wanted) {
     if (!clip) continue;
     const moment = clip.momentId ? await getMoment(db, clip.momentId) : null;
-    if (moment && moment.checks === null) await sendMomentCheckQuietly(boss, moment.id);
+    if (moment && moment.checks === null) await sendMomentCheckQuietly(db, boss, moment.id);
     const tracks = await listTracks(db, clip.id);
-    const failing = exportChecklist({ clip, checks: moment?.checks ?? null, tracks, profile }).filter((i) => !i.ok).map((i) => i.id);
+    const failing = exportChecklist({ clip, moment, tracks, profile }).filter((i) => !i.ok).map((i) => i.id);
     if (failing.length > 0) blocked.push({ clipId: clip.id, failing });
     else exportable.push({ clip, tracks });
   }

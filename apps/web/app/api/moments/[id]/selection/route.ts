@@ -32,6 +32,6 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
 
   const { status } = parsed.data;
   await setSelection(db, OWNER_ID, id, status);
-  if (status === "approved" && moment.checks === null) await sendMomentCheckQuietly(boss, id);
+  if (status === "approved" && moment.checks === null) await sendMomentCheckQuietly(db, boss, id);
   return Response.json({ status });
 }
