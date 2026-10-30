@@ -365,6 +365,18 @@ export async function deleteTrack(db: Db, id: string): Promise<void> {
 }
 
 /**
+ * Removes a failed track so the language can be tried again. Only a `failed` track goes (it was never approved and has
+ * no burn), so it can never race an approval, a burn claim or a finished prepare. True when a row was deleted.
+ */
+export async function deleteFailedTrack(db: Db, id: string): Promise<boolean> {
+  const rows = await db
+    .delete(subtitleTracks)
+    .where(and(eq(subtitleTracks.id, id), eq(subtitleTracks.status, "failed")))
+    .returning({ id: subtitleTracks.id });
+  return rows.length > 0;
+}
+
+/**
  * Records whether the user wants a burned-in version of this track. A request is a `burnStatus` other than `none`:
  * `stale` means "requested, not built (or out of date)". Asking turns `none` into `stale`; dropping the request
  * turns stale, failed or done into `none`. A burn that is queued or rendering is never touched (the caller checks

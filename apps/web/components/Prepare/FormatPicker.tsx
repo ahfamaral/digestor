@@ -14,7 +14,7 @@ export interface FormatPickerProps {
   onFormat: (format: ClipFormat) => void;
   /** Every slider movement (the preview follows it). */
   onCropInput: (offset: number) => void;
-  /** The slider was released or the keyboard paused: save. */
+  /** The slider was released or left: save now (keyboard nudges save after a pause). */
   onCropCommit: () => void;
 }
 
@@ -73,7 +73,6 @@ export function FormatPicker({ clipId, format, cropOffset, hasVideo, disabled, o
               aria-valuetext={t("prepare.cropValue", { pct })}
               onChange={(e) => onCropInput(Number(e.target.value))}
               onPointerUp={onCropCommit}
-              onKeyUp={onCropCommit}
               onBlur={onCropCommit}
               className="h-6 min-w-0 flex-1 accent-brand"
             />

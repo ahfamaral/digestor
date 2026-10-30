@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JOB_OPTIONS, LANGUAGES, QUEUES } from "@digestor/core";
-import { createTrack, deleteTrack, listTracks } from "@digestor/core/server";
+import { createTrack, deleteFailedTrack, deleteTrack, listTracks, type Db, type Track } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { QUEUE_FAILED, readyClip } from "@/lib/personal";
@@ -8,7 +8,19 @@ import { getServer } from "@/lib/server";
 
 const BodySchema = z.object({ language: z.string().min(2).max(35) }).strict();
 
-/** POST /api/clips/[id]/tracks — `{ language }`: starts a subtitle track (one per clip and language). */
+/**
+ * A new track for the language; when one exists and has failed, it is replaced ("Try again"). Null when a track in
+ * that language is preparing or ready.
+ */
+async function createOrRetry(db: Db, clipId: string, language: string): Promise<Track | null> {
+  const created = await createTrack(db, clipId, language);
+  if (created) return created;
+  const existing = (await listTracks(db, clipId)).find((t) => t.language === language);
+  if (!existing || existing.status !== "failed" || !(await deleteFailedTrack(db, existing.id))) return null;
+  return createTrack(db, clipId, language); // null if a parallel retry got there first
+}
+
+/** POST /api/clips/[id]/tracks — `{ language }`: starts a subtitle track (one per clip and language), or retries a failed one. */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   if (!isUuid(id)) return errorResponse(404, "Clip not found.");
@@ -30,7 +42,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const known = LANGUAGES.some((l) => l.code === language) || (session.language !== null && session.language === language);
   if (!known) return errorResponse(400, "That subtitle language isn't available.");
 
-  const track = await createTrack(db, id, language);
+  const track = await createOrRetry(db, id, language);
   if (!track) return errorResponse(409, "This clip already has subtitles in that language.");
   try {
     await boss.send(QUEUES.prepareTrack, { trackId: track.id }, { ...JOB_OPTIONS, singletonKey: track.id });

@@ -7,6 +7,7 @@ import {
   exportChecklist, formatLength, formatTimestamp, type ClipFormat, type MomentChecks, type ProfileId, type Range,
 } from "@digestor/core";
 import { AppBar } from "@/components/AppBar";
+import { debouncedCommit } from "@/lib/debouncedCommit";
 import { fetchChecks, fetchTracks, patchClip, undoClip, type ClipChange } from "@/lib/prepareApi";
 import type { ClipView, TrackView } from "@/lib/prepareData";
 import { startRefreshLoop } from "@/lib/refreshLoop";
@@ -50,6 +51,8 @@ export interface PrepareListProps {
 const POLL_MS = 3000;
 /** Ruling R11: checks still null after this long couldn't run. */
 const CHECKS_TIMEOUT_MS = 60_000;
+/** The crop slider saves this long after its last movement. */
+const CROP_COMMIT_MS = 400;
 const NOTICE = "mb-3 rounded-xl border px-3 py-2 text-sm";
 
 type Item = PrepareClipData;
@@ -103,7 +106,8 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
       return next;
     });
 
-  async function change(id: string, body: ClipChange, opts: { refresh?: boolean; announce?: boolean } = {}): Promise<void> {
+  /** Saves one change; resolves false (with the error shown on the card) when it failed. */
+  async function change(id: string, body: ClipChange, opts: { refresh?: boolean; announce?: boolean } = {}): Promise<boolean> {
     setFor(setErrors, id, null);
     setBusy((b) => ({ ...b, [id]: true }));
     try {
@@ -114,10 +118,13 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
       }
       // New bounds need the cut positions of the new window (and a fresh undo state) from the server.
       if (opts.refresh) router.refresh();
+      setBusy((b) => ({ ...b, [id]: false }));
+      return true;
     } catch (err) {
       setFor(setErrors, id, err instanceof Error ? err.message : t("prepare.saveFailed"));
     }
     setBusy((b) => ({ ...b, [id]: false }));
+    return false;
   }
 
   async function undo(id: string) {
@@ -136,7 +143,8 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
 
   const setTrack = (clipId: string, track: TrackView) =>
     update(clipId, (i) => {
-      const others = i.tracks.filter((x) => x.id !== track.id);
+      // A retried language comes back as a new track: it replaces the failed one.
+      const others = i.tracks.filter((x) => x.id !== track.id && x.language !== track.language);
       return { ...i, tracks: [...others, track].sort((a, b) => a.language.localeCompare(b.language)) };
     });
 
@@ -281,7 +289,7 @@ interface ClipCardProps {
   error: string | null;
   status: string;
   checklist: ReturnType<typeof exportChecklist>;
-  onChange: (body: ClipChange, opts?: { refresh?: boolean; announce?: boolean }) => Promise<void>;
+  onChange: (body: ClipChange, opts?: { refresh?: boolean; announce?: boolean }) => Promise<boolean>;
   onUndo: () => void;
   onTrack: (track: TrackView) => void;
 }
@@ -299,12 +307,20 @@ function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, stat
       { refresh: true, announce: true },
     );
 
-  function commitCrop() {
-    if (cropDraft === null) return;
-    const value = cropDraft;
-    if (value === clip.cropOffset) return setCropDraft(null);
-    void onChange({ cropOffset: value }).finally(() => setCropDraft((d) => (d === value ? null : d)));
-  }
+  // The crop slider saves 400 ms after it stops moving (or on release/blur), never the same value twice.
+  const [crop] = useState(() =>
+    debouncedCommit<number>(() => {}, CROP_COMMIT_MS, clip.cropOffset, (v) => setCropDraft((d) => (d === v ? null : d))),
+  );
+  useEffect(() => {
+    crop.setSend((value: number) =>
+      void onChange({ cropOffset: value }).then((ok) => {
+        if (!ok) crop.rejected(); // nothing was saved, so the same value may be tried again
+        setCropDraft((d) => (d === value ? null : d));
+      }),
+    );
+  });
+  useEffect(() => crop.known(clip.cropOffset), [crop, clip.cropOffset]);
+  useEffect(() => () => crop.cancel(), [crop]);
 
   return (
     <li>
@@ -382,8 +398,11 @@ function ClipCard({ n, item, session, defaultCredit, timedOut, busy, error, stat
               hasVideo={session.hasVideo}
               disabled={false}
               onFormat={(format: ClipFormat) => void onChange({ format })}
-              onCropInput={setCropDraft}
-              onCropCommit={commitCrop}
+              onCropInput={(v) => {
+                setCropDraft(v);
+                crop.push(v);
+              }}
+              onCropCommit={crop.flush}
             />
             <CreditField
               key={`${clip.credit ?? ""}|${clip.noCreditNeeded}`}

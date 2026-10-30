@@ -11,7 +11,7 @@ import {
   createPersonalMoment, burnSignature, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
-  resolveAskAction, deleteTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
+  resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
 } from "./personal.ts";
 import type { TrackCue } from "../personalTypes.ts";
 
@@ -291,5 +291,19 @@ describe("Task 16 helpers", () => {
     const p = (await createTrack(db, c.id, "fr"))!;
     await deleteTrack(db, p.id);
     expect(await getTrack(db, p.id)).toBeNull();
+  });
+  it("deleteFailedTrack removes a failed track only", async () => {
+    const c = await newClip();
+    const preparing = (await createTrack(db, c.id, "de"))!;
+    expect(await deleteFailedTrack(db, preparing.id)).toBe(false);
+    const ready = (await createTrack(db, c.id, "es"))!;
+    await setTrackCues(db, ready.id, [cue("x")], "ready");
+    expect(await deleteFailedTrack(db, ready.id)).toBe(false);
+    expect(await getTrack(db, preparing.id)).not.toBeNull();
+    expect(await getTrack(db, ready.id)).not.toBeNull();
+    await failTrack(db, preparing.id, "ANTHROPIC_API_KEY is not set on the server.");
+    expect(await deleteFailedTrack(db, preparing.id)).toBe(true);
+    expect(await getTrack(db, preparing.id)).toBeNull();
+    expect(await deleteFailedTrack(db, preparing.id)).toBe(false);
   });
 });

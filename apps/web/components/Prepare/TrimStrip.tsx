@@ -22,9 +22,9 @@ export interface TrimStripProps {
   points: { starts: number[]; ends: number[] };
   disabled?: boolean;
   /** Saves new bounds (as numbers from the handles). The server snaps again and its value wins. */
-  onCommit: (r: Range) => Promise<void>;
+  onCommit: (r: Range) => Promise<unknown>;
   /** Saves the typed time fields as they are (the server parses and validates them). */
-  onCommitText: (start: string, end: string) => Promise<void>;
+  onCommitText: (start: string, end: string) => Promise<unknown>;
 }
 
 const tenths = (ms: number) => formatTimestamp(Math.max(0, ms), { tenths: true });
@@ -201,7 +201,7 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
 /** Exact start/end fields; saved on Enter or when focus leaves the pair with a change. */
 function TimeFields({
   clipId, clip, disabled, onCommit,
-}: { clipId: string; clip: Range; disabled?: boolean; onCommit: (s: string, e: string) => Promise<void> }) {
+}: { clipId: string; clip: Range; disabled?: boolean; onCommit: (s: string, e: string) => Promise<unknown> }) {
   const [start, setStart] = useState(tenths(clip.startMs));
   const [end, setEnd] = useState(tenths(clip.endMs));
   const [following, setFollowing] = useState(clip);

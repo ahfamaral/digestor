@@ -29,6 +29,7 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, di
   const [error, setError] = useState<string | null>(null);
   const [trackErrors, setTrackErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const chosen = options.some((o) => o.code === pick) ? pick : (options[0]?.code ?? "");
 
   const label = (code: string) => {
@@ -47,6 +48,18 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, di
       setError(err instanceof Error ? err.message : t("prepare.saveFailed"));
     }
     setBusy(false);
+  }
+
+  /** "Try again" on a failed track: the same add, which replaces the failed track. */
+  async function retry(track: TrackView) {
+    setTrackErrors((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== track.id)));
+    setRetrying(track.id);
+    try {
+      onTrack(await addTrack(clipId, track.language));
+    } catch (err) {
+      setTrackErrors((e) => ({ ...e, [track.id]: err instanceof Error ? err.message : t("prepare.saveFailed") }));
+    }
+    setRetrying(null);
   }
 
   async function burn(track: TrackView, want: boolean) {
@@ -78,6 +91,8 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, di
             error={trackErrors[tr.id] ?? null}
             onReview={() => setEditing(tr.id)}
             onBurn={(want) => void burn(tr, want)}
+            retrying={retrying === tr.id}
+            onRetry={() => void retry(tr)}
           />
         ))}
       </ul>
@@ -141,7 +156,7 @@ function burnNote(track: TrackView): string | null {
 }
 
 function TrackRow({
-  sessionId, clipId, track, label, disabled, error, onReview, onBurn,
+  sessionId, clipId, track, label, disabled, error, onReview, onBurn, retrying, onRetry,
 }: {
   sessionId: string;
   clipId: string;
@@ -151,6 +166,8 @@ function TrackRow({
   error: string | null;
   onReview: () => void;
   onBurn: (want: boolean) => void;
+  retrying: boolean;
+  onRetry: () => void;
 }) {
   const ready = track.status === "ready";
   const burnOn = track.burnStatus !== "none";
@@ -191,9 +208,20 @@ function TrackRow({
         )}
       </div>
       {track.status === "failed" && (
-        <p role="alert" className="mt-1 text-xs text-red-700">
-          {track.error ?? t("prepare.trackFailed")}
-        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p role="alert" className="text-xs text-red-700">
+            {track.error ?? t("prepare.trackFailed")}
+          </p>
+          <button
+            type="button"
+            className={ACT}
+            disabled={disabled || retrying}
+            onClick={onRetry}
+            aria-label={t("prepare.retryLabel", { language: label })}
+          >
+            {retrying ? t("prepare.adding") : t("prepare.retry")}
+          </button>
+        </div>
       )}
       {ready && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">

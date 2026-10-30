@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import {
-  createClip, createTrack, deleteClip, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
+  createClip, createTrack, deleteClip, failTrack, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
@@ -199,6 +199,34 @@ describe("tracks", () => {
     expect((await postTrack(req({ language: "pt" }), ctx(clip.id))).status).toBe(409);
     expect((await postTrack(req({ language: "xx" }), ctx(clip.id))).status).toBe(400);
     expect((await postTrack(req({ language: "en" }), ctx(clip.id))).status).toBe(201); // also the session language
+  });
+
+  it("adding a language again replaces a failed track and queues one prepare job for the new one", async () => {
+    const { clip } = await clipFor();
+    const first = await (await postTrack(req({ language: "de" }), ctx(clip.id))).json();
+    await failTrack(h.db, first.id, "ANTHROPIC_API_KEY is not set on the server.");
+    h.send.mockClear();
+    const res = await postTrack(req({ language: "de" }), ctx(clip.id));
+    expect(res.status).toBe(201);
+    const second = await res.json();
+    expect(second.id).not.toBe(first.id);
+    expect(second.status).toBe("preparing");
+    expect(await getTrack(h.db, first.id)).toBeNull();
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.prepareTrack, { trackId: second.id }, { ...JOB_OPTIONS, singletonKey: second.id });
+  });
+
+  it("a ready (or preparing) track in that language still answers 409", async () => {
+    const { clip } = await clipFor();
+    const t = await (await postTrack(req({ language: "it" }), ctx(clip.id))).json();
+    expect((await postTrack(req({ language: "it" }), ctx(clip.id))).status).toBe(409);
+    await setTrackCues(h.db, t.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready");
+    h.send.mockClear();
+    const res = await postTrack(req({ language: "it" }), ctx(clip.id));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "This clip already has subtitles in that language." });
+    expect(h.send).not.toHaveBeenCalled();
+    expect((await getTrack(h.db, t.id))?.status).toBe("ready");
   });
 
   it("rolls the track back when the job can't be queued", async () => {

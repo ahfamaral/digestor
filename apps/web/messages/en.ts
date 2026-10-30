@@ -337,6 +337,8 @@ export const en = {
     original: "{language} (original)",
     preparing: "Preparing…",
     trackFailed: "Couldn't make these subtitles.",
+    retry: "Try again",
+    retryLabel: "Try the {language} subtitles again",
     review: "Review",
     reviewLabel: "Review {language} subtitles",
     approved: "Approved ✓",
