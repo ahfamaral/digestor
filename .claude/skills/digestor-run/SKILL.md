@@ -30,14 +30,16 @@ What you can reach depends on the API keys in `.env`:
 | none | Upload → Processing → "Something went wrong" (`ASSEMBLYAI_API_KEY is not set on the server.`) |
 | both | the whole flow: Processing → Context check → Inbox → Render → Export |
 
-Without keys, **seed** a session parked at a human pause (synthetic 4.6 min video, transcript, card, clips with thumbnails):
+Without keys, **seed** a session (synthetic video, transcript and card):
 
 ```bash
-docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage awaiting_review
+# finished: ≈ 10 min mayor interview, one complete analysis (3 topics, 12 moments, briefing, checks + thumbnails on the top highlights)
+docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage ready
+# parked at the context check (4.6 min, two open questions)
 docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage awaiting_context
 ```
 
-Each prints `http://localhost:3000/s/<id>`. Seeded sessions have no LangGraph checkpoint, so Continue / Skip / Render are accepted by the API but ignored by the worker — the stage stays where the web moved it. Good for looking at screens and keyboard triage, not for testing the pipeline. For pipeline behaviour, use worker tests or real keys.
+Each prints `http://localhost:3000/s/<id>`. Seeded sessions have no LangGraph checkpoint, so Continue / Skip are accepted by the API but ignored by the worker — the stage stays where the web moved it. Good for looking at screens and keyboard triage, not for testing the pipeline. For pipeline behaviour, use worker tests or real keys.
 
 A test video to upload (made in the container, written to `./data` on the host):
 
