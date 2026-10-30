@@ -8,11 +8,12 @@ import {
 } from "@digestor/core";
 import { AppBar } from "@/components/AppBar";
 import {
-  DEFAULT_FILTERS, filterMoments, fromSearchParams, groupByTopic, toSearchParams, type BriefingFilters,
+  DEFAULT_FILTERS, SHOW_HIDDEN_FILTERS, filterMoments, fromSearchParams, groupByTopic, hiddenApprovedCount, toSearchParams,
+  type BriefingFilters,
 } from "@/lib/briefingFilters";
 import { errorMessage } from "@/lib/http";
 import {
-  ACTION_STATUS, actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, moveFocus, resolveFocus,
+  ACTION_STATUS, actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, moveFocus, resolveFocus,
 } from "@/lib/review";
 import { StatusQueue } from "@/lib/statusQueue";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -50,12 +51,6 @@ async function sendSelection(id: string, status: ClipStatus): Promise<void> {
     body: JSON.stringify({ status: asSelection(status) }),
   });
   if (!res.ok) throw new Error(await errorMessage(res, t("briefing.saveFailed")));
-}
-
-/** Typing in a field or working in a dialog never triggers triage shortcuts. */
-function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || target.closest("input, textarea, select, [role='dialog']") !== null;
 }
 
 const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -119,6 +114,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   const currentId = resolveFocus(order, focus);
   const titleOf = useMemo(() => new Map(moments.map((m) => [m.id, m.title])), [moments]);
   const approved = useMemo(() => approvedMomentIds(moments, statuses), [moments, statuses]);
+  const hiddenApproved = useMemo(() => hiddenApprovedCount(views, approved), [views, approved]);
   const topicNo = useMemo(() => new Map(topics.map((tp, i) => [tp.id, i + 1])), [topics]);
 
   const focusRow = (id: string) => setFocus({ id, index: Math.max(0, order.indexOf(id)) });
@@ -215,6 +211,8 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
     onStatus: (id, s) => {
       focusRow(id);
       setStatus(id, s);
+      // If the change takes the row out of the list, focus moves to the row now in its place (not to the page).
+      setKeyboardMoved((n) => n + 1);
     },
     onPlay: (id) => setPlaying((p) => (p === id ? null : id)),
   };
@@ -258,7 +256,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
             <Controls filters={filters} onChange={setFilters} speakers={speakers} types={types} />
 
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-              <span role="status">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>
+              <span aria-live="off">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>
               {!isDefault && (
                 <button
                   type="button"
@@ -321,7 +319,17 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
             <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
               <span className="text-sm font-medium text-muted-foreground">
                 {approved.length === 1 ? t("briefing.approvedOne") : t("briefing.approvedMany", { n: approved.length })}
+                {hiddenApproved > 0 && <> · {t("briefing.hiddenByFilters", { n: hiddenApproved })}</>}
               </span>
+              {hiddenApproved > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilters(SHOW_HIDDEN_FILTERS)}
+                  className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  {t("briefing.showHidden")}
+                </button>
+              )}
               <span title={approved.length === 0 ? t("briefing.confirmEmpty") : undefined}>
                 <button
                   type="button"

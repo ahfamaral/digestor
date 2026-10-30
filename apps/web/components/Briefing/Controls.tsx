@@ -25,6 +25,12 @@ export interface SpeakerOption {
   share: number | null;
 }
 
+/** "73% of spoken words" for the option's tooltip; null when the share is unknown. */
+function speakerShareTitle(s: SpeakerOption): string | undefined {
+  if (s.share === null) return undefined;
+  return s.share === 0 ? t("briefing.speakerShareSmallTitle") : t("briefing.speakerShareTitle", { share: s.share });
+}
+
 export function speakerName(s: SpeakerOption): string {
   if (s.share === null) return t("briefing.speaker", { id: s.id });
   return s.share === 0 ? t("briefing.speakerShareSmall", { id: s.id }) : t("briefing.speakerShare", { id: s.id, share: s.share });
@@ -85,11 +91,11 @@ export function Controls({
                 id="focus-speaker"
                 value={filters.speaker ?? ""}
                 onChange={(e) => set({ speaker: e.target.value || null })}
-                className={cn(FIELD, "max-w-56 pl-7")}
+                className={cn(FIELD, "max-w-64 pl-7")}
               >
                 <option value="">{t("briefing.everyone")}</option>
                 {speakers.map((s) => (
-                  <option key={s.id} value={s.id}>
+                  <option key={s.id} value={s.id} title={speakerShareTitle(s)}>
                     {speakerName(s)}
                   </option>
                 ))}

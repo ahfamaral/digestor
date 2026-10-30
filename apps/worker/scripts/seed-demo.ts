@@ -118,6 +118,7 @@ const TOPIC_SCRIPTS: { title: string; summary: string; lines: Line[] }[] = [
       { speaker: "B", text: "Then I will come back here and explain why." },
       { speaker: "B", text: "That is what accountability looks like." },
       { speaker: "A", text: "Thank you for your time today." },
+      { speaker: "A", text: "And to everyone listening, we are back after the news with your questions." },
       { speaker: "B", text: "Thank you for having me, it was a pleasure." },
     ],
   },
@@ -208,8 +209,9 @@ type Spec = {
 };
 
 /**
- * Per topic: an exchange (≈ 2 min), two passages inside it (≈ 30 s) and a punchline (≈ 10–15 s): 12 moments, all
- * inside their granularity's accepted range.
+ * Per topic: an exchange (≈ 2 min), two passages inside it (≈ 30 s) and a punchline (≈ 10–15 s), plus two one-speaker
+ * punchlines (Speaker B in the first topic, Speaker A in the last) so Focus visibly narrows: 14 moments, all inside
+ * their granularity's accepted range.
  */
 const MOMENT_SPECS: Spec[][] = [
   [
@@ -217,6 +219,8 @@ const MOMENT_SPECS: Spec[][] = [
     { granularity: "passage", from: 5, to: 11, title: "Twelve thousand homes by next year", why: "A concrete, checkable promise with a deadline.", relevance: 92, types: ["news_line"], parent: 0 },
     { granularity: "passage", from: 8, to: 14, title: "No promise that rents will fall", why: "Pressed on rents, the mayor declines to say they will fall.", relevance: 80, types: ["dodge"], parent: 0 },
     { granularity: "punchline", from: 9, to: 11, title: "\"Critics said the same about the metro line\"", why: "A short, quotable comeback to the critics.", relevance: 85, types: ["quotable"], parent: 0 },
+    // Speaker B alone (lines 1–3), so Focus visibly narrows the list.
+    { granularity: "punchline", from: 1, to: 3, title: "\"We simply did not build enough homes\"", why: "The mayor's own diagnosis of the rent rise, with no interruption.", relevance: 76, types: ["key_point"], parent: 0 },
   ],
   [
     { granularity: "exchange", from: 0, to: 26, title: "The two-year tram delay and fares", why: "Apology, explanation and a fare answer that stays open.", relevance: 84, types: ["key_point"] },
@@ -229,6 +233,8 @@ const MOMENT_SPECS: Spec[][] = [
     { granularity: "passage", from: 3, to: 8, title: "\"My own mother ran a small theatre\"", why: "A personal moment behind a painful cut.", relevance: 82, types: ["emotional"], parent: 0 },
     { granularity: "passage", from: 7, to: 12, title: "Half the culture budget restored", why: "A clear commitment for next year's budget.", relevance: 87, types: ["news_line"], parent: 0 },
     { granularity: "punchline", from: 0, to: 2, title: "\"Debt for a tram is not debt for a party\"", why: "A compact line likely to be quoted.", relevance: 83, types: ["quotable"], parent: 0 },
+    // Speaker A alone (the host's sign-off, lines 13–14), so Focus on Speaker B visibly narrows the list.
+    { granularity: "punchline", from: 13, to: 14, title: "\"We are back after the news with your questions\"", why: "The host's sign-off; the only stretch where the mayor doesn't speak.", relevance: 40, types: ["light"], parent: 0 },
   ],
 ];
 

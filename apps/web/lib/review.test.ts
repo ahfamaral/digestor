@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MomentWithHighlights } from "@digestor/core";
 import type { MomentView } from "./briefingFilters";
 import {
-  actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, keyToAction, moveFocus, resolveFocus, type KeyInput,
+  actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, keyToAction, moveFocus, resolveFocus, type KeyInput,
 } from "./review";
 
 let n = 0;
@@ -60,6 +60,58 @@ describe("actionForKey", () => {
     expect(actionForKey(key("e", { repeat: true }), idle)).toBeNull();
     expect(actionForKey(key("ArrowDown", { repeat: true }), idle)).toBe("next");
     expect(actionForKey(key("ArrowUp", { repeat: true }), idle)).toBe("prev");
+  });
+});
+
+/** A minimal element: a tag, an optional role, a parent, and `closest` over simple `tag` / `[role='x']` selectors. */
+interface FakeEl {
+  tagName: string;
+  isContentEditable: boolean;
+  getAttribute(name: string): string | null;
+  parent: FakeEl | null;
+  closest(selector: string): unknown;
+}
+function el(tag: string, parent: FakeEl | null = null, opts: { role?: string; editable?: boolean } = {}): FakeEl {
+  const node: FakeEl = {
+    tagName: tag.toUpperCase(),
+    isContentEditable: opts.editable ?? false,
+    getAttribute: (name: string) => (name === "role" ? (opts.role ?? null) : null),
+    parent,
+    closest(selector: string): unknown {
+      const parts = selector.split(",").map((x) => x.trim());
+      for (let n: FakeEl | null = node; n; n = n.parent) {
+        const hit = parts.some((p) => {
+          const role = /^\[role='(.+)'\]$/.exec(p);
+          return role ? n!.getAttribute("role") === role[1] : n!.tagName === p.toUpperCase();
+        });
+        if (hit) return n;
+      }
+      return null;
+    },
+  };
+  return node;
+}
+
+describe("isTyping", () => {
+  it("fields, editable text and dialogs keep their keys", () => {
+    expect(isTyping(el("input"))).toBe(true);
+    expect(isTyping(el("textarea"))).toBe(true);
+    expect(isTyping(el("select"))).toBe(true);
+    expect(isTyping(el("span", null, { editable: true }))).toBe(true);
+    expect(isTyping(el("button", el("div", null, { role: "dialog" })))).toBe(true);
+  });
+
+  it("media players keep their keys (arrows seek, space plays): shortcuts never hijack them", () => {
+    expect(isTyping(el("video"))).toBe(true);
+    expect(isTyping(el("audio"))).toBe(true);
+    expect(isTyping(el("div", el("video")))).toBe(true);
+  });
+
+  it("rows, buttons and the page itself don't count; neither does a non-element target", () => {
+    expect(isTyping(el("button", el("li")))).toBe(false);
+    expect(isTyping(el("body"))).toBe(false);
+    expect(isTyping(null)).toBe(false);
+    expect(isTyping({})).toBe(false);
   });
 });
 

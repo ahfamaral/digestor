@@ -17,6 +17,16 @@ export function keyToAction(key: string): ReviewAction | null {
   return KEYS[key.length === 1 ? key.toLowerCase() : key] ?? null;
 }
 
+/** Where keys belong to the element, not to triage: fields, editable text, media players (arrows seek, space plays) and dialogs. */
+export const OWN_KEYS_SELECTOR = "input, textarea, select, video, audio, [role='dialog']";
+
+/** Whether a key event's target keeps its keys (see `OWN_KEYS_SELECTOR`). Takes any event target; non-elements never do. */
+export function isTyping(target: unknown): boolean {
+  const el = target as { isContentEditable?: unknown; closest?: unknown } | null;
+  if (!el || typeof el.closest !== "function") return false;
+  return el.isContentEditable === true || (el.closest as (s: string) => unknown).call(el, OWN_KEYS_SELECTOR) !== null;
+}
+
 export interface KeyInput {
   key: string;
   repeat: boolean;

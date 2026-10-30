@@ -33,7 +33,7 @@ What you can reach depends on the API keys in `.env`:
 Without keys, **seed** a session (synthetic video, transcript and card):
 
 ```bash
-# finished: ≈ 10 min mayor interview, one complete analysis (3 topics, 12 moments, briefing, checks + thumbnails on the top highlights)
+# finished: ≈ 10 min mayor interview, one complete analysis (3 topics, 14 moments, briefing, checks + thumbnails on the top highlights)
 docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage ready
 # parked at the context check (4.6 min, two open questions)
 docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage awaiting_context

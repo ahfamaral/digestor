@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Granularity, HighlightTypeId, MomentWithHighlights, SelectionStatus, Topic } from "@digestor/core";
-import { DEFAULT_FILTERS, filterMoments, fromSearchParams, groupByTopic, toSearchParams, type BriefingFilters, type MomentView } from "./briefingFilters";
+import {
+  DEFAULT_FILTERS, SHOW_HIDDEN_FILTERS, filterMoments, fromSearchParams, groupByTopic, hiddenApprovedCount, toSearchParams, type BriefingFilters,
+  type MomentView,
+} from "./briefingFilters";
 
 const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
   id, analysisId: "a", idx, startMs, endMs, title: id, summary: "",
@@ -122,6 +125,59 @@ describe("filterMoments", () => {
     const ask = { ...moment("ask", "punchline", "t1", 22, 30, { origin: "ask" }), insideMomentId: "ex1" };
     expect(shape(filterMoments([ex1, ask], {}, f(), topics))).toEqual([["ex1", []]]);
     expect(shape(filterMoments([ex1, ask], {}, f({ granularity: "punchline" }), topics))).toEqual([["ask", []]]);
+  });
+});
+
+describe("approved work is never invisible (Ruling R23)", () => {
+  it("an approved passage stays visible, flattened under its topic, when its exchange is rejected", () => {
+    const sel: Record<string, SelectionStatus> = { pa1: "approved", ex1: "rejected" };
+    expect(shape(filterMoments(all, sel, f(), topics))).toEqual([
+      ["pa1", []],
+      ["ex2", [["pu2", []]]],
+      ["cnt", []],
+    ]);
+    // proposed siblings of the rejected exchange stay hidden, as the nesting rule says
+    expect(groupByTopic(filterMoments(all, sel, f(), topics), topics).map((g) => [g.topic?.id, g.views.map((v) => v.moment.id)])).toEqual([
+      ["t1", ["pa1"]],
+      ["t2", ["ex2", "cnt"]],
+    ]);
+  });
+
+  it("an approved coarser moment shows flat at a finer granularity, without taking the finer moments as children", () => {
+    const sel: Record<string, SelectionStatus> = { ex1: "approved" };
+    expect(shape(filterMoments(all, sel, f({ granularity: "punchline" }), topics))).toEqual([
+      ["ex1", []],
+      ["pu1", []],
+      ["pu2", []],
+    ]);
+  });
+
+  it("other filters still apply to approved moments", () => {
+    const sel: Record<string, SelectionStatus> = { pu1: "approved" };
+    // pu1 is Speaker B only: Focus A hides it, and that is what the hidden count is for
+    expect(shape(filterMoments(all, sel, f({ granularity: "passage", speaker: "A" }), topics)).map(([id]) => id)).not.toContain("pu1");
+  });
+
+  it("show=approved lists every approved moment flat, ignoring granularity and nesting, by topic then start", () => {
+    const sel: Record<string, SelectionStatus> = { ex1: "approved", pu1: "approved", pu2: "approved", mine: "approved", pa2: "rejected" };
+    expect(shape(filterMoments(all, sel, f({ show: "approved" }), topics))).toEqual([
+      ["ex1", []],
+      ["pu1", []],
+      ["pu2", []],
+      ["mine", []],
+    ]);
+    expect(shape(filterMoments(all, sel, f({ show: "approved", granularity: "punchline" }), topics)).map(([id]) => id)).toEqual(["ex1", "pu1", "pu2", "mine"]);
+  });
+
+  it("hiddenApprovedCount counts approved moments the current filters don't show; Show hidden reveals them all", () => {
+    const sel: Record<string, SelectionStatus> = { pa1: "approved", pu1: "approved", ex2: "approved" };
+    const ids = ["pa1", "pu1", "ex2"];
+    expect(hiddenApprovedCount(filterMoments(all, sel, f(), topics), ids)).toBe(0);
+    expect(hiddenApprovedCount(filterMoments(all, sel, f({ speaker: "A" }), topics), ids)).toBe(1); // pu1 (B)
+    expect(hiddenApprovedCount(filterMoments(all, sel, f({ types: ["light"] }), topics), ids)).toBe(3);
+    expect(hiddenApprovedCount(filterMoments(all, sel, f({ show: "rejected" }), topics), ids)).toBe(3);
+    expect(SHOW_HIDDEN_FILTERS).toEqual({ ...DEFAULT_FILTERS, show: "approved" });
+    expect(hiddenApprovedCount(filterMoments(all, sel, SHOW_HIDDEN_FILTERS, topics), ids)).toBe(0);
   });
 });
 

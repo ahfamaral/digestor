@@ -19,6 +19,8 @@ export interface BriefingFilters {
 }
 
 export const DEFAULT_FILTERS: BriefingFilters = { granularity: "exchange", speaker: null, minRelevance: 0, types: [], show: "open" };
+/** "Show hidden": every approved moment, nothing else narrowing the list. */
+export const SHOW_HIDDEN_FILTERS: BriefingFilters = { ...DEFAULT_FILTERS, show: "approved" };
 
 export interface MomentView {
   moment: MomentWithHighlights;
@@ -32,8 +34,8 @@ const LEVEL: Record<Granularity, number> = { exchange: 0, passage: 1, punchline:
 
 const isPersonal = (m: MomentWithHighlights) => m.origin === "ask" || m.origin === "user";
 
-function passes(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters): boolean {
-  if (LEVEL[m.granularity] < LEVEL[f.granularity]) return false;
+/** Every filter except the granularity floor (speaker, relevance, types, status). */
+function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters): boolean {
   if (f.speaker !== null && !m.speakers.includes(f.speaker)) return false;
   // Counted values aren't AI judgments, and personal moments carry no score: the relevance floor is for AI picks.
   if (m.origin === "ai" && m.relevance < f.minRelevance) return false;
@@ -60,6 +62,9 @@ function topicIndex(m: Pick<MomentWithHighlights, "topicId" | "startMs">, topics
  * The moments the filters show, as a tree. The selected granularity is the primary list; finer moments nest under
  * their `insideMomentId` parent when that parent is shown. A finer moment whose parent is filtered out is listed on
  * its own only when its level is the selected one; otherwise it is hidden. Personal moments are never nested.
+ * Approved work is never invisible (Ruling R23): an approved moment that passes every other filter but would be hidden
+ * by its level or a missing parent is listed flat, at the top of its topic's rows; `show=approved` lists every approved
+ * moment flat, ignoring granularity and nesting.
  * Order: by topic (`topics` order; a moment without a known topic goes with the topic covering its start), then start.
  */
 export function filterMoments(
@@ -68,19 +73,25 @@ export function filterMoments(
   f: BriefingFilters,
   topics: TopicSpan[] = [],
 ): MomentView[] {
+  const flat = f.show === "approved";
+  // Moments at or below the selected level that pass every filter: these build the tree.
   const shown = new Map<string, MomentView>();
+  const roots: MomentView[] = [];
   for (const m of moments) {
     const status = selections[m.id] ?? null;
-    if (passes(m, status, f)) shown.set(m.id, { moment: m, status, children: [] });
+    if (!passesContent(m, status, f)) continue;
+    const view = { moment: m, status, children: [] };
+    if (flat) roots.push(view);
+    else if (LEVEL[m.granularity] >= LEVEL[f.granularity]) shown.set(m.id, view);
+    else if (status === "approved") roots.push(view); // coarser than the level, but approved: listed flat, never a parent
   }
-  const roots: MomentView[] = [];
   for (const v of shown.values()) {
     const parentId = isPersonal(v.moment) ? null : v.moment.insideMomentId;
     const found = parentId !== null ? shown.get(parentId) : undefined;
     // Only a coarser moment can hold a finer one, so bad data can't make a nesting cycle that hides both.
     const parent = found && LEVEL[found.moment.granularity] < LEVEL[v.moment.granularity] ? found : undefined;
     if (parent) parent.children.push(v);
-    else if (v.moment.granularity === f.granularity) roots.push(v);
+    else if (v.moment.granularity === f.granularity || v.status === "approved") roots.push(v);
   }
   const topicRank = (m: MomentWithHighlights) => {
     const i = topicIndex(m, topics);
@@ -93,6 +104,19 @@ export function filterMoments(
   };
   roots.forEach(sortChildren);
   return roots.sort((a, b) => topicRank(a.moment) - topicRank(b.moment) || byStart(a, b));
+}
+
+/** How many of the approved moments (`approvedIds`) the filtered tree doesn't show: the footer's "M hidden by filters". */
+export function hiddenApprovedCount(views: MomentView[], approvedIds: string[]): number {
+  const visible = new Set<string>();
+  const walk = (list: MomentView[]) => {
+    for (const v of list) {
+      visible.add(v.moment.id);
+      walk(v.children);
+    }
+  };
+  walk(views);
+  return approvedIds.filter((id) => !visible.has(id)).length;
 }
 
 /** `filterMoments` output split into topic sections (topic order); moments outside every topic come last, with `topic: null`. */
