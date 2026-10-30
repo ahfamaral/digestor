@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createDb, type Db } from "./client.ts";
 import {
-  completeAnalysisVersion, failAnalysisVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation,
+  completeAnalysisVersion, failAnalysisVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation, listAnalysisVersions,
   saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
   type NewMoment,
 } from "./analysis.ts";
@@ -45,6 +45,10 @@ describe("analysis versions", () => {
     expect(running?.id).toBe(v2.id);
     await completeAnalysisVersion(db, v2.id);
     expect((await getCurrentAnalysis(db, s.id))!.topics).toEqual([]);
+    expect((await listAnalysisVersions(db, s.id)).map((v) => [v.version, v.status, v.isCurrent])).toEqual([
+      [1, "complete", false],
+      [2, "complete", true],
+    ]);
   });
 
   it("completeAnalysisVersion moves isCurrent", async () => {

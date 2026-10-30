@@ -8,7 +8,7 @@ export interface StructuredLLM {
   generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T>;
 }
 
-const MODEL_IDS: Record<LLMModel, string> = {
+export const MODEL_IDS: Record<LLMModel, string> = {
   reasoning: "claude-sonnet-5-5",
   fast: "claude-haiku-5-5",
 };
@@ -40,12 +40,16 @@ export function isParseError(err: unknown): boolean {
   return err instanceof ZodError || err instanceof OutputParserException;
 }
 
+export type FakeCall = { name: string; system: string; user: string; model: LLMModel };
+/** A canned response, or a function of the call (may be async: block on a promise, throw, or read ids from the prompt). */
+export type FakeResponse = unknown;
+
 export class FakeLLM implements StructuredLLM {
-  calls: { name: string; system: string; user: string; model: LLMModel }[] = [];
-  private queue: unknown[];
-  private byName: Map<string, unknown[]> | null;
+  calls: FakeCall[] = [];
+  private queue: FakeResponse[];
+  private byName: Map<string, FakeResponse[]> | null;
   /** FIFO list, or `{ byName: { topics: [...] } }` so concurrent fan-out tests don't depend on call order. */
-  constructor(responses: unknown[] | { byName: Record<string, unknown[]> }) {
+  constructor(responses: FakeResponse[] | { byName: Record<string, FakeResponse[]> }) {
     if (Array.isArray(responses)) {
       this.queue = [...responses];
       this.byName = null;
@@ -55,9 +59,12 @@ export class FakeLLM implements StructuredLLM {
     }
   }
   async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T> {
-    this.calls.push({ name: a.name, system: a.system, user: a.user, model: a.model });
+    const call: FakeCall = { name: a.name, system: a.system, user: a.user, model: a.model };
+    this.calls.push(call);
     const q = this.byName ? (this.byName.get(a.name) ?? []) : this.queue;
     if (q.length === 0) throw new Error(`FakeLLM response queue is empty (call "${a.name}")`);
-    return a.schema.parse(q.shift());
+    const next = q.shift();
+    const value = typeof next === "function" ? await (next as (c: FakeCall) => unknown)(call) : next;
+    return a.schema.parse(value);
   }
 }

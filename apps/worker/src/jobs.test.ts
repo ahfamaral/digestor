@@ -2,17 +2,22 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command } from "@langchain/langgraph";
 import { createDb, createSession, getSession, setStage, type Db } from "@digestor/core/server";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
-import { MissingApiKeyError, failureMessage, handleResume, processJobs, handleStart, type JobContext } from "./jobs.js";
+import { MissingApiKeyError, failureMessage, handleResume, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
 
-function stubGraph(opts: { next?: string[]; fail?: Error; interrupted?: boolean } = {}) {
+function stubGraph(opts: { next?: string[]; fail?: Error; interrupted?: boolean; checkpoint?: boolean } = {}) {
   const invoke = vi.fn(async (..._a: unknown[]) => {
     if (opts.fail) throw opts.fail;
     return {};
   });
-  const getState = vi.fn(async (..._a: unknown[]) => ({ next: opts.next ?? [], tasks: opts.interrupted ? [{ interrupts: [{ value: 1 }] }] : [{ interrupts: [] }] }));
+  const getState = vi.fn(async (..._a: unknown[]) => ({
+    next: opts.next ?? [],
+    tasks: opts.interrupted ? [{ interrupts: [{ value: 1 }] }] : [{ interrupts: [] }],
+    // LangGraph only sets createdAt when the thread has a checkpoint.
+    ...(opts.checkpoint ? { createdAt: "2026-10-30T12:00:00.000Z" } : {}),
+  }));
   return { invoke, getState };
 }
 
@@ -71,6 +76,27 @@ d("job handlers", () => {
     const id = await newSession();
     await handleStart(ctxFor(g), { sessionId: id }, FIRST);
     expect(g.invoke).toHaveBeenCalledWith(null, { configurable: { thread_id: id } });
+  });
+
+  it("handleStart on a finished thread (checkpoint, nothing pending) is a logged no-op", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const g = stubGraph({ checkpoint: true });
+    const id = await newSession();
+    await setStage(db, id, "failed", 20, "No speech was detected in this video.");
+    await handleStart(ctxFor(g), { sessionId: id }, FIRST);
+    expect(g.invoke).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("already finished"));
+    log.mockRestore();
+  });
+
+  it("handleStart on a ready session is a no-op even without a checkpoint", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const g = stubGraph();
+    const id = await newSession();
+    await setStage(db, id, "ready", 100);
+    await handleStart(ctxFor(g), { sessionId: id }, FIRST);
+    expect(g.invoke).not.toHaveBeenCalled();
+    log.mockRestore();
   });
 
   it("handleResume passes a Command with the payload", async () => {
@@ -150,6 +176,15 @@ d("job handlers", () => {
     const id2 = await newSession();
     await expect(handleResume(ctxFor(keyless), { sessionId: id2, payload }, FIRST)).resolves.toBeUndefined();
     expect(await getSession(db, id2)).toMatchObject({ stage: "failed", error: "ANTHROPIC_API_KEY is not set on the server." });
+    log.mockRestore();
+  });
+});
+
+describe("queues without a consumer yet", () => {
+  it("complete their jobs with a log line instead of retrying", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await expect(notImplemented("track.burn")({ trackId: "x" }, FIRST)).resolves.toBeUndefined();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("track.burn: not implemented yet"));
     log.mockRestore();
   });
 });

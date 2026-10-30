@@ -1,6 +1,19 @@
 import { Command } from "@langchain/langgraph";
-import type { ResumeJob, StartJob } from "@digestor/core";
-import { getSession, setStage, type Db } from "@digestor/core/server";
+import { ProfileIdSchema, type CheckMomentJob, type ReanalyzeJob, type ResumeJob, type StartJob } from "@digestor/core";
+import {
+  failAnalysisVersion,
+  getAnalysisVersion,
+  getContextCard,
+  getMoment,
+  getRunningAnalysis,
+  getSession,
+  getTranscript,
+  setMomentChecks,
+  setStage,
+  type Db,
+} from "@digestor/core/server";
+import { checkMoment } from "./agents/checks.js";
+import { runAnalysis, withProfile } from "./pipeline/analysis.js";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 
@@ -27,9 +40,16 @@ const threadConfig = (sessionId: string) => ({ configurable: { thread_id: sessio
 /** Which pg-boss attempt is running (from the job metadata): retryCount 0 is the first try. */
 export type Attempt = { retryCount: number; retryLimit: number };
 
+/** Fails the session's unfinished analysis version, if any (a retry would have reused it). */
+async function failRunningAnalysis(db: Db, sessionId: string): Promise<void> {
+  const running = await getRunningAnalysis(db, sessionId);
+  if (running) await failAnalysisVersion(db, running.id);
+}
+
 async function failSession(ctx: JobContext, sessionId: string, err: unknown): Promise<void> {
   const message = failureMessage(err);
   const progress = (await getSession(ctx.db, sessionId))?.progress ?? 0;
+  await failRunningAnalysis(ctx.db, sessionId);
   await setStage(ctx.db, sessionId, "failed", progress, message);
 }
 
@@ -51,13 +71,23 @@ async function onJobError(ctx: JobContext, sessionId: string, err: unknown, atte
   throw err;
 }
 
+/**
+ * Start (or continue) the pipeline. Idempotent: a checkpoint mid-run (crash/retry) continues from it; a finished
+ * thread, or a session that is already `ready`, is left alone — a duplicate start job must not re-run (and re-pay)
+ * the whole pipeline. `invoke(input)` on an existing thread would start over from START.
+ */
 export async function handleStart(ctx: JobContext, job: StartJob, attempt: Attempt): Promise<void> {
   const cfg = threadConfig(job.sessionId);
   try {
     const state = await ctx.graph.getState(cfg);
-    // A checkpoint mid-run (crash/retry): continue from it instead of starting over.
-    if (state.next.length > 0) await ctx.graph.invoke(null, cfg);
-    else await ctx.graph.invoke({ sessionId: job.sessionId }, cfg);
+    if (state.next.length > 0) {
+      await ctx.graph.invoke(null, cfg);
+    } else if (state.createdAt !== undefined || (await getSession(ctx.db, job.sessionId))?.stage === "ready") {
+      // LangGraph only sets createdAt when the thread has a checkpoint: this run already happened.
+      console.log(`Ignoring start for ${job.sessionId}: already finished`);
+    } else {
+      await ctx.graph.invoke({ sessionId: job.sessionId }, cfg);
+    }
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
   }
@@ -79,6 +109,68 @@ export async function handleResume(ctx: JobContext, job: ResumeJob, attempt: Att
     await onJobError(ctx, job.sessionId, err, attempt);
   }
 }
+
+/**
+ * A new analysis version of a `ready` session (e.g. with a corrected profile). The session stays `ready` on its current
+ * version throughout; a failure never fails the session. Transient errors are rethrown for pg-boss to retry (the
+ * `running` version is reused); when the job gives up (missing key, final attempt) the version is marked failed.
+ */
+export async function handleReanalyze(ctx: JobContext, job: ReanalyzeJob, attempt: Attempt): Promise<void> {
+  const session = await getSession(ctx.db, job.sessionId);
+  if (session?.stage !== "ready") {
+    console.log(`Ignoring reanalysis of ${job.sessionId}: the session is ${session ? session.stage : "gone"}, not ready`);
+    return;
+  }
+  try {
+    await runAnalysis(ctx.deps, job.sessionId, { profile: job.profile, reason: job.reason });
+  } catch (err) {
+    const deterministic = isDeterministic(err);
+    if (deterministic || attempt.retryCount >= attempt.retryLimit) {
+      await failRunningAnalysis(ctx.db, job.sessionId);
+      console.error(`[jobs] reanalysis of ${job.sessionId} failed; the session keeps its current analysis:`, err);
+    } else {
+      console.error(`[jobs] reanalysis of ${job.sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    }
+    if (!deterministic) throw err;
+  }
+}
+
+/** Checks for one moment on demand. Idempotent: a moment that already has checks costs no model call. */
+export async function handleCheckMoment(ctx: JobContext, job: CheckMomentJob, _attempt: Attempt): Promise<void> {
+  const { db } = ctx;
+  const moment = await getMoment(db, job.momentId);
+  if (!moment) {
+    console.log(`Ignoring check of moment ${job.momentId}: not found`);
+    return;
+  }
+  if (moment.checks) {
+    console.log(`Skipping check of moment ${job.momentId}: already checked`);
+    return;
+  }
+  const version = await getAnalysisVersion(db, moment.analysisId);
+  const [transcript, stored] = version
+    ? await Promise.all([getTranscript(db, version.sessionId), getContextCard(db, version.sessionId)])
+    : [null, null];
+  const profile = ProfileIdSchema.safeParse(version?.profile);
+  if (!version || !transcript || !stored || !profile.success) {
+    console.log(`Ignoring check of moment ${job.momentId}: its session has no transcript or context`);
+    return;
+  }
+  try {
+    const checks = await checkMoment(ctx.deps.llm, { card: withProfile(stored.card, profile.data), moment, words: transcript.words });
+    await setMomentChecks(db, moment.id, checks);
+  } catch (err) {
+    if (!(err instanceof MissingApiKeyError)) throw err; // transient: pg-boss retries
+    console.error(`[jobs] check of moment ${job.momentId} skipped: ${err.message}`);
+  }
+}
+
+/** Placeholder consumer for a queue whose task hasn't landed yet: completes the job so nothing retries. */
+export const notImplemented =
+  (queue: string) =>
+  async (_job: unknown, _attempt: Attempt): Promise<void> => {
+    console.log(`[jobs] ${queue}: not implemented yet; completing the job`);
+  };
 
 /**
  * Validate and handle a pg-boss batch (fetched with includeMetadata, so each job carries its attempt).

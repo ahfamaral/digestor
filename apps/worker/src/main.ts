@@ -3,10 +3,32 @@ import { fileURLToPath } from "node:url";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { PgBoss } from "pg-boss";
 import type { z } from "zod";
-import { JOB_OPTIONS, QUEUES, ResumeJobSchema, StartJobSchema } from "@digestor/core";
+import {
+  AskJobSchema,
+  BurnTrackJobSchema,
+  CheckMomentJobSchema,
+  JOB_OPTIONS,
+  PrepareTrackJobSchema,
+  QUEUES,
+  ReanalyzeJobSchema,
+  RenderClipJobSchema,
+  ResumeJobSchema,
+  StartJobSchema,
+  TranslateBriefingJobSchema,
+} from "@digestor/core";
 import { LocalStorage, createDb } from "@digestor/core/server";
 import { CLEANUP_CRON, CLEANUP_QUEUE, retentionDays, runCleanup } from "./cleanup.js";
-import { handleResume, handleStart, MissingApiKeyError, processJobs, type Attempt, type JobContext } from "./jobs.js";
+import {
+  handleCheckMoment,
+  handleReanalyze,
+  handleResume,
+  handleStart,
+  MissingApiKeyError,
+  notImplemented,
+  processJobs,
+  type Attempt,
+  type JobContext,
+} from "./jobs.js";
 import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
 import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
@@ -66,7 +88,14 @@ async function main() {
     boss.work<unknown, void, typeof workOptions>(queue, workOptions, (jobs) => processJobs(queue, schema, handle, jobs));
   await register(QUEUES.start, StartJobSchema, (j, attempt) => handleStart(ctx, j, attempt));
   await register(QUEUES.resume, ResumeJobSchema, (j, attempt) => handleResume(ctx, j, attempt));
-  // QUEUES.renderClip stays declared but has no consumer until Plan 2 Task 12.
+  await register(QUEUES.reanalyze, ReanalyzeJobSchema, (j, attempt) => handleReanalyze(ctx, j, attempt));
+  await register(QUEUES.checkMoment, CheckMomentJobSchema, (j, attempt) => handleCheckMoment(ctx, j, attempt));
+  // Consumers land with their tasks (11: prepare, 12: burn + render, 14: ask, 17: translate); until then jobs complete.
+  await register(QUEUES.prepareTrack, PrepareTrackJobSchema, notImplemented(QUEUES.prepareTrack));
+  await register(QUEUES.burnTrack, BurnTrackJobSchema, notImplemented(QUEUES.burnTrack));
+  await register(QUEUES.renderClip, RenderClipJobSchema, notImplemented(QUEUES.renderClip));
+  await register(QUEUES.ask, AskJobSchema, notImplemented(QUEUES.ask));
+  await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, notImplemented(QUEUES.translateBriefing));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     const days = retentionDays();
     const { deleted } = await runCleanup({ db, storage, checkpointer: saver }, days);

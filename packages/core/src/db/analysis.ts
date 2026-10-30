@@ -105,6 +105,11 @@ export async function getAnalysisVersion(db: Db, analysisId: string): Promise<An
   return row ?? null;
 }
 
+/** Every version of the session, oldest first. */
+export async function listAnalysisVersions(db: Db, sessionId: string): Promise<AnalysisVersion[]> {
+  return db.select().from(analysisVersions).where(eq(analysisVersions.sessionId, sessionId)).orderBy(asc(analysisVersions.version));
+}
+
 export async function getRunningAnalysis(db: Db, sessionId: string): Promise<AnalysisVersion | null> {
   const [row] = await db
     .select()

@@ -11,6 +11,7 @@ import {
 import type { ContextCard, Fact, Participant, ResumePayload, Transcript } from "@digestor/core";
 import {
   getContextCard,
+  getCurrentAnalysis,
   getSession,
   getTranscript,
   saveContextCard,
@@ -23,6 +24,7 @@ import {
   type Stage,
 } from "@digestor/core/server";
 import { understandContext } from "../agents/context.js";
+import { runAnalysis } from "./analysis.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
@@ -279,11 +281,27 @@ export const askContextNode =
     return { resume, answers: [...s.answers, ...answers] };
   };
 
-/** Interim end of the pipeline (Plan 2 adds indexing, topics, moments and briefing before this). */
-export const finishNode =
+/** Placeholder until the search index exists (Plan 2, Task 13): only reports the stage. */
+export const indexNode =
   (deps: PipelineDeps): Node =>
   async (s) => {
-    await setStage(deps.db, s.sessionId, "ready", 100);
+    await setStage(deps.db, s.sessionId, "indexing", 70);
+    return {};
+  };
+
+/** The first analysis version, with the profile from the context card. Safe to re-run (see `runAnalysis`). */
+export const analyzeNode =
+  (deps: PipelineDeps): Node =>
+  async (s) => {
+    const { db } = deps;
+    // Completed before a crash that kept this node from checkpointing: don't analyse (and pay) again.
+    if (await getCurrentAnalysis(db, s.sessionId)) {
+      await setStage(db, s.sessionId, "ready", 100);
+      return {};
+    }
+    const stored = await getContextCard(db, s.sessionId);
+    if (!stored) throw new Error(`Session ${s.sessionId} has no context card`);
+    await runAnalysis(deps, s.sessionId, { profile: stored.card.profile.value, reason: "initial" });
     return {};
   };
 
@@ -300,7 +318,8 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     .addNode("transcribe", transcribeNode(deps))
     .addNode("understand_context", understandContextNode(deps))
     .addNode("ask_context", askContextNode(deps))
-    .addNode("finish", finishNode(deps))
+    .addNode("index", indexNode(deps))
+    .addNode("analyze", analyzeNode(deps))
     .addConditionalEdges(
       START,
       async (s) => {
@@ -317,16 +336,17 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
       async (s) => {
         const stored = await getContextCard(db, s.sessionId);
         // After the follow-up round's answers this pass only folds them into the card: no third question round.
-        return stored?.card.sufficient || s.round > MAX_CONTEXT_ROUNDS ? "finish" : "ask_context";
+        return stored?.card.sufficient || s.round > MAX_CONTEXT_ROUNDS ? "index" : "ask_context";
       },
-      ["finish", "ask_context"],
+      ["index", "ask_context"],
     )
     .addConditionalEdges(
       "ask_context",
       // Any other action is not valid at this pause: ask again.
-      (s) => (s.resume?.action === "skip" ? "finish" : s.resume?.action === "continue" ? "understand_context" : "ask_context"),
-      ["finish", "understand_context", "ask_context"],
+      (s) => (s.resume?.action === "skip" ? "index" : s.resume?.action === "continue" ? "understand_context" : "ask_context"),
+      ["index", "understand_context", "ask_context"],
     )
-    .addEdge("finish", END)
+    .addEdge("index", "analyze")
+    .addEdge("analyze", END)
     .compile({ checkpointer });
 }

@@ -10,7 +10,9 @@ import {
   createDb,
   createSession,
   getContextCard,
+  getCurrentAnalysis,
   getSession,
+  listAnalysisVersions,
   updateSession,
   type Db,
 } from "@digestor/core/server";
@@ -18,6 +20,7 @@ import * as media from "../media/ffmpeg.js";
 import { FakeTranscriber, TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { handleStart, type JobContext } from "../jobs.js";
 import { FakeLLM } from "../llm/structured.js";
+import { analysisResponses, crashOnInsert, emptyAnalysisResponses } from "./fakeAnalysis.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
 import { buildPipeline, type PipelineDeps } from "./graph.js";
 
@@ -74,7 +77,11 @@ afterAll(async () => {
 });
 
 type Setup = {
-  llm?: unknown[];
+  /** context_card responses, one per round. */
+  context?: unknown[];
+  /** Analysis responses by call name; default: the model finds nothing (one fallback topic, no moments). */
+  analysis?: Record<string, unknown[]>;
+  db?: Db;
   transcript?: Transcript;
   transcriber?: Transcriber;
   fixture?: string;
@@ -95,9 +102,10 @@ async function setup(o: Setup = {}) {
     await copyFile(o.fixture ?? LONG, storage.resolve(originalKey));
     await updateSession(db, session.id, { originalKey });
   }
-  const llm = new FakeLLM(o.llm ?? []);
+  const llm = new FakeLLM({ byName: { context_card: o.context ?? [], ...(o.analysis ?? emptyAnalysisResponses()) } });
+  const contextCalls = () => llm.calls.filter((c) => c.name === "context_card");
   const deps: PipelineDeps = {
-    db,
+    db: o.db ?? db,
     storage,
     transcriber: o.transcriber ?? new FakeTranscriber(o.transcript ?? transcript),
     llm,
@@ -108,7 +116,7 @@ async function setup(o: Setup = {}) {
   const cfg = { configurable: { thread_id: session.id } };
   const resume = (payload: ResumePayload) => graph.invoke(new Command({ resume: payload }), cfg);
   const interruptValue = async () => (await graph.getState(cfg)).tasks[0]?.interrupts[0]?.value;
-  return { sessionId: session.id, llm, deps, graph, cfg, resume, interruptValue };
+  return { sessionId: session.id, llm, contextCalls, deps, graph, cfg, resume, interruptValue };
 }
 
 const youtubeStub =
@@ -120,7 +128,7 @@ const youtubeStub =
 
 describe("pipeline", () => {
   it("pauses for context when the date is missing", async () => {
-    const { graph, cfg, sessionId, llm, interruptValue } = await setup({ llm: [draft()] });
+    const { graph, cfg, sessionId, llm, interruptValue } = await setup({ context: [draft()] });
     await graph.invoke({ sessionId }, cfg);
     const st = await graph.getState(cfg);
     expect(st.tasks[0]!.interrupts[0]!.value).toEqual({ type: "context" });
@@ -142,17 +150,18 @@ describe("pipeline", () => {
     expect(llm.calls).toHaveLength(1);
   });
 
-  it("skip goes straight to ready after the single context pause", async () => {
-    const { graph, cfg, sessionId, llm, resume } = await setup({ llm: [draft()] });
+  it("skip goes on to the analysis and ready after the single context pause", async () => {
+    const { graph, cfg, sessionId, contextCalls, resume } = await setup({ context: [draft()] });
     await graph.invoke({ sessionId }, cfg);
     await resume({ action: "skip" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
     expect((await graph.getState(cfg)).next).toEqual([]);
-    expect(llm.calls).toHaveLength(1); // no second context round
+    expect(contextCalls()).toHaveLength(1); // no second context round
+    expect(await getCurrentAnalysis(db, sessionId)).toMatchObject({ version: { version: 1, reason: "initial", profile: "interview" } });
   });
 
   it("asks one follow-up round with the new questions, then finishes (never a third round)", async () => {
-    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft(), draft()] });
+    const { graph, cfg, sessionId, llm, contextCalls, resume, interruptValue } = await setup({ context: [draft(), draft(), draft()] });
     await graph.invoke({ sessionId }, cfg);
     await resume({
       action: "continue",
@@ -188,25 +197,25 @@ describe("pipeline", () => {
     // The second round's answers are folded into the card, then the pipeline finishes even though it is still insufficient.
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "Sometime in 2025" }], cardEdits: {} });
     expect((await graph.getState(cfg)).next).toEqual([]);
-    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card", "context_card"]);
+    expect(contextCalls()).toHaveLength(3);
     expect(llm.calls[2]!.user).toContain("A: Maybe last spring");
     expect(llm.calls[2]!.user).toContain("Q: When was this recorded or first aired?\nA: Sometime in 2025");
     expect((await getContextCard(db, sessionId))!.card.sufficient).toBe(false);
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
   });
 
-  it("skipping the follow-up round goes straight to ready", async () => {
-    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft()] });
+  it("skipping the follow-up round goes on to ready", async () => {
+    const { graph, cfg, sessionId, contextCalls, resume, interruptValue } = await setup({ context: [draft(), draft()] });
     await graph.invoke({ sessionId }, cfg);
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "no idea" }], cardEdits: {} });
     expect(await interruptValue()).toEqual({ type: "context" });
     await resume({ action: "skip" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
-    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card"]);
+    expect(contextCalls()).toHaveLength(2);
   });
 
   it("sufficient context never pauses for context", async () => {
-    const { graph, cfg, sessionId } = await setup({ llm: [sufficientDraft()] });
+    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()] });
     await graph.invoke({ sessionId }, cfg);
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
     expect((await getContextCard(db, sessionId))!).toMatchObject({ round: 1, card: { sufficient: true } });
@@ -232,7 +241,7 @@ describe("pipeline", () => {
     const llmDraft = draft(fact("2026-03-14", "metadata", "2026-03-14"));
     const { graph, cfg, sessionId, llm } = await setup({
       youtube: youtubeStub(metadata),
-      llm: [llmDraft],
+      context: [llmDraft],
     });
     await graph.invoke({ sessionId }, cfg);
     expect((await getSession(db, sessionId))!.stage).toBe("ready");
@@ -353,6 +362,54 @@ describe("pipeline", () => {
   });
 });
 
+const ONE_TOPIC = [{ title: "Interview", startMs: 0, endMs: 100_000 }];
+
+describe("analysis", () => {
+  it("graph runs to ready and stores one complete version", async () => {
+    const { graph, cfg, sessionId, llm } = await setup({
+      context: [sufficientDraft()],
+      analysis: analysisResponses({ topics: ONE_TOPIC }),
+    });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, profile: "interview" });
+    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(llm.calls.map((c) => c.name)).toEqual([
+      "context_card", "topics", "moments", "punchlines", "briefing", "checks", "checks", "checks",
+    ]);
+    const bundle = (await getCurrentAnalysis(db, sessionId))!;
+    expect(bundle.version).toMatchObject({ version: 1, status: "complete", reason: "initial", profile: "interview" });
+    expect(bundle.topics.map((t) => t.title)).toEqual(["Interview"]);
+    expect(bundle.moments.map((m) => m.granularity).sort()).toEqual(["exchange", "passage", "punchline"]);
+    expect(bundle.briefing!.lead).toHaveLength(1);
+    // Real ffmpeg: every top highlight has a thumbnail file next to the session's video.
+    for (const m of bundle.moments) {
+      expect(m.checks).not.toBeNull();
+      expect(m.thumbKey).toBe(`${sessionId}/thumbs/${m.id}.jpg`);
+      expect(await exists(storage.resolve(m.thumbKey!))).toBe(true);
+    }
+  });
+
+  it("a duplicate start after ready is a no-op", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { graph, cfg, sessionId, llm, deps } = await setup({
+        context: [sufficientDraft()],
+        analysis: analysisResponses({ topics: ONE_TOPIC, runs: 2 }),
+      });
+      await graph.invoke({ sessionId }, cfg);
+      expect((await getSession(db, sessionId))!.stage).toBe("ready");
+      const calls = llm.calls.length;
+      const ctx: JobContext = { db, deps, graph };
+      await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
+      expect(llm.calls).toHaveLength(calls);
+      expect(await listAnalysisVersions(db, sessionId)).toHaveLength(1);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+    } finally {
+      log.mockRestore();
+    }
+  });
+});
+
 describe("crash and resume", () => {
   it("a retried start job resumes from the checkpoint without re-running finished nodes", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -375,7 +432,7 @@ describe("crash and resume", () => {
       const { graph, cfg, sessionId, llm, deps } = await setup({
         transcriber: flaky,
         media: counting,
-        llm: [draft()],
+        context: [draft()],
       });
       const ctx: JobContext = { db, deps, graph };
 
@@ -395,6 +452,38 @@ describe("crash and resume", () => {
       // A duplicate start job for the same session (e.g. redelivered after the pause) changes nothing.
       await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
       expect(llm.calls).toHaveLength(1);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("crash/resume does not duplicate the analysis", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // writeBriefing degrades on a model error, so the "crash" is the worker dying while it saves the briefing.
+      const { graph, cfg, sessionId, llm, deps, contextCalls } = await setup({
+        context: [sufficientDraft()],
+        analysis: analysisResponses({ topics: ONE_TOPIC, runs: 2 }),
+        db: crashOnInsert(db, "briefings"),
+      });
+      const ctx: JobContext = { db, deps, graph };
+
+      await expect(handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow("worker crashed");
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "writing_briefing", progress: 92 });
+      expect((await graph.getState(cfg)).next).toEqual(["analyze"]);
+      // The unfinished version stays running so the retry reuses its number.
+      expect((await listAnalysisVersions(db, sessionId)).map((v) => [v.version, v.status])).toEqual([[1, "running"]]);
+      expect(await getCurrentAnalysis(db, sessionId)).toBeNull();
+
+      await handleStart(ctx, { sessionId }, { retryCount: 1, retryLimit: 2 });
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+      expect((await listAnalysisVersions(db, sessionId)).map((v) => [v.version, v.status, v.isCurrent])).toEqual([[1, "complete", true]]);
+      const bundle = (await getCurrentAnalysis(db, sessionId))!;
+      expect(bundle.topics).toHaveLength(1);
+      expect(bundle.moments.map((m) => m.granularity).sort()).toEqual(["exchange", "passage", "punchline"]);
+      expect(bundle.briefing!.lead).toHaveLength(1);
+      expect(contextCalls()).toHaveLength(1); // the context step was not re-run
+      expect(llm.calls.filter((c) => c.name === "topics")).toHaveLength(2); // the analysis node was
     } finally {
       log.mockRestore();
     }
