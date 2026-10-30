@@ -18,7 +18,7 @@ services:
       retries: 10
 
   chroma:
-    image: chromadb/chroma
+    image: chromadb/chroma:1.5.0
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -37,8 +37,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      chroma:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+      CHROMA_URL: http://chroma:8000
+      HF_HOME: /data/models
       TEST_DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor_test
       DATA_DIR: /data
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

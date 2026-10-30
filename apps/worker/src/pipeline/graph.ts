@@ -23,7 +23,10 @@ import {
   type Session,
   type Stage,
 } from "@digestor/core/server";
+import type { ChromaClient } from "chromadb";
 import { understandContext } from "../agents/context.js";
+import type { Embedder } from "../search/embed.js";
+import { indexSession } from "../search/index.js";
 import { runAnalysis } from "./analysis.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
@@ -35,6 +38,7 @@ export type PipelineDeps = {
   llm: StructuredLLM;
   media: typeof import("../media/ffmpeg.js");
   youtube: { downloadYouTube: typeof downloadYouTube };
+  search: { chroma: ChromaClient; embedder: Embedder };
 };
 
 const keep = <T>(_old: T, next: T): T => next;
@@ -287,11 +291,21 @@ export const askContextNode =
     return { resume, answers: [...s.answers, ...answers] };
   };
 
-/** Placeholder until the search index exists (Plan 2, Task 13): only reports the stage. */
+/**
+ * Indexes the transcript into the session's Chroma collection (idempotent). Search is optional: on any failure it logs
+ * and carries on, so the session is still analysed (Ask then answers "Search isn't available for this video.").
+ */
 export const indexNode =
   (deps: PipelineDeps): Node =>
   async (s) => {
     await setStage(deps.db, s.sessionId, "indexing", 70);
+    try {
+      const transcript = await getTranscript(deps.db, s.sessionId);
+      if (!transcript) throw new Error(`Session ${s.sessionId} has no transcript`);
+      await indexSession(deps.search, s.sessionId, transcript.words);
+    } catch (err) {
+      console.error(`index: could not index the transcript of session ${s.sessionId}; continuing without search`, err);
+    }
     return {};
   };
 

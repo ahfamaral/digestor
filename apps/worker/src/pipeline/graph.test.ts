@@ -2,6 +2,7 @@ import { access, copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ChromaClient } from "chromadb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command, MemorySaver } from "@langchain/langgraph";
 import type { ContextCard, Fact, ResumePayload, Transcript, Word } from "@digestor/core";
@@ -20,6 +21,8 @@ import * as media from "../media/ffmpeg.js";
 import { FakeTranscriber, TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { handleStart, type JobContext } from "../jobs.js";
 import { FakeLLM } from "../llm/structured.js";
+import { FakeEmbedder } from "../search/embed.js";
+import { collectionName, deleteSessionIndex } from "../search/index.js";
 import { analysisResponses, crashOnInsert, emptyAnalysisResponses } from "./fakeAnalysis.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
 import { buildPipeline, type PipelineDeps } from "./graph.js";
@@ -89,11 +92,14 @@ type Setup = {
   audioOnlyAck?: boolean;
   youtube?: typeof downloadYouTube;
   media?: PipelineDeps["media"];
+  search?: PipelineDeps["search"];
 };
 
 const notCalled: typeof downloadYouTube = async () => {
   throw new Error("downloadYouTube should not be called");
 };
+
+const testChroma = new ChromaClient({ host: new URL(process.env.CHROMA_URL ?? "http://chroma:8000").hostname, port: 8000 });
 
 async function setup(o: Setup = {}) {
   const session = o.youtube
@@ -113,6 +119,7 @@ async function setup(o: Setup = {}) {
     llm,
     media: o.media ?? media,
     youtube: { downloadYouTube: o.youtube ?? notCalled },
+    search: o.search ?? { chroma: testChroma, embedder: new FakeEmbedder() },
   };
   const graph = buildPipeline(deps, new MemorySaver());
   const cfg = { configurable: { thread_id: session.id } };
@@ -403,6 +410,27 @@ describe("analysis", () => {
       expect(m.checks).not.toBeNull();
       expect(m.thumbKey).toBe(`${sessionId}/thumbs/${m.id}.jpg`);
       expect(await exists(storage.resolve(m.thumbKey!))).toBe(true);
+    }
+  });
+
+  it("index node indexes the transcript into the session's collection", async () => {
+    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: analysisResponses({ topics: ONE_TOPIC }) });
+    await graph.invoke({ sessionId }, cfg);
+    const col = await testChroma.getCollection({ name: collectionName(sessionId) });
+    expect(await col.count()).toBeGreaterThan(0);
+    await deleteSessionIndex(testChroma, sessionId);
+  });
+
+  it("index node failure does not fail the session", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const search = { chroma: testChroma, embedder: { embed: async () => Promise.reject(new Error("model download failed")) } };
+      const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: analysisResponses({ topics: ONE_TOPIC }), search });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
     }
   });
 

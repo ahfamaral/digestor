@@ -1,4 +1,6 @@
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
+import type { ChromaClient } from "chromadb";
+import { deleteSessionIndex } from "./search/index.js";
 import { getRunningAnalysis, listSessionsWithExpiredVideo, updateSession, type Db, type LocalStorage, type Stage } from "@digestor/core/server";
 
 /** pg-boss queue for the daily video retention clean-up (scheduled 03:00 UTC in main.ts). */
@@ -22,11 +24,13 @@ export type CleanupDeps = {
   storage: Pick<LocalStorage, "removeVideoFiles">;
   /** The pipeline's LangGraph checkpointer: thread id = session id; its checkpoints hold the human's answers. */
   checkpointer: Pick<BaseCheckpointSaver, "deleteThread">;
+  /** Transcript search index; its collection goes with the video (best effort). */
+  chroma?: ChromaClient;
 };
 
 /**
  * Removes the source video (`original.*`, `audio.mp3`, `proxy.mp4`) of sessions older than `days`, then their LangGraph
- * checkpoints, then sets `videoDeletedAt`. Rows, thumbnails and rendered `clips/` stay. `videoDeletedAt` goes last, so a
+ * checkpoints and search index (best effort), then sets `videoDeletedAt`. Rows, thumbnails and rendered `clips/` stay. `videoDeletedAt` goes last, so a
  * failed step leaves the session a candidate for the next run.
  */
 export async function runVideoRetention(deps: CleanupDeps, days: number): Promise<{ removed: number }> {
@@ -38,6 +42,13 @@ export async function runVideoRetention(deps: CleanupDeps, days: number): Promis
       if (await getRunningAnalysis(deps.db, session.id)) continue; // a re-analysis is mid-run
       await deps.storage.removeVideoFiles(session.id);
       await deps.checkpointer.deleteThread(session.id);
+      if (deps.chroma) {
+        try {
+          await deleteSessionIndex(deps.chroma, session.id);
+        } catch (err) {
+          console.error(`cleanup: could not delete the search index of session ${session.id}`, err);
+        }
+      }
       await updateSession(deps.db, session.id, { videoDeletedAt: new Date() });
       removed++;
     } catch (err) {

@@ -33,6 +33,8 @@ services:
     environment: !override
       DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
       DATA_DIR: /data
+      CHROMA_URL: http://chroma:8000
+      HF_HOME: /data/models
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
       VIDEO_RETENTION_DAYS: ${VIDEO_RETENTION_DAYS:-14}
@@ -42,6 +44,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      chroma:
+        condition: service_started
 
   web:
     build:

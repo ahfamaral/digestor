@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { ChromaClient } from "chromadb";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { PgBoss } from "pg-boss";
 import type { z } from "zod";
@@ -36,6 +37,7 @@ import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
 import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
 import { createAnthropicLLM, type StructuredLLM } from "./llm/structured.js";
+import { createE5Embedder } from "./search/embed.js";
 import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleSessions } from "./sweep.js";
 import { downloadYouTube } from "./youtube/ytdlp.js";
 
@@ -69,7 +71,15 @@ async function main() {
   const transcriber: Transcriber = { transcribe: (p, fallbackDurationMs) => getTranscriber().transcribe(p, fallbackDurationMs) };
   const llm: StructuredLLM = { generate: (a) => getLlm().generate(a) };
 
-  const deps: PipelineDeps = { db, storage, transcriber, llm, media, youtube: { downloadYouTube } };
+  const chromaUrl = new URL(process.env.CHROMA_URL ?? "http://localhost:8000");
+  const chroma = new ChromaClient({
+    host: chromaUrl.hostname,
+    port: Number(chromaUrl.port || (chromaUrl.protocol === "https:" ? 443 : 80)),
+    ssl: chromaUrl.protocol === "https:",
+  });
+  const embedder = createE5Embedder(); // loads the model on first use
+
+  const deps: PipelineDeps = { db, storage, transcriber, llm, media, youtube: { downloadYouTube }, search: { chroma, embedder } };
 
   const saver = PostgresSaver.fromConnString(databaseUrl);
   await saver.setup();
@@ -103,7 +113,7 @@ async function main() {
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, notImplemented(QUEUES.translateBriefing));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     const days = videoRetentionDays();
-    const { removed } = await runVideoRetention({ db, storage, checkpointer: saver }, days);
+    const { removed } = await runVideoRetention({ db, storage, checkpointer: saver, chroma }, days);
     console.log(`cleanup: removed the video of ${removed} session(s) older than ${days} day(s)`);
   });
   await boss.work(SWEEP_QUEUE, { batchSize: 1 }, async () => {

@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { LocalStorage, createDb, createSession, getSession, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
+import type { ChromaClient } from "chromadb";
+import { collectionName } from "./search/index.js";
 import { runVideoRetention, videoRetentionDays } from "./cleanup.js";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -81,6 +83,25 @@ d("runVideoRetention", () => {
     expect(old.at("thumbs/t.jpg")).toBe(true);
     expect((await getSession(db, old.id))?.videoDeletedAt).toBeInstanceOf(Date);
     expect(await hasCheckpoint(old.id)).toBe(false);
+  });
+
+  it("deletes the session's search collection, and a Chroma failure does not block the retention", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const old = await seed(16, "ready");
+      const deleted: string[] = [];
+      const chroma = { deleteCollection: async ({ name }: { name: string }) => void deleted.push(name) } as unknown as ChromaClient;
+      expect((await runVideoRetention({ ...deps(), chroma }, 14)).removed).toBe(1);
+      expect(deleted).toEqual([collectionName(old.id)]);
+
+      const other = await seed(17, "ready");
+      const down = { deleteCollection: async () => Promise.reject(new Error("chroma down")) } as unknown as ChromaClient;
+      expect((await runVideoRetention({ ...deps(), chroma: down }, 14)).removed).toBe(1);
+      expect((await getSession(db, other.id))?.videoDeletedAt).toBeInstanceOf(Date);
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("does not touch the same session twice", async () => {
