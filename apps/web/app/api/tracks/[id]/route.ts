@@ -44,6 +44,8 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
   if (track.status !== "ready") return errorResponse(409, "These subtitles aren't ready yet.");
   if ("edits" in body) return Response.json(await editTrackCues(db, id, body.edits));
-  if ((await approveTrack(db, id)) === "missing_cues") return errorResponse(400, "Fill every subtitle line before approving.");
+  const approved = await approveTrack(db, id);
+  if (approved === "not_ready") return errorResponse(409, "These subtitles aren't ready yet.");
+  if (approved === "missing_cues") return errorResponse(400, "Fill every subtitle line before approving.");
   return Response.json(await getTrack(db, id));
 }

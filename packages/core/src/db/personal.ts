@@ -462,7 +462,8 @@ async function lockTrack(tx: Tx, id: string): Promise<Track> {
 
 /**
  * Stores a track's cues. `built` is the clip range they were made for: when the clip's bounds no longer match it (a
- * trim landed while the track was preparing), the track is stored `outdated` instead of `status`.
+ * trim landed while the track was preparing), the track is stored `outdated` instead of `status`. The clip row is
+ * locked first (the order updateClip uses: clip, then track), so a trim still in its transaction is waited for.
  */
 export async function setTrackCues(
   db: Db,
@@ -471,22 +472,29 @@ export async function setTrackCues(
   status: TrackStatus,
   built?: { startMs: number; endMs: number },
 ): Promise<Track> {
-  const [row] = await db
-    .update(subtitleTracks)
-    .set({
-      cues,
-      status: built
-        ? sql`CASE WHEN exists (select 1 from ${clips} where ${clips.id} = ${subtitleTracks.clipId} and ${clips.startMs} = ${built.startMs} and ${clips.endMs} = ${built.endMs}) THEN ${status} ELSE 'outdated' END`
-        : status,
-      ...(built ? { builtStartMs: built.startMs, builtEndMs: built.endMs } : {}),
-      error: null,
-      approvedAt: null,
-      burnStatus: sql`CASE WHEN ${subtitleTracks.burnStatus} = 'done' THEN 'stale' ELSE ${subtitleTracks.burnStatus} END`,
-    })
-    .where(eq(subtitleTracks.id, id))
-    .returning();
-  if (!row) throw new Error(`Track not found: ${id}`);
-  return row;
+  return db.transaction(async (tx) => {
+    let next = status;
+    if (built) {
+      const [peek] = await tx.select({ clipId: subtitleTracks.clipId }).from(subtitleTracks).where(eq(subtitleTracks.id, id));
+      if (!peek) throw new Error(`Track not found: ${id}`);
+      const clip = await lockClip(tx, peek.clipId);
+      if (!clip || clip.startMs !== built.startMs || clip.endMs !== built.endMs) next = "outdated";
+    }
+    const [row] = await tx
+      .update(subtitleTracks)
+      .set({
+        cues,
+        status: next,
+        ...(built ? { builtStartMs: built.startMs, builtEndMs: built.endMs } : {}),
+        error: null,
+        approvedAt: null,
+        burnStatus: sql`CASE WHEN ${subtitleTracks.burnStatus} = 'done' THEN 'stale' ELSE ${subtitleTracks.burnStatus} END`,
+      })
+      .where(eq(subtitleTracks.id, id))
+      .returning();
+    if (!row) throw new Error(`Track not found: ${id}`);
+    return row;
+  });
 }
 
 /** Marks a track that is still `preparing` as failed with a user-facing message; a ready track is never touched. */
@@ -528,16 +536,18 @@ export async function editTrackCues(db: Db, id: string, edits: { i: number; text
   });
 }
 
-export async function approveTrack(db: Db, id: string): Promise<"ok" | "missing_cues"> {
+/** Approves a `ready` track whose lines are all filled; an outdated (or not yet built) one is `not_ready`. */
+export async function approveTrack(db: Db, id: string): Promise<"ok" | "missing_cues" | "not_ready"> {
   return db.transaction(async (tx) => {
     const track = await lockTrack(tx, id);
+    if (track.status !== "ready") return "not_ready";
     if (track.cues.length === 0 || track.cues.some((c) => c.missing || c.text.trim() === "")) return "missing_cues";
     await tx.update(subtitleTracks).set({ approvedAt: new Date() }).where(eq(subtitleTracks.id, id));
     return "ok";
   });
 }
 
-/** Burned-in versions exist only for approved tracks. */
+/** Burned-in versions exist only for approved tracks that are current (`ready`, not outdated). */
 export async function claimTrackBurn(db: Db, id: string): Promise<boolean> {
   const rows = await db
     .update(subtitleTracks)
@@ -545,6 +555,7 @@ export async function claimTrackBurn(db: Db, id: string): Promise<boolean> {
     .where(
       and(
         eq(subtitleTracks.id, id),
+        eq(subtitleTracks.status, "ready"),
         sql`${subtitleTracks.approvedAt} is not null`,
         sql`exists (select 1 from ${clips} where ${clips.id} = ${subtitleTracks.clipId} and ${clips.deletedAt} is null)`,
         inArray(subtitleTracks.burnStatus, ["none", "failed", "stale"]),

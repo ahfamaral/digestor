@@ -5,7 +5,7 @@ import { createDb, type Db } from "./client.ts";
 import { completeAnalysisVersion, saveMoments, startAnalysisVersion } from "./analysis.ts";
 import { createSession, type Session } from "./repo.ts";
 import { sql } from "drizzle-orm";
-import { clipEvents, subtitleTracks } from "./schema.ts";
+import { clipEvents, clips, subtitleTracks } from "./schema.ts";
 import {
   addAskMessage, addProblemReport, approveTrack, claimClipRender, claimTrackBurn, createAskAction, createClip,
   createPersonalMoment, burnSignature, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
@@ -270,6 +270,20 @@ describe("tracks follow the cut (R27) and checks need a fresh ack (R28)", () => 
     expect(r.status).toBe("outdated");
   });
 
+  it("a prepare finishing while a trim is still in its transaction waits for it and ends up outdated", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    let finishing: Promise<unknown> | null = null;
+    await db.transaction(async (tx) => {
+      await tx.select().from(clips).where(eq(clips.id, c.id)).for("update"); // what updateClip holds
+      await tx.update(clips).set({ startMs: 12_000 }).where(eq(clips.id, c.id));
+      finishing = setTrackCues(db, t.id, [cue("Oi")], "ready", built);
+      await new Promise((r) => setTimeout(r, 150)); // the prepare runs while the trim is uncommitted
+    });
+    await finishing;
+    expect((await getTrack(db, t.id))!.status).toBe("outdated");
+  });
+
   it("a bounds change outdates every ready track built for other bounds, clears approval and the warnings ack", async () => {
     const c = await newClip();
     await updateClip(db, c.id, { warningsAck: true }, "user");
@@ -308,6 +322,16 @@ describe("tracks follow the cut (R27) and checks need a fresh ack (R28)", () => 
     const back = await undoLastEvent(db, c.id); // the ack is not an event: this undoes the trim
     expect(back).toMatchObject({ startMs: 10_000, warningsAck: false });
     expect(await getTrack(db, t.id)).toMatchObject({ status: "ready", approvedAt: null });
+  });
+
+  it("an outdated track can't be approved or burned", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready", built);
+    await updateClip(db, c.id, { startMs: 12_000 }, "user");
+    expect(await approveTrack(db, t.id)).toBe("not_ready");
+    await db.execute(sql`update ${subtitleTracks} set approved_at = now(), burn_status = 'stale' where id = ${t.id}`); // a racing approve
+    expect(await claimTrackBurn(db, t.id)).toBe(false);
   });
 
   it("an outdated track can be replaced (Rebuild), unless its burn is being made", async () => {
