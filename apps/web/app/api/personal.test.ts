@@ -6,6 +6,7 @@ import {
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
 import { PUT as putSelection } from "./moments/[id]/selection/route";
+import { GET as getSelections } from "./sessions/[id]/selections/route";
 import { POST as confirm } from "./sessions/[id]/clips/route";
 import { PATCH as patchClip } from "./clips/[id]/route";
 import { POST as undo } from "./clips/[id]/undo/route";
@@ -24,6 +25,20 @@ const req = (body: unknown, method = "POST") => new Request("http://localhost/x"
 const cleanChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
 };
+
+describe("GET /api/sessions/[id]/selections", () => {
+  it("returns the owner's selections, 404 for a bad id and 409 for a session that isn't ready", async () => {
+    const { sessionId, moments } = await seedReadySession(h.db);
+    await putSelection(req({ status: "rejected" }, "PUT"), ctx(moments[0]!.id));
+    const res = await getSelections(new Request("http://localhost/x"), ctx(sessionId));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ selections: { [moments[0]!.id]: "rejected" } });
+    expect((await getSelections(new Request("http://localhost/x"), ctx("nope"))).status).toBe(404);
+    expect((await getSelections(new Request("http://localhost/x"), ctx("00000000-0000-4000-8000-000000000000"))).status).toBe(404);
+    await updateSession(h.db, sessionId, { stage: "failed" });
+    expect((await getSelections(new Request("http://localhost/x"), ctx(sessionId))).status).toBe(409);
+  });
+});
 
 describe("PUT /api/moments/[id]/selection", () => {
   it("selection approve enqueues one check when checks are missing", async () => {
@@ -175,6 +190,33 @@ describe("PATCH /api/clips/[id]", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).deletedAt).toBeNull();
     expect(await getClip(h.db, clip.id)).not.toBeNull();
+  });
+
+  it("undo with ifActor ask only reverts a change the Ask agent made last (R26)", async () => {
+    const { sessionId, moments } = await seedReadySession(h.db);
+    const m = moments[0]!;
+    const guarded = { ifActor: "ask" };
+    // created by ask, untouched: undone
+    const mine = await createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: m.id, startMs: 10_000, endMs: 30_000, actor: "ask" });
+    expect((await undo(req(guarded), ctx(mine.id))).status).toBe(200);
+    expect(await getClip(h.db, mine.id)).toBeNull();
+    // the user brought it back (latest event is theirs? the undone create is skipped; nothing of ask's remains)
+    expect((await undo(req(guarded), ctx(mine.id))).status).toBe(409);
+    // created by ask, then edited by the user: latest event is the user's
+    const edited = await createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: m.id, startMs: 10_000, endMs: 30_000, actor: "ask" });
+    await patchClip(req({ extend: "next" }, "PATCH"), ctx(edited.id));
+    const refused = await undo(req(guarded), ctx(edited.id));
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toBe("There is nothing to undo.");
+    expect((await getClip(h.db, edited.id))!.endMs).toBeGreaterThan(30_000); // the user's edit stays
+    // created by ask, deleted by the user: not undone by the drawer
+    const gone = await createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: m.id, startMs: 10_000, endMs: 30_000, actor: "ask" });
+    await deleteClip(h.db, gone.id, "user");
+    expect((await undo(req(guarded), ctx(gone.id))).status).toBe(409);
+    expect(await getClip(h.db, gone.id)).toBeNull();
+    // without the body the old behaviour stays: Prepare's Undo restores it
+    expect((await undo(req({}), ctx(gone.id))).status).toBe(200);
+    expect(await getClip(h.db, gone.id)).not.toBeNull();
   });
 
   it("a clip owned by someone else is a 404 on every clip and track route", async () => {

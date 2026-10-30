@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord } from "@digestor/core";
+import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus } from "@digestor/core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { asToolCalls, formatToolCall, linkifyTimestamps, parseBulkPayload } from "@/lib/askText";
+import { asToolCalls, formatToolCall, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "@/lib/askText";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { isTyping, opensAsk } from "@/lib/review";
@@ -17,7 +17,7 @@ const COUNTER_FROM = 400;
 const POLL_MS = 2000;
 const CHIP = "inline-flex h-6 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
 
-type Message = Omit<AskMessageWithActions, "createdAt">;
+type Message = Omit<AskMessageWithActions, "createdAt"> & { createdAt: string };
 
 export interface AskDrawerProps {
   sessionId: string;
@@ -46,6 +46,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
   const [preview, setPreview] = useState<{ ms: number; n: number } | null>(null);
   /** Client-side only: chips whose change was undone, by `<messageId>:<index>`. */
   const [undone, setUndone] = useState<Set<string>>(new Set());
+  const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -66,6 +67,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
       if (!res.ok) throw new Error("load");
       const body = (await res.json()) as { messages: Message[] };
       setMessages(body.messages);
+      setNow(Date.now());
       setLoadError(false);
     } catch {
       if (!quiet) setLoadError(true);
@@ -76,10 +78,14 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     if (open) void load(false);
   }, [open, load]);
 
-  const hasPending = messages.some((m) => m.role === "assistant" && m.status === "pending");
+  const isWaiting = (m: Message) => m.role === "assistant" && m.status === "pending" && !isStalePending(m.createdAt, now);
+  const hasPending = messages.some(isWaiting);
   useEffect(() => {
     if (!open || !hasPending) return;
-    const timer = setInterval(() => void load(true), POLL_MS);
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      void load(true);
+    }, POLL_MS);
     return () => clearInterval(timer);
   }, [open, hasPending, load]);
 
@@ -131,10 +137,20 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     setError(key, null);
     try {
       if (call.clipId) {
-        const res = await fetch(`/api/clips/${call.clipId}/undo`, { method: "POST" });
+        const res = await fetch(`/api/clips/${call.clipId}/undo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ifActor: "ask" }),
+        });
         if (!res.ok) throw new Error(await errorMessage(res, t("ask.undoFailed")));
       } else {
-        for (const [momentId, previous] of Object.entries(call.undo ?? {})) {
+        // Only moments still at what the tool call set; anything the user changed since is left alone.
+        const res = await fetch(`/api/sessions/${sessionId}/selections`);
+        if (!res.ok) throw new Error(await errorMessage(res, t("ask.undoFailed")));
+        const current = ((await res.json()) as { selections: Record<string, SelectionStatus> }).selections;
+        const { restore, skipped } = planSelectionUndo(call, current);
+        if (Object.keys(restore).length === 0) throw new Error(t("ask.undoNothing"));
+        for (const [momentId, previous] of Object.entries(restore)) {
           const res = await fetch(`/api/moments/${momentId}/selection`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -142,6 +158,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
           });
           if (!res.ok) throw new Error(await errorMessage(res, t("ask.undoFailed")));
         }
+        if (skipped > 0) setError(key, t("ask.undoPartial"));
       }
       setUndone((u) => new Set(u).add(key));
       router.refresh();
@@ -236,6 +253,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
                   message={m}
                   lang={lang}
                   videoRemoved={videoRemoved}
+                  stale={m.status === "pending" && !isWaiting(m)}
                   undone={undone}
                   busy={busy}
                   errors={errors}
@@ -254,6 +272,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
             </label>
             <Textarea
               id="ask-input"
+              maxLength={MAX_QUESTION}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -291,11 +310,12 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
 }
 
 function MessageItem({
-  message, lang, videoRemoved, undone, busy, errors, onTime, onUndo, onDecide,
+  message, lang, videoRemoved, stale, undone, busy, errors, onTime, onUndo, onDecide,
 }: {
   message: Message;
   lang: string | undefined;
   videoRemoved: boolean;
+  stale: boolean;
   undone: Set<string>;
   busy: Set<string>;
   errors: Record<string, string>;
@@ -317,7 +337,12 @@ function MessageItem({
   return (
     <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
       <span className="sr-only">{t("ask.answer")}: </span>
-      {message.status === "pending" && <p className="text-muted-foreground">{t("ask.thinking")}</p>}
+      {message.status === "pending" && !stale && <p className="text-muted-foreground">{t("ask.thinking")}</p>}
+      {message.status === "pending" && stale && (
+        <p role="alert" className="text-red-700">
+          {t("ask.tooSlow")}
+        </p>
+      )}
       {message.status === "failed" && (
         <p role="alert" className="break-words text-red-700">
           {message.text}

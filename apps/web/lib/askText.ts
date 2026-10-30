@@ -81,3 +81,27 @@ export function parseBulkPayload(raw: unknown): { momentIds: string[]; status: S
   if (status !== null && !isStatus(status)) return null;
   return { momentIds: momentIds as string[], status };
 }
+
+/** Undo of `set_selection` restores only moments still at the status the call set; the rest were changed since. */
+export function planSelectionUndo(
+  call: AskToolCallRecord,
+  current: Record<string, SelectionStatus | undefined>,
+): { restore: Record<string, SelectionStatus | null>; skipped: number } {
+  const args = call.args as { status?: unknown } | null;
+  const set = typeof args === "object" && args !== null && "status" in args ? args.status : undefined;
+  const restore: Record<string, SelectionStatus | null> = {};
+  let skipped = 0;
+  for (const [id, previous] of Object.entries(call.undo ?? {})) {
+    if ((set === null || isStatus(set)) && (current[id] ?? null) === set) restore[id] = previous;
+    else skipped += 1;
+  }
+  return { restore, skipped };
+}
+
+/** A pending answer older than this is given up on (the worker is down or the job was lost). */
+export const ASK_PENDING_LIMIT_MS = 3 * 60 * 1000;
+
+export function isStalePending(createdAt: string | Date, now: number): boolean {
+  const created = new Date(createdAt).getTime();
+  return Number.isFinite(created) && now - created > ASK_PENDING_LIMIT_MS;
+}

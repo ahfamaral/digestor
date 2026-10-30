@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asToolCalls, formatToolCall, linkifyTimestamps, parseBulkPayload } from "./askText";
+import { ASK_PENDING_LIMIT_MS, asToolCalls, formatToolCall, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
 
 describe("linkifyTimestamps", () => {
   it("splits text and times", () => {
@@ -65,5 +65,35 @@ describe("parseBulkPayload", () => {
     expect(parseBulkPayload({ momentIds: ["a"], status: null })).toEqual({ momentIds: ["a"], status: null });
     expect(parseBulkPayload({ momentIds: "a" })).toBeNull();
     expect(parseBulkPayload(undefined)).toBeNull();
+  });
+});
+
+describe("planSelectionUndo", () => {
+  const call = (status: unknown, undo: Record<string, "approved" | "neutral" | "rejected" | null>) => ({ name: "set_selection", args: { momentIds: Object.keys(undo), status }, result: "", ok: true, undo });
+
+  it("restores moments still at the status the tool call set", () => {
+    expect(planSelectionUndo(call("approved", { a: null, b: "neutral" }), { a: "approved", b: "approved" })).toEqual({ restore: { a: null, b: "neutral" }, skipped: 0 });
+  });
+
+  it("skips moments the user changed since", () => {
+    expect(planSelectionUndo(call("approved", { a: null, b: "neutral" }), { a: "approved", b: "rejected" })).toEqual({ restore: { a: null }, skipped: 1 });
+  });
+
+  it("treats no selection as proposed (null) and skips everything when nothing matches", () => {
+    expect(planSelectionUndo(call(null, { a: "rejected" }), {})).toEqual({ restore: { a: "rejected" }, skipped: 0 });
+    expect(planSelectionUndo(call("neutral", { a: null }), {})).toEqual({ restore: {}, skipped: 1 });
+  });
+
+  it("skips everything when the call's status can't be read", () => {
+    expect(planSelectionUndo({ name: "set_selection", args: "garbled", result: "", ok: true, undo: { a: null } }, { a: "approved" })).toEqual({ restore: {}, skipped: 1 });
+  });
+});
+
+describe("isStalePending", () => {
+  const created = new Date("2026-10-30T10:00:00Z");
+  it("is true once a pending answer is older than the limit", () => {
+    expect(isStalePending(created.toISOString(), created.getTime() + ASK_PENDING_LIMIT_MS - 1)).toBe(false);
+    expect(isStalePending(created.toISOString(), created.getTime() + ASK_PENDING_LIMIT_MS + 1)).toBe(true);
+    expect(isStalePending("not a date", Date.now())).toBe(false);
   });
 });
