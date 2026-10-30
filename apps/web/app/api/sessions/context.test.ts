@@ -24,7 +24,7 @@ const card: ContextCard = {
   openQuestions: [],
 };
 
-async function session(stage: "awaiting_context" | "awaiting_review") {
+async function session(stage: "awaiting_context" | "understanding") {
   const s = await createSession(h.db, { title: "t", source: "upload" });
   await setStage(h.db, s.id, stage, 50);
   return s.id;
@@ -46,7 +46,7 @@ describe("POST /api/sessions/[id]/context", () => {
     expect((await getSession(h.db, id))?.stage).toBe("awaiting_context");
   });
   it("409s when the session is not awaiting context", async () => {
-    const id = await session("awaiting_review");
+    const id = await session("understanding");
     const res = await post(id, { action: "skip" });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "This video isn't waiting for context." });
@@ -80,11 +80,11 @@ describe("POST /api/sessions/[id]/context", () => {
     expect((await post(id, { action: "skip" })).status).toBe(409);
     expect(h.send).toHaveBeenCalledTimes(1);
   });
-  it("skip sets finding_clips and enqueues", async () => {
+  it("skip sets indexing and enqueues", async () => {
     const id = await session("awaiting_context");
     expect((await post(id, { action: "skip" })).status).toBe(200);
     const s = await getSession(h.db, id);
-    expect([s?.stage, s?.progress]).toEqual(["finding_clips", 70]);
+    expect([s?.stage, s?.progress]).toEqual(["indexing", 70]);
     expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload: { action: "skip" } }, { ...JOB_OPTIONS, singletonKey: id });
   });
 });

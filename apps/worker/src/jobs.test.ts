@@ -85,7 +85,7 @@ d("job handlers", () => {
   });
 
   it("handleResume continues a mid-run thread with null (stale resume is not replayed)", async () => {
-    const g = stubGraph({ next: ["find_clips"] });
+    const g = stubGraph({ next: ["finish"] });
     const id = await newSession();
     await handleResume(ctxFor(g), { sessionId: id, payload: { action: "continue", answers: [] } as never }, FIRST);
     expect(g.invoke).toHaveBeenCalledWith(null, { configurable: { thread_id: id } });
@@ -139,14 +139,14 @@ d("job handlers", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const payload = { action: "skip" } as const;
     const id = await newSession();
-    await setStage(db, id, "finding_clips", 70);
-    const flaky = stubGraph({ next: ["find_clips"], fail: new Error("overloaded") });
+    await setStage(db, id, "indexing", 70);
+    const flaky = stubGraph({ next: ["finish"], fail: new Error("overloaded") });
     await expect(handleResume(ctxFor(flaky), { sessionId: id, payload }, FIRST)).rejects.toThrow("overloaded");
-    expect((await getSession(db, id))!.stage).toBe("finding_clips");
+    expect((await getSession(db, id))!.stage).toBe("indexing");
     await expect(handleResume(ctxFor(flaky), { sessionId: id, payload }, LAST)).rejects.toThrow("overloaded");
     expect((await getSession(db, id))!.stage).toBe("failed");
 
-    const keyless = stubGraph({ next: ["find_clips"], fail: new MissingApiKeyError("ANTHROPIC_API_KEY") });
+    const keyless = stubGraph({ next: ["finish"], fail: new MissingApiKeyError("ANTHROPIC_API_KEY") });
     const id2 = await newSession();
     await expect(handleResume(ctxFor(keyless), { sessionId: id2, payload }, FIRST)).resolves.toBeUndefined();
     expect(await getSession(db, id2)).toMatchObject({ stage: "failed", error: "ANTHROPIC_API_KEY is not set on the server." });

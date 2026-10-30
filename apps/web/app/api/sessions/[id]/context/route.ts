@@ -34,7 +34,7 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
 
   const { db, boss } = getServer();
   if (!(await getSession(db, id))) return errorResponse(404, "Session not found.");
-  const next = payload.action === "continue" ? ({ stage: "understanding", progress: 55 } as const) : ({ stage: "finding_clips", progress: 70 } as const);
+  const next = payload.action === "continue" ? ({ stage: "understanding", progress: 55 } as const) : ({ stage: "indexing", progress: 70 } as const);
   // Atomic: only one concurrent request wins the transition.
   if (!(await transitionStage(db, id, "awaiting_context", next.stage, next.progress))) {
     return errorResponse(409, "This video isn't waiting for context.");

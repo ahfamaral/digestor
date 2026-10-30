@@ -3,10 +3,10 @@ import { fileURLToPath } from "node:url";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { PgBoss } from "pg-boss";
 import type { z } from "zod";
-import { JOB_OPTIONS, QUEUES, RenderClipJobSchema, ResumeJobSchema, StartJobSchema } from "@digestor/core";
+import { JOB_OPTIONS, QUEUES, ResumeJobSchema, StartJobSchema } from "@digestor/core";
 import { LocalStorage, createDb } from "@digestor/core/server";
 import { CLEANUP_CRON, CLEANUP_QUEUE, retentionDays, runCleanup } from "./cleanup.js";
-import { handleRenderClip, handleResume, handleStart, MissingApiKeyError, processJobs, type Attempt, type JobContext } from "./jobs.js";
+import { handleResume, handleStart, MissingApiKeyError, processJobs, type Attempt, type JobContext } from "./jobs.js";
 import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
 import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
@@ -66,7 +66,7 @@ async function main() {
     boss.work<unknown, void, typeof workOptions>(queue, workOptions, (jobs) => processJobs(queue, schema, handle, jobs));
   await register(QUEUES.start, StartJobSchema, (j, attempt) => handleStart(ctx, j, attempt));
   await register(QUEUES.resume, ResumeJobSchema, (j, attempt) => handleResume(ctx, j, attempt));
-  await register(QUEUES.renderClip, RenderClipJobSchema, (j) => handleRenderClip(ctx, j));
+  // QUEUES.renderClip stays declared but has no consumer until Plan 2 Task 12.
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     const days = retentionDays();
     const { deleted } = await runCleanup({ db, storage, checkpointer: saver }, days);

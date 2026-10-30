@@ -1,6 +1,5 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { getClip } from "@digestor/core/server";
 import { isUuid } from "@/lib/ids";
 import { errorResponse } from "@/lib/http";
 import { getServer } from "@/lib/server";
@@ -44,10 +43,9 @@ function parseRange(header: string, size: number): { start: number; end: number 
   return { start, end: Math.min(end, size - 1) };
 }
 
-async function attachmentName(clipId: string | null, sessionId: string): Promise<string> {
-  const clip = clipId ? await getClip(getServer().db, clipId) : null;
-  const title = clip?.sessionId === sessionId ? clip.title.replace(/[^\w\- ]/g, "").trim() : "";
-  return title || "clip";
+/** Clip titles return with the personal clips table (Plan 2, Tasks 3 and 16); until then downloads are named "clip". */
+function attachmentName(): string {
+  return "clip";
 }
 
 /**
@@ -105,7 +103,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; fil
 
   const headers = new Headers({ "Content-Type": CONTENT_TYPES[match.ext]!, "Accept-Ranges": "bytes" });
   if (new URL(req.url).searchParams.get("download") === "1") {
-    const name = await attachmentName(match.clipId, id);
+    const name = attachmentName();
     headers.set("Content-Disposition", `attachment; filename="${name}.${match.ext}"`);
   }
 

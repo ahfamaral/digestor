@@ -66,7 +66,7 @@ d("runCleanup", () => {
   }
 
   it("deletes sessions older than the retention window with their files and checkpoints", async () => {
-    const old = await seed(8, "done");
+    const old = await seed(8, "ready");
     await checkpoint(old.id);
     expect(await hasCheckpoint(old.id)).toBe(true);
     const { deleted } = await runCleanup(deps(), 7);
@@ -79,7 +79,7 @@ d("runCleanup", () => {
   it("keeps the row when the checkpoints can't be deleted, so the next run retries", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const old = await seed(9, "done");
+      const old = await seed(9, "ready");
       const failing = { deleteThread: async () => Promise.reject(new Error("db down")) };
       const { deleted } = await runCleanup({ db, storage, checkpointer: failing }, 7);
       expect(deleted).toBe(0);
@@ -92,7 +92,7 @@ d("runCleanup", () => {
   });
 
   it("keeps recent sessions and their checkpoints", async () => {
-    const recent = await seed(2, "done");
+    const recent = await seed(2, "ready");
     await checkpoint(recent.id);
     const { deleted } = await runCleanup(deps(), 7);
     expect(deleted).toBe(0);

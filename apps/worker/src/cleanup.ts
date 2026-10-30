@@ -11,8 +11,10 @@ const PROCESSING_STAGES: ReadonlySet<Stage> = new Set<Stage>([
   "preparing",
   "transcribing",
   "understanding",
-  "finding_clips",
-  "rendering",
+  "indexing",
+  "finding_topics",
+  "finding_moments",
+  "writing_briefing",
 ]);
 
 export type CleanupDeps = {

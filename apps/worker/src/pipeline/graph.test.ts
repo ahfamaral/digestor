@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,16 +9,8 @@ import {
   LocalStorage,
   createDb,
   createSession,
-  getClip,
   getContextCard,
   getSession,
-  listClips,
-  saveContextCard,
-  saveTranscript,
-  setClipBounds,
-  setClipStatus,
-  setRenderState,
-  setStage,
   updateSession,
   type Db,
 } from "@digestor/core/server";
@@ -27,8 +19,7 @@ import { FakeTranscriber, TranscriptionError, type Transcriber } from "../transc
 import { handleStart, type JobContext } from "../jobs.js";
 import { FakeLLM } from "../llm/structured.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
-import { buildPipeline, findClipsNode, renderNode, type PipelineDeps } from "./graph.js";
-import { renderOne } from "./render.js";
+import { buildPipeline, type PipelineDeps } from "./graph.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
 const LONG = `${TMP}long.mp4`; // 100 s with audio
@@ -49,7 +40,7 @@ const transcript: Transcript = { language: "en", languageConfidence: 0.97, durat
 const none: Fact = { value: null, source: null, evidence: null };
 const fact = (value: string, source: Fact["source"], evidence: string): Fact => ({ value, source, evidence });
 
-/** LLM draft card: event type and speaker A are grounded in the transcript; the date is whatever is passed. */
+/** LLM draft card: profile and speaker A are grounded in the transcript; the date is whatever is passed. */
 function draft(date: Fact = none): ContextCard {
   return {
     language: none,
@@ -64,23 +55,6 @@ function draft(date: Fact = none): ContextCard {
   };
 }
 const sufficientDraft = () => draft(fact("2026", "video", "Sentence number 3."));
-
-const cand = (title: string, score: number, start: string, end: string) => ({
-  title, reason: "r", label: "key_point", score, start, end, evidence: [],
-});
-// Snaps to 0–31.85 s, 32.85–64.85 s and 65.85–97.85 s; no hot takes.
-const clipPass = [
-  {
-    clips: [
-      cand("One", 90, "00:00:00", "00:00:33"),
-      cand("Two", 80, "00:00:33", "00:01:06"),
-      cand("Three", 70, "00:01:06", "00:01:39"),
-    ],
-  },
-  { hotTakes: [] },
-  { hotTakes: [] },
-  { hotTakes: [] },
-];
 
 const exists = (p: string) => access(p).then(() => true, () => false);
 
@@ -153,7 +127,7 @@ describe("pipeline", () => {
     expect(await interruptValue()).toEqual({ type: "context" });
 
     const s = (await getSession(db, sessionId))!;
-    expect(s).toMatchObject({ stage: "awaiting_context", progress: 55, language: "en", eventType: "interview" });
+    expect(s).toMatchObject({ stage: "awaiting_context", progress: 55, language: "en", profile: "interview" });
     expect(s.audioKey).toBe(`${sessionId}/audio.mp3`);
     expect(s.proxyKey).toBe(`${sessionId}/proxy.mp4`);
     expect(Math.abs(s.durationMs! - 100_000)).toBeLessThan(500);
@@ -168,37 +142,17 @@ describe("pipeline", () => {
     expect(llm.calls).toHaveLength(1);
   });
 
-  it("an invalid action at the context pause pauses again without a resumed node re-setting the stage", async () => {
-    // The resumed ask_context gets {action:"render"} back from interrupt() (no stage write), routes back to
-    // ask_context, and that fresh run pauses again: only the real pause sets awaiting_context.
-    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft()] });
-    await graph.invoke({ sessionId }, cfg);
-    await setStage(db, sessionId, "understanding", 55);
-    await resume({ action: "render" } as never);
-    expect(await interruptValue()).toEqual({ type: "context" });
-    expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
-    expect((await getSession(db, sessionId))!.stage).toBe("awaiting_context");
-    expect(llm.calls).toHaveLength(1);
-  });
-
-  it("skip goes straight to review with clips stored", async () => {
-    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), ...clipPass] });
+  it("skip goes straight to ready after the single context pause", async () => {
+    const { graph, cfg, sessionId, llm, resume } = await setup({ llm: [draft()] });
     await graph.invoke({ sessionId }, cfg);
     await resume({ action: "skip" });
-    expect(await interruptValue()).toEqual({ type: "review" });
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_review", progress: 70 });
-    expect(llm.calls).toHaveLength(1 + 1 + 3); // no second context round
-
-    const clips = await listClips(db, sessionId);
-    expect(clips.map((c) => c.title)).toEqual(["One", "Two", "Three"]);
-    for (const c of clips) {
-      expect(c.thumbKey).toBe(`${sessionId}/thumbs/${c.id}.jpg`);
-      expect(await exists(storage.resolve(c.thumbKey!))).toBe(true);
-    }
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(llm.calls).toHaveLength(1); // no second context round
   });
 
-  it("asks one follow-up round with the new questions, then finds clips (never a third round)", async () => {
-    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft(), draft(), ...clipPass] });
+  it("asks one follow-up round with the new questions, then finishes (never a third round)", async () => {
+    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft(), draft()] });
     await graph.invoke({ sessionId }, cfg);
     await resume({
       action: "continue",
@@ -229,65 +183,33 @@ describe("pipeline", () => {
         affiliation: none,
       },
     ]);
-    expect((await getSession(db, sessionId))!.eventType).toBe("supreme_court");
+    expect((await getSession(db, sessionId))!.profile).toBe("supreme_court");
 
-    // The second round's answers are folded into the card, then clips are found even though it is still insufficient.
+    // The second round's answers are folded into the card, then the pipeline finishes even though it is still insufficient.
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "Sometime in 2025" }], cardEdits: {} });
-    expect(await interruptValue()).toEqual({ type: "review" });
-    expect(llm.calls.map((c) => c.name)).toEqual([
-      "context_card", "context_card", "context_card", "long_clips", "hot_takes", "hot_takes", "hot_takes",
-    ]);
+    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card", "context_card"]);
     expect(llm.calls[2]!.user).toContain("A: Maybe last spring");
     expect(llm.calls[2]!.user).toContain("Q: When was this recorded or first aired?\nA: Sometime in 2025");
     expect((await getContextCard(db, sessionId))!.card.sufficient).toBe(false);
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_review" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
   });
 
-  it("skipping the follow-up round goes straight to clips", async () => {
-    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft(), ...clipPass] });
+  it("skipping the follow-up round goes straight to ready", async () => {
+    const { graph, cfg, sessionId, llm, resume, interruptValue } = await setup({ llm: [draft(), draft()] });
     await graph.invoke({ sessionId }, cfg);
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "no idea" }], cardEdits: {} });
     expect(await interruptValue()).toEqual({ type: "context" });
     await resume({ action: "skip" });
-    expect(await interruptValue()).toEqual({ type: "review" });
-    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card", "long_clips", "hot_takes", "hot_takes", "hot_takes"]);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card"]);
   });
 
   it("sufficient context never pauses for context", async () => {
-    const { graph, cfg, sessionId, interruptValue } = await setup({ llm: [sufficientDraft(), ...clipPass] });
+    const { graph, cfg, sessionId } = await setup({ llm: [sufficientDraft()] });
     await graph.invoke({ sessionId }, cfg);
-    expect(await interruptValue()).toEqual({ type: "review" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
     expect((await getContextCard(db, sessionId))!).toMatchObject({ round: 1, card: { sufficient: true } });
-  });
-
-  it("render only renders approved clips", async () => {
-    const { graph, cfg, sessionId, resume } = await setup({ llm: [sufficientDraft(), ...clipPass] });
-    await graph.invoke({ sessionId }, cfg);
-    const [first, ...others] = await listClips(db, sessionId);
-    await setClipStatus(db, first!.id, "approved", "user");
-    await setClipStatus(db, others[0]!.id, "rejected", "user");
-    await resume({ action: "render" } as never);
-
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "done", progress: 100 });
-    expect((await graph.getState(cfg)).next).toEqual([]);
-
-    const done = (await getClip(db, first!.id))!;
-    expect(done).toMatchObject({
-      renderStatus: "done",
-      renderKey: `${sessionId}/clips/${first!.id}.mp4`,
-      srtKey: `${sessionId}/clips/${first!.id}.srt`,
-    });
-    const rendered = await media.probe(storage.resolve(done.renderKey!));
-    expect(Math.abs(rendered.durationMs - (first!.endMs - first!.startMs))).toBeLessThan(500);
-    expect(rendered.width).toBe(320);
-    const srt = await readFile(storage.resolve(done.srtKey!), "utf8");
-    expect(srt).toContain("1\n00:00:00,000 --> ");
-    expect(srt).toContain("Sentence number 0.");
-    expect(await exists(storage.resolve(`${sessionId}/clips/${first!.id}.ass`))).toBe(false);
-
-    for (const c of others) {
-      expect(await getClip(db, c.id)).toMatchObject({ renderStatus: "none", renderKey: null, srtKey: null });
-    }
   });
 
   it("fails cleanly on a video without audio", async () => {
@@ -308,12 +230,12 @@ describe("pipeline", () => {
       durationS: 100,
     };
     const llmDraft = draft(fact("2026-03-14", "metadata", "2026-03-14"));
-    const { graph, cfg, sessionId, llm, interruptValue } = await setup({
+    const { graph, cfg, sessionId, llm } = await setup({
       youtube: youtubeStub(metadata),
-      llm: [llmDraft, ...clipPass],
+      llm: [llmDraft],
     });
     await graph.invoke({ sessionId }, cfg);
-    expect(await interruptValue()).toEqual({ type: "review" });
+    expect((await getSession(db, sessionId))!.stage).toBe("ready");
 
     const s = (await getSession(db, sessionId))!;
     expect(s.title).toBe("Minister interview");
@@ -432,7 +354,7 @@ describe("pipeline", () => {
 });
 
 describe("crash and resume", () => {
-  it("a retried start job resumes from the checkpoint without re-running finished nodes or duplicating clips", async () => {
+  it("a retried start job resumes from the checkpoint without re-running finished nodes", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       let transcribeCalls = 0;
@@ -453,7 +375,7 @@ describe("crash and resume", () => {
       const { graph, cfg, sessionId, llm, deps } = await setup({
         transcriber: flaky,
         media: counting,
-        llm: [sufficientDraft(), ...clipPass],
+        llm: [draft()],
       });
       const ctx: JobContext = { db, deps, graph };
 
@@ -464,154 +386,17 @@ describe("crash and resume", () => {
 
       // pg-boss retries the job: the run continues from the checkpoint.
       await handleStart(ctx, { sessionId }, { retryCount: 1, retryLimit: 2 });
-      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_review", progress: 70 });
-      expect((await graph.getState(cfg)).next).toEqual(["review"]);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", progress: 55 });
+      expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
       expect(extracted).toHaveLength(1); // ingest ran once
       expect(transcribeCalls).toBe(2);
-      expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "long_clips", "hot_takes", "hot_takes", "hot_takes"]);
-      expect((await listClips(db, sessionId)).map((c) => c.title)).toEqual(["One", "Two", "Three"]);
+      expect(llm.calls.map((c) => c.name)).toEqual(["context_card"]);
 
       // A duplicate start job for the same session (e.g. redelivered after the pause) changes nothing.
       await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
-      expect(await listClips(db, sessionId)).toHaveLength(3);
-      expect(llm.calls).toHaveLength(5);
+      expect(llm.calls).toHaveLength(1);
     } finally {
       log.mockRestore();
     }
-  });
-});
-
-describe("nodes", () => {
-  async function readyForClips(o: Setup) {
-    const ctx = await setup(o);
-    await saveTranscript(db, ctx.sessionId, transcript);
-    await saveContextCard(db, ctx.sessionId, { ...sufficientDraft(), sufficient: true }, 1);
-    return ctx;
-  }
-  const state = (sessionId: string) => ({ sessionId, round: 1, answers: [], resume: null });
-
-  it("re-running find_clips does not duplicate clips", async () => {
-    const { deps, sessionId } = await readyForClips({ llm: [...clipPass, ...clipPass] });
-    await findClipsNode(deps)(state(sessionId));
-    expect(await listClips(db, sessionId)).toHaveLength(3);
-    await findClipsNode(deps)(state(sessionId));
-    expect(await listClips(db, sessionId)).toHaveLength(3);
-  });
-
-  it("a failing thumbnail does not fail find_clips", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const failingThumb = { ...media, thumbnail: async () => Promise.reject(new Error("boom")) };
-      const { deps, sessionId } = await readyForClips({ llm: clipPass, media: failingThumb });
-      await findClipsNode(deps)(state(sessionId));
-      const clips = await listClips(db, sessionId);
-      expect(clips).toHaveLength(3);
-      expect(clips.every((c) => c.thumbKey === null)).toBe(true);
-      expect(log).toHaveBeenCalled();
-    } finally {
-      log.mockRestore();
-    }
-  });
-
-  it("render skips clips that are already rendered (retry-safe)", async () => {
-    const rendered: string[] = [];
-    const counting = {
-      ...media,
-      renderClip: async (o: Parameters<typeof media.renderClip>[0]) => {
-        rendered.push(o.output);
-        return media.renderClip(o);
-      },
-    };
-    const { deps, sessionId } = await readyForClips({ llm: clipPass, media: counting });
-    await findClipsNode(deps)(state(sessionId));
-    const [doneClip, todo] = await listClips(db, sessionId);
-    for (const c of [doneClip!, todo!]) await setClipStatus(db, c.id, "approved", "user");
-    const doneKey = storage.key(sessionId, `clips/${doneClip!.id}.mp4`);
-    await writeFile(storage.resolve(doneKey), "already rendered");
-    const before = (await stat(storage.resolve(doneKey))).mtimeMs;
-    await setRenderState(db, doneClip!.id, { renderStatus: "done", renderKey: doneKey });
-
-    await renderNode(deps)(state(sessionId));
-
-    expect(rendered).toEqual([storage.resolve(storage.key(sessionId, `clips/${todo!.id}.mp4`))]);
-    expect(await getClip(db, doneClip!.id)).toMatchObject({ renderStatus: "done", renderKey: doneKey });
-    expect((await stat(storage.resolve(doneKey))).mtimeMs).toBe(before);
-    expect((await getClip(db, todo!.id))!.renderStatus).toBe("done");
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "done", progress: 100 });
-  });
-
-  it("one failing render does not stop the others or fail the session", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      let badId = "";
-      const flaky = {
-        ...media,
-        renderClip: async (o: Parameters<typeof media.renderClip>[0]) =>
-          o.output.includes(badId) ? Promise.reject(new Error("render boom")) : media.renderClip(o),
-      };
-      const { deps, sessionId } = await readyForClips({ llm: clipPass, media: flaky });
-      await findClipsNode(deps)(state(sessionId));
-      const [bad, good] = await listClips(db, sessionId);
-      badId = bad!.id;
-      for (const c of [bad!, good!]) await setClipStatus(db, c.id, "approved", "user");
-
-      await renderNode(deps)(state(sessionId));
-
-      expect((await getClip(db, bad!.id))!.renderStatus).toBe("failed");
-      expect(await getClip(db, good!.id)).toMatchObject({ renderStatus: "done", renderKey: `${sessionId}/clips/${good!.id}.mp4` });
-      expect(await getSession(db, sessionId)).toMatchObject({ stage: "done", progress: 100 });
-      expect(log).toHaveBeenCalled();
-    } finally {
-      log.mockRestore();
-    }
-  });
-
-  it.each([
-    ["its times were edited", (id: string) => setClipBounds(db, id, { startMs: 3000, endMs: 9850 }, "user")],
-    ["it was un-approved", (id: string) => setClipStatus(db, id, "neutral", "user")],
-  ])("renderOne marks the render stale when, mid-render, %s", async (_case, change) => {
-    let clipId = "";
-    const racing = {
-      ...media,
-      renderClip: async (o: Parameters<typeof media.renderClip>[0]) => {
-        const out = await media.renderClip(o);
-        await change(clipId); // the user acts while ffmpeg runs
-        return out;
-      },
-    };
-    const { deps, sessionId } = await readyForClips({ llm: clipPass, media: racing });
-    await findClipsNode(deps)(state(sessionId));
-    const [clip] = await listClips(db, sessionId);
-    clipId = clip!.id;
-    await setClipStatus(db, clipId, "approved", "user");
-
-    await renderOne(deps, clipId);
-
-    const renderKey = `${sessionId}/clips/${clipId}.mp4`;
-    expect(await getClip(db, clipId)).toMatchObject({ renderStatus: "stale", renderKey, srtKey: `${sessionId}/clips/${clipId}.srt` });
-    expect(await exists(storage.resolve(renderKey))).toBe(true);
-  });
-
-  it("renderOne marks an unchanged approved clip done", async () => {
-    const { deps, sessionId } = await readyForClips({ llm: clipPass });
-    await findClipsNode(deps)(state(sessionId));
-    const [clip] = await listClips(db, sessionId);
-    await setClipStatus(db, clip!.id, "approved", "user");
-    await renderOne(deps, clip!.id);
-    expect(await getClip(db, clip!.id)).toMatchObject({
-      renderStatus: "done",
-      renderKey: `${sessionId}/clips/${clip!.id}.mp4`,
-      srtKey: `${sessionId}/clips/${clip!.id}.srt`,
-    });
-  });
-
-  it("renderOne marks the clip failed, removes the temp .ass and rethrows", async () => {
-    const failingRender = { ...media, renderClip: async () => Promise.reject(new Error("render boom")) };
-    const { deps, sessionId } = await readyForClips({ llm: clipPass, media: failingRender });
-    await findClipsNode(deps)(state(sessionId));
-    const [clip] = await listClips(db, sessionId);
-    await expect(renderOne(deps, clip!.id)).rejects.toThrow("render boom");
-    expect((await getClip(db, clip!.id))!.renderStatus).toBe("failed");
-    expect(await exists(storage.resolve(`${sessionId}/clips/${clip!.id}.ass`))).toBe(false);
   });
 });

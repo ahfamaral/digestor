@@ -6,11 +6,11 @@ export interface ProgressEvent {
   progress: number;
   error: string | null;
   language: string | null;
-  eventType: string | null;
+  profile: string | null;
 }
 
 /** After these the pipeline is paused for a human or finished, so the stream ends. */
-export const CLOSING_STAGES: readonly Stage[] = ["awaiting_context", "awaiting_review", "done", "failed"];
+export const CLOSING_STAGES: readonly Stage[] = ["awaiting_context", "ready", "failed"];
 
 const DEFAULT_TIMING = { pollMs: 1000, heartbeatMs: 15000 };
 let timing = DEFAULT_TIMING;
@@ -60,7 +60,7 @@ export function sessionEventStream(db: Db, id: string, signal: AbortSignal): Rea
             progress: s.progress,
             error: s.error,
             language: s.language,
-            eventType: s.eventType,
+            profile: s.profile,
           };
           const payload = JSON.stringify(event);
           if (payload !== last) {

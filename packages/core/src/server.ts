@@ -3,5 +3,9 @@ export * from "./index.ts";
 export * from "./storage.ts";
 export * from "./db/client.ts";
 export * from "./db/repo.ts";
+export * from "./db/analysis.ts";
 export { runMigrations } from "./db/migrate.ts";
-export { sessions, transcripts, contextCards, clips, clipEvents, type Stage } from "./db/schema.ts";
+export {
+  sessions, transcripts, contextCards, analysisVersions, topics, moments, momentHighlights, briefings, translations,
+  type Stage,
+} from "./db/schema.ts";

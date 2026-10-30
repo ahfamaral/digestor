@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync, type ReadStream } from "node:fs";
 import { once } from "node:events";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createSession, replaceAiClips } from "@digestor/core/server";
+import { createSession } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { GET } from "./[id]/[...file]/route";
 
@@ -27,10 +27,7 @@ beforeAll(async () => {
   h = createHarness();
   const s = await createSession(h.db, { title: "Talk", source: "upload" });
   sessionId = s.id;
-  const [clip] = await replaceAiClips(h.db, sessionId, [
-    { title: "Heated: tax & spend?!", reason: "r", label: "heated", score: 90, startMs: 0, endMs: 60_000, children: [] },
-  ]);
-  clipId = clip!.id;
+  clipId = "11111111-1111-4111-8111-111111111111";
   const dir = path.join(h.root, sessionId);
   mkdirSync(path.join(dir, "thumbs"), { recursive: true });
   mkdirSync(path.join(dir, "clips"), { recursive: true });
@@ -116,10 +113,10 @@ describe("GET /api/files/[id]/[...file]", () => {
     const srt = await get(`clips/${clipId}.srt`, { query: "?download=1" });
     expect(srt.status).toBe(200);
     expect(srt.headers.get("Content-Type")).toBe("application/x-subrip");
-    expect(srt.headers.get("Content-Disposition")).toBe('attachment; filename="Heated tax  spend.srt"');
+    expect(srt.headers.get("Content-Disposition")).toBe('attachment; filename="clip.srt"');
 
     const dl = await get(`clips/${clipId}.mp4`, { query: "?download=1" });
-    expect(dl.headers.get("Content-Disposition")).toBe('attachment; filename="Heated tax  spend.mp4"');
+    expect(dl.headers.get("Content-Disposition")).toBe('attachment; filename="clip.mp4"');
   });
 
   it("rejects path traversal in file param", async () => {

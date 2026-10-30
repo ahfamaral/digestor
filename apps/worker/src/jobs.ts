@@ -1,7 +1,7 @@
 import { Command } from "@langchain/langgraph";
-import type { RenderClipJob, ResumeJob, StartJob } from "@digestor/core";
+import type { ResumeJob, StartJob } from "@digestor/core";
 import { getSession, setStage, type Db } from "@digestor/core/server";
-import { renderOne, type PipelineDeps, type buildPipeline } from "./pipeline/graph.js";
+import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 
 export class MissingApiKeyError extends Error {
@@ -81,11 +81,6 @@ export async function handleResume(ctx: JobContext, job: ResumeJob, attempt: Att
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
   }
-}
-
-/** renderOne already records renderStatus=failed and rethrows. */
-export async function handleRenderClip(ctx: JobContext, job: RenderClipJob): Promise<void> {
-  await renderOne(ctx.deps, job.clipId);
 }
 
 /**

@@ -41,16 +41,16 @@ describe("GET /api/sessions/[id]/events", () => {
     expect((await call(ID)).status).toBe(404);
   });
 
-  it("emits the current stage first and closes on awaiting_review", async () => {
+  it("emits the current stage first and closes on ready", async () => {
     const s = await createSession(h.db, { title: "t", source: "upload" });
-    await updateSession(h.db, s.id, { stage: "awaiting_review", progress: 100, language: "pt", eventType: "interview" });
+    await updateSession(h.db, s.id, { stage: "ready", progress: 100, language: "pt", profile: "interview" });
     const res = await call(s.id);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/event-stream");
     expect(res.headers.get("cache-control")).toContain("no-cache");
     const text = await readAll(res);
     expect(events(text)).toEqual([
-      { stage: "awaiting_review", progress: 100, error: null, language: "pt", eventType: "interview" },
+      { stage: "ready", progress: 100, error: null, language: "pt", profile: "interview" },
     ]);
   });
 

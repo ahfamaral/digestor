@@ -1,16 +1,14 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getContextCard, getSession, listClips } from "@digestor/core/server";
+import { getContextCard, getSession } from "@digestor/core/server";
 import { AppBar, type Step } from "@/components/AppBar";
 import { ContextCheck } from "@/components/ContextCheck";
-import { Inbox } from "@/components/Inbox";
 import { Processing } from "@/components/Processing";
 import { isUuid } from "@/lib/ids";
-import { buildClipTree } from "@/lib/review";
 import { getServer } from "@/lib/server";
 
-/** Stage router: the session row decides which screen shows (rendering goes to /export). Reads the DB per request (Cache Components: inside Suspense). */
+/** Stage router: the session row decides which screen shows (later screens arrive in later tasks). Reads the DB per request (Cache Components: inside Suspense). */
 export default function SessionPage({ params }: PageProps<"/s/[id]">) {
   return (
     <Suspense fallback={<AppBar />}>
@@ -26,13 +24,17 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
   if (!session) notFound();
 
   const stage = session.stage;
-  // While rendering, the export page shows per-clip progress.
-  if (stage === "rendering") redirect(`/s/${id}/export`);
-  if (stage === "awaiting_review" || stage === "done") {
-    // The inbox owns its app bar ("Render N approved →" follows the live triage state).
-    const { db } = getServer();
-    const [rows, found] = await Promise.all([listClips(db, id), getContextCard(db, id)]);
-    return <Inbox sessionId={session.id} title={session.title} initialTree={buildClipTree(rows)} card={found?.card ?? null} />;
+  if (stage === "ready") {
+    // Placeholder until the Preview screen (Plan 2, Task 19).
+    return (
+      <>
+        <AppBar current="Processing" />
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
+          <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
+          <p className="text-sm text-muted-foreground">Analysis ready.</p>
+        </main>
+      </>
+    );
   }
   let current: Step = "Processing";
   let body: React.ReactNode;
@@ -61,7 +63,7 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
       <Processing
         sessionId={session.id}
         source={session.source}
-        initial={{ stage, progress: session.progress, language: session.language, eventType: session.eventType }}
+        initial={{ stage, progress: session.progress, language: session.language, profile: session.profile }}
       />
     );
   }

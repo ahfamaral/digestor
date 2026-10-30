@@ -10,10 +10,10 @@ export interface ProgressState {
   stage: StageName;
   progress: number;
   language: string | null;
-  eventType: string | null;
+  profile: string | null;
 }
 
-const CLOSING: StageName[] = ["awaiting_context", "awaiting_review", "done", "failed"];
+const CLOSING: StageName[] = ["awaiting_context", "ready", "failed"];
 
 function eventLabel(t: string | null): string | null {
   return t && t in PROFILES ? PROFILES[t as ProfileId].label : null;
@@ -43,7 +43,7 @@ export function Processing({ sessionId, source, initial }: { sessionId: string; 
 
   const steps = buildSteps(state.stage, source);
   const language = state.language;
-  const type = eventLabel(state.eventType);
+  const type = eventLabel(state.profile);
 
   return (
     <div className="mx-auto max-w-xl rounded-xl border border-border bg-white px-4 py-1.5">
@@ -72,7 +72,7 @@ export function Processing({ sessionId, source, initial }: { sessionId: string; 
             )}
             {s.key === "understanding" && s.state !== "waiting" && type && (
               <div className="text-xs text-muted-foreground">
-                Event type <b className="text-foreground">{type}</b>
+                Profile <b className="text-foreground">{type}</b>
               </div>
             )}
             {s.state === "running" && (

@@ -13,12 +13,8 @@ import {
   getContextCard,
   getSession,
   getTranscript,
-  listClips,
-  replaceAiClips,
   saveContextCard,
   saveTranscript,
-  setClipThumb,
-  setRenderState,
   setStage,
   updateSession,
   type Db,
@@ -27,14 +23,9 @@ import {
   type Stage,
 } from "@digestor/core/server";
 import { understandContext } from "../agents/context.js";
-import { findClips } from "../agents/clips.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
-import { renderOne } from "./render.js";
-
-export { renderOne };
-
 export type PipelineDeps = {
   db: Db;
   storage: LocalStorage;
@@ -82,7 +73,7 @@ async function requireSession(db: Db, id: string): Promise<Session> {
 async function pause(
   deps: PipelineDeps,
   sessionId: string,
-  payload: { type: "context" | "review" },
+  payload: { type: "context" },
   stage: Stage,
   progress: number,
 ): Promise<ResumePayload> {
@@ -262,9 +253,8 @@ export const understandContextNode =
       locked: stored ? humanLocked(stored.card) : {},
     });
     await saveContextCard(db, s.sessionId, card, round);
-    // R1: the sessions.event_type column holds the profile id until the schema migration.
     await updateSession(db, s.sessionId, {
-      eventType: card.profile.value,
+      profile: card.profile.value,
       ...(card.language.value !== null ? { language: card.language.value } : {}),
     });
     return { round };
@@ -289,60 +279,11 @@ export const askContextNode =
     return { resume, answers: [...s.answers, ...answers] };
   };
 
-export const findClipsNode =
+/** Interim end of the pipeline (Plan 2 adds indexing, topics, moments and briefing before this). */
+export const finishNode =
   (deps: PipelineDeps): Node =>
   async (s) => {
-    const { db, storage, media } = deps;
-    await setStage(db, s.sessionId, "finding_clips", 70);
-    const [session, transcript, stored] = await Promise.all([
-      requireSession(db, s.sessionId),
-      getTranscript(db, s.sessionId),
-      getContextCard(db, s.sessionId),
-    ]);
-    if (!transcript) throw new Error(`Session ${s.sessionId} has no transcript`);
-    if (!stored) throw new Error(`Session ${s.sessionId} has no context card`);
-
-    const tree = await findClips(deps.llm, { card: stored.card, transcript });
-    // Replaces earlier AI proposals, so a re-run (retry after a crash) never duplicates clips.
-    const created = await replaceAiClips(db, s.sessionId, tree);
-
-    const videoKey = session.proxyKey ?? session.originalKey;
-    if (!videoKey) throw new Error(`Session ${s.sessionId} has no video`);
-    const video = storage.resolve(videoKey);
-    for (const clip of created) {
-      const key = storage.key(s.sessionId, `thumbs/${clip.id}.jpg`);
-      try {
-        await media.thumbnail(video, Math.round((clip.startMs + clip.endMs) / 2), storage.resolve(key));
-      } catch (err) {
-        console.error(`[pipeline] thumbnail failed for clip ${clip.id}:`, err);
-        continue;
-      }
-      await setClipThumb(db, clip.id, key);
-    }
-    return {};
-  };
-
-export const reviewNode =
-  (deps: PipelineDeps): Node =>
-  async (s) => ({ resume: await pause(deps, s.sessionId, { type: "review" }, "awaiting_review", 70) });
-
-export const renderNode =
-  (deps: PipelineDeps): Node =>
-  async (s) => {
-    const { db } = deps;
-    await setStage(db, s.sessionId, "rendering", 90);
-    // Already-rendered clips are skipped so a retried run doesn't redo them.
-    const todo = (await listClips(db, s.sessionId)).filter((c) => c.status === "approved" && c.renderStatus !== "done");
-    for (const clip of todo) await setRenderState(db, clip.id, { renderStatus: "queued" });
-    for (const clip of todo) {
-      try {
-        await renderOne(deps, clip.id);
-      } catch (err) {
-        // renderOne already marked the clip failed; it can be re-cut later. The other clips still render.
-        console.error(`[pipeline] render failed for clip ${clip.id}:`, err);
-      }
-    }
-    await setStage(db, s.sessionId, "done", 100);
+    await setStage(deps.db, s.sessionId, "ready", 100);
     return {};
   };
 
@@ -359,9 +300,7 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     .addNode("transcribe", transcribeNode(deps))
     .addNode("understand_context", understandContextNode(deps))
     .addNode("ask_context", askContextNode(deps))
-    .addNode("find_clips", findClipsNode(deps))
-    .addNode("review", reviewNode(deps))
-    .addNode("render", renderNode(deps))
+    .addNode("finish", finishNode(deps))
     .addConditionalEdges(
       START,
       async (s) => {
@@ -378,22 +317,16 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
       async (s) => {
         const stored = await getContextCard(db, s.sessionId);
         // After the follow-up round's answers this pass only folds them into the card: no third question round.
-        return stored?.card.sufficient || s.round > MAX_CONTEXT_ROUNDS ? "find_clips" : "ask_context";
+        return stored?.card.sufficient || s.round > MAX_CONTEXT_ROUNDS ? "finish" : "ask_context";
       },
-      ["find_clips", "ask_context"],
+      ["finish", "ask_context"],
     )
     .addConditionalEdges(
       "ask_context",
       // Any other action is not valid at this pause: ask again.
-      (s) => (s.resume?.action === "skip" ? "find_clips" : s.resume?.action === "continue" ? "understand_context" : "ask_context"),
-      ["find_clips", "understand_context", "ask_context"],
+      (s) => (s.resume?.action === "skip" ? "finish" : s.resume?.action === "continue" ? "understand_context" : "ask_context"),
+      ["finish", "understand_context", "ask_context"],
     )
-    .addEdge("find_clips", "review")
-    // "render" left the ResumePayload schema in Plan 2; this edge goes away with the review rewrite (Task 2).
-    .addConditionalEdges("review", (s) => ((s.resume?.action as string | undefined) === "render" ? "render" : "review"), [
-      "render",
-      "review",
-    ])
-    .addEdge("render", END)
+    .addEdge("finish", END)
     .compile({ checkpointer });
 }

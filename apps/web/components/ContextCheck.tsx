@@ -149,10 +149,10 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
             ))}
           </select>
         </Row>
-        <Row label="Event type" badge={edited.profile !== original.profile ? "human" : "video"}>
+        <Row label="Profile" badge={edited.profile !== original.profile ? "human" : "video"}>
           <select
             className={inputCls}
-            aria-label="Event type"
+            aria-label="Profile"
             value={edited.profile}
             onChange={(e) => set("profile", e.target.value as ProfileId)}
           >

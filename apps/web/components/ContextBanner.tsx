@@ -8,7 +8,7 @@ function languageName(code: string): string {
   }
 }
 
-/** One-line summary of the context card above the inbox: event type · language · date · setting · title. */
+/** One-line summary of the context card above the briefing: profile · language · date · setting · title. */
 export function ContextBanner({ card }: { card: ContextCard }) {
   const parts = [
     PROFILES[card.profile.value].label,
