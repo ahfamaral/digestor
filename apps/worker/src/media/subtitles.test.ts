@@ -1,6 +1,6 @@
 import type { Word } from "@digestor/core";
 import { describe, expect, it } from "vitest";
-import { buildAss, buildCues, buildSrt } from "./subtitles.js";
+import { buildAss, buildCues, buildSrt, buildVtt } from "./subtitles.js";
 
 const w = (text: string, startMs: number, endMs: number): Word => ({ text, startMs, endMs, speaker: "A", confidence: 0.9 });
 
@@ -89,5 +89,15 @@ describe("buildSrt / buildAss", () => {
     const ass = buildAss([{ startMs: 1000, endMs: 1000, lines: ["a\\Nb"] }], { width: 640, height: 360 });
     expect(ass).toContain("Default,,0,0,0,,a\\\\Nb");
     expect(ass).toContain("0:00:01.00,0:00:01.01,Default");
+  });
+});
+
+describe("buildVtt", () => {
+  it("formats times with milliseconds", () => {
+    const vtt = buildVtt([
+      { startMs: 0, endMs: 1500, lines: ["Hello"] },
+      { startMs: 3_723_004, endMs: 3_725_000, lines: ["Two", "lines"] },
+    ]);
+    expect(vtt).toBe("WEBVTT\n\n00:00:00.000 --> 00:00:01.500\nHello\n\n01:02:03.004 --> 01:02:05.000\nTwo\nlines\n");
   });
 });

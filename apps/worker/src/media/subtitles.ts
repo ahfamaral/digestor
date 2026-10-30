@@ -80,6 +80,11 @@ export function buildSrt(cues: Cue[]): string {
   return cues.map((c, i) => `${i + 1}\n${t(c.startMs)} --> ${t(c.endMs)}\n${c.lines.join("\n")}\n`).join("\n");
 }
 
+export function buildVtt(cues: Cue[]): string {
+  const t = (ms: number) => `${formatTimestamp(ms)}.${pad(Math.floor(ms) % 1000, 3)}`;
+  return `WEBVTT\n\n${cues.map((c) => `${t(c.startMs)} --> ${t(c.endMs)}\n${c.lines.join("\n")}\n`).join("\n")}`;
+}
+
 function assTime(ms: number): string {
   const cs = Math.floor(ms / 10);
   const h = Math.floor(cs / 360_000);

@@ -1,5 +1,5 @@
 import { Command } from "@langchain/langgraph";
-import { ProfileIdSchema, type CheckMomentJob, type ReanalyzeJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { ProfileIdSchema, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   failAnalysisVersion,
   getAnalysisVersion,
@@ -8,11 +8,14 @@ import {
   getRunningAnalysis,
   getSession,
   getTranscript,
+  getTrack,
   setMomentChecks,
   setStage,
+  setTrackCues,
   type Db,
 } from "@digestor/core/server";
 import { checkMoment } from "./agents/checks.js";
+import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
@@ -162,6 +165,36 @@ export async function handleCheckMoment(ctx: JobContext, job: CheckMomentJob, _a
   } catch (err) {
     if (!(err instanceof MissingApiKeyError)) throw err; // transient: pg-boss retries
     console.error(`[jobs] check of moment ${job.momentId} skipped: ${err.message}`);
+  }
+}
+
+/** Marks a track failed, keeping any cues it has (setTrackCues flips the status only). */
+async function failTrack(db: Db, trackId: string): Promise<void> {
+  const track = await getTrack(db, trackId);
+  if (track && track.status !== "failed") await setTrackCues(db, trackId, track.cues, "failed");
+}
+
+/**
+ * Builds a subtitle track. A missing key fails the track and completes the job; any other error is rethrown for
+ * pg-boss to retry and only the final attempt marks the track failed.
+ */
+export async function handlePrepareTrack(
+  ctx: Pick<JobContext, "db"> & { deps: Pick<PipelineDeps, "storage" | "llm"> },
+  job: PrepareTrackJob,
+  attempt: Attempt,
+): Promise<void> {
+  const { db, deps } = ctx;
+  try {
+    await prepareTrack({ db, storage: deps.storage, llm: deps.llm }, job.trackId);
+  } catch (err) {
+    if (isDeterministic(err)) {
+      console.error(`[jobs] track ${job.trackId} failed: ${(err as Error).message}`);
+      await failTrack(db, job.trackId);
+      return;
+    }
+    if (attempt.retryCount >= attempt.retryLimit) await failTrack(db, job.trackId);
+    else console.error(`[jobs] track ${job.trackId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    throw err;
   }
 }
 

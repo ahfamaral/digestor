@@ -20,6 +20,7 @@ import { LocalStorage, createDb } from "@digestor/core/server";
 import { CLEANUP_CRON, CLEANUP_QUEUE, runVideoRetention, videoRetentionDays } from "./cleanup.js";
 import {
   handleCheckMoment,
+  handlePrepareTrack,
   handleReanalyze,
   handleResume,
   handleStart,
@@ -93,7 +94,7 @@ async function main() {
   await register(QUEUES.reanalyze, ReanalyzeJobSchema, (j, attempt) => handleReanalyze(ctx, j, attempt));
   await register(QUEUES.checkMoment, CheckMomentJobSchema, (j, attempt) => handleCheckMoment(ctx, j, attempt));
   // Consumers land with their tasks (11: prepare, 12: burn + render, 14: ask, 17: translate); until then jobs complete.
-  await register(QUEUES.prepareTrack, PrepareTrackJobSchema, notImplemented(QUEUES.prepareTrack));
+  await register(QUEUES.prepareTrack, PrepareTrackJobSchema, (j, attempt) => handlePrepareTrack(ctx, j, attempt));
   await register(QUEUES.burnTrack, BurnTrackJobSchema, notImplemented(QUEUES.burnTrack));
   await register(QUEUES.renderClip, RenderClipJobSchema, notImplemented(QUEUES.renderClip));
   await register(QUEUES.ask, AskJobSchema, notImplemented(QUEUES.ask));
