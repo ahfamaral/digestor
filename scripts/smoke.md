@@ -70,7 +70,7 @@ The OpenRouter fakes in `apps/worker/src/llm/openrouter.test.ts` are shaped from
 - [ ] Ask answers with `[hh:mm:ss]` citations and a `search_transcript` tool call.
 - [ ] Translate the briefing into one language.
 - [ ] A structured reply comes back as JSON content (`response_format` json_schema) and the worker log shows no LangChain retry backoff for it.
-- [ ] Ask with two tool rounds works through OpenRouter (check whether OpenRouter needs `reasoning_details` passed back; `ToolStep.raw` only carries the message content).
+- [x] Ask with two tool rounds works through OpenRouter (2026-10-31): thinking comes back as `reasoning_details`, which `@langchain/openai` 1.8 drops; OpenRouter accepted a third round with and without it, so it is not replayed (replaying it would keep the model's earlier reasoning — optional improvement).
 - [ ] One non-Claude model (for example `OPENROUTER_MODEL_REASONING=google/gemini-3.8-flash`): a re-analysis completes or fails with the friendly message, never a raw error. Note which models refuse forced function calling.
 - [ ] Unverified cases to check: a 200 response whose body carries `error` instead of `choices` (OpenRouter documents this, https://openrouter.ai/docs/api-reference/errors); 402 out of credits (the session should fail after the retries with the generic message; the raw error goes to the log).
-- [ ] Record one raw structured-output response and one raw tool-call response to `apps/worker/test/fixtures/openrouter/*.recorded.json` and feed them through the adapter in a test.
+- [x] Record one raw structured-output response and one raw tool-call response to `apps/worker/test/fixtures/openrouter/*.recorded.json` and feed them through the adapter in a test (2026-10-31: `topics`, `ask-tool-call`, `ask-answer`).

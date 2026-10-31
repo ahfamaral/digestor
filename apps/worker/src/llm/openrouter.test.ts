@@ -1,15 +1,17 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { TopicsOutput } from "../agents/topics.js";
 import { fakeFetch } from "./fakeFetch.js";
 import { createOpenRouterLLM, createOpenRouterToolLLM, OPENROUTER_BASE_URL } from "./openrouter.js";
-import type { ToolSpec } from "./tools.js";
+import type { ToolMessage, ToolSpec } from "./tools.js";
 
 // Fakes speak OpenRouter's OpenAI-compatible Chat Completions format:
 // https://openrouter.ai/docs/api-reference/overview (request/response, tool_calls) and
 // https://openrouter.ai/docs/api-reference/errors (error body { error: { code, message } }).
 // Claude 5.5 rejects sampling parameters and forced tool choice, and OpenRouter lists no `temperature` for it
 // (https://openrouter.ai/api/v1/models, 2026-10-30), so neither is sent.
-// UNVERIFIED against a recorded response until the smoke run (scripts/smoke.md §4).
+// Recorded responses (2026-10-31, Haiku 5.5) are in test/fixtures/openrouter and tested at the end of this file.
 
 const MODELS = { reasoning: "anthropic/claude-sonnet-5.5", fast: "anthropic/claude-haiku-5.5" };
 
@@ -149,5 +151,56 @@ describe("OpenRouter tool LLM (Ask)", () => {
     const step = await createOpenRouterToolLLM("k", MODELS, { fetch }).step({ system: "s", tools: [], messages: [{ role: "user", text: "q" }] });
     expect(step).toMatchObject({ text: "Housing came up twice.", toolCalls: [] });
     expect(sent[0]!.body.tools).toBeUndefined();
+  });
+});
+
+// Real responses recorded through openrouter.ts on 2026-10-31 (anthropic/claude-haiku-5.5, served by "Claude Platform
+// on AWS"). Each fixture keeps the request we sent and the raw response. Thinking comes back as `reasoning_details`
+// (signed blocks), which @langchain/openai 1.8 drops, so it is not replayed; OpenRouter accepted a third round both
+// with and without it (checked by hand the same day).
+describe("OpenRouter recorded responses", () => {
+  const recorded = (name: string) =>
+    JSON.parse(readFileSync(new URL(`../../test/fixtures/openrouter/${name}.recorded.json`, import.meta.url), "utf8"));
+
+  it("a structured reply (real topics schema) parses, from a request shaped like the one recorded", async () => {
+    const rec = recorded("topics");
+    const { fetch, sent } = fakeFetch([{ body: rec.response }]);
+    const out = await createOpenRouterLLM("k", { reasoning: rec.request.model, fast: "x" }, { fetch }).generate({
+      schema: TopicsOutput, name: "topics", model: "reasoning", system: "s", user: "u",
+    });
+    expect(out.topics.length).toBeGreaterThan(0);
+    for (const t of out.topics) expect(t.start).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+    expect(Object.keys(sent[0]!.body).sort()).toEqual(Object.keys(rec.request).sort());
+    expect(sent[0]!.body.response_format).toEqual(rec.request.response_format);
+  });
+
+  it("Ask: a recorded tool call, then the recorded answer, with the assistant turn replayed as recorded", async () => {
+    const call = recorded("ask-tool-call");
+    const answer = recorded("ask-answer");
+    const { fetch, sent } = fakeFetch([{ body: call.response }, { body: answer.response }]);
+    const llm = createOpenRouterToolLLM("k", { reasoning: call.request.model, fast: "x" }, { fetch });
+    const search: ToolSpec = {
+      name: "search_transcript",
+      description: call.request.tools[0].function.description,
+      schema: z.object({ query: z.string().min(1).describe("What to look for, in any language"), k: z.number().int().optional().describe("How many passages (1–10, default 5)") }),
+    };
+    const [system, user] = call.request.messages;
+
+    const first = await llm.step({ system: system.content, messages: [{ role: "user", text: user.content }], tools: [search] });
+    expect(first.text).toBe("");
+    expect(first.toolCalls).toEqual([{ id: expect.stringMatching(/^toolu_/), name: "search_transcript", args: { query: "infraestrutura", k: 5 } }]);
+    expect(sent[0]!.body.messages).toEqual(call.request.messages);
+    expect(sent[0]!.body.tools).toEqual(call.request.tools);
+
+    const tool = answer.request.messages.at(-1);
+    const messages: ToolMessage[] = [
+      { role: "user", text: user.content },
+      { role: "assistant", text: first.text, toolCalls: first.toolCalls, raw: first.raw },
+      { role: "tool", toolCallId: tool.tool_call_id, content: tool.content },
+    ];
+    const second = await llm.step({ system: system.content, messages, tools: [search] });
+    expect(second.toolCalls).toEqual([]);
+    expect(second.text).toMatch(/\[00:03:08/);
+    expect(sent[1]!.body.messages).toEqual(answer.request.messages);
   });
 });

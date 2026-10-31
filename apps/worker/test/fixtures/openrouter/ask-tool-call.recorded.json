@@ -1,0 +1,120 @@
+{
+  "_meta": {
+    "recorded": "2026-10-31",
+    "model": "anthropic/claude-haiku-5.5",
+    "adapter": "@langchain/openai 1.8 ChatOpenAICompletions via openrouter.ts",
+    "input": "Ask round 1: Portuguese question, search_transcript bound"
+  },
+  "request": {
+    "model": "anthropic/claude-haiku-5.5",
+    "stream": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search_transcript",
+          "description": "Semantic search over the transcript. Returns the best-matching passages with their times.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What to look for, in any language"
+              },
+              "k": {
+                "type": "integer",
+                "description": "How many passages (1–10, default 5)"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      }
+    ],
+    "provider": {
+      "require_parameters": true
+    },
+    "max_tokens": 4096,
+    "messages": [
+      {
+        "role": "system",
+        "content": "You answer questions about one video using only the tools. Cite times as [hh:mm:ss]. If the answer is not in the tool output, say \"That isn't in this video's data.\""
+      },
+      {
+        "role": "user",
+        "content": "O que foi perguntado sobre infraestrutura?"
+      }
+    ]
+  },
+  "status": 200,
+  "response": {
+    "id": "gen-1793448233-3UM54QURBYBdxLckkXWB",
+    "object": "chat.completion",
+    "created": 1793448233,
+    "model": "anthropic/claude-haiku-5.5",
+    "provider": "Claude Platform on AWS",
+    "system_fingerprint": null,
+    "service_tier": "default",
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "tool_calls",
+        "native_finish_reason": "tool_use",
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "refusal": null,
+          "reasoning": null,
+          "tool_calls": [
+            {
+              "type": "function",
+              "index": 0,
+              "id": "toolu_01E2aoYRV99BkaQyQ7eaX3tR",
+              "function": {
+                "name": "search_transcript",
+                "arguments": "{\"query\": \"infraestrutura\", \"k\": 5}"
+              }
+            }
+          ],
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "signature": "CAQS1gUKEAgTGAI4AUIIdGhpbmtpbmcSDMvx9CvNxrO3cJ3c5xoMUSH83nflglxKQwfUIjBIGzxmrZIhD+6LOoYxeFvtV7KXn6vtespcXXbBJJ1wAGwTWqyAQxBPMeY35IzRJcIq8wQMOkOiAghRTA8rduKkMhDP5caOVFxgs7WHxpYJRQdKY+WAIQU8La6hjilonODyeR5yuUWfWwjYAGdPaD2uz1G0uiVkB2ernKhbwO4Yvw+svI4S21Oa0vpkJVmOlWnTqetapdlL7vfMKXuX3p0zlJTnDCLSaElH9B+4VrX6+ZNWAR3tXv7EEp83khBDUN+hNqq0wht39sTeJ/x8V1yAgh+Zr/WtWCYMGhTgHr1G1OG1zOFhOVd07dMGFgW63aVHqH2AklfyhiFq1kaJxdhbGhPV7kImQcS7hkRzJk5xsAtTm1T83OmiK0IbeMHzBVkwKJlohZ0brHnmZJ3urDdneAh5ltf5u1ZLGznk+RhqsuHILLN9yh46NmTBAsXYoYoi+UWKARyCyS3IBC0ncRwfZW1509HAChhm34EF5UwGnoe/zeOwnnBEKI9rEGlVzeaejN6U0rloEghESUmAPFbYF/7JMrbPjotp64C08RMeobn09JwGLqCIS6e0yXrBNtcTI3204z36/57En0wL3IZhwZWGQgxvfyGHWYks0MFwDJSXdEohHGqqIv2IltH1bBuEER8qbAnSzBqGAZzWMdxD2xsy/1ob9F1ZyRQKDCpdKBzC1RNiQblLc4dxbeFTAMCL3RsQatwgLAGqgV5cT0opPYbtQXsSWFdKW2sLgjDthcU6+xPSBUpyu34cdSNsAIvlTdmxDcL5GN80Wme1JceGofQYfZRnPUi42YFveclDTQSF9gN+TwBcWQZCIbTXkv8ICsabFMyBKWKFF84d9qgkg7kZis9xXFJR7hr/6BgJyvKrFZn2MyN6/Wfef4gcH1SaQi6eaisYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8Y2xhdWRlLW9uLWF3cyJ9",
+              "format": "anthropic-claude-v1",
+              "index": 0
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 541,
+      "completion_tokens": 111,
+      "total_tokens": 652,
+      "cost": 0.0001096,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.0001096,
+        "upstream_inference_prompt_cost": 0.0000541,
+        "upstream_inference_completions_cost": 0.0000555
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 35,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  }
+}

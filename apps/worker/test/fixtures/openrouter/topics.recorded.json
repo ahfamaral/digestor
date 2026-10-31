@@ -1,0 +1,128 @@
+{
+  "_meta": {
+    "recorded": "2026-10-31",
+    "model": "anthropic/claude-haiku-5.5",
+    "adapter": "@langchain/openai 1.8 ChatOpenAICompletions via openrouter.ts",
+    "input": "first 160 words of the pt debate fixture; real TopicsOutput schema"
+  },
+  "request": {
+    "model": "anthropic/claude-haiku-5.5",
+    "stream": false,
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "topics",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "topics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Short title, in the original language of the session"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "At most 2 sentences, in the original language"
+                  },
+                  "start": {
+                    "type": "string",
+                    "description": "hh:mm:ss, where the topic begins"
+                  },
+                  "end": {
+                    "type": "string",
+                    "description": "hh:mm:ss, where the topic ends"
+                  }
+                },
+                "required": [
+                  "title",
+                  "summary",
+                  "start",
+                  "end"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "topics"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    "provider": {
+      "require_parameters": true
+    },
+    "max_tokens": 16000,
+    "messages": [
+      {
+        "role": "system",
+        "content": "You split a video into topics. Use hh:mm:ss timestamps. Answer in the transcript's language."
+      },
+      {
+        "role": "user",
+        "content": "Transcript (starts at 00:00:00, about 2 minutes):\nfeitas durante e depois do debate. Para isso, basta apontar o seu celular para esse QR code aqui que tá aparecendo na tela. Ele vai te levar para o G1, e no G1 você encontra as checagens das entrevistas concedidas por Flávio Bolsonaro e Lula à jornalista Renata Lopretti aqui na Globo na semana passada, e ainda as verificações feitas durante o debate da Band no último domingo. Um outro caminho para você acompanhar as nossas checagens é entrar nos sites dos jornais O Globo, Valor Econômico, Extra, e no site da Rádio CBN. Também estão fazendo a checagem do debate de hoje outras importantes agências de verificação de fatos, como a Lupa, em parceria com o jornal Folha de São Paulo, a Agência Aos Fatos, O UOL Confere, o Estadão Verifica e ainda o Projeto Comprova. Vamos então começar o nosso debate, lembrando que neste primeiro bloco o tema é determinado. A pergunta deve abordar questões, propostas e desafios"
+      }
+    ]
+  },
+  "status": 200,
+  "response": {
+    "id": "gen-1793448229-3JX2654VLRN6bgtjvOMh",
+    "object": "chat.completion",
+    "created": 1793448229,
+    "model": "anthropic/claude-haiku-5.5",
+    "provider": "Azure",
+    "system_fingerprint": null,
+    "service_tier": "default",
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "end_turn",
+        "message": {
+          "role": "assistant",
+          "content": "{\"topics\":[{\"title\":\"Checagens pelo QR code e pelo G1\",\"summary\":\"A apresentadora indica um QR code na tela para acessar as checagens no G1, incluindo as verificações das entrevistas de Flávio Bolsonaro e Lula e do debate da Band. Ela cita ainda os sites de O Globo, Valor Econômico, Extra e Rádio CBN como outra forma de acompanhar.\",\"start\":\"00:00:00\",\"end\":\"00:00:50\"},{\"title\":\"Outras agências de checagem\",\"summary\":\"São citadas outras agências que checam o debate de hoje, como Lupa com a Folha de S.Paulo, Aos Fatos, UOL Confere, Estadão Verifica e Projeto Comprova. Em seguida, a apresentadora passa a palavra ao debate.\",\"start\":\"00:00:50\",\"end\":\"00:01:25\"},{\"title\":\"Início do primeiro bloco do debate\",\"summary\":\"A apresentadora anuncia que começa o debate e que o tema deste primeiro bloco é determinado. As perguntas devem abordar questões, propostas e desafios.\",\"start\":\"00:01:25\",\"end\":\"00:02:00\"}]}",
+          "refusal": null,
+          "reasoning": null,
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "signature": "CAQSwgkKEAgTGAI4AUIIdGhpbmtpbmcSDHYqGmkoCn4INWi9ZBoMDJ28ugMRUWaXgxsEIjCvW3Ry0JQQqyuFRFNmmbkF0VmZVjB0KBtaSlzy8Gl4OcLOdzeExRLv4m5HgWuSlIAq3wgRn4oZsgzDRRiuyQXWT5exLS/7LR18zaxYLCFuk86bgFg82U2yfFz1Xd9ysf8WPrY1UEFQedFtabt/8FqusMEoUzv7rXuMY4cy2icPEupBSg2IhWRtTg0Imcm4cKpn1pptdyjLkrXVGDaraXIaHqyA4IsT1Owcp3uOaDKHPmS3v+CYEJkvclBVWw8do67v46svyhs+EMlRRo/45QtoALYWq4ORouCykGChzt2NDxYs1oQj2U/1s+TyzQ9mujxxGnhBjHhXmW6ou7QGpMggnjywdFkrKHVGYgWvoeAMpb7TkpQTlS3Q7gQgs5sG6/WV8F+0oaOGu/+pQ+c6uO+ZxA/oAPZxhdVlVcix93/y9HRiAZTNaMwBNo+u3FT6WIB5EhxvdCj/QXOQOU2eVD0evSR8BAe3qBxeC81ZB7E2kGvgka93CflTGcT8ROZwsQ8AmA3TxD4K/nW3+SFywB7oMCoGTpuctyv62Qn7+H1fdyqS8JUW8F+S0Xh8E4dRH6wdao+zF4zZju6t2nFDAwWg40b0bUEWPGpeWnDIO5kDQ8jOA3q1unJJVNDXgcqnn0tI6GxQup0aGUQNObqR9W7Gzg+8fncpcJ7fR+Eugbh7RifuCphaGXtL+kK2SGBSHUdIjeF1SS1QoWMFPgxUQHWkkvu4g/2ByvJisOurgFHWPtORRtvz2x2qWJbZdFLKQJeX5hUEy4+vXspEGGJ/thfqIOiEqBMELQAKw7B1QPDfOlFXpzxH5pkDR13lf/8q1UXvvQDLB4LzrooTwEHCYJDuo48L2uQKsBC1gf6BqN4Wb/zfZzUL7W2Fz8ePsmUUSUBCa7ov2HdxaG4InJZIb4FiVsdkPKfETKUvRS48LTCofwIoV1Q7sYuMfLUZUs1d2qKNLfm2DMCslHxQsTxEcFJ5JTdOJYTv8Au1ew6vwPNDl9ng+lpy+vLr9NoH8pJ/KeQQGRWL6U3bLKA5pcAIgg69Wc6u8nTPygNHtME7FF9EVAqf0ELHixKLwjTKxiMQ3YfMIiLv97uCZhMj+2cRerfBJfwZUNYz72rcIS+PqKi9wsxx3mFTykQZ52+dxaBfcwIW+qixNIDIRODuzpKUU4q895TNrQff8WK3Daf4uHDwinOwW+1EniTvBgr0eH854THNMYRruz2O5qR10ZXbux6tnpavaAqlsGE7Lu98Xtz4qOhXuGMi8mpr2YYLcZny3XeQgID4UU8sGbmPbugPIeEPKKM9t5Hba435/UOSBlNN/K2TvQTk2aw7aly/SSru+GxRK+uS4RkhcFYHUAsOayuXrfUOX2xikwhQ7PIBLVWc7IXxZsH1bZyhwP5fzoQn86HPB5lvcvCmtRZ5ZCFs4LeeEugOzYTELqg6D5XfxtN16TIaqG1Y1wXbLrR1Zp9+7JvmRzeIytXbGHiGgvnv2k7Jho58TXCYQyrlxN+Mh2d5dcfTwuEZpzXNngFAjLvp6QP87t9zcdH4kCPYqpAXFYyNXZwYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8YXp1cmUvZ2xvYmFsIn0",
+              "format": "anthropic-claude-v1",
+              "index": 0
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 874,
+      "completion_tokens": 638,
+      "total_tokens": 1512,
+      "cost": 0.0004064,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.0004064,
+        "upstream_inference_prompt_cost": 0.0000874,
+        "upstream_inference_completions_cost": 0.000319
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 238,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  }
+}
