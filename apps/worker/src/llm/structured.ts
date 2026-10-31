@@ -1,5 +1,6 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { OutputParserException } from "@langchain/core/output_parsers";
+import { toJsonSchema } from "@langchain/core/utils/json_schema";
 import { ZodError, type z } from "zod";
 
 export type LLMModel = "reasoning" | "fast";
@@ -20,19 +21,71 @@ export type ClientOptions = { fetch?: typeof globalThis.fetch };
 
 /**
  * Claude 5.5 rejects `temperature` (and top_p/top_k) and forced `tool_choice`, and thinks by default, so structured
- * output goes through `output_config.format` (LangChain's "jsonSchema"), whose text block the parser reads.
+ * output goes through `output_config.format` (LangChain's "jsonSchema") with a ref-free schema; the reply's JSON is
+ * then validated with zod.
  * https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide
  */
 export function createAnthropicLLM(apiKey: string, opts: ClientOptions = {}): StructuredLLM {
   return {
     async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }) {
-      const chat = new ChatAnthropic({
+      const json = new ChatAnthropic({
         apiKey,
         model: MODEL_IDS[a.model],
         maxTokens: 16000,
         ...(opts.fetch ? { clientOptions: { fetch: opts.fetch } } : {}),
-      }).withStructuredOutput(a.schema, { name: a.name, method: "jsonSchema" });
-      return invokeWithOneRetry<T>(chat, a);
+      }).withStructuredOutput(llmJsonSchema(a.schema), { name: a.name, method: "jsonSchema" });
+      return invokeWithOneRetry<T>(validated(json, a.schema), a);
+    },
+  };
+}
+
+/**
+ * The JSON schema sent to the model. zod-to-json-schema writes a reused sub-schema as a `$ref` to its first use
+ * (`#/properties/language`); Claude structured outputs only accept refs under `$defs`. Each such shape moves to
+ * `$defs` once and every use points there. Not inlined: copies multiply nullable fields, and Claude allows at most
+ * 16 union-typed parameters per schema (both limits seen live on 2026-10-30).
+ */
+export function llmJsonSchema(schema: z.ZodType<unknown>): Record<string, unknown> {
+  const root = toJsonSchema(schema) as Record<string, unknown>;
+  const at = (ref: string): unknown =>
+    ref
+      .replace(/^#\/?/, "")
+      .split("/")
+      .filter(Boolean)
+      .reduce<unknown>((node, key) => (node as Record<string, unknown>)?.[key.replace(/~1/g, "/").replace(/~0/g, "~")], root);
+
+  const names = new Map<string, string>(); // ref target path → $defs name
+  const collect = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(collect);
+    if (node === null || typeof node !== "object") return;
+    const ref = (node as { $ref?: unknown }).$ref;
+    if (typeof ref === "string" && !names.has(ref)) names.set(ref, `def${names.size}`);
+    Object.values(node).forEach(collect);
+  };
+  collect(root);
+
+  // `path` is the node's own JSON pointer in the original schema; a node that is a ref target becomes a ref.
+  const rewrite = (node: unknown, path: string, isDefRoot = false): unknown => {
+    if (!isDefRoot && names.has(path)) return { $ref: `#/$defs/${names.get(path)}` };
+    if (Array.isArray(node)) return node.map((n, i) => rewrite(n, `${path}/${i}`));
+    if (node === null || typeof node !== "object") return node;
+    return Object.fromEntries(
+      Object.entries(node).map(([k, v]) =>
+        k === "$ref" && typeof v === "string" ? [k, `#/$defs/${names.get(v)}`] : [k, rewrite(v, `${path}/${k.replace(/~/g, "~0").replace(/\//g, "~1")}`)],
+      ),
+    );
+  };
+  const out = rewrite(root, "#") as Record<string, unknown>;
+  if (names.size > 0) out.$defs = Object.fromEntries([...names].map(([ref, name]) => [name, rewrite(at(ref), ref, true)]));
+  return out;
+}
+
+/** The chat's JSON, checked against the zod schema (a mismatch is a ZodError, so a parse error). */
+export function validated<T>(chat: { invoke(m: [string, string][]): Promise<unknown> }, schema: z.ZodType<T>) {
+  return {
+    invoke: async (m: [string, string][]) => {
+      const out = await chat.invoke(m);
+      return out == null ? out : schema.parse(out);
     },
   };
 }

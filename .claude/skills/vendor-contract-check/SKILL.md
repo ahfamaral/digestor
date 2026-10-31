@@ -28,13 +28,13 @@ When the owner adds keys or runs `scripts/smoke.md`, record once per case and co
 - Make inputs inside the worker container (ffmpeg lives there), e.g. silence: `ffmpeg -f lavfi -i anullsrc=r=16000:cl=mono -t 20 /data/silence.mp3`.
 - Add a test per recorded fixture that runs it through the real mapping/handling code.
 
-`apps/worker/test/fixtures/assemblyai-raw.json` and `ytdlp-info.json` are hand-written (id `fixture-1`), not recorded — treat them as unverified until a recorded sibling exists.
+`apps/worker/test/fixtures/assemblyai-raw.json` and `ytdlp-info.json` are hand-written (id `fixture-1`). A recorded sibling now exists for AssemblyAI: `test/fixtures/assemblyai/pt-debate.recorded.json` (2026-10-30 smoke run, Portuguese debate, trimmed). `ytdlp-info.json` is still unverified.
 
 ## Digestor boundaries and what is known
 
 | Boundary | Code | Known real behaviour | Status |
 |---|---|---|---|
-| AssemblyAI transcribe | `transcribe/assemblyai.ts` | silence with `language_detection` → `status:"error"`, "…no spoken audio" (docs); missing `audio_duration` possible | silence handled; no recorded fixtures yet |
+| AssemblyAI transcribe | `transcribe/assemblyai.ts` | silence with `language_detection` → `status:"error"`, "…no spoken audio" (docs); missing `audio_duration` possible | silence handled; recorded: normal Portuguese speech with speaker labels (`assemblyai/pt-debate.recorded.json`); silence/music still unrecorded |
 | Claude structured output | `llm/structured.ts`, `agents/*` | Claude 5.5: `temperature`/`top_p`/`top_k` and forced `tool_choice` → 400 (migration guides); adaptive thinking on by default, so replies start with `thinking` blocks; can exceed list caps, emit odd timestamps (`1:02:03`), out-of-range labels/scores | `output_config.format` via jsonSchema, no sampling params; wire tests via injected `fetch` (`structured.test.ts`); no recorded response yet |
 | Claude tool calls (Ask) | `llm/tools.ts`, `agents/ask.ts` | per `@langchain/core` 1.3 types: `tool_calls[].id` optional, unparseable JSON lands in `invalid_tool_calls` with `args` as a string; tool_use needs an object `input`; Claude 5.5 needs the turn's `thinking` blocks sent back unchanged (we replay `ToolStep.raw`) | adapter maps both, args validated in each tool; wire test replays thinking + tool_use; no recorded response yet (smoke.md §3) |
 | OpenRouter (LLM_PROVIDER=openrouter) | `llm/openrouter.ts` | OpenAI-compatible Chat Completions; lists no `temperature` for Claude 5.5 (with `require_parameters` that means 503); 402 = out of credits, 503 = no provider meets routing; a 200 may carry `error` instead of `choices` (https://openrouter.ai/docs/api-reference/errors); `@langchain/openai` JSON-parses json_schema replies inside its retrier (6 paid retries by default, stopped by `onFailedAttempt`) | fakes from docs via an injected `fetch`; no recorded response yet (smoke.md §4) |

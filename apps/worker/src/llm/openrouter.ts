@@ -1,8 +1,7 @@
 import { SystemMessage } from "@langchain/core/messages";
-import { toJsonSchema } from "@langchain/core/utils/json_schema";
 import { ChatOpenAICompletions } from "@langchain/openai";
 import type { z } from "zod";
-import { invokeWithOneRetry, isParseError, type ClientOptions, type LLMModel, type StructuredLLM } from "./structured.js";
+import { invokeWithOneRetry, isParseError, llmJsonSchema, validated, type ClientOptions, type LLMModel, type StructuredLLM } from "./structured.js";
 import { fromAIMessage, toLangChainMessages, type ToolLLM } from "./tools.js";
 
 /** OpenAI-compatible Chat Completions API: https://openrouter.ai/docs/api-reference/overview */
@@ -50,17 +49,13 @@ function openRouterChat(apiKey: string, model: string, maxTokens: number, opts: 
 export function createOpenRouterLLM(apiKey: string, models: Record<LLMModel, string>, opts: ClientOptions = {}): StructuredLLM {
   return {
     async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }) {
-      // A plain JSON schema, validated with zod after the call: given a zod schema, @langchain/openai validates
-      // inside its HTTP retrier, which repeats a bad reply up to 6 times with backoff (each one paid).
-      const json = openRouterChat(apiKey, models[a.model], 16000, opts).withStructuredOutput(toJsonSchema(a.schema) as Record<string, unknown>, {
+      // A plain (ref-free) JSON schema, validated with zod after the call: given a zod schema, @langchain/openai
+      // validates inside its HTTP retrier, which repeats a bad reply up to 6 times with backoff (each one paid).
+      const json = openRouterChat(apiKey, models[a.model], 16000, opts).withStructuredOutput(llmJsonSchema(a.schema), {
         name: a.name,
         method: "jsonSchema", // response_format json_schema; Claude 5.5 rejects a forced tool call
       });
-      const chat = { invoke: async (m: [string, string][]) => {
-        const out = await json.invoke(m);
-        return out == null ? out : a.schema.parse(out);
-      } };
-      return invokeWithOneRetry<T>(chat, a);
+      return invokeWithOneRetry<T>(validated(json, a.schema), a);
     },
   };
 }

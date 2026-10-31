@@ -95,3 +95,21 @@ describe("FakeTranscriber", () => {
     expect(await new FakeTranscriber(t).transcribe("x.wav")).toBe(t);
   });
 });
+
+describe("mapAssemblyAI on a recorded response", () => {
+  // Real response from the 2026-10-30 smoke run (speaker_labels + language_detection), trimmed to 300 words.
+  const recorded = JSON.parse(
+    readFileSync(new URL("../../test/fixtures/assemblyai/pt-debate.recorded.json", import.meta.url), "utf8"),
+  );
+
+  it("maps a real Portuguese debate transcript and validates", () => {
+    expect(() => throwIfError(recorded)).not.toThrow();
+    const t = mapAssemblyAI(recorded);
+    expect(() => TranscriptSchema.parse(t)).not.toThrow();
+    expect(t.language).toBe("pt");
+    expect(t.durationMs).toBe(2_401_000);
+    expect(t.words).toHaveLength(300);
+    expect(t.words[0]).toMatchObject({ text: "feitas", startMs: 256, endMs: 673, speaker: "A" });
+    expect(t.words.every((w) => /^[A-Z]$/.test(w.speaker))).toBe(true);
+  });
+});
