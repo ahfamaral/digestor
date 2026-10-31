@@ -106,7 +106,7 @@ Notes:
 
 ### YouTube
 
-Downloads work best from a home connection. From a server IP YouTube often asks for a bot check; the download is then best-effort and fails with a clear message ("download the video yourself and upload the file instead"). Digestor is for personal use, and you are responsible for how you use and share downloaded clips.
+Downloads work best from a home connection. From a server IP YouTube often asks for a bot check; without cookies the download then fails with a clear message ("download the video yourself and upload the file instead"). To get past it, give the worker a logged-in session's cookies (`YTDLP_COOKIES_FILE`, see [docs/deploy.md](docs/deploy.md#youtube-links-on-a-server)). Digestor is for personal use, and you are responsible for how you use and share downloaded clips.
 
 ## Deployment
 

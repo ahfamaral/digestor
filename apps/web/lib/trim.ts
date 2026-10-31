@@ -38,7 +38,7 @@ export function nearestBoundary(boundaries: number[], ms: number, maxDistMs = 20
 }
 
 /**
- * One keyboard step of a handle. Without snapping it moves by `deltaMs`; with snapping it jumps to the nearest pause
+ * One keyboard step of a handle. Without snapping it moves by `deltaMs`; with snapping it jumps to the nearest cut point
  * at least one step away in that direction, or by the plain step when there is no pause that way.
  */
 export function stepHandle(points: number[], ms: number, deltaMs: number, snap: boolean): number {

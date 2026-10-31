@@ -154,7 +154,7 @@ Graph state is persisted with the Postgres checkpointer, keyed by `session_id` a
 | 5 | `ask_context` | **`interrupt()` #1** — only if context is insufficient. Resumes with the human's answers or "skip"; may loop back to node 4 once | human |
 | 6 | `index` | Chunk transcript into ~45–60 s windows on sentence boundaries; embed; upsert into Chroma with metadata (session, start, end, speakers) | embeddings |
 | 7 | `find_clips` | **Pass 1:** full transcript + context card + heat peaks → long-clip candidates (typically 2–12 min). **Pass 2:** per long clip → hot takes (typically 15–90 s) inside it. zod-validated structured output | yes (Sonnet) |
-| 8 | `snap` | Snap start/end to the nearest sentence end / pause ≥ 300 ms using word timestamps; enforce child ⊂ parent | no |
+| 8 | `snap` | Snap start/end to the nearest sentence end using word timestamps; a pause ≥ 300 ms counts only inside a sentence with no sentence end within 10 s (`PAUSE_REACH_MS`; speakers pause mid-sentence, seen in the 2026-10-30 smoke run); enforce child ⊂ parent | no |
 | 9 | `review` | **`interrupt()` #2** — UI shows the inbox. Resumes when the user clicks "Render approved" | human |
 | 10 | `render` | For each approved clip: ASS subtitles from words, burn in with ffmpeg (re-encode, frame-accurate), optional speaker lower-third; write MP4 + `.srt` | no |
 

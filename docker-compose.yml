@@ -64,6 +64,7 @@ services:
       ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
       VIDEO_RETENTION_DAYS: ${VIDEO_RETENTION_DAYS:-14}
       MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}
+      YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
     volumes:
       - .:/app
       - worker_node_modules:/app/node_modules
@@ -72,6 +73,7 @@ services:
       # keeps the container's install of apps/web deps off the host's apps/web/node_modules (bind mount)
       - worker_web_node_modules:/app/apps/web/node_modules
       - ./data:/data
+      - ./secrets:/secrets:ro
       - pnpm-store:/pnpm-store
 
 volumes:

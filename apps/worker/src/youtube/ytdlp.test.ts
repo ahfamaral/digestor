@@ -73,6 +73,28 @@ describe("downloadYouTube outcomes", () => {
     expect(existsSync(`${base}.info.json`)).toBe(false);
   });
 
+  it("passes a private copy of the cookies file and removes it afterwards (yt-dlp writes cookies back)", async () => {
+    const cookies = `${out()}-cookies.txt`;
+    writeFileSync(cookies, "# Netscape HTTP Cookie File\n");
+    runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    await expect(downloadYouTube("https://youtu.be/x", out(), { YTDLP_COOKIES_FILE: cookies })).rejects.toThrow();
+    const args: string[] = runMock.mock.lastCall![1];
+    expect(args).toContain("--cookies");
+    const used = args[args.indexOf("--cookies") + 1]!;
+    expect(used).not.toBe(cookies);
+    expect(existsSync(used)).toBe(false);
+    expect(readFileSync(cookies, "utf8")).toBe("# Netscape HTTP Cookie File\n");
+  });
+
+  it("downloads without cookies (and logs why) when the configured file is missing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    await expect(downloadYouTube("https://youtu.be/x", out(), { YTDLP_COOKIES_FILE: "/nope/cookies.txt" })).rejects.toThrow();
+    expect(runMock.mock.lastCall![1]).not.toContain("--cookies");
+    expect(warn.mock.calls[0]![0]).toMatch(/YTDLP_COOKIES_FILE/);
+    warn.mockRestore();
+  });
+
   it("gives the generic sentence, not a raw ENOENT, when yt-dlp produced nothing", async () => {
     runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
     await expect(downloadYouTube("https://youtu.be/x", out())).rejects.toThrow(/^Couldn't download this video from YouTube\.$/);
@@ -86,6 +108,16 @@ describe("ytDlpArgs", () => {
     expect(args[args.indexOf("--max-filesize") + 1]).toBe("2G");
     expect(args[args.indexOf("--break-match-filters") + 1]).toBe("!is_live");
     expect(args.slice(-2)).toEqual(["--", "https://youtu.be/x"]);
+    expect(args).not.toContain("--cookies");
+  });
+  it("solves YouTube's JS challenges with the container's node (deno isn't installed)", () => {
+    const args = ytDlpArgs("u", "/o", {});
+    expect(args[args.indexOf("--js-runtimes") + 1]).toBe("node");
+  });
+  it("adds --cookies when given a cookies file", () => {
+    const args = ytDlpArgs("u", "/o", {}, "/tmp/c.txt");
+    expect(args[args.indexOf("--cookies") + 1]).toBe("/tmp/c.txt");
+    expect(args.indexOf("--cookies")).toBeLessThan(args.indexOf("--"));
   });
   it("defaults the cap to 5 GB and ignores bad values", () => {
     expect(ytDlpArgs("u", "/o", {})[ytDlpArgs("u", "/o", {}).indexOf("--max-filesize") + 1]).toBe("5G");

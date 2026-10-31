@@ -43,8 +43,10 @@ services:
       ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
       VIDEO_RETENTION_DAYS: ${VIDEO_RETENTION_DAYS:-14}
       MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}
+      YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
     volumes: !override
       - appdata:/data
+      - ./secrets:/secrets:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

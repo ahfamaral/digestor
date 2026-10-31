@@ -15,19 +15,39 @@ export function endsSentence(text: string): boolean {
 export type Boundary = { afterWordEndMs: number; beforeWordStartMs: number };
 export type Range = { startMs: number; endMs: number };
 
-export function findBoundaries(words: Word[], durationMs: number, minPauseMs = 300): Boundary[] {
+/** A pause counts as a cut point only when no sentence end (or video edge) lies within this distance of it. */
+export const PAUSE_REACH_MS = 10_000;
+
+/**
+ * Where a cut may fall: the video edges, every sentence end, and pauses of at least `minPauseMs` inside sentences
+ * longer than `pauseReachMs` (speakers pause mid-sentence, so a pause near a sentence end is not a boundary).
+ */
+export function findBoundaries(words: Word[], durationMs: number, minPauseMs = 300, pauseReachMs = PAUSE_REACH_MS): Boundary[] {
   if (words.length === 0) return [];
-  const out: Boundary[] = [{ afterWordEndMs: 0, beforeWordStartMs: words[0]!.startMs }];
+  const all: (Boundary & { sentence: boolean })[] = [{ afterWordEndMs: 0, beforeWordStartMs: words[0]!.startMs, sentence: true }];
   for (let i = 0; i < words.length - 1; i++) {
     const cur = words[i]!;
     const next = words[i + 1]!;
     const gap = next.startMs - cur.endMs;
-    if (gap >= 0 && (gap >= minPauseMs || endsSentence(cur.text))) {
-      out.push({ afterWordEndMs: cur.endMs, beforeWordStartMs: next.startMs });
+    const sentence = endsSentence(cur.text);
+    if (gap >= 0 && (gap >= minPauseMs || sentence)) {
+      all.push({ afterWordEndMs: cur.endMs, beforeWordStartMs: next.startMs, sentence });
     }
   }
-  out.push({ afterWordEndMs: words[words.length - 1]!.endMs, beforeWordStartMs: durationMs });
-  return out;
+  all.push({ afterWordEndMs: words[words.length - 1]!.endMs, beforeWordStartMs: durationMs, sentence: true });
+
+  const nearSentence = all.map(() => false);
+  let prev = -Infinity;
+  for (let i = 0; i < all.length; i++) {
+    if (all[i]!.sentence) prev = all[i]!.afterWordEndMs;
+    else nearSentence[i] = all[i]!.afterWordEndMs - prev <= pauseReachMs;
+  }
+  let next = Infinity;
+  for (let i = all.length - 1; i >= 0; i--) {
+    if (all[i]!.sentence) next = all[i]!.afterWordEndMs;
+    else nearSentence[i] ||= next - all[i]!.afterWordEndMs <= pauseReachMs;
+  }
+  return all.filter((b, i) => b.sentence || !nearSentence[i]).map(({ afterWordEndMs, beforeWordStartMs }) => ({ afterWordEndMs, beforeWordStartMs }));
 }
 
 function nearestIndex(b: Boundary[], from: number, to: number, pick: (x: Boundary) => number, target: number): number {

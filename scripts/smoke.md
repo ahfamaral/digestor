@@ -7,6 +7,7 @@ Setup: `colima start --cpu 4 --memory 8`, `docker compose up -d --build`, `pnpm 
 ## 1. Full run
 
 - [ ] Intake: paste the YouTube link (run A) or upload the file (run B).
+  - On a server IP, once without and once with `YTDLP_COOKIES_FILE` (docs/deploy.md): without, the bot-check sentence; with, the download works. Not yet verified with real cookies past a real bot check.
 - [ ] Processing: the stepper advances through download, ingest, transcribe, context.
 - [ ] Context check: answer one question (or skip) and continue; profile is detected or chosen.
 - [ ] Preview: timeline, top highlights and briefing appear; Play a highlight; "Looks right → Full briefing".

@@ -24,8 +24,30 @@ describe("endsSentence", () => {
 });
 
 describe("findBoundaries", () => {
-  it("includes edges, long pauses and sentence ends (even without a pause)", () => {
+  it("drops a pause when a sentence end is within reach: speakers pause mid-sentence", () => {
+    // Seen in the 2026-10-30 smoke run: a 300 ms pause before "que tá aqui nesse mapa" won over the sentence start.
     expect(findBoundaries(words, 10_000)).toEqual([
+      { afterWordEndMs: 0, beforeWordStartMs: 0 },
+      { afterWordEndMs: 900, beforeWordStartMs: 1000 },
+      { afterWordEndMs: 3500, beforeWordStartMs: 3600 },
+      { afterWordEndMs: 4300, beforeWordStartMs: 10_000 },
+    ]);
+    const trimmed = snapRange(findBoundaries(words, 10_000), { startMs: 2_300, endMs: 4_300 });
+    expect(trimmed.startMs).toBe(900); // the start of "We think so and then stop.", not "and then stop."
+  });
+  it("keeps a pause inside a sentence longer than the reach", () => {
+    // one sentence of 30 words, 1 s each, with a 500 ms pause after word 15
+    const long: Word[] = [];
+    for (let i = 0; i < 30; i++) {
+      const start = i * 1000 + (i >= 15 ? 500 : 0);
+      long.push(w(i === 29 ? "end." : `w${i}`, start, start + 800));
+    }
+    const bs = findBoundaries(long, 40_000);
+    expect(bs.map((b) => b.afterWordEndMs)).toEqual([0, 14_800, 30_300]);
+    expect(findBoundaries(long, 40_000, 300, 15_000).map((b) => b.afterWordEndMs)).toEqual([0, 30_300]);
+  });
+  it("includes edges, long pauses and sentence ends (even without a pause) when the reach is 0", () => {
+    expect(findBoundaries(words, 10_000, 300, 0)).toEqual([
       { afterWordEndMs: 0, beforeWordStartMs: 0 },
       { afterWordEndMs: 900, beforeWordStartMs: 1000 }, // punctuation, 100 ms gap
       { afterWordEndMs: 2000, beforeWordStartMs: 2400 }, // 400 ms pause, no punctuation
@@ -34,7 +56,7 @@ describe("findBoundaries", () => {
     ]);
   });
   it("respects minPauseMs", () => {
-    expect(findBoundaries(words, 10_000, 500)).toHaveLength(4);
+    expect(findBoundaries(words, 10_000, 500, 0)).toHaveLength(4);
   });
   it("creates no boundary between overlapping words", () => {
     const ov = [w("one.", 0, 900), w("two", 850, 1200), w("three.", 1300, 1600)];
@@ -55,7 +77,7 @@ describe("findBoundaries", () => {
 });
 
 describe("snapRange", () => {
-  const b = findBoundaries(words, 10_000);
+  const b = findBoundaries(words, 10_000, 300, 0); // every pause, so these tests reach snapRange's edge cases
   it("never lands mid-word", () => {
     const r = snapRange(b, { startMs: 1_100, endMs: 4_050 });
     expect(words.some((x) => r.startMs > x.startMs && r.startMs < x.endMs)).toBe(false);

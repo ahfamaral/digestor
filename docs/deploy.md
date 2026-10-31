@@ -133,7 +133,17 @@ docker run --rm -v digestor_appdata:/data -v "$PWD":/backup busybox tar czf /bac
 
 ## YouTube links on a server
 
-YouTube often asks for a bot check when downloads come from a data-centre IP. Digestor does not use cookies or proxies, so on a VPS a YouTube link may fail with "YouTube blocked this download from the server. Download the video yourself and upload the file instead." That is expected: download the video on your own machine and upload the file. Uploads always work.
+YouTube often asks for a bot check when downloads come from a data-centre IP. Without cookies a YouTube link may then fail with "YouTube blocked this download from the server. Download the video yourself and upload the file instead." Uploads always work.
+
+To get past the bot check, give the worker the cookies of a logged-in YouTube session:
+
+1. Use a separate Google account, not your personal one: YouTube can flag or suspend accounts used for downloads.
+2. In a private/incognito browser window, log in to YouTube, then open `https://www.youtube.com/robots.txt` in the same tab.
+3. Export the `youtube.com` cookies in Netscape `cookies.txt` format (for example with the "Get cookies.txt LOCALLY" extension), then close the private window without logging out. Closing it this way keeps YouTube from rotating the cookies you just exported.
+4. Save the file as `secrets/youtube-cookies.txt` in the repo folder on the server (`secrets/` is git-ignored and kept out of images; the worker mounts it read-only at `/secrets`), and `chmod 600` it.
+5. Set `YTDLP_COOKIES_FILE=/secrets/youtube-cookies.txt` in `.env` and run `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d worker`.
+
+Each download uses its own temporary copy, so the file is never changed. When YouTube blocks a download despite cookies, the worker logs "blocked even with YTDLP_COOKIES_FILE: the cookies may have expired"; export fresh ones. A missing file is logged and the download goes ahead without cookies.
 
 ## Local production rehearsal
 
