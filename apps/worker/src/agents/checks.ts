@@ -12,14 +12,14 @@ import type { StructuredLLM } from "../llm/structured.js";
 export const SENTENCES_BEFORE = 2;
 export const SENTENCES_AFTER = 3;
 
-/** Lenient on purpose: booleans and free text only; continuesWith is decided in code. */
+/** Lenient on purpose: booleans and free text only; continuesWith is decided in code. Nullable, not optional: OpenAI's strict structured outputs need every key. */
 export const ChecksOutput = z.object({
   argumentComplete: z.boolean().describe("true when the moment makes its point without needing what follows"),
-  continuesWith: z.string().nullish().describe("Ignored: the continuation is taken from the transcript"),
+  continuesWith: z.string().nullable().describe("Ignored: the continuation is taken from the transcript"),
   unansweredQuestion: z.boolean().describe("true when the moment ends on a question that is not answered inside it"),
   contextRisk: z
     .string()
-    .nullish()
+    .nullable()
     .describe("One short sentence if the moment could mislead out of context (sarcasm, hypothetical, quoting someone, missing referent); empty otherwise"),
   reportedSpeech: z.boolean().describe("true when the speaker is quoting or reading someone else's words"),
   interpreter: z.boolean().describe("true when the audio is an interpreter's voice rather than the speaker's"),

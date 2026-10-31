@@ -11,6 +11,7 @@ description: How to design LLM calls that return structured data in Digestor (La
 
 1. **Two schemas per output, not one.**
    - *LLM output schema* (what `withStructuredOutput` gets): the shape, with field descriptions and key order that helps the model reason (`reason` before `label`/`score`). **No** `.max()` on arrays, no regexes, no tight numeric bounds — those are business rules, not shape.
+   - Provider limits on the output schema (guarded by `llm/outputSchemas.test.ts`, live check `scripts/probe-schemas.ts`): no optional fields — use `.nullable()`, never `.optional()`/`.nullish()` (OpenAI strict structured outputs need every key in `required`); reused sub-schemas go through `llmJsonSchema` (refs only under `$defs`); at most 16 union-typed parameters (Claude).
    - *Domain schema* (`packages/core/src/schemas.ts`): strict, used for stored data and API payloads.
    Derive the first from the second where you can (`CandidateSchema.extend({ start: z.string(), end: z.string() })` in `agents/clips.ts`).
 
