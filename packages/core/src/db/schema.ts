@@ -1,6 +1,8 @@
 import {
-  boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uuid,
+  boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import type { AttributionEvidence, AttributionSource, AttributionStatus } from "../attribution.ts";
 import type { AnalysisStatus, BriefingContent, MomentChecks, MomentOrigin, HighlightMethod } from "../analysisTypes.ts";
 import type {
   AskActionKind, AskActionStatus, AskMessageStatus, AskRole, ClipActor, ClipEventKind, ClipFormat, ProblemTargetKind,
@@ -69,6 +71,8 @@ export const analysisVersions = pgTable(
     promptVersions: jsonb("prompt_versions").$type<Record<string, string>>().notNull().default({}),
     reason: text("reason").notNull(),
     isCurrent: boolean("is_current").notNull().default(false),
+    /** When the session's names stood as this version's text was written (Plan 3 §5.2). */
+    namesAt: timestamp("names_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("analysis_versions_session_version").on(t.sessionId, t.version)],
@@ -273,3 +277,49 @@ export const problemReports = pgTable("problem_reports", {
   note: text("note").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const persons = pgTable(
+  "persons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    displayName: text("display_name").notNull(),
+    fullName: text("full_name"),
+    kind: text("kind", { enum: ["official", "custom"] }).notNull(),
+    party: text("party"),
+    state: text("state"),
+    role: text("role"),
+    photoUrl: text("photo_url"),
+    officialIds: jsonb("official_ids").$type<Record<string, string>>().notNull().default({}),
+    /** normaliseName(displayName + " " + fullName), for search. */
+    nameNorm: text("name_norm").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("persons_official_senado").on(sql`(${t.officialIds}->>'senado')`),
+    uniqueIndex("persons_official_camara").on(sql`(${t.officialIds}->>'camara')`),
+    index("persons_name_norm").on(t.nameNorm),
+  ],
+);
+
+export const attributions = pgTable(
+  "attributions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    speakerId: text("speaker_id").notNull(),
+    startMs: integer("start_ms"),
+    endMs: integer("end_ms"),
+    personId: uuid("person_id").references(() => persons.id),
+    source: text("source").$type<AttributionSource>().notNull(),
+    status: text("status").$type<AttributionStatus>().notNull(),
+    confidence: doublePrecision("confidence").notNull(),
+    evidence: jsonb("evidence").$type<AttributionEvidence>().notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  },
+  (t) => [index("attributions_session_speaker").on(t.sessionId, t.speakerId)],
+);

@@ -50,6 +50,13 @@
       "when": 1793379548019,
       "tag": "0006_row_updated_at",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793647791182,
+      "tag": "0007_sharp_cyclops",
+      "breakpoints": true
     }
   ]
 }
