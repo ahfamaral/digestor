@@ -120,22 +120,55 @@ Production runs on a single VPS with `docker compose -f docker-compose.yml -f do
 
 ## Evaluation
 
-`apps/worker/scripts/eval.ts` compares an already-analysed session with a hand-labelled golden file and prints a Markdown table. It reads the database only and never calls the LLM. It reports:
+`apps/worker/scripts/eval.ts` compares one analysis version of a session with a hand-labelled golden file and prints a Markdown table. Without `--run-checks` it reads the database only and never calls the LLM. It reports:
 
 - topic boundary error (mean and max, to the nearest found boundary);
 - moment recall per granularity (a golden moment counts as found at 50% overlap);
 - highlight-type matches;
-- how many hand-made traps fired a check warning (a clip cut mid-argument, a quoted opponent).
+- how many hand-made traps fired a check warning, per kind (a clip cut mid-argument, a quoted opponent);
+- how many moments the version found per granularity.
 
 ```
-docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval.ts <sessionId> <golden.json>
+docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval.ts <sessionId> <golden.json> [--version N] [--run-checks]
 ```
+
+`--version N` scores that complete version instead of the current one. Checks only run on demand in the app (when a moment is approved or a clip is made), so a trap overlapped only by unchecked moments can't fire; the table says how many were unchecked. `--run-checks` first checks those moments with the model the version recorded for checks and stores the result, as the app would.
 
 The golden path is relative to `apps/worker` (for example `test/fixtures/golden-sample.json`); the session id can also sit in the golden file. Run it in the worker container, which has the database URL. The format is in `apps/worker/src/eval/metrics.ts`.
 
-**Comparing models.** Each analysis version records the model per step (`analysis_versions.models`; OpenRouter ids carry an `openrouter:` prefix). To compare models on the same video: set `LLM_PROVIDER=openrouter` and `OPENROUTER_MODEL_REASONING` / `OPENROUTER_MODEL_FAST` in `.env`, `docker compose up -d worker` (a restart alone doesn't re-read `.env`), click "Something's off" on the session to re-analyse it, and run the eval script again. The script scores the current version, so run it after each re-analysis. The transcript and context check are shared, so only the analysis models differ.
+**Comparing models.** Each analysis version records the model per step (`analysis_versions.models`; OpenRouter ids carry an `openrouter:` prefix). To compare models on the same video: set `LLM_PROVIDER=openrouter` and `OPENROUTER_MODEL_REASONING` / `OPENROUTER_MODEL_FAST` in `.env`, `docker compose up -d worker` (a restart alone doesn't re-read `.env`), click "Something's off" on the session to re-analyse it, and run the eval script again with `--version` for each version. The transcript and context check are shared, so only the analysis models differ.
 
-**Results: pending.** The real numbers wait for the owner's hand-labelled golden set (one ~1 h interview and one Câmara or Senado session; open input #2 in `docs/superpowers/plans/2026-10-30-plan-2-open-inputs.md`). The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script against the seeded demo session; its numbers mean nothing. Attribution accuracy (speaker names) comes with Plan 3.
+**Results (2026-11-02).** Video: the Globo presidential debate, Lula × Flávio Bolsonaro, 23 Oct 2026 (Portuguese, 1 h 57 min; session `7433d1c6`). Golden file: `apps/worker/eval/globo-debate-2026-10-23.golden.json`, with 15 topics, 14 exchanges, 31 passages, 26 punchlines, 68 typed highlights and 9 traps (5 quoted opponents, 4 cuts mid-argument). Claude drafted the labels from the AssemblyAI transcript and the owner reviewed and accepted them. Both versions share the same transcript and context card and differ only in the analysis model. Traps were scored with `--run-checks`.
+
+| Metric | Claude Haiku 5.5 (v1) | GPT-6 Luna (v2) |
+| --- | --- | --- |
+| Topic boundary error, mean / max | 14.1 s / 43.5 s | 17.4 s / 106.8 s |
+| Moment recall, exchange | 10/14 (71%) | 12/14 (86%) |
+| Moment recall, passage | 26/31 (84%) | 22/31 (71%) |
+| Moment recall, punchline | 17/26 (65%) | 16/26 (62%) |
+| Highlight type matched | 44/68 | 43/68 |
+| Check warnings on traps, mid-argument | 2/4 | 0/4 |
+| Check warnings on traps, quoted opponent | 5/5 | 5/5 |
+| Moments found (exchange / passage / punchline) | 25 / 86 / 84 | 17 / 52 / 66 |
+| Median length (exchange / passage / punchline) | 164 / 37 / 16 s | 369 / 67 / 26 s |
+
+The trap rows need a control, because a check that warns on everything would also score 5/5. Checking 19–24 moments well away from any trap gave these warning rates (trap-overlapping moments vs control):
+
+| | Haiku: reported speech | Haiku: incomplete | Luna: reported speech | Luna: incomplete |
+| --- | --- | --- | --- | --- |
+| Overlaps a trap | 10/13 | 9/13 | 9/13 | 0/13 |
+| Control | 3/19 | 7/19 | 3/24 | 3/24 |
+
+The reported-speech check works on both models. Haiku's completeness check fires often everywhere, and Luna's almost never fires.
+
+What the misses show:
+
+- **Punchlines are capped at 4 per exchange** (`MAX_PUNCHLINES_PER_EXCHANGE`). The 6-minute Norte exchange alone holds 7 golden punchlines; "mordido por um carapanã" and "É você ou é o Google?" are lost on both models.
+- **Punchlines only come from inside exchanges.** Haiku left 50:09–55:16 without an exchange. That stretch is the "9 dedos" (nine fingers) fight, the most quoted moment of the debate, and neither model has it as a punchline.
+- **Haiku splits a round** (question → answer → rebuttal → counter-rebuttal) into 2–3 shorter exchanges, which costs exchange recall. Luna keeps whole rounds but finds a third fewer passages, so it misses the "9 dedos" passage too.
+- Cost on OpenRouter: about $0.25 for both full analyses plus every check, against an estimated $0.40 of AssemblyAI credit for transcribing 2 hours.
+
+Attribution accuracy (speaker names) comes with Plan 3. The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script.
 
 ## Backlog from Plan 1
 

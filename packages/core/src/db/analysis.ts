@@ -155,7 +155,19 @@ export async function getCurrentAnalysis(db: Db, sessionId: string): Promise<Ana
     .select()
     .from(analysisVersions)
     .where(and(eq(analysisVersions.sessionId, sessionId), eq(analysisVersions.isCurrent, true)));
-  if (!v) return null;
+  return v ? loadBundle(db, v) : null;
+}
+
+/** One complete version of the session's analysis, current or not (the evaluation script compares versions). */
+export async function getAnalysisByVersion(db: Db, sessionId: string, version: number): Promise<AnalysisBundle | null> {
+  const [v] = await db
+    .select()
+    .from(analysisVersions)
+    .where(and(eq(analysisVersions.sessionId, sessionId), eq(analysisVersions.version, version), eq(analysisVersions.status, "complete")));
+  return v ? loadBundle(db, v) : null;
+}
+
+async function loadBundle(db: Db, v: AnalysisVersion): Promise<AnalysisBundle> {
   const [topicRows, momentRows, briefingRow] = await Promise.all([
     db.select().from(topics).where(eq(topics.analysisId, v.id)).orderBy(asc(topics.idx)),
     db

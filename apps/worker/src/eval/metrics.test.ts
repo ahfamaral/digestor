@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits } from "./metrics.js";
+import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps } from "./metrics.js";
 
 const t = (startMs: number, endMs: number) => ({ title: "t", startMs, endMs });
 
@@ -108,5 +108,19 @@ describe("trapHits", () => {
 
   it("ignores moments whose checks never ran", () => {
     expect(trapHits([{ kind: "mid_argument", startMs: 0, endMs: 5000 }], [{ startMs: 0, endMs: 5000, checks: null }])).toEqual({ fired: 0, total: 1 });
+  });
+});
+
+describe("uncheckedOnTraps", () => {
+  it("keeps only unchecked moments that overlap a trap", () => {
+    const checked = { argumentComplete: true } as MomentChecks;
+    const traps = [{ startMs: 10_000, endMs: 20_000 }];
+    const moments = [
+      { id: "a", startMs: 15_000, endMs: 30_000, checks: null },
+      { id: "b", startMs: 12_000, endMs: 18_000, checks: checked },
+      { id: "c", startMs: 20_000, endMs: 25_000, checks: null }, // touches the end only
+      { id: "d", startMs: 0, endMs: 40_000, checks: null },
+    ];
+    expect(uncheckedOnTraps(traps, moments).map((m) => m.id)).toEqual(["a", "d"]);
   });
 });

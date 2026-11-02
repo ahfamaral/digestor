@@ -1,0 +1,793 @@
+{
+ "sessionId": "7433d1c6-458e-42b8-898c-2d92583a9f03",
+ "videoPath": "data/globo-debate-lula-flavio.mp4",
+ "profile": "electoral_debate",
+ "labelledBy": "Drafted by Claude from the AssemblyAI transcript; reviewed and accepted by the owner (2026-11-02)",
+ "topics": [
+  {
+   "title": "Abertura e regras",
+   "startMs": 19490,
+   "endMs": 384697
+  },
+  {
+   "title": "Infraestrutura e exportação (Flávio pergunta)",
+   "startMs": 384697,
+   "endMs": 818660
+  },
+  {
+   "title": "Região Sudeste: salário mínimo (Lula pergunta)",
+   "startMs": 818660,
+   "endMs": 1250530
+  },
+  {
+   "title": "Região Centro-Oeste: agronegócio (Flávio pergunta)",
+   "startMs": 1250530,
+   "endMs": 1640501
+  },
+  {
+   "title": "Região Sul: aposentados (Lula pergunta)",
+   "startMs": 1640501,
+   "endMs": 1965688
+  },
+  {
+   "title": "Região Norte: saneamento (Flávio pergunta)",
+   "startMs": 1965688,
+   "endMs": 2356363
+  },
+  {
+   "title": "Região Nordeste (Lula pergunta)",
+   "startMs": 2356363,
+   "endMs": 2776173
+  },
+  {
+   "title": "Políticas sociais e direitos de resposta (Lula pergunta)",
+   "startMs": 2792090,
+   "endMs": 3459794
+  },
+  {
+   "title": "Dívida pública (Flávio pergunta)",
+   "startMs": 3459794,
+   "endMs": 3862323
+  },
+  {
+   "title": "Sistema Único de Saúde (Lula pergunta)",
+   "startMs": 3862323,
+   "endMs": 4276664
+  },
+  {
+   "title": "Endividamento dos brasileiros (Flávio pergunta)",
+   "startMs": 4293166,
+   "endMs": 4710530
+  },
+  {
+   "title": "Ensino integral (Lula pergunta)",
+   "startMs": 4710530,
+   "endMs": 5148140
+  },
+  {
+   "title": "Retomada de territórios e segurança (Flávio pergunta)",
+   "startMs": 5148140,
+   "endMs": 5580231
+  },
+  {
+   "title": "Bloco 4: tema livre",
+   "startMs": 5595141,
+   "endMs": 6745518
+  },
+  {
+   "title": "Considerações finais",
+   "startMs": 6745518,
+   "endMs": 7049360
+  }
+ ],
+ "moments": [
+  {
+   "granularity": "exchange",
+   "title": "Infraestrutura: obras paradas x PAC",
+   "startMs": 444966,
+   "endMs": 817676,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Salário mínimo sem o PT e poder de compra",
+   "startMs": 837782,
+   "endMs": 1250177,
+   "types": [
+    "attack_rebuttal",
+    "dodge"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Agro: 'por que trata o agro com raiva' x 'dá um Google'",
+   "startMs": 1270641,
+   "endMs": 1639987,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Aposentados: reajuste acima da inflação e Milei",
+   "startMs": 1661156,
+   "endMs": 1965089,
+   "types": [
+    "promise",
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Saneamento no Norte e a imagem do oxigênio em Manaus",
+   "startMs": 1982490,
+   "endMs": 2356218,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Nordeste: transposição, Comando Vermelho e Bolsa Família",
+   "startMs": 2379937,
+   "endMs": 2754070,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Licença-maternidade, Bolsa Farelo e '9 dedos'",
+   "startMs": 2916838,
+   "endMs": 3314250,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Dívida pública e Banco Central independente",
+   "startMs": 3486896,
+   "endMs": 3861726,
+   "types": [
+    "dodge",
+    "promise"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "SUS, COVID e a tabela SUS",
+   "startMs": 3882037,
+   "endMs": 4253240,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Endividamento: Desenrola, picanha e bets",
+   "startMs": 4340420,
+   "endMs": 4709213,
+   "types": [
+    "promise",
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Ensino integral e 'o Tigrinho'",
+   "startMs": 4767300,
+   "endMs": 5147690,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Segurança: saidinhas, Ana Clara e narcoterroristas",
+   "startMs": 5173710,
+   "endMs": 5548800,
+   "types": [
+    "attack_rebuttal",
+    "promise"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Tema livre: a ilha de Angra e o uísque de meio milhão",
+   "startMs": 5722482,
+   "endMs": 6111029,
+   "types": [
+    "attack_rebuttal",
+    "dodge"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Tema livre: patrimônio, laranjas e o desafio de abrir as contas",
+   "startMs": 6396350,
+   "endMs": 6652310,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: PAC de R$1,7 trilhão, '3 ou 4 vezes mais'",
+   "startMs": 515307,
+   "endMs": 586611,
+   "types": [
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: ferrovias, Transnordestina e pedágio zero para motos",
+   "startMs": 593400,
+   "endMs": 640779,
+   "types": [
+    "promise"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: 'decorar mas não aprender' e a lista de obras",
+   "startMs": 728240,
+   "endMs": 780480,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: sem o PT o salário mínimo seria R$900",
+   "startMs": 911460,
+   "endMs": 960720,
+   "types": [
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: a dúzia de 10 ovos e a reduflação",
+   "startMs": 1183710,
+   "endMs": 1224500,
+   "types": [
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: 'por que você trata o agro com tanta raiva?'",
+   "startMs": 1270641,
+   "endMs": 1304950,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: 'dá um Google', Trump e novos mercados",
+   "startMs": 1306220,
+   "endMs": 1390525,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: fome e 'no condomínio dele'",
+   "startMs": 1599280,
+   "endMs": 1639987,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: 'você nunca responde a pergunta… vai ou não vai?'",
+   "startMs": 1799320,
+   "endMs": 1846630,
+   "types": [
+    "dodge"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: Manaus e o pai rindo de quem morria sem oxigênio",
+   "startMs": 2025016,
+   "endMs": 2070250,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: 'quem governa, você ou o Google?' e saneamento até 2033",
+   "startMs": 2115870,
+   "endMs": 2159650,
+   "types": [
+    "attack_rebuttal",
+    "promise"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: o vídeo de Bolsonaro 'é mentira'",
+   "startMs": 2488330,
+   "endMs": 2529613,
+   "types": [
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio admite: 'Eu tava errado' sobre a licença-maternidade",
+   "startMs": 2943036,
+   "endMs": 2966318,
+   "types": []
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: 'não vou permitir que um miliciano me chame de 9 dedos'",
+   "startMs": 3081204,
+   "endMs": 3149583,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio pede desculpas e devolve: 'você vai pedir desculpas?'",
+   "startMs": 3155766,
+   "endMs": 3209520,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula devolve a pergunta: 'por que fizeram o Banco Central independente?'",
+   "startMs": 3534140,
+   "endMs": 3582600,
+   "types": [
+    "dodge"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: comprar as dívidas e 6 meses sem pagar",
+   "startMs": 3628960,
+   "endMs": 3669020,
+   "types": [
+    "promise"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: 'ele tá copiando o que eu mandei para o Senado'",
+   "startMs": 3693272,
+   "endMs": 3754390,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: COVID, 'virar jacaré' e cloroquina",
+   "startMs": 4015620,
+   "endMs": 4062790,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: o SUS salvou Bolsonaro; 700 dias de espera",
+   "startMs": 4129435,
+   "endMs": 4160782,
+   "types": [
+    "promise",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: 'parcela o que tem dentro da geladeira'",
+   "startMs": 4397160,
+   "endMs": 4437590,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: o fim das bets",
+   "startMs": 4653370,
+   "endMs": 4709213,
+   "types": [
+    "promise"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio x Lula: 'o Lulinha e o Tigrinho'",
+   "startMs": 4796050,
+   "endMs": 4851070,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: auxílio-creche",
+   "startMs": 5031030,
+   "endMs": 5065070,
+   "types": [
+    "promise"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: a mãe de Ana Clara e o policial",
+   "startMs": 5216002,
+   "endMs": 5274870,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: narcoterroristas, 8 anos para ladrão de celular, maioridade penal",
+   "startMs": 5325920,
+   "endMs": 5392500,
+   "types": [
+    "promise"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: 'para o trabalhador, segurança; para o bandido, cadeia'",
+   "startMs": 5504420,
+   "endMs": 5540520,
+   "types": [
+    "promise"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: R$50 mil por copo de uísque = 70 Bolsas Família",
+   "startMs": 6056909,
+   "endMs": 6088950,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: o banqueiro que 'corrompeu a República'",
+   "startMs": 6218627,
+   "endMs": 6269690,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Lula: considerações finais",
+   "startMs": 6764850,
+   "endMs": 6856370,
+   "types": []
+  },
+  {
+   "granularity": "passage",
+   "title": "Flávio: considerações finais",
+   "startMs": 6934880,
+   "endMs": 7027010,
+   "types": [
+    "promise"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'decorar, mas não conseguem aprender'",
+   "startMs": 728240,
+   "endMs": 738130,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'O seu salário já acabou?'",
+   "startMs": 883272,
+   "endMs": 906171,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'dá com uma mão e tira com os 9 dedos'",
+   "startMs": 1107030,
+   "endMs": 1116010,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'A dúzia virou 10'",
+   "startMs": 1183710,
+   "endMs": 1192430,
+   "types": [
+    "zinger",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'eu não nasci com medo de cara feia'",
+   "startMs": 1352439,
+   "endMs": 1366139,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'no condomínio dele as pessoas não passam fome'",
+   "startMs": 1630475,
+   "endMs": 1639987,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'beijinho, beijinho… tchau, tchau'",
+   "startMs": 1833130,
+   "endMs": 1846630,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "o pai 'rindo das pessoas morrendo por falta de oxigênio'",
+   "startMs": 2031510,
+   "endMs": 2053720,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'mordido por um carapanã'",
+   "startMs": 2096192,
+   "endMs": 2113272,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'quem governa o Brasil? É você ou é o Google?'",
+   "startMs": 2115870,
+   "endMs": 2126410,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'o carioca mais nordestino que vocês já viram'",
+   "startMs": 2478960,
+   "endMs": 2488330,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'Eu tava errado'",
+   "startMs": 2945810,
+   "endMs": 2966318,
+   "types": []
+  },
+  {
+   "granularity": "punchline",
+   "title": "'não vou permitir que um miliciano me chame de 9 dedos'",
+   "startMs": 3090609,
+   "endMs": 3102898,
+   "types": [
+    "zinger",
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'R$3 por dia, você compra 3 ovos'",
+   "startMs": 3198294,
+   "endMs": 3209520,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'quem tomasse vacina ia virar gay, ia virar jacaré'",
+   "startMs": 4031913,
+   "endMs": 4038813,
+   "types": [
+    "attack_rebuttal",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'prometeu picanha, entregou abóbora'",
+   "startMs": 4340420,
+   "endMs": 4353538,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'agora parcela o que tem dentro da geladeira'",
+   "startMs": 4416480,
+   "endMs": 4425730,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'o Lulinha e o Tigrinho'",
+   "startMs": 4798489,
+   "endMs": 4809104,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'você é o irmão' do Tigrinho",
+   "startMs": 4829182,
+   "endMs": 4844330,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'para o trabalhador, segurança; para o bandido, cadeia'",
+   "startMs": 5519900,
+   "endMs": 5527130,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'qual o gostinho desse whisky, hein, Lula?'",
+   "startMs": 5935451,
+   "endMs": 5949591,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'você criou um banqueiro e eu fiz ele prisioneiro'",
+   "startMs": 6000790,
+   "endMs": 6007770,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'cada dose custa R$50 mil… 70 Bolsas Famílias'",
+   "startMs": 6058919,
+   "endMs": 6081420,
+   "types": [
+    "zinger",
+    "claim_to_check"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'a sua vida é um laranjal'",
+   "startMs": 6496050,
+   "endMs": 6506498,
+   "types": [
+    "zinger"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'mentira, mentira e mentira'",
+   "startMs": 6624862,
+   "endMs": 6640110,
+   "types": [
+    "attack_rebuttal"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "'um miliciano governando esse país'",
+   "startMs": 6835247,
+   "endMs": 6856370,
+   "types": [
+    "zinger"
+   ]
+  }
+ ],
+ "traps": [
+  {
+   "kind": "quoted_opponent",
+   "title": "Flávio atribui a Lula 'ajoelhar aos seus pés' e 'agro fascista'",
+   "startMs": 1293660,
+   "endMs": 1301400
+  },
+  {
+   "kind": "quoted_opponent",
+   "title": "Lula cita o ex-ministro do Meio Ambiente: 'abrir a porteira'",
+   "startMs": 2274642,
+   "endMs": 2294258
+  },
+  {
+   "kind": "quoted_opponent",
+   "title": "Flávio resume o que Lula diz do vídeo de Bolsonaro",
+   "startMs": 2492910,
+   "endMs": 2505730
+  },
+  {
+   "kind": "quoted_opponent",
+   "title": "Lula atribui ao 'escolhido' de Flávio: não pôr dinheiro no SUS",
+   "startMs": 3886654,
+   "endMs": 3908551
+  },
+  {
+   "kind": "quoted_opponent",
+   "title": "Flávio atribui a Lula 'se a comida tá cara, não compra'",
+   "startMs": 4345114,
+   "endMs": 4349598
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Lula prepara a pergunta (40 s) antes de fazê-la",
+   "startMs": 1684590,
+   "endMs": 1724893
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Lula é cortado pelo tempo: 'E vocês—'",
+   "startMs": 2623800,
+   "endMs": 2643870
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Flávio: 'Quer ver uma obra…?' e a resposta 15 s depois",
+   "startMs": 2670670,
+   "endMs": 2686374
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Flávio é cortado pelo tempo: 'hoje tem esperança de um'",
+   "startMs": 3306710,
+   "endMs": 3314250
+  }
+ ]
+}

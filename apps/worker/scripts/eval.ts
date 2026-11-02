@@ -1,20 +1,31 @@
 /**
- * Prints the evaluation table (spec §14a) for an already-analysed session. It never calls the LLM: it only reads
- * the session's current analysis version and compares it with a hand-labelled golden file.
+ * Prints the evaluation table (spec §14a) for an already-analysed session: it reads one analysis version and compares
+ * it with a hand-labelled golden file.
  *
- *   docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval.ts <sessionId> <golden.json>
+ *   docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval.ts <sessionId> <golden.json> [--version N] [--run-checks]
  *
  * It runs in the worker container (which has the database URL); the golden path is relative to `apps/worker`. The
- * session id may also be given as `sessionId` in the golden file.
+ * session id may also be given as `sessionId` in the golden file ("" as the first argument then). Without `--version`
+ * it reads the current version. Moment checks only run on demand, so trap results count only checked moments:
+ * `--run-checks` first checks every unchecked moment that overlaps a trap, with the model that version recorded for
+ * checks, and stores the result as the app would. Without it the script never calls the LLM.
  */
 import { readFileSync } from "node:fs";
-import { GranularitySchema, HIGHLIGHT_TYPES } from "@digestor/core";
-import { createDb, getCurrentAnalysis } from "@digestor/core/server";
-import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, type Golden } from "../src/eval/metrics.js";
+import { GranularitySchema, HIGHLIGHT_TYPES, ProfileIdSchema } from "@digestor/core";
+import { createDb, getAnalysisByVersion, getAnalysisVersion, getContextCard, getCurrentAnalysis, getTranscript, setMomentChecks } from "@digestor/core/server";
+import { checkMoment } from "../src/agents/checks.js";
+import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps, type Golden } from "../src/eval/metrics.js";
+import { createOpenRouterLLM } from "../src/llm/openrouter.js";
+import { createAnthropicLLM, type StructuredLLM } from "../src/llm/structured.js";
+import { withProfile } from "../src/pipeline/analysis.js";
 
-const [sessionArg, goldenPath] = process.argv.slice(2);
-if (!goldenPath) {
-  console.error("Usage: eval.ts <sessionId> <golden.json>");
+const args = process.argv.slice(2);
+const runChecks = args.includes("--run-checks");
+const versionAt = args.indexOf("--version");
+const versionArg = versionAt >= 0 ? Number(args[versionAt + 1]) : undefined;
+const [sessionArg, goldenPath] = args.filter((a, i) => !a.startsWith("--") && (versionAt < 0 || i !== versionAt + 1));
+if (!goldenPath || (versionArg !== undefined && !Number.isInteger(versionArg))) {
+  console.error("Usage: eval.ts <sessionId> <golden.json> [--version N] [--run-checks]");
   process.exit(1);
 }
 const golden = JSON.parse(readFileSync(goldenPath, "utf8")) as Golden;
@@ -24,12 +35,39 @@ if (!sessionId) {
   process.exit(1);
 }
 
+/** The client for a recorded model id: `openrouter:<id>` or a plain Anthropic id. */
+function llmFor(recorded: string): StructuredLLM {
+  if (recorded.startsWith("openrouter:")) {
+    const id = recorded.slice("openrouter:".length);
+    return createOpenRouterLLM(process.env.OPENROUTER_API_KEY ?? "", { reasoning: id, fast: id });
+  }
+  return createAnthropicLLM(process.env.ANTHROPIC_API_KEY ?? "");
+}
+
 const { db, close } = createDb(process.env.DATABASE_URL!);
 try {
-  const analysis = await getCurrentAnalysis(db, sessionId);
+  let analysis = versionArg === undefined ? await getCurrentAnalysis(db, sessionId) : await getAnalysisByVersion(db, sessionId, versionArg);
   if (!analysis) {
-    console.error(`Session ${sessionId} has no complete analysis.`);
+    console.error(`Session ${sessionId} has no complete analysis${versionArg === undefined ? "" : ` v${versionArg}`}.`);
     process.exit(1);
+  }
+  const models = ((await getAnalysisVersion(db, analysis.version.id))?.models ?? {}) as Record<string, string>;
+
+  if (runChecks) {
+    const pending = uncheckedOnTraps(golden.traps, analysis.moments);
+    const [transcript, stored] = await Promise.all([getTranscript(db, sessionId), getContextCard(db, sessionId)]);
+    const profile = ProfileIdSchema.parse(analysis.version.profile);
+    if (pending.length && (!transcript || !stored || !models.checks)) {
+      console.error("Can't run checks: the session has no transcript or context card, or the version recorded no checks model.");
+      process.exit(1);
+    }
+    const llm = pending.length ? llmFor(models.checks!) : null;
+    for (const [i, m] of pending.entries()) {
+      const checks = await checkMoment(llm!, { card: withProfile(stored!.card, profile), moment: m, words: transcript!.words });
+      await setMomentChecks(db, m.id, checks);
+      console.error(`checked ${i + 1}/${pending.length}: ${m.granularity} ${m.title}`);
+    }
+    if (pending.length) analysis = (await getAnalysisByVersion(db, sessionId, analysis.version.version))!;
   }
   const s = (ms: number) => (Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)} s` : "n/a");
   const rows: [string, string][] = [];
@@ -46,10 +84,17 @@ try {
   const types = highlightTypeRecall(golden.moments, analysis.moments);
   rows.push([`Highlight type matched (${[...goldenTypes].map((t) => HIGHLIGHT_TYPES[t].label).join(", ") || "none"})`, types.total ? `${types.found}/${types.total}` : "no golden types"]);
 
-  const traps = trapHits(golden.traps, analysis.moments);
-  rows.push(["Check warnings fired on traps", traps.total ? `${traps.fired}/${traps.total}` : "no traps"]);
+  for (const kind of ["mid_argument", "quoted_opponent"] as const) {
+    const of = golden.traps.filter((t) => t.kind === kind);
+    const r = trapHits(of, analysis.moments);
+    const unchecked = uncheckedOnTraps(of, analysis.moments).length;
+    rows.push([`Check warnings fired on traps, ${kind}`, r.total ? `${r.fired}/${r.total}${unchecked ? ` (${unchecked} overlapping moments unchecked)` : ""}` : "no traps"]);
+  }
+  const count = (g: string) => analysis.moments.filter((m) => m.granularity === g).length;
+  rows.push(["Moments found (exchange / passage / punchline)", GranularitySchema.options.map(count).join(" / ")]);
 
-  console.log(`Evaluation of session ${sessionId} (analysis v${analysis.version.version}, profile ${analysis.version.profile}; golden profile ${golden.profile})\n`);
+  console.log(`Evaluation of session ${sessionId} (analysis v${analysis.version.version}, profile ${analysis.version.profile}; golden profile ${golden.profile})`);
+  console.log(`Models: ${[...new Set(Object.values(models))].join(", ") || "not recorded"}\n`);
   console.log("| Metric | Result |\n| --- | --- |");
   for (const [k, v] of rows) console.log(`| ${k} | ${v} |`);
 } finally {

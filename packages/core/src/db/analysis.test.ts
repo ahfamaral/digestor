@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createDb, type Db } from "./client.ts";
 import {
-  completeAnalysisVersion, failAnalysisVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation, listAnalysisVersions,
+  completeAnalysisVersion, failAnalysisVersion, getAnalysisByVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation, listAnalysisVersions,
   claimAnalysisVersion, deletePendingTranslation, failTranslation, requestTranslation, saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
   type NewMoment,
 } from "./analysis.ts";
@@ -127,6 +127,23 @@ describe("analysis versions", () => {
     expect(bundle.moments[1]!.highlights).toEqual([{ type: "heated", method: "ai", value: null }]);
     expect(bundle.topics.map((x) => x.title)).toEqual(["A"]);
     expect(bundle.briefing?.lead[0]!.text).toBe("x");
+  });
+
+  it("getAnalysisByVersion loads a complete earlier version, never a running or failed one", async () => {
+    const v1 = await startAnalysisVersion(db, s.id, META);
+    await saveMoments(db, v1.id, [moment({ title: "first" })]);
+    await completeAnalysisVersion(db, v1.id);
+    const v2 = await startAnalysisVersion(db, s.id, { ...META, reason: "re-run" });
+    await saveMoments(db, v2.id, [moment({ title: "second" })]);
+    expect(await getAnalysisByVersion(db, s.id, 2)).toBeNull();
+    await completeAnalysisVersion(db, v2.id);
+    const first = (await getAnalysisByVersion(db, s.id, 1))!;
+    expect(first.version).toMatchObject({ version: 1, reason: "first analysis" });
+    expect(first.moments.map((m) => [m.title, m.highlights.map((h) => h.type)])).toEqual([["first", ["heated"]]]);
+    expect((await getAnalysisByVersion(db, s.id, 2))!.moments.map((m) => m.title)).toEqual(["second"]);
+    const v3 = await startAnalysisVersion(db, s.id, META);
+    await failAnalysisVersion(db, v3.id);
+    expect(await getAnalysisByVersion(db, s.id, 3)).toBeNull();
   });
 
   it("getCurrentAnalysis ignores personal moments", async () => {

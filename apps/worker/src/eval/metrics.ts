@@ -92,3 +92,8 @@ export function trapHits(
   );
   return { fired: fired.length, total: traps.length };
 }
+
+/** The moments `trapHits` can't judge yet: they overlap a trap but their checks never ran (`eval.ts --run-checks`). */
+export function uncheckedOnTraps<M extends Span & { checks: MomentChecks | null }>(traps: Span[], moments: M[]): M[] {
+  return moments.filter((m) => m.checks === null && traps.some((trap) => overlapMs(trap, m) > 0));
+}
