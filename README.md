@@ -163,10 +163,28 @@ The reported-speech check works on both models. Haiku's completeness check fires
 
 What the misses show:
 
-- **Punchlines are capped at 4 per exchange** (`MAX_PUNCHLINES_PER_EXCHANGE`). The 6-minute Norte exchange alone holds 7 golden punchlines; "mordido por um carapanã" and "É você ou é o Google?" are lost on both models.
+- **Punchlines were capped at 4 per exchange.** The 6-minute Norte exchange alone holds 7 golden punchlines; "mordido por um carapanã" and "É você ou é o Google?" were lost on both models. Fixed since (below).
 - **Punchlines only come from inside exchanges.** Haiku left 50:09–55:16 without an exchange. That stretch is the "9 dedos" (nine fingers) fight, the most quoted moment of the debate, and neither model has it as a punchline.
 - **Haiku splits a round** (question → answer → rebuttal → counter-rebuttal) into 2–3 shorter exchanges, which costs exchange recall. Luna keeps whole rounds but finds a third fewer passages, so it misses the "9 dedos" passage too.
 - Cost on OpenRouter: about $0.25 for both full analyses plus every check, against an estimated $0.40 of AssemblyAI credit for transcribing 2 hours.
+
+**After the first fixes (2026-11-02).** The punchline cap now grows with the exchange: one per 45 s, between 4 and 8 (`punchlineCap`), and the session cap rose from 200 to 250 moments. Two new Haiku runs on the same code (v3, v4) against the first Haiku run:
+
+| Metric | Haiku v1 (cap 4) | Haiku v3 | Haiku v4 |
+| --- | --- | --- | --- |
+| Moment recall, exchange | 10/14 | 9/14 | 10/14 |
+| Moment recall, passage | 26/31 | 20/31 | 26/31 |
+| Moment recall, punchline | 17/26 | 18/26 | 16/26 |
+| Golden punchlines inside a found exchange | 22/26 | 19/26 | 17/26 |
+| … of those, found | 16/22 (73%) | 16/19 (84%) | 15/17 (88%) |
+| Check warnings on traps, mid-argument / quoted opponent | 2/4 · 5/5 | 4/4 · 4/5 | 2/4 · 5/5 |
+| Moments found (exchange / passage / punchline) | 25 / 86 / 84 | 22 / 86 / 112 | 23 / 89 / 103 |
+
+Inside an exchange the fix works: long exchanges now get 6–8 punchlines and the hit rate rose from 73% to 84–88%. Overall punchline recall did not move, because a punchline can only be found inside an exchange, and how many golden punchlines the exchanges cover varies from run to run (17–22 of 26). Run-to-run noise is large in general: passage recall went from 20 to 26 between v3 and v4, with the same code and model. Single runs can't separate models that differ by a few moments; the next lever for punchlines is finding them outside exchanges too.
+
+The context check also kept dropping a human answer: replaying the round-1 call six times, the model once quoted the answer loosely as evidence, and the verbatim check threw the correct date away, so the date question came back. Grounding now keeps a human-sourced value whose words appear in the human's answers, however the model quoted them. The eval doesn't cover this step (re-analysis reuses the context card); the replayed case is a unit test.
+
+Cost of the replays, both runs and their checks on OpenRouter: about $0.32.
 
 Attribution accuracy (speaker names) comes with Plan 3. The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script.
 

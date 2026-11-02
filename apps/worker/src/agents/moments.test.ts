@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Boundary, ContextCard, Fact, Topic, Transcript, Word } from "@digestor/core";
-import { PASS_CONCURRENCY, findMoments, normalizeMoments } from "./moments.js";
+import { PASS_CONCURRENCY, buildPunchlinesPrompt, findMoments, normalizeMoments, punchlineCap } from "./moments.js";
 import { FakeLLM, type StructuredLLM } from "../llm/structured.js";
 import { MissingApiKeyError } from "../errors.js";
 
@@ -208,6 +208,25 @@ describe("findMoments", () => {
     expect(fake.calls.filter((c) => c.name === "punchlines")).toHaveLength(8);
   });
 
+  it("a long exchange keeps more punchlines: one per 45 s, between 4 and 8", async () => {
+    expect([60_000, 180_000, 225_000, 360_000, 900_000].map((ms) => punchlineCap({ startMs: 0, endMs: ms }))).toEqual([4, 4, 5, 8, 8]);
+    const exchange = m({ a: 2 * MIN, b: 8 * MIN, title: "Long round" }); // 6 minutes
+    const punchlines = Array.from({ length: 10 }, (_, i) =>
+      m({ a: 2 * MIN + 10_000 + i * 30_000, b: 2 * MIN + 20_000 + i * 30_000, title: `P${i}`, granularity: "punchline", relevance: 50 + i }),
+    );
+    const fake = new FakeLLM({ byName: { moments: [{ moments: [exchange] }], punchlines: [{ punchlines }] } });
+    const out = await findMoments(fake, { card: card("interview"), transcript: makeTranscript(), topics: oneTopic });
+    const pls = out.filter((x) => x.granularity === "punchline");
+    expect(pls.map((x) => x.title).sort()).toEqual(["P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"]);
+    expect(fake.calls.find((c) => c.name === "punchlines")!.system).toContain("at most 8.");
+  });
+
+  it("the punchline prompt states the exchange's own cap", () => {
+    const words = makeTranscript().words;
+    const short = buildPunchlinesPrompt({ card: card(), exchange: { startMs: 0, endMs: 2 * MIN, title: "Short" }, words });
+    expect(short.system).toContain("at most 4.");
+  });
+
   it("punchline calls are limited to the 40 most relevant exchanges", async () => {
     // 6 topics x 8 exchanges = 48; relevance 1..48 is unique, so the top 40 are 9..48.
     const topics = bigTopics(6);
@@ -246,10 +265,10 @@ describe("findMoments", () => {
     expect(punchCalls).toBeLessThanOrEqual(PASS_CONCURRENCY); // only the calls already in flight
   });
 
-  it("drops the punchlines of an exchange the 200 cap cut", async () => {
-    // 15 topics: 8 exchanges (relevance 40) + 12 passages (relevance 90) each. Punchlines (55) outrank exchanges,
-    // but the 200 cap keeps the 180 passages plus only 20 more, so every exchange is cut and no punchline may remain.
-    const topics = bigTopics(15);
+  it("drops the punchlines of an exchange the moment cap cut", async () => {
+    // 20 topics: 8 exchanges (relevance 40) + 12 passages (relevance 90) each. Punchlines (55) outrank exchanges,
+    // but the 250 cap keeps the 240 passages plus only 10 of the 40 punchlines, so every exchange is cut and no punchline may remain.
+    const topics = bigTopics(20);
     const llm: StructuredLLM = {
       generate: async (a) => {
         if (a.name === "moments") {
@@ -264,9 +283,9 @@ describe("findMoments", () => {
         return a.schema.parse({ punchlines: [m({ a: s0, b: s0 + 15_000, title: `L${k}-${i}`, granularity: "punchline", relevance: 55 })] });
       },
     };
-    const out = await findMoments(llm, { card: card("interview"), transcript: makeTranscript(1500, 120), topics });
-    // 180 passages + 20 punchlines made the cut, but their exchanges did not, so the punchlines went too.
-    expect(out).toHaveLength(180);
+    const out = await findMoments(llm, { card: card("interview"), transcript: makeTranscript(1500, 160), topics });
+    // 240 passages + 10 punchlines made the cut, but their exchanges did not, so the punchlines went too.
+    expect(out).toHaveLength(240);
     expect(out.every((n) => n.granularity === "passage")).toBe(true);
   });
 

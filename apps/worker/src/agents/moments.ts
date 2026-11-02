@@ -33,8 +33,11 @@ export const PASS_CONCURRENCY = 4;
 export const MAX_OVERLAP = 0.6;
 export const MAX_EXCHANGES_PER_TOPIC = 8;
 export const MAX_PASSAGES_PER_TOPIC = 12;
-export const MAX_PUNCHLINES_PER_EXCHANGE = 4;
-export const MAX_MOMENTS = 200;
+export const MIN_PUNCHLINES_PER_EXCHANGE = 4;
+export const MAX_PUNCHLINES_PER_EXCHANGE = 8;
+/** One punchline allowed per this much exchange, so a long debate round keeps more than its first few lines. */
+export const PUNCHLINE_EVERY_MS = 45_000;
+export const MAX_MOMENTS = 250;
 /** Cost cap (Ruling R9): only the most relevant exchanges session-wide get a punchline call. */
 export const MAX_PUNCHLINE_PARENTS = 40;
 /** Slack when checking that a model range lies inside its topic/exchange; the result is clamped to the parent anyway. */
@@ -207,6 +210,12 @@ export function buildMomentsPrompt(a: { card: ContextCard; topic: Range & { titl
   return { system, user };
 }
 
+/** Punchlines allowed in one exchange: one per 45 s of it, between 4 and 8. */
+export function punchlineCap(exchange: Range): number {
+  const n = Math.round((exchange.endMs - exchange.startMs) / PUNCHLINE_EVERY_MS);
+  return Math.min(MAX_PUNCHLINES_PER_EXCHANGE, Math.max(MIN_PUNCHLINES_PER_EXCHANGE, n));
+}
+
 export function buildPunchlinesPrompt(a: { card: ContextCard; exchange: Range & { title: string }; words: Word[] }): {
   system: string;
   user: string;
@@ -214,7 +223,7 @@ export function buildPunchlinesPrompt(a: { card: ContextCard; exchange: Range & 
   const system = commonSystem(a.card, "You are an editor who finds the sharpest short punchlines inside one exchange of a video.", [
     "Every punchline must lie entirely inside the exchange's time range.",
     "Never start or end a punchline in the middle of a sentence.",
-    `Each punchline has granularity punchline and is ${range("punchline")}; at most ${MAX_PUNCHLINES_PER_EXCHANGE}.`,
+    `Each punchline has granularity punchline and is ${range("punchline")}; at most ${punchlineCap(a.exchange)}.`,
     `Write every title and why in ${languageName(a.card)}.`,
     ORDER_RULE,
     "Put in evidence short verbatim quotes from the transcript that justify the punchline.",
@@ -310,7 +319,7 @@ export async function findMoments(
         allowed: ["punchline"],
         types,
       })
-        .slice(0, MAX_PUNCHLINES_PER_EXCHANGE)
+        .slice(0, punchlineCap(ex))
         .map((d) => ({ ...toNode(d, ex.topicId), parent: ex }));
     } catch (err) {
       if (err instanceof MissingApiKeyError) {

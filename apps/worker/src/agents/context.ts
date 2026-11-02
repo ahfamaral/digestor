@@ -113,8 +113,11 @@ export function groundContext(card: ContextCard, i: ContextInput): ContextCard {
     metadata: normalise(Object.values(i.metadata).join(" ")),
     human: normalise([i.hint ?? "", ...i.answers.map((a) => a.answer)].join(" ")),
   };
-  const ground = (f: Fact): Fact => (supported(f, sources) ? f : { ...NULL_FACT });
+  // The human's own words back a value directly: the model's quote of an answer is often loose.
+  const inAnswers = (f: Fact): boolean => f.source === "human" && f.value !== null && hasWords(sources.human, normalise(f.value));
+  const ground = (f: Fact): Fact => (inAnswers(f) || supported(f, sources) ? f : { ...NULL_FACT });
   const groundName = (f: Fact): Fact => {
+    if (inAnswers(f)) return f;
     const g = ground(f);
     if (g.value === null) return g;
     return hasWords(normEvidence(g.evidence ?? ""), normalise(g.value)) ? g : { ...NULL_FACT };

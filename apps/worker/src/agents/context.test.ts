@@ -91,6 +91,20 @@ describe("groundContext", () => {
     expect(c.setting.value).toBe("Lisbon");
     expect(c.dateOrYear).toEqual(none);
   });
+  it("keeps a human-sourced value found in the answers even when the model misquotes them", () => {
+    // Recorded: the model shortened the quote of the answer, so the evidence was no longer verbatim.
+    const answer = 'Sexta-feira, 23 de outubro de 2026 (o candidato diz "É dia 23 de outubro"; a votação é no domingo).';
+    const i = { ...input, answers: [{ question: "Em que data?", answer }] };
+    const misquoted = fact("23 de outubro de 2026", "human", "Sexta-feira, 23 de outubro de 2026 (candidato diz: É dia 23 de outubro)");
+    expect(groundContext(card({ dateOrYear: misquoted }), i).dateOrYear).toEqual(misquoted);
+    const name = fact("César Tralli", "human", "o apresentador Tralli");
+    const named = groundContext(withName(name), { ...i, answers: [{ question: "Quem é o A?", answer: "César Tralli" }] });
+    expect(named.participants[0]!.name).toEqual(name);
+  });
+  it("still drops a human-sourced value the answers never contain", () => {
+    const i = { ...input, answers: [{ question: "Em que data?", answer: "Foi numa sexta-feira" }] };
+    expect(groundContext(card({ dateOrYear: fact("23 de outubro de 2026", "human", "23 de outubro") }), i).dateOrYear).toEqual(none);
+  });
   it("never nulls language", () => {
     const lang = fact("pt", "video", "detected from audio (confidence 0.98)");
     expect(groundContext(card({ language: lang }), input).language).toEqual(lang);
