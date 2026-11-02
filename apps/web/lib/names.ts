@@ -98,7 +98,7 @@ export interface WhosWhoRow {
 /** One row per (voice, name at that moment): a voice the record named as two people gets two rows. Longest first. */
 export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
   const key = (res: Resolution, speakerId: string) =>
-    res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : `none:${speakerId}`;
+    res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : res.kind === "conflict" ? `conflict:${speakerId}` : `none:${speakerId}`;
   const groups = new Map<string, { speakerId: string; resolution: Resolution; ms: number; firstMs: number; k: string }>();
   const perVoice = new Map<string, number>();
   let total = 0;
@@ -132,4 +132,41 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
       };
     })
     .sort((a, b) => b.ms - a.ms);
+}
+
+/** The range a row's name applies to when it comes from a ranged attribution (one turn of a split voice); null for a whole-voice row. */
+export function rowRange(row: WhosWhoRow): Range | null {
+  const res = row.resolution;
+  const a = res.kind === "named" || res.kind === "anonymous" ? res.attribution : res.kind === "conflict" ? res.attributions[0] : undefined;
+  return a && a.startMs !== null && a.endMs !== null ? { startMs: a.startMs, endMs: a.endMs } : null;
+}
+
+/** The body the names API gets for a row's Confirm button; null when the row has no single proposal. A ranged row confirms as a ranged human assignment. */
+export function confirmBody(row: WhosWhoRow): Record<string, unknown> | null {
+  const res = row.resolution;
+  if (res.kind !== "named" || res.confirmed) return null;
+  const range = rowRange(row);
+  return range
+    ? { action: "assign", speakerId: row.speakerId, personId: res.personId, ...range }
+    : { action: "confirm", speakerId: row.speakerId };
+}
+
+/** The body for a row's "No name" button. */
+export function anonymousBody(row: WhosWhoRow): Record<string, unknown> {
+  return { action: "anonymous", speakerId: row.speakerId, ...(rowRange(row) ?? {}) };
+}
+
+/** "Caption says Ana Souza · Transcript says Bia Lima" for a conflict row; null otherwise. */
+export function conflictText(row: WhosWhoRow, names: NamesData): string | null {
+  if (row.resolution.kind !== "conflict") return null;
+  const persons = personMap(names);
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const a of row.resolution.attributions) {
+    const name = a.personId ? persons.get(a.personId)?.displayName : undefined;
+    if (!name || seen.has(`${a.source}${a.personId}`)) continue;
+    seen.add(`${a.source}${a.personId}`);
+    parts.push(t("names.conflictSays", { source: t(`names.conflictSource.${a.source}`), name }));
+  }
+  return parts.join(t("names.conflictJoin"));
 }

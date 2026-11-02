@@ -84,9 +84,14 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       break;
     case "confirm":
     case "confirm_all": {
-      // Whole-voice resolution only: ranged rows are ignored.
-      const whole = (await listAttributions(db, id)).filter((a) => a.startMs === null || a.endMs === null);
-      const voices = body.action === "confirm" ? [body.speakerId] : [...new Set(transcript.words.map((w) => w.speaker))];
+      // Whole-voice resolution only. A voice with current ranged rows is confirmed part by part: a whole-voice human row
+      // would shadow the per-turn names.
+      const all = await listAttributions(db, id);
+      const isRanged = (a: (typeof all)[number]) => a.startMs !== null && a.endMs !== null;
+      const hasRanged = (voice: string) => all.some((a) => a.speakerId === voice && a.supersededAt === null && a.status !== "rejected" && isRanged(a));
+      const whole = all.filter((a) => !isRanged(a));
+      if (body.action === "confirm" && hasRanged(body.speakerId)) return errorResponse(409, "Confirm each part of this voice separately.");
+      const voices = body.action === "confirm" ? [body.speakerId] : [...new Set(transcript.words.map((w) => w.speaker))].filter((v) => !hasRanged(v));
       for (const voice of voices) {
         const res = personAt(whole, voice, 0);
         if (res.kind === "named" && !res.confirmed) await write(voice, res.personId, null, null);

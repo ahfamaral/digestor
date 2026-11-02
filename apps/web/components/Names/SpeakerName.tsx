@@ -27,6 +27,8 @@ export function SpeakerName({
   range,
   language,
   className,
+  rangeOnly,
+  confirmBody,
 }: {
   speakerId: string;
   atMs: number;
@@ -36,6 +38,8 @@ export function SpeakerName({
   range?: Range;
   language?: string;
   className?: string;
+  rangeOnly?: boolean;
+  confirmBody?: Record<string, unknown>;
 }) {
   const label = voiceLabel(names, speakerId, atMs, sensitive);
   const res = personAt(names.attributions, speakerId, atMs);
@@ -51,6 +55,8 @@ export function SpeakerName({
         label={label}
         names={names}
         range={range}
+        rangeOnly={rangeOnly}
+        confirmBody={confirmBody}
         trigger={
           <button
             type="button"

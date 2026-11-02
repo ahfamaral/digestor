@@ -82,6 +82,23 @@ describe("names", () => {
     expect(humans.map((a) => [a.speakerId, a.personId])).toEqual([["A", p1.id]]);
   });
 
+  it("names: a voice with ranged rows is confirmed part by part", async () => {
+    const sid = await twoVoiceSession();
+    const p1 = await createCustomPerson(h.db, { displayName: "Gil Moura", createdBy: OWNER_ID });
+    const p2 = await createCustomPerson(h.db, { displayName: "Hana Pires", createdBy: OWNER_ID });
+    await replaceAiAttributions(h.db, sid, "transcript", [
+      { ...proposed("A", p1.id), startMs: 0, endMs: 900 },
+      { ...proposed("B", p2.id) },
+    ]);
+    let res = await post(sid, { action: "confirm", speakerId: "A" });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Confirm each part of this voice separately." });
+    res = await post(sid, { action: "confirm_all" });
+    expect(res.status).toBe(200);
+    const humans = (await listAttributions(h.db, sid)).filter((a) => a.source === "human");
+    expect(humans.map((a) => [a.speakerId, a.personId])).toEqual([["B", p2.id]]);
+  });
+
   it("names: a range needs both ends and start < end", async () => {
     const { sessionId } = await seedReadySession(h.db);
     const p = await createCustomPerson(h.db, { displayName: "Fay Cruz", createdBy: OWNER_ID });

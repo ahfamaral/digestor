@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, Person, Word } from "@digestor/core";
-import { badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, whosWhoRows, type NamesData } from "./names";
+import { badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -121,5 +121,34 @@ describe("whosWhoRows", () => {
   it("samples the first word when no turn is long enough", () => {
     const short = [...run("A", 0, 3_000), ...run("B", 3_000, 5_000), ...run("A", 5_000, 7_000)];
     expect(whosWhoRows({ persons, attributions: [] }, short).find((r) => r.speakerId === "A")!.sampleStartMs).toBe(0);
+  });
+});
+
+describe("whosWhoRows conflicts and ranged rows", () => {
+  const run = (speaker: string, from: number, to: number): Word[] =>
+    Array.from({ length: (to - from) / 1000 }, (_, i) => word(speaker, from + i * 1000, from + (i + 1) * 1000));
+  const words = [...run("C", 0, 10_000), ...run("C", 10_000, 30_000)];
+  const proposedAtt = (id: string, personId: string, source: Attribution["source"]) =>
+    att({ id, speakerId: "C", personId, source, status: "proposed", startMs: 0, endMs: 10_000 });
+
+  it("keeps a conflict apart from an unnamed stretch of the same voice and explains it", () => {
+    const names: NamesData = { persons, attributions: [proposedAtt("1", "p1", "caption"), proposedAtt("2", "p2", "transcript")] };
+    const rows = whosWhoRows(names, words);
+    expect(rows.map((r) => r.resolution.kind).sort()).toEqual(["conflict", "unnamed"]);
+    const conflict = rows.find((r) => r.resolution.kind === "conflict")!;
+    expect(conflictText(conflict, names)).toBe("Caption says Ana Souza · Transcript says Beto Lima");
+    expect(confirmBody(conflict)).toBeNull();
+  });
+
+  it("a ranged row confirms and un-names with its own range; a whole-voice row does not", () => {
+    const ranged = whosWhoRows({ persons, attributions: [proposedAtt("1", "p1", "caption")] }, words).find((r) => r.resolution.kind === "named")!;
+    expect(rowRange(ranged)).toEqual({ startMs: 0, endMs: 10_000 });
+    expect(confirmBody(ranged)).toEqual({ action: "assign", speakerId: "C", personId: "p1", startMs: 0, endMs: 10_000 });
+    expect(anonymousBody(ranged)).toEqual({ action: "anonymous", speakerId: "C", startMs: 0, endMs: 10_000 });
+
+    const whole = whosWhoRows({ persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed" })] }, words)[0]!;
+    expect(rowRange(whole)).toBeNull();
+    expect(confirmBody(whole)).toEqual({ action: "confirm", speakerId: "C" });
+    expect(anonymousBody(whole)).toEqual({ action: "anonymous", speakerId: "C" });
   });
 });

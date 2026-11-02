@@ -30,6 +30,8 @@ export function NamePopover({
   range,
   trigger,
   startChanging = false,
+  rangeOnly = false,
+  confirmBody,
 }: {
   sessionId: string;
   speakerId: string;
@@ -39,6 +41,10 @@ export function NamePopover({
   trigger: ReactElement<Record<string, unknown>>;
   /** Open straight on the name search (a "Change…" button of its own). */
   startChanging?: boolean;
+  /** `range` always applies (a row of one turn of a split voice): no "Only this part" choice. */
+  rangeOnly?: boolean;
+  /** What Confirm sends instead of a whole-voice confirm (a ranged proposal confirms as a ranged assignment). */
+  confirmBody?: Record<string, unknown>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -120,7 +126,7 @@ export function NamePopover({
     }
   }
 
-  const part = onlyThis && range ? { startMs: range.startMs, endMs: range.endMs } : {};
+  const part = (onlyThis || rangeOnly) && range ? { startMs: range.startMs, endMs: range.endMs } : {};
   const pick = (o: Option) =>
     send(o.kind === "person" ? { action: "assign", speakerId, personId: o.person.id, ...part } : { action: "create", speakerId, displayName: o.name, ...part });
 
@@ -149,7 +155,7 @@ export function NamePopover({
             {!changing ? (
               <div className="flex flex-wrap gap-1.5">
                 {label.proposed && (
-                  <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "confirm", speakerId })}>
+                  <button type="button" className={BTN} disabled={busy} onClick={() => void send(confirmBody ?? { action: "confirm", speakerId })}>
                     {t("names.confirm")}
                   </button>
                 )}
@@ -215,7 +221,7 @@ export function NamePopover({
                 </ul>
               </div>
             )}
-            {range && (
+            {range && !rangeOnly && (
               <label className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <input type="checkbox" checked={onlyThis} onChange={(e) => setOnlyThis(e.target.checked)} className="size-3.5 accent-foreground" />
                 {t("names.onlyThisPart")}

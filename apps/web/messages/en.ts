@@ -175,6 +175,16 @@ export const en = {
     unnamedVoice: "No name yet",
     anonymousVoice: "Marked as no name",
     rowsLabel: "Voices",
+    conflictSays: "{source} says {name}",
+    conflictJoin: " · ",
+    conflictSource: {
+      record: "Record",
+      caption: "Caption",
+      transcript: "Transcript",
+      metadata: "Video details",
+      human: "You",
+    },
+    conflictNote: "The sources disagree. Pick the right name.",
   },
   login: {
     title: "Enter the password",

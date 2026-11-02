@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatTimestamp } from "@digestor/core";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
-import { evidenceLine, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
+import { anonymousBody, conflictText, confirmBody, evidenceLine, rowRange, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { t } from "@/lib/i18n";
 import { NamePopover } from "./NamePopover";
@@ -142,6 +142,9 @@ export function WhosWho({
               const label = voiceLabel(names, row.speakerId, row.sampleStartMs, false);
               const res = row.resolution;
               const person = res.kind === "named" ? names.persons.find((p) => p.id === res.personId) : undefined;
+              const range = rowRange(row) ?? undefined;
+              const confirm = confirmBody(row);
+              const conflict = conflictText(row, names);
               const detail = person ? [person.role, person.party, person.state].filter(Boolean).join(" · ") : "";
               return (
                 <li key={`${row.speakerId}-${res.kind === "named" ? res.personId : res.kind}`} className="py-3">
@@ -161,6 +164,9 @@ export function WhosWho({
                       sensitive={false}
                       sessionId={sessionId}
                       language={language}
+                      range={range}
+                      rangeOnly
+                      confirmBody={confirm ?? undefined}
                       className="text-sm"
                     />
                     <span className="font-mono text-xs text-muted-foreground">
@@ -172,12 +178,17 @@ export function WhosWho({
                       {detail}
                     </div>
                   )}
+                  {conflict && (
+                    <div dir="auto" className="mt-1 text-xs text-muted-foreground">
+                      {conflict}. {t("names.conflictNote")}
+                    </div>
+                  )}
                   {res.kind === "unnamed" && <div className="mt-1 text-xs text-muted-foreground">{t("names.unnamedVoice")}</div>}
                   {res.kind === "anonymous" && <div className="mt-1 text-xs text-muted-foreground">{t("names.anonymousVoice")}</div>}
                   <Evidence sessionId={sessionId} row={row} />
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {label.proposed && (
-                      <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "confirm", speakerId: row.speakerId })}>
+                    {confirm && (
+                      <button type="button" className={BTN} disabled={busy} onClick={() => void send(confirm)}>
                         {t("names.confirm")}
                       </button>
                     )}
@@ -186,6 +197,9 @@ export function WhosWho({
                       speakerId={row.speakerId}
                       label={label}
                       names={names}
+                      range={range}
+                      rangeOnly
+                      confirmBody={confirm ?? undefined}
                       startChanging
                       trigger={
                         <button type="button" className={BTN}>
@@ -194,7 +208,7 @@ export function WhosWho({
                       }
                     />
                     {res.kind !== "anonymous" && (
-                      <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "anonymous", speakerId: row.speakerId })}>
+                      <button type="button" className={BTN} disabled={busy} onClick={() => void send(anonymousBody(row))}>
                         {t("names.noName")}
                       </button>
                     )}

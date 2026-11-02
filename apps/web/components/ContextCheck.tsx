@@ -182,7 +182,7 @@ export function ContextCheck({
           const e = edited.participants[i];
           return (
             <div key={p.speakerId} className="border-b border-border py-2 last:border-b-0">
-              <div className="mb-1 text-xs font-semibold text-muted-foreground">{voiceLabel(names, p.speakerId, 0, false).text}</div>
+              <div dir="auto" className="mb-1 text-xs font-semibold text-muted-foreground">{voiceLabel(names, p.speakerId, 0, PROFILES[edited.profile].sensitive).text}</div>
               {(["role", "affiliation"] as const).map((k) => (
                 <div key={k} className="mb-1 flex items-center gap-2">
                   <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(FIELD_LABEL[k])}</span>
