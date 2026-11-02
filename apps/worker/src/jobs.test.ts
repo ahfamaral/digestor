@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command } from "@langchain/langgraph";
 import {
-  completeAnalysisVersion, createDb, createSession, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
+  claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
+  saveContextCard, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, type Db,
 } from "@digestor/core/server";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
-import { MissingApiKeyError, failureMessage, handleResume, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
+import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -246,6 +247,76 @@ d("handleTranslateBriefing", () => {
     await saveTranslation(db, analysisId, "pt", "briefing", { done: true });
     await handleTranslateBriefing({ db, llm }, { analysisId, language: "pt" }, FIRST);
     expect(llm.calls).toHaveLength(0);
+  });
+});
+
+d("handleFindMore", () => {
+  let db: Db;
+  let close: () => Promise<void>;
+  beforeAll(() => {
+    ({ db, close } = createDb(url!));
+  });
+  afterAll(() => close());
+
+  const none = { value: null, source: null, evidence: null };
+  async function request() {
+    const s = await createSession(db, { source: "upload", title: "t" });
+    const v = await startAnalysisVersion(db, s.id, { profile: "interview", reason: "t", models: {}, promptVersions: {} });
+    const words = Array.from({ length: 600 }, (_, i) => ({ text: `w${i}.`, startMs: i * 1000, endMs: i * 1000 + 500, speaker: "A", confidence: 0.9 }));
+    await saveTranscript(db, s.id, { words, durationMs: 600_000, language: "en", languageConfidence: 0.9 });
+    await saveContextCard(db, s.id, {
+      language: none, profile: { value: "interview", confidence: 1, evidence: "x" }, title: none, summary: "s", setting: none, dateOrYear: none,
+      participants: [], sufficient: true, openQuestions: [],
+    }, 1);
+    await saveTopics(db, v.id, [{ idx: 0, startMs: 0, endMs: 600_000, title: "T", summary: "" }]);
+    await completeAnalysisVersion(db, v.id);
+    const person = await createCustomPerson(db, { displayName: "Tralli", createdBy: "t" });
+    await setHumanAttribution(db, { sessionId: s.id, speakerId: "A", startMs: null, endMs: null, personId: person.id, ownerId: "owner" });
+    const row = (await requestFindMore(db, { ownerId: "owner", analysisId: v.id, personId: person.id }))!;
+    return { row, analysisId: v.id, personId: person.id };
+  }
+  const state = (r: { analysisId: string; personId: string }) => getFindMore(db, { ownerId: "owner", analysisId: r.analysisId, personId: r.personId });
+  const good = { moments: [{ title: "M", why: "w", highlightTypes: [], relevance: 60, granularity: "passage", start: "00:01:00", end: "00:01:40", evidence: [] }] };
+
+  it("stores the moments and marks the request done", async () => {
+    const r = await request();
+    const llm = new FakeLLM([good]);
+    await handleFindMore({ db, llm }, { requestId: r.row.id }, FIRST);
+    expect(llm.calls[0]!.user).toContain("Focus person: Tralli");
+    expect(await state(r)).toMatchObject({ status: "done", momentCount: 1 });
+    expect((await listPersonalMoments(db, "owner", r.analysisId)).map((m) => m.origin)).toEqual(["find_more"]);
+  });
+
+  it("a missing key fails the row with its message and doesn't rethrow", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await request();
+    const llm = new FakeLLM([() => { throw new MissingApiKeyError("OPENROUTER_API_KEY"); }]);
+    await expect(handleFindMore({ db, llm }, { requestId: r.row.id }, FIRST)).resolves.toBeUndefined();
+    expect(await state(r)).toMatchObject({ status: "failed", error: "OPENROUTER_API_KEY is not set on the server." });
+    log.mockRestore();
+  });
+
+  it("a transient error rethrows; a retry continues; only the final attempt fails the row", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await request();
+    const boom = () => new FakeLLM([() => { throw new Error("overloaded"); }]);
+    await expect(handleFindMore({ db, llm: boom() }, { requestId: r.row.id }, FIRST)).rejects.toThrow("overloaded");
+    expect((await state(r))?.status).toBe("running");
+    await expect(handleFindMore({ db, llm: boom() }, { requestId: r.row.id }, { retryCount: 1, retryLimit: 2 })).rejects.toThrow("overloaded");
+    expect((await state(r))?.status).toBe("running");
+    await expect(handleFindMore({ db, llm: boom() }, { requestId: r.row.id }, LAST)).rejects.toThrow("overloaded");
+    expect(await state(r)).toMatchObject({ status: "failed", error: FIND_MORE_FAILED });
+    log.mockRestore();
+  });
+
+  it("a retry after a crash (row running) continues, and a duplicate first delivery does nothing", async () => {
+    const r = await request();
+    await claimFindMore(db, r.row.id);
+    const idle = new FakeLLM([]);
+    await handleFindMore({ db, llm: idle }, { requestId: r.row.id }, FIRST); // someone else has it
+    expect(idle.calls).toHaveLength(0);
+    await handleFindMore({ db, llm: new FakeLLM([good]) }, { requestId: r.row.id }, { retryCount: 1, retryLimit: 2 });
+    expect((await state(r))?.status).toBe("done");
   });
 });
 

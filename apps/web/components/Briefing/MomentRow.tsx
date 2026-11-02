@@ -54,7 +54,7 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
   // #t= takes seconds; the proxy route answers Range requests, so only the fragment's bytes load.
   const src = `/api/files/${ctx.sessionId}/proxy.mp4#t=${(m.startMs / 1000).toFixed(1)},${(m.endMs / 1000).toFixed(1)}`;
   const playerLabel = t("preview.playerLabel", { title: m.title });
-  const personal = m.origin === "ask" ? t("briefing.addedByAsk") : m.origin === "user" ? t("briefing.addedByYou") : null;
+  const personal = m.origin === "ask" ? t("briefing.addedByAsk") : m.origin === "user" ? t("briefing.addedByYou") : m.origin === "find_more" ? t("briefing.foundForYou") : null;
   const status = view.status ?? "proposed";
 
   return (

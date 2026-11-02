@@ -116,3 +116,18 @@ export interface ProblemReport {
   note: string;
   createdAt: Date;
 }
+
+export type FindMoreStatus = "pending" | "running" | "done" | "failed";
+
+/** One "Find more moments with <person>" run for an analysis version. */
+export interface FindMoreRequest {
+  id: string;
+  ownerId: string;
+  analysisId: string;
+  personId: string;
+  status: FindMoreStatus;
+  error: string | null;
+  momentCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}

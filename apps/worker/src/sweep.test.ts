@@ -4,7 +4,7 @@ import { PgBoss } from "pg-boss";
 import { QUEUES } from "@digestor/core";
 import {
   claimClipRender, createClip, createDb, createSession, createTrack, getAnalysisVersion, getClip, getSession, getTrack,
-  getTranslation, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
+  claimFindMore, createCustomPerson, getFindMore, getTranslation, requestFindMore, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
 } from "@digestor/core/server";
 import { STUCK_MESSAGE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 
@@ -21,7 +21,7 @@ d("sweepStaleSessions", () => {
     const boss = new PgBoss(url!);
     boss.on("error", () => {});
     await boss.start();
-    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack]) {
+    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore]) {
       await boss.createQueue(q);
     }
     await boss.stop({ graceful: false });
@@ -168,6 +168,26 @@ d("sweepStaleJobRows (R32)", () => {
     expect(await claimClipRender(db, stuckClip.id)).toBe(true);
     await requestTranslation(db, v.id, "pt", "briefing");
     expect(await getTranslation(db, v.id, "pt", "briefing")).toMatchObject({ status: "pending", error: null });
+  });
+
+  it("sweep fails a stuck find-more request (pending or running, 30 min, no live job)", async () => {
+    const s = await createSession(db, { source: "upload", title: "rows" });
+    const v = await startAnalysisVersion(db, s.id, { profile: "general", reason: "initial", models: {}, promptVersions: {} });
+    const [a, b, c, fresh] = await Promise.all(["A", "B", "C", "D"].map((n) => createCustomPerson(db, { displayName: n, createdBy: "t" })));
+    const rows = [];
+    for (const p of [a!, b!, c!, fresh!]) rows.push((await requestFindMore(db, { ownerId: "owner", analysisId: v.id, personId: p.id }))!);
+    await claimFindMore(db, rows[1]!.id); // b is running
+    await db.execute(sql`update find_more_requests set updated_at = ${ago(45)}::timestamptz where id in (${rows[0]!.id}, ${rows[1]!.id}, ${rows[2]!.id})`);
+    await jobWith(QUEUES.findMore, { requestId: rows[2]!.id }, "active"); // c is alive, d is recent
+
+    expect(await sweepStaleJobRows(db)).toMatchObject({ findMore: 2 });
+    const get = (i: number) => getFindMore(db, { ownerId: "owner", analysisId: v.id, personId: [a!, b!, c!, fresh!][i]!.id });
+    expect(await get(0)).toMatchObject({ status: "failed", error: STUCK_MESSAGE });
+    expect(await get(1)).toMatchObject({ status: "failed", error: STUCK_MESSAGE });
+    expect((await get(2))?.status).toBe("pending");
+    expect((await get(3))?.status).toBe("pending");
+    // asking again works after the sweep
+    expect((await requestFindMore(db, { ownerId: "owner", analysisId: v.id, personId: a!.id }))?.status).toBe("pending");
   });
 
   it("a re-requested translation counts as fresh (its job is about to be sent)", async () => {

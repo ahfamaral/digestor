@@ -155,15 +155,15 @@ export async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => 
   return results;
 }
 
-function languageName(card: ContextCard): string {
+export function languageName(card: ContextCard): string {
   return card.language.value ?? "the language spoken in the transcript";
 }
 
-function aiTypes(card: ContextCard): HighlightTypeId[] {
+export function aiTypes(card: ContextCard): HighlightTypeId[] {
   return PROFILES[card.profile.value].highlightTypes.filter((t) => HIGHLIGHT_TYPES[t].method === "ai");
 }
 
-function commonSystem(card: ContextCard, role: string, rules: string[]): string {
+export function commonSystem(card: ContextCard, role: string, rules: string[]): string {
   const profile = PROFILES[card.profile.value];
   const types = aiTypes(card);
   const parts = [
@@ -185,12 +185,12 @@ function commonSystem(card: ContextCard, role: string, rules: string[]): string 
   return parts.join("\n");
 }
 
-const range = (g: Granularity) => {
+export const range = (g: Granularity) => {
   const { targetMs, acceptMs } = GRANULARITY[g];
   return `${targetMs[0] / 1000}-${targetMs[1] / 1000} seconds (never under ${acceptMs[0] / 1000} or over ${acceptMs[1] / 1000} seconds)`;
 };
-const TIMESTAMP_RULE = "Give start and end as hh:mm:ss, matching the [hh:mm:ss] line prefixes of the transcript.";
-const ORDER_RULE = "For each moment write why first, then choose the highlight types and relevance (0-100), then give the timestamps.";
+export const TIMESTAMP_RULE = "Give start and end as hh:mm:ss, matching the [hh:mm:ss] line prefixes of the transcript.";
+export const ORDER_RULE = "For each moment write why first, then choose the highlight types and relevance (0-100), then give the timestamps.";
 
 export function buildMomentsPrompt(a: { card: ContextCard; topic: Range & { title: string }; words: Word[] }): {
   system: string;

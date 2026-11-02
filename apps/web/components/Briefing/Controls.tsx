@@ -50,11 +50,14 @@ export function Controls({
   onChange,
   choices,
   types,
+  findMore,
 }: {
   filters: BriefingFilters;
   onChange: (next: BriefingFilters) => void;
   choices: FocusChoice[];
   types: HighlightTypeId[];
+  /** The "Find more" action for the focused person (shown beside the picker), or null when focus isn't on a person. */
+  findMore: { label: string; busy: boolean; onClick: () => void } | null;
 }) {
   const set = (patch: Partial<BriefingFilters>) => onChange({ ...filters, ...patch });
   const focusValue = filters.person !== null ? `p:${filters.person}` : filters.speaker !== null ? `v:${filters.speaker}` : "";
@@ -121,6 +124,16 @@ export function Controls({
                 className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <XIcon aria-hidden className="size-4" />
+              </button>
+            )}
+            {findMore && (
+              <button
+                type="button"
+                disabled={findMore.busy}
+                onClick={findMore.onClick}
+                className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {findMore.label}
               </button>
             )}
           </div>

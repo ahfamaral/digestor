@@ -81,14 +81,15 @@ export async function sweepStaleSessions(db: Db, now: Date = new Date(), staleMi
  * no live job for it (the job died on its last attempt, or was never sent) is failed, so its normal retry path works:
  * - a `pending` briefing translation → `failed` with STUCK_MESSAGE (the Preview offers to try again);
  * - a `preparing` subtitle track → `failed` with STUCK_MESSAGE ("Try again" replaces it);
- * - a clip render or track burn `queued`/`rendering` → `failed` (exporting again re-claims it).
+ * - a clip render or track burn `queued`/`rendering` → `failed` (exporting again re-claims it);
+ * - a "Find more" request `pending`/`running` → `failed` with STUCK_MESSAGE (asking again resets it).
  * Returns how many rows of each kind were failed.
  */
 export async function sweepStaleJobRows(
   db: Db,
   now: Date = new Date(),
   staleMinutes = 30,
-): Promise<{ translations: number; tracks: number; renders: number; burns: number }> {
+): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number }> {
   const cutoff = sql`${new Date(now.getTime() - staleMinutes * 60_000).toISOString()}::timestamptz`;
 
   const translations = await db.execute(sql`
@@ -111,10 +112,16 @@ export async function sweepStaleJobRows(
     where t.burn_status in ('queued', 'rendering') and t.updated_at < ${cutoff}
       and not ${hasLiveJobFor(QUEUES.burnTrack, { trackId: "t.id" })}
   `);
+  const findMore = await db.execute(sql`
+    update find_more_requests r set status = 'failed', error = ${STUCK_MESSAGE}, updated_at = now()
+    where r.status in ('pending', 'running') and r.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.findMore, { requestId: "r.id" })}
+  `);
   return {
     translations: translations.rowCount ?? 0,
     tracks: tracks.rowCount ?? 0,
     renders: renders.rowCount ?? 0,
     burns: burns.rowCount ?? 0,
+    findMore: findMore.rowCount ?? 0,
   };
 }

@@ -13,11 +13,11 @@ export const WORDS: Word[] = Array.from({ length: 100 }, (_, i) => ({
 }));
 
 /** A `ready` session with a transcript and one complete analysis holding one moment per `[startMs, endMs]` range. */
-export async function seedReadySession(db: Db, ranges: [number, number, string?][] = [[10_000, 30_000]]) {
+export async function seedReadySession(db: Db, ranges: [number, number, string?][] = [[10_000, 30_000]], profile = "interview") {
   const s = await createSession(db, { title: "Talk", source: "upload" });
-  await updateSession(db, s.id, { stage: "ready", progress: 100, profile: "interview", language: "en", durationMs: 100_000 });
+  await updateSession(db, s.id, { stage: "ready", progress: 100, profile, language: "en", durationMs: 100_000 });
   await saveTranscript(db, s.id, { language: "en", languageConfidence: 1, durationMs: 100_000, words: WORDS });
-  const v = await startAnalysisVersion(db, s.id, { profile: "interview", reason: "test", models: {}, promptVersions: {} });
+  const v = await startAnalysisVersion(db, s.id, { profile, reason: "test", models: {}, promptVersions: {} });
   const moments = await saveMoments(
     db,
     v.id,

@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { MomentWithHighlights } from "../analysisTypes.ts";
+import { saveMoments, type NewMoment } from "./analysis.ts";
 import type {
   AskActionKind, AskAction, AskMessage, AskMessageStatus, AskMessageWithActions, AskRole, Clip, ClipActor, ClipFormat,
-  ClipEvent, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
+  ClipEvent, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import { GRANULARITY, type Granularity } from "../profiles.ts";
 import type { Db } from "./client.ts";
 import {
-  askActions, askMessages, analysisVersions, clipEvents, clips, moments, problemReports, selections, subtitleTracks,
+  askActions, askMessages, analysisVersions, clipEvents, clips, findMoreRequests, momentHighlights, moments, problemReports, selections, subtitleTracks,
   topics,
 } from "./schema.ts";
 
@@ -59,7 +60,89 @@ export async function listPersonalMoments(db: Db, ownerId: string, analysisId: s
     .from(moments)
     .where(and(eq(moments.analysisId, analysisId), eq(moments.ownerId, ownerId)))
     .orderBy(asc(moments.startMs), asc(moments.id));
-  return rows.map((r) => ({ ...r, highlights: [] }));
+  // Only "Find more" moments carry highlight types (the model's picks); Ask and user moments have none.
+  const found = rows.filter((r) => r.origin === "find_more").map((r) => r.id);
+  const tags = found.length ? await db.select().from(momentHighlights).where(inArray(momentHighlights.momentId, found)) : [];
+  return rows.map((r) => ({ ...r, highlights: tags.filter((h) => h.momentId === r.id).map(({ type, method, value }) => ({ type, method, value })) }));
+}
+
+// ---------------------------------------------------------------- find more
+
+const activeFindMore = ["pending", "running"] as const;
+
+/**
+ * Asks for a "Find more" run: creates the request, or resets a `done`/`failed` one to `pending` (its earlier moments stay
+ * until the new run replaces them). null while one is `pending` or `running`: the caller must not send a second job.
+ */
+export async function requestFindMore(
+  db: Db,
+  a: { ownerId: string; analysisId: string; personId: string },
+): Promise<FindMoreRequest | null> {
+  const [row] = await db
+    .insert(findMoreRequests)
+    .values({ ...a, status: "pending" })
+    .onConflictDoUpdate({
+      target: [findMoreRequests.ownerId, findMoreRequests.analysisId, findMoreRequests.personId],
+      set: { status: "pending", error: null, updatedAt: new Date() },
+      setWhere: inArray(findMoreRequests.status, ["done", "failed"]),
+    })
+    .returning();
+  return row ?? null;
+}
+
+/** pending → running; false when it isn't pending (already taken, or gone). */
+export async function claimFindMore(db: Db, id: string): Promise<boolean> {
+  const rows = await db
+    .update(findMoreRequests)
+    .set({ status: "running" })
+    .where(and(eq(findMoreRequests.id, id), eq(findMoreRequests.status, "pending")))
+    .returning({ id: findMoreRequests.id });
+  return rows.length > 0;
+}
+
+/**
+ * Stores the run's moments as the owner's `find_more` moments and marks the request `done`, in one transaction. This
+ * request's earlier moments go first (their selections with them); other people's and Ask's moments stay. Returns the
+ * count, or 0 and stores nothing when the request isn't `running` any more.
+ */
+export async function finishFindMore(db: Db, id: string, rows: NewMoment[]): Promise<number> {
+  return db.transaction(async (tx) => {
+    const t = tx as unknown as Db;
+    const [req] = await tx
+      .update(findMoreRequests)
+      .set({ status: "done", error: null, momentCount: rows.length })
+      .where(and(eq(findMoreRequests.id, id), eq(findMoreRequests.status, "running")))
+      .returning();
+    if (!req) return 0;
+    await tx.delete(moments).where(eq(moments.findMoreRequestId, id));
+    await saveMoments(
+      t,
+      req.analysisId,
+      rows.map((r) => ({ ...r, origin: "find_more" as const, ownerId: req.ownerId, findMoreRequestId: id, insideIdx: undefined })),
+    );
+    return rows.length;
+  });
+}
+
+/** Marks a `pending` or `running` request failed with a user-facing message. */
+export async function failFindMore(db: Db, id: string, message: string): Promise<void> {
+  await db
+    .update(findMoreRequests)
+    .set({ status: "failed", error: message })
+    .where(and(eq(findMoreRequests.id, id), inArray(findMoreRequests.status, [...activeFindMore])));
+}
+
+export async function getFindMore(db: Db, a: { ownerId: string; analysisId: string; personId: string }): Promise<FindMoreRequest | null> {
+  const [row] = await db
+    .select()
+    .from(findMoreRequests)
+    .where(and(eq(findMoreRequests.ownerId, a.ownerId), eq(findMoreRequests.analysisId, a.analysisId), eq(findMoreRequests.personId, a.personId)));
+  return row ?? null;
+}
+
+export async function getFindMoreById(db: Db, id: string): Promise<FindMoreRequest | null> {
+  const [row] = await db.select().from(findMoreRequests).where(eq(findMoreRequests.id, id));
+  return row ?? null;
 }
 
 // ---------------------------------------------------------------- selections

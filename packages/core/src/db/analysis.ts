@@ -167,6 +167,10 @@ export async function getAnalysisByVersion(db: Db, sessionId: string, version: n
   return v ? loadBundle(db, v) : null;
 }
 
+export async function getAnalysisTopics(db: Db, analysisId: string): Promise<Topic[]> {
+  return db.select().from(topics).where(eq(topics.analysisId, analysisId)).orderBy(asc(topics.idx));
+}
+
 async function loadBundle(db: Db, v: AnalysisVersion): Promise<AnalysisBundle> {
   const [topicRows, momentRows, briefingRow] = await Promise.all([
     db.select().from(topics).where(eq(topics.analysisId, v.id)).orderBy(asc(topics.idx)),
@@ -237,6 +241,7 @@ export async function saveMoments(db: Db, analysisId: string, rows: NewMoment[])
             checks: r.checks ?? null,
             ownerId: r.ownerId ?? null,
             origin: r.origin,
+            findMoreRequestId: r.findMoreRequestId ?? null,
           };
         }),
       )

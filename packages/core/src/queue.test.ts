@@ -31,6 +31,7 @@ describe("QUEUES", () => {
       renderClip: "clip.render",
       translateBriefing: "briefing.translate",
       ask: "ask.run",
+      findMore: "moment.find_more",
     });
   });
 

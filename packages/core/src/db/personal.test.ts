@@ -17,6 +17,9 @@ import {
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
 import type { TrackCue } from "../personalTypes.ts";
+import { createCustomPerson } from "./names.ts";
+import type { NewMoment } from "./analysis.ts";
+import { requestFindMore, claimFindMore, finishFindMore, failFindMore, getFindMore } from "./personal.ts";
 
 const OWNER = "owner";
 let db: Db;
@@ -457,5 +460,66 @@ describe("Task 16 helpers", () => {
     expect(await deleteFailedTrack(db, preparing.id)).toBe(true);
     expect(await getTrack(db, preparing.id)).toBeNull();
     expect(await deleteFailedTrack(db, preparing.id)).toBe(false);
+  });
+});
+
+describe("find more", () => {
+  const found = (title: string, startMs = 0): NewMoment => ({
+    topicId: null, granularity: "passage", startMs, endMs: startMs + 40_000, title, why: "w", relevance: 80, speakers: ["A"], evidence: [],
+    origin: "find_more", highlights: [{ type: "heated", method: "ai", value: null }],
+  });
+  const run = async (personId: string, rows: NewMoment[]) => {
+    const r = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId }))!;
+    expect(await claimFindMore(db, r.id)).toBe(true);
+    return { id: r.id, count: await finishFindMore(db, r.id, rows) };
+  };
+
+  it("requestFindMore returns null while one is pending or running (re-request after done resets it to pending)", async () => {
+    const p = await createCustomPerson(db, { displayName: "Tralli", createdBy: "t" });
+    const a = { ownerId: OWNER, analysisId, personId: p.id };
+    const first = (await requestFindMore(db, a))!;
+    expect(first.status).toBe("pending");
+    expect(await requestFindMore(db, a)).toBeNull();
+    expect(await claimFindMore(db, first.id)).toBe(true);
+    expect(await claimFindMore(db, first.id)).toBe(false);
+    expect(await requestFindMore(db, a)).toBeNull();
+    expect(await finishFindMore(db, first.id, [found("x")])).toBe(1);
+    expect((await getFindMore(db, a))).toMatchObject({ status: "done", momentCount: 1 });
+    const again = (await requestFindMore(db, a))!;
+    expect(again).toMatchObject({ id: first.id, status: "pending", error: null });
+    await failFindMore(db, again.id, "nope");
+    expect(await getFindMore(db, a)).toMatchObject({ status: "failed", error: "nope" });
+    expect((await requestFindMore(db, a))?.status).toBe("pending");
+  });
+
+  it("finishFindMore replaces this person's earlier find-more moments only", async () => {
+    const tralli = await createCustomPerson(db, { displayName: "Tralli", createdBy: "t" });
+    const other = await createCustomPerson(db, { displayName: "Other", createdBy: "t" });
+    const mine = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 0, endMs: 20_000, title: "Asked", origin: "ask" });
+    await run(other.id, [found("Other's", 100_000)]);
+    const first = await run(tralli.id, [found("Old 1", 200_000), found("Old 2", 300_000)]);
+    expect((await listPersonalMoments(db, OWNER, analysisId)).filter((m) => m.origin === "find_more")).toHaveLength(3);
+
+    const [old] = (await listPersonalMoments(db, OWNER, analysisId)).filter((m) => m.title === "Old 1");
+    await setSelection(db, OWNER, old!.id, "approved");
+    const req = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId: tralli.id }))!;
+    expect(req.id).toBe(first.id);
+    await claimFindMore(db, req.id);
+    expect(await finishFindMore(db, req.id, [found("New", 400_000)])).toBe(1);
+
+    const all = await listPersonalMoments(db, OWNER, analysisId);
+    expect(all.map((m) => m.title).sort()).toEqual(["Asked", "New", "Other's"]);
+    expect(all.find((m) => m.title === "New")).toMatchObject({ origin: "find_more", ownerId: OWNER, findMoreRequestId: req.id });
+    expect(all.find((m) => m.title === "New")!.highlights).toEqual([{ type: "heated", method: "ai", value: null }]);
+    expect(all.find((m) => m.id === mine.id)).toBeTruthy();
+    expect(await listSelections(db, OWNER, s.id)).toEqual({});
+    expect(await getFindMore(db, { ownerId: OWNER, analysisId, personId: tralli.id })).toMatchObject({ status: "done", momentCount: 1 });
+  });
+
+  it("finishFindMore stores nothing for a request that isn't running", async () => {
+    const p = await createCustomPerson(db, { displayName: "Tralli", createdBy: "t" });
+    const r = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId: p.id }))!;
+    expect(await finishFindMore(db, r.id, [found("x")])).toBe(0);
+    expect(await listPersonalMoments(db, OWNER, analysisId)).toEqual([]);
   });
 });

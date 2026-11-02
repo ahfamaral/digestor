@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import {
+  createCustomPerson, failFindMore, getFindMore, replaceAiAttributions, setHumanAttribution, claimFindMore,
   createClip, createTrack, deleteClip, failTrack, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
   approveTrack, updateClip, setSelection,
 } from "@digestor/core/server";
@@ -13,6 +14,7 @@ import { PATCH as patchClip } from "./clips/[id]/route";
 import { POST as undo } from "./clips/[id]/undo/route";
 import { POST as postTrack } from "./clips/[id]/tracks/route";
 import { PATCH as patchTrack } from "./tracks/[id]/route";
+import { GET as getFindMoreRoute, POST as postFindMore } from "./sessions/[id]/find-more/route";
 
 let h: Harness;
 beforeAll(() => {
@@ -406,5 +408,68 @@ describe("kept clips are frozen once the video is removed (R30)", () => {
 
     expect((await patchClip(req({ warningsAck: true }, "PATCH"), ctx(clip.id))).status).toBe(200);
     expect((await patchClip(req({ protectedAck: true }, "PATCH"), ctx(clip.id))).status).toBe(200);
+  });
+});
+
+describe("/api/sessions/[id]/find-more", () => {
+  async function named(confirm = true, profile = "interview") {
+    const seeded = await seedReadySession(h.db, [[10_000, 30_000]], profile);
+    const person = await createCustomPerson(h.db, { displayName: "Tralli", createdBy: OWNER_ID });
+    if (confirm) await setHumanAttribution(h.db, { sessionId: seeded.sessionId, speakerId: "A", startMs: null, endMs: null, personId: person.id, ownerId: OWNER_ID });
+    else {
+      await replaceAiAttributions(h.db, seeded.sessionId, "transcript", [
+        { speakerId: "A", startMs: null, endMs: null, personId: person.id, status: "proposed", confidence: 0.6, evidence: { kind: "none" } },
+      ]);
+    }
+    return { ...seeded, personId: person.id };
+  }
+  const get = (sessionId: string, personId: string) => getFindMoreRoute(new Request(`http://localhost/x?personId=${personId}`), ctx(sessionId));
+
+  it("202 and one send of moment.find_more with JOB_OPTIONS; 409 while it runs", async () => {
+    const { sessionId, analysisId, personId } = await named();
+    expect(await (await get(sessionId, personId)).json()).toEqual({ status: "none", momentCount: 0, error: null });
+    const res = await postFindMore(req({ personId }), ctx(sessionId));
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ status: "pending" });
+    const row = (await getFindMore(h.db, { ownerId: OWNER_ID, analysisId, personId }))!;
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.findMore, { requestId: row.id }, JOB_OPTIONS);
+    expect(await (await get(sessionId, personId)).json()).toEqual({ status: "pending", momentCount: 0, error: null });
+
+    await claimFindMore(h.db, row.id);
+    const again = await postFindMore(req({ personId }), ctx(sessionId));
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: "Already looking for more moments with this person." });
+    expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed send puts the row back to failed and answers 503", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { sessionId, analysisId, personId } = await named();
+    h.send.mockRejectedValueOnce(new Error("pg down"));
+    const res = await postFindMore(req({ personId }), ctx(sessionId));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "Couldn't queue the job. Please try again." });
+    expect(await getFindMore(h.db, { ownerId: OWNER_ID, analysisId, personId })).toMatchObject({
+      status: "failed", error: "Couldn't queue the job. Please try again.",
+    });
+    expect(await (await get(sessionId, personId)).json()).toMatchObject({ status: "failed", error: "Couldn't queue the job. Please try again." });
+    expect((await postFindMore(req({ personId }), ctx(sessionId))).status).toBe(202); // asking again works
+    err.mockRestore();
+  });
+
+  it("refuses bad input, a person who isn't listed, an unconfirmed person in a sensitive profile and a session that isn't ready", async () => {
+    const { sessionId, personId } = await named(false);
+    expect((await postFindMore(req({}), ctx(sessionId))).status).toBe(400);
+    expect((await postFindMore(req({ personId: "nope" }), ctx(sessionId))).status).toBe(400);
+    expect((await postFindMore(req({ personId }), ctx("nope"))).status).toBe(404);
+    const stranger = await createCustomPerson(h.db, { displayName: "Nobody", createdBy: OWNER_ID });
+    expect((await postFindMore(req({ personId: stranger.id }), ctx(sessionId))).status).toBe(404);
+    expect(h.send).not.toHaveBeenCalled();
+    const trial = await named(false, "trial"); // a sensitive profile doesn't list an unconfirmed name
+    expect((await postFindMore(req({ personId: trial.personId }), ctx(trial.sessionId))).status).toBe(404);
+    expect(h.send).not.toHaveBeenCalled();
+    await updateSession(h.db, sessionId, { stage: "finding_moments" });
+    expect((await postFindMore(req({ personId }), ctx(sessionId))).status).toBe(409);
   });
 });

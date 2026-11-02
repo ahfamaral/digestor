@@ -1,7 +1,14 @@
 import { Command } from "@langchain/langgraph";
-import { ProfileIdSchema, type AskJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { PROFILES, ProfileIdSchema, type AskJob, type FindMoreJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
+  claimFindMore,
   failAnalysisVersion,
+  failFindMore,
+  finishFindMore,
+  getFindMoreById,
+  getPersons,
+  listAttributions,
+  getAnalysisTopics,
   failTranslation,
   getBriefing,
   getTranslation,
@@ -24,6 +31,7 @@ import {
   type Db,
 } from "@digestor/core/server";
 import { ASK_FAILED, AskRunError, runAsk, type AskDeps } from "./agents/ask.js";
+import { findMoreMoments, personTurnRanges } from "./agents/findMore.js";
 import { translateBriefing } from "./agents/translateBriefing.js";
 import type { StructuredLLM } from "./llm/structured.js";
 import { checkMoment } from "./agents/checks.js";
@@ -312,6 +320,57 @@ export async function handleTranslateBriefing(
       console.error(`[jobs] translation ${job.analysisId}/${job.language} failed:`, err);
     } else {
       console.error(`[jobs] translation ${job.analysisId}/${job.language} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    }
+    throw err;
+  }
+}
+
+export const FIND_MORE_FAILED = "Couldn't look for more moments. Please try again.";
+
+/**
+ * "Find more moments with <person>": claims the request (`pending` → `running`), runs the one text-only call and
+ * stores the moments. A missing key fails the row at once with its message; any other error is rethrown for pg-boss
+ * to retry (the retry finds the row `running` and continues) and only the final attempt marks the row failed.
+ */
+export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: FindMoreJob, attempt: Attempt): Promise<void> {
+  const { db, llm } = deps;
+  const row = await getFindMoreById(db, job.requestId);
+  if (!row) return;
+  // A first delivery needs the claim; a retry (after a crash or a transient error) finds its own row `running`.
+  if (!(await claimFindMore(db, row.id)) && !(attempt.retryCount > 0 && row.status === "running")) return;
+  try {
+    const version = await getAnalysisVersion(db, row.analysisId);
+    const [transcript, stored, persons] = version
+      ? await Promise.all([getTranscript(db, version.sessionId), getContextCard(db, version.sessionId), getPersons(db, [row.personId])])
+      : [null, null, []];
+    const profile = ProfileIdSchema.safeParse(version?.profile);
+    const person = persons[0];
+    if (!version || !transcript || !stored || !profile.success || !person) {
+      console.log(`[jobs] find-more ${row.id} failed: its session has no transcript, context or person`);
+      await failFindMore(db, row.id, FIND_MORE_FAILED);
+      return;
+    }
+    // Only turns the name may be used for: a sensitive profile counts confirmed names only.
+    const turns = personTurnRanges(transcript.words, await listAttributions(db, version.sessionId), person.id, PROFILES[profile.data].sensitive);
+    const card = await promptCard(db, version.sessionId, withProfile(stored.card, profile.data));
+    const found =
+      turns.length === 0
+        ? []
+        : await findMoreMoments(llm, {
+            card, transcript, topics: await getAnalysisTopics(db, version.id), personTurns: turns, personName: person.displayName,
+          });
+    await finishFindMore(db, row.id, found);
+  } catch (err) {
+    if (err instanceof MissingApiKeyError) {
+      console.error(`[jobs] find-more ${row.id} failed: ${err.message}`);
+      await failFindMore(db, row.id, err.message);
+      return;
+    }
+    if (attempt.retryCount >= attempt.retryLimit) {
+      await failFindMore(db, row.id, FIND_MORE_FAILED);
+      console.error(`[jobs] find-more ${row.id} failed:`, err);
+    } else {
+      console.error(`[jobs] find-more ${row.id} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
     }
     throw err;
   }

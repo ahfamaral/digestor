@@ -12,6 +12,7 @@ export const QUEUES = {
   renderClip: "clip.render",
   translateBriefing: "briefing.translate",
   ask: "ask.run",
+  findMore: "moment.find_more",
 } as const;
 
 export const StartJobSchema = z.object({ sessionId: z.string().uuid() });
@@ -50,6 +51,9 @@ export type TranslateBriefingJob = z.infer<typeof TranslateBriefingJobSchema>;
 
 export const AskJobSchema = z.object({ messageId: z.string().uuid() });
 export type AskJob = z.infer<typeof AskJobSchema>;
+
+export const FindMoreJobSchema = z.object({ requestId: z.string().uuid() });
+export type FindMoreJob = z.infer<typeof FindMoreJobSchema>;
 
 /**
  * The one source of pg-boss options: the worker applies them to every queue (create + update) and every sender

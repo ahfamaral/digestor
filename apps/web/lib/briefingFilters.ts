@@ -34,7 +34,7 @@ export interface MomentView {
 /** Coarse → fine: a level shows itself and the levels after it. */
 const LEVEL: Record<Granularity, number> = { exchange: 0, passage: 1, punchline: 2 };
 
-const isPersonal = (m: MomentWithHighlights) => m.origin === "ask" || m.origin === "user";
+const isPersonal = (m: MomentWithHighlights) => m.origin === "ask" || m.origin === "user" || m.origin === "find_more";
 
 /** What the person check needs: the people speaking at least FOCUS_MIN_MS in each moment, built once (`peopleByMoment`). */
 export interface FocusContext {

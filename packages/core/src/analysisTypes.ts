@@ -39,7 +39,7 @@ export interface TranslatedBriefingContent {
 }
 
 export type AnalysisStatus = "running" | "complete" | "failed";
-export type MomentOrigin = "ai" | "counted" | "ask" | "user";
+export type MomentOrigin = "ai" | "counted" | "ask" | "user" | "find_more";
 export type HighlightMethod = "ai" | "counted";
 
 export interface AnalysisVersion {
@@ -86,6 +86,8 @@ export interface Moment {
   /** null = official (part of the analysis); otherwise a personal moment. */
   ownerId: string | null;
   origin: MomentOrigin;
+  /** The "Find more" request that made this moment (`origin` find_more). */
+  findMoreRequestId?: string | null;
 }
 
 export interface MomentHighlight {

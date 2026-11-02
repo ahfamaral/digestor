@@ -18,6 +18,7 @@ import {
   ACTION_STATUS, actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, moveFocus, resolveFocus,
 } from "@/lib/review";
 import { StatusQueue } from "@/lib/statusQueue";
+import { startRefreshLoop } from "@/lib/refreshLoop";
 import { t, type MessageKey } from "@/lib/i18n";
 import { Controls, type FocusChoice } from "./Controls";
 import { WhosWhoDrawer } from "@/components/Names/WhosWho";
@@ -66,6 +67,14 @@ async function sendSelection(id: string, status: ClipStatus): Promise<void> {
   if (!res.ok) throw new Error(await errorMessage(res, t("briefing.saveFailed")));
 }
 
+/** Where a "Find more" run stands for the focused person; "none" = never asked. */
+interface FindMoreState {
+  status: "none" | "pending" | "running" | "done" | "failed";
+  momentCount: number;
+  error: string | null;
+}
+const FIND_MORE_POLL_MS = 3000;
+
 const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
@@ -90,6 +99,9 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   const [announcement, setAnnouncement] = useState("");
   const [busy, setBusy] = useState<"confirm" | "prepare" | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  // "Find more moments with <person>": the run's state per person, kept from the server and polled while it runs.
+  const [findMore, setFindMore] = useState<Record<string, FindMoreState>>({});
+  const fmSeen = useRef<Record<string, FindMoreState["status"]>>({});
 
   function setError(id: string, message: string | null) {
     setErrors((e) => {
@@ -136,6 +148,54 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   const approved = useMemo(() => approvedMomentIds(moments, statuses), [moments, statuses]);
   const hiddenApproved = useMemo(() => hiddenApprovedCount(views, approved), [views, approved]);
   const topicNo = useMemo(() => new Map(topics.map((tp, i) => [tp.id, i + 1])), [topics]);
+
+  const focusedPerson = filters.person;
+  const personName = focusedPerson ? (choices.find((c) => c.kind === "person" && c.id === focusedPerson)?.name ?? "") : "";
+  const fmState = focusedPerson ? findMore[focusedPerson] : undefined;
+  const fmBusy = fmState?.status === "pending" || fmState?.status === "running";
+
+  const loadFindMore = useEffectEvent(async (personId: string) => {
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/find-more?personId=${encodeURIComponent(personId)}`);
+      if (!res.ok) return;
+      const next = (await res.json()) as FindMoreState;
+      const was = fmSeen.current[personId];
+      fmSeen.current[personId] = next.status;
+      setFindMore((all) => ({ ...all, [personId]: next }));
+      // A run that just finished brings new moments: re-read the page's data (this component keeps its state).
+      if ((was === "pending" || was === "running") && next.status === "done") router.refresh();
+    } catch {
+      // a dropped poll: the next one retries
+    }
+  });
+  // Opening a focused person shows a run already going (or done, or failed) for them.
+  useEffect(() => {
+    if (focusedPerson) void loadFindMore(focusedPerson);
+  }, [focusedPerson]);
+  useEffect(() => {
+    if (!focusedPerson || !fmBusy) return;
+    return startRefreshLoop(() => void loadFindMore(focusedPerson), FIND_MORE_POLL_MS);
+  }, [focusedPerson, fmBusy]);
+
+  async function startFindMore() {
+    if (!focusedPerson || fmBusy) return;
+    const personId = focusedPerson;
+    fmSeen.current[personId] = "pending";
+    setFindMore((all) => ({ ...all, [personId]: { status: "pending", momentCount: 0, error: null } }));
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/find-more`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personId }),
+      });
+      if (res.ok || res.status === 409) return; // 409: one is already running; the poll follows it
+      const error = await errorMessage(res, t("briefing.findMoreFailed"));
+      setFindMore((all) => ({ ...all, [personId]: { status: "failed", momentCount: 0, error } }));
+    } catch {
+      setFindMore((all) => ({ ...all, [personId]: { status: "failed", momentCount: 0, error: t("briefing.findMoreFailed") } }));
+    }
+  }
+  const findMoreLabel = fmBusy ? t("briefing.finding") : t("briefing.findMore", { name: personName });
 
   const focusRow = (id: string) => setFocus({ id, index: Math.max(0, order.indexOf(id)) });
 
@@ -303,7 +363,23 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
           <p className="rounded-xl border border-border bg-white p-6 text-sm text-muted-foreground">{t("briefing.none")}</p>
         ) : (
           <>
-            <Controls filters={filters} onChange={setFilters} choices={choices} types={types} />
+            <Controls
+              filters={filters}
+              onChange={setFilters}
+              choices={choices}
+              types={types}
+              findMore={focusedPerson && personName ? { label: findMoreLabel, busy: fmBusy, onClick: () => void startFindMore() } : null}
+            />
+            {fmState?.status === "failed" && fmState.error && (
+              <p role="alert" className="mb-2 text-xs text-red-700">
+                {fmState.error}
+              </p>
+            )}
+            {fmState?.status === "done" && fmState.momentCount === 0 && (
+              <p role="status" className="mb-2 text-xs text-muted-foreground">
+                {t("briefing.findMoreNone")}
+              </p>
+            )}
 
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span aria-live="off">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>
@@ -349,6 +425,19 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
                     </ul>
                   </section>
                 ))}
+              </div>
+            )}
+
+            {focusedPerson && personName && shown < 5 && (
+              <div className="mt-3 flex justify-center">
+                <button
+                  type="button"
+                  disabled={fmBusy}
+                  onClick={() => void startFindMore()}
+                  className="inline-flex h-9 items-center rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {findMoreLabel}
+                </button>
               </div>
             )}
           </>

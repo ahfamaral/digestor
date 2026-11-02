@@ -6,7 +6,7 @@ import type { AttributionEvidence, AttributionSource, AttributionStatus } from "
 import type { AnalysisStatus, BriefingContent, MomentChecks, MomentOrigin, HighlightMethod } from "../analysisTypes.ts";
 import type {
   AskActionKind, AskActionStatus, AskMessageStatus, AskRole, ClipActor, ClipEventKind, ClipFormat, ProblemTargetKind,
-  RenderStatus, SelectionStatus, TrackCue, TrackStatus,
+  FindMoreStatus, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
 import type { ContextCard, Stage, Word } from "../schemas.ts";
@@ -117,6 +117,8 @@ export const moments = pgTable(
     thumbKey: text("thumb_key"),
     ownerId: text("owner_id"),
     origin: text("origin").$type<MomentOrigin>().notNull().default("ai"),
+    /** Set on `find_more` moments: the request that made them (a new run replaces them). */
+    findMoreRequestId: uuid("find_more_request_id").references(() => findMoreRequests.id, { onDelete: "cascade" }),
   },
   (t) => [index("moments_analysis_idx").on(t.analysisId)],
 );
@@ -300,6 +302,28 @@ export const persons = pgTable(
     uniqueIndex("persons_official_camara").on(sql`(${t.officialIds}->>'camara')`),
     index("persons_name_norm").on(t.nameNorm),
   ],
+);
+
+/** "Find more moments with <person>" (one per owner, analysis version and person): a paid job over that person's turns. */
+export const findMoreRequests = pgTable(
+  "find_more_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id").notNull(),
+    analysisId: uuid("analysis_id")
+      .notNull()
+      .references(() => analysisVersions.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id),
+    status: text("status").$type<FindMoreStatus>().notNull().default("pending"),
+    error: text("error"),
+    momentCount: integer("moment_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Last change: the sweep fails a `pending`/`running` row untouched for 30 min with no live job. */
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [unique("find_more_owner_analysis_person").on(t.ownerId, t.analysisId, t.personId)],
 );
 
 export const attributions = pgTable(

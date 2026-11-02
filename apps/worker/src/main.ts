@@ -8,6 +8,7 @@ import {
   AskJobSchema,
   BurnTrackJobSchema,
   CheckMomentJobSchema,
+  FindMoreJobSchema,
   JOB_OPTIONS,
   PrepareTrackJobSchema,
   QUEUES,
@@ -22,6 +23,7 @@ import { CLEANUP_CRON, CLEANUP_QUEUE, runVideoRetention, videoRetentionDays } fr
 import {
   handleAsk,
   handleCheckMoment,
+  handleFindMore,
   handlePrepareTrack,
   handleReanalyze,
   handleResume,
@@ -121,6 +123,7 @@ async function main() {
   const askDeps = { db, llm: toolLlm, search: (id: string, q: string, k: number) => searchTranscript(deps.search, id, q, k) };
   await register(QUEUES.ask, AskJobSchema, (j, attempt) => handleAsk(askDeps, j, attempt));
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, (j, attempt) => handleTranslateBriefing({ db, llm }, j, attempt));
+  await register(QUEUES.findMore, FindMoreJobSchema, (j, attempt) => handleFindMore({ db, llm }, j, attempt));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     const days = videoRetentionDays();
     const { removed } = await runVideoRetention({ db, storage, checkpointer: saver, chroma }, days);
