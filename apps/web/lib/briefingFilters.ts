@@ -45,8 +45,8 @@ export interface FocusContext {
 function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters, ctx: FocusContext): boolean {
   if (f.person !== null && !ctx.peopleByMoment.get(m.id)?.has(f.person)) return false;
   if (f.speaker !== null && !m.speakers.includes(f.speaker)) return false;
-  // Counted values aren't AI judgments, and personal moments carry no score: the relevance floor is for AI picks.
-  if (m.origin === "ai" && m.relevance < f.minRelevance) return false;
+  // Counted values aren't AI judgments, and Ask/user moments carry no score: the relevance floor is for model-scored picks.
+  if ((m.origin === "ai" || m.origin === "find_more") && m.relevance < f.minRelevance) return false;
   if (f.types.length > 0 && !m.highlights.some((h) => f.types.includes(h.type))) return false;
   switch (f.show) {
     case "all":

@@ -83,7 +83,7 @@ export async function requestFindMore(
     .values({ ...a, status: "pending" })
     .onConflictDoUpdate({
       target: [findMoreRequests.ownerId, findMoreRequests.analysisId, findMoreRequests.personId],
-      set: { status: "pending", error: null, updatedAt: new Date() },
+      set: { status: "pending", error: null, momentCount: 0, updatedAt: new Date() },
       setWhere: inArray(findMoreRequests.status, ["done", "failed"]),
     })
     .returning();
@@ -102,7 +102,7 @@ export async function claimFindMore(db: Db, id: string): Promise<boolean> {
 
 /**
  * Stores the run's moments as the owner's `find_more` moments and marks the request `done`, in one transaction. This
- * request's earlier moments go first (their selections with them); other people's and Ask's moments stay. Returns the
+ * request's earlier moments go first, except those with a selection; other people's and Ask's moments stay. Returns the
  * count, or 0 and stores nothing when the request isn't `running` any more.
  */
 export async function finishFindMore(db: Db, id: string, rows: NewMoment[]): Promise<number> {
@@ -114,7 +114,8 @@ export async function finishFindMore(db: Db, id: string, rows: NewMoment[]): Pro
       .where(and(eq(findMoreRequests.id, id), eq(findMoreRequests.status, "running")))
       .returning();
     if (!req) return 0;
-    await tx.delete(moments).where(eq(moments.findMoreRequestId, id));
+    // Earlier moments go, except those the owner has a selection on (any status): their work is never deleted.
+    await tx.delete(moments).where(and(eq(moments.findMoreRequestId, id), sql`not exists (select 1 from selections s where s.moment_id = ${moments.id})`));
     await saveMoments(
       t,
       req.analysisId,
@@ -138,6 +139,25 @@ export async function getFindMore(db: Db, a: { ownerId: string; analysisId: stri
     .from(findMoreRequests)
     .where(and(eq(findMoreRequests.ownerId, a.ownerId), eq(findMoreRequests.analysisId, a.analysisId), eq(findMoreRequests.personId, a.personId)));
   return row ?? null;
+}
+
+/**
+ * Ranges the owner already sees in an analysis version (official moments, their personal ones), for dropping a "Find
+ * more" draft that repeats one. This request's own earlier moments count only when they are kept (they have a selection).
+ */
+export async function listShownRanges(
+  db: Db,
+  a: { analysisId: string; ownerId: string; requestId: string },
+): Promise<{ granularity: Granularity; startMs: number; endMs: number }[]> {
+  const rows = await db
+    .select({
+      granularity: moments.granularity, startMs: moments.startMs, endMs: moments.endMs,
+      requestId: moments.findMoreRequestId,
+      selected: sql<boolean>`exists (select 1 from selections s where s.moment_id = ${moments.id})`,
+    })
+    .from(moments)
+    .where(and(eq(moments.analysisId, a.analysisId), or(isNull(moments.ownerId), eq(moments.ownerId, a.ownerId))));
+  return rows.filter((r) => r.requestId !== a.requestId || r.selected).map(({ granularity, startMs, endMs }) => ({ granularity, startMs, endMs }));
 }
 
 export async function getFindMoreById(db: Db, id: string): Promise<FindMoreRequest | null> {

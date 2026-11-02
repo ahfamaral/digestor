@@ -72,6 +72,8 @@ interface FindMoreState {
   status: "none" | "pending" | "running" | "done" | "failed";
   momentCount: number;
   error: string | null;
+  /** The run's id; its moments carry it as `findMoreRequestId`. */
+  requestId?: string | null;
 }
 const FIND_MORE_POLL_MS = 3000;
 
@@ -102,6 +104,8 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   // "Find more moments with <person>": the run's state per person, kept from the server and polled while it runs.
   const [findMore, setFindMore] = useState<Record<string, FindMoreState>>({});
   const fmSeen = useRef<Record<string, FindMoreState["status"]>>({});
+  // Bumped by every click: a status read that started before it is older than the click and is ignored.
+  const fmSeq = useRef(0);
 
   function setError(id: string, message: string | null) {
     setErrors((e) => {
@@ -155,10 +159,13 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   const fmBusy = fmState?.status === "pending" || fmState?.status === "running";
 
   const loadFindMore = useEffectEvent(async (personId: string) => {
+    const seq = fmSeq.current;
     try {
       const res = await fetch(`/api/sessions/${session.id}/find-more?personId=${encodeURIComponent(personId)}`);
-      if (!res.ok) return;
+      if (!res.ok || seq !== fmSeq.current) return;
       const next = (await res.json()) as FindMoreState;
+      const local = fmSeen.current[personId];
+      if (next.status === "none" && (local === "pending" || local === "running")) return; // our own request isn't visible yet
       const was = fmSeen.current[personId];
       fmSeen.current[personId] = next.status;
       setFindMore((all) => ({ ...all, [personId]: next }));
@@ -181,6 +188,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
     if (!focusedPerson || fmBusy) return;
     const personId = focusedPerson;
     fmSeen.current[personId] = "pending";
+    fmSeq.current += 1;
     setFindMore((all) => ({ ...all, [personId]: { status: "pending", momentCount: 0, error: null } }));
     try {
       const res = await fetch(`/api/sessions/${session.id}/find-more`, {
@@ -195,6 +203,17 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
       setFindMore((all) => ({ ...all, [personId]: { status: "failed", momentCount: 0, error: t("briefing.findMoreFailed") } }));
     }
   }
+  // "Found N moments with X." plus how many are at the other levels (the list shows one level at a time).
+  const otherLevels = (["exchange", "passage", "punchline"] as const).filter((g) => g !== filters.granularity);
+  const hiddenFoundAll = fmState?.requestId
+    ? moments.filter((m) => m.origin === "find_more" && m.findMoreRequestId === fmState.requestId && m.granularity !== filters.granularity && statuses[m.id] !== "approved").length
+    : 0;
+  const hiddenFound = Math.min(hiddenFoundAll, fmState?.momentCount ?? 0); // kept earlier moments aren't new
+  const findMoreSummary =
+    (fmState?.momentCount === 1 ? t("briefing.findMoreFoundOne", { name: personName }) : t("briefing.findMoreFound", { n: fmState?.momentCount ?? 0, name: personName })) +
+    (hiddenFound === 0
+      ? ""
+      : t(hiddenFound === 1 ? "briefing.findMoreOtherLevelsOne" : "briefing.findMoreOtherLevels", { m: hiddenFound, levels: otherLevels.map((g) => t(`granularity.${g}`)).join(" or ") }));
   const findMoreLabel = fmBusy ? t("briefing.finding") : t("briefing.findMore", { name: personName });
 
   const focusRow = (id: string) => setFocus({ id, index: Math.max(0, order.indexOf(id)) });
@@ -375,9 +394,9 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
                 {fmState.error}
               </p>
             )}
-            {fmState?.status === "done" && fmState.momentCount === 0 && (
+            {fmState?.status === "done" && (
               <p role="status" className="mb-2 text-xs text-muted-foreground">
-                {t("briefing.findMoreNone")}
+                {fmState.momentCount === 0 ? t("briefing.findMoreNone") : findMoreSummary}
               </p>
             )}
 

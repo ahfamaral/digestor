@@ -2,6 +2,7 @@
 
 import { formatLength, formatTimestamp, type SelectionStatus } from "@digestor/core";
 import { HighlightChip } from "@/components/HighlightChip";
+import { PersonalMarker } from "./PersonalMarker";
 import { SpeakerName } from "@/components/Names/SpeakerName";
 import type { NamesData, Voice } from "@/lib/names";
 import type { MomentView } from "@/lib/briefingFilters";
@@ -54,7 +55,6 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
   // #t= takes seconds; the proxy route answers Range requests, so only the fragment's bytes load.
   const src = `/api/files/${ctx.sessionId}/proxy.mp4#t=${(m.startMs / 1000).toFixed(1)},${(m.endMs / 1000).toFixed(1)}`;
   const playerLabel = t("preview.playerLabel", { title: m.title });
-  const personal = m.origin === "ask" ? t("briefing.addedByAsk") : m.origin === "user" ? t("briefing.addedByYou") : m.origin === "find_more" ? t("briefing.foundForYou") : null;
   const status = view.status ?? "proposed";
 
   return (
@@ -97,9 +97,7 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
           {types.map((h) => (
             <HighlightChip key={h.type} type={h.type} method={h.method} />
           ))}
-          {personal && (
-            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-violet-800">{personal}</span>
-          )}
+          <PersonalMarker origin={m.origin} />
           <span id={`m-status-${m.id}`} className="sr-only">
             {t(STATUS_TEXT[status])}
           </span>

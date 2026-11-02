@@ -19,7 +19,7 @@ import { moments as momentsTable } from "./schema.ts";
 import type { TrackCue } from "../personalTypes.ts";
 import { createCustomPerson } from "./names.ts";
 import type { NewMoment } from "./analysis.ts";
-import { requestFindMore, claimFindMore, finishFindMore, failFindMore, getFindMore } from "./personal.ts";
+import { listShownRanges, requestFindMore, claimFindMore, finishFindMore, failFindMore, getFindMore } from "./personal.ts";
 
 const OWNER = "owner";
 let db: Db;
@@ -492,7 +492,7 @@ describe("find more", () => {
     expect((await requestFindMore(db, a))?.status).toBe("pending");
   });
 
-  it("finishFindMore replaces this person's earlier find-more moments only", async () => {
+  it("finishFindMore replaces this person's earlier find-more moments only, keeping the ones with a selection", async () => {
     const tralli = await createCustomPerson(db, { displayName: "Tralli", createdBy: "t" });
     const other = await createCustomPerson(db, { displayName: "Other", createdBy: "t" });
     const mine = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 0, endMs: 20_000, title: "Asked", origin: "ask" });
@@ -501,18 +501,24 @@ describe("find more", () => {
     expect((await listPersonalMoments(db, OWNER, analysisId)).filter((m) => m.origin === "find_more")).toHaveLength(3);
 
     const [old] = (await listPersonalMoments(db, OWNER, analysisId)).filter((m) => m.title === "Old 1");
-    await setSelection(db, OWNER, old!.id, "approved");
+    await setSelection(db, OWNER, old!.id, "neutral"); // any status keeps it
     const req = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId: tralli.id }))!;
     expect(req.id).toBe(first.id);
     await claimFindMore(db, req.id);
+    expect(req.momentCount).toBe(0); // the reset zeroes the count
+    // the kept moment still counts as shown; the unselected one doesn't
+    expect(await listShownRanges(db, { analysisId, ownerId: OWNER, requestId: req.id })).toEqual(
+      expect.arrayContaining([expect.objectContaining({ startMs: 200_000 })]),
+    );
+    expect((await listShownRanges(db, { analysisId, ownerId: OWNER, requestId: req.id })).some((r) => r.startMs === 300_000)).toBe(false);
     expect(await finishFindMore(db, req.id, [found("New", 400_000)])).toBe(1);
 
     const all = await listPersonalMoments(db, OWNER, analysisId);
-    expect(all.map((m) => m.title).sort()).toEqual(["Asked", "New", "Other's"]);
+    expect(all.map((m) => m.title).sort()).toEqual(["Asked", "New", "Old 1", "Other's"]);
     expect(all.find((m) => m.title === "New")).toMatchObject({ origin: "find_more", ownerId: OWNER, findMoreRequestId: req.id });
     expect(all.find((m) => m.title === "New")!.highlights).toEqual([{ type: "heated", method: "ai", value: null }]);
     expect(all.find((m) => m.id === mine.id)).toBeTruthy();
-    expect(await listSelections(db, OWNER, s.id)).toEqual({});
+    expect(await listSelections(db, OWNER, s.id)).toEqual({ [old!.id]: "neutral" });
     expect(await getFindMore(db, { ownerId: OWNER, analysisId, personId: tralli.id })).toMatchObject({ status: "done", momentCount: 1 });
   });
 

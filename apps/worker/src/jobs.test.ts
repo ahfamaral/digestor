@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command } from "@langchain/langgraph";
 import {
   claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
-  saveContextCard, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
+  saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, type Db,
 } from "@digestor/core/server";
 import { FakeLLM } from "./llm/structured.js";
@@ -285,6 +285,19 @@ d("handleFindMore", () => {
     expect(llm.calls[0]!.user).toContain("Focus person: Tralli");
     expect(await state(r)).toMatchObject({ status: "done", momentCount: 1 });
     expect((await listPersonalMoments(db, "owner", r.analysisId)).map((m) => m.origin)).toEqual(["find_more"]);
+  });
+
+  it("a draft duplicating an official moment is dropped and momentCount excludes it", async () => {
+    const r = await request();
+    await saveMoments(db, r.analysisId, [{
+      topicId: null, granularity: "passage", startMs: 60_000, endMs: 100_000, title: "Official", why: "", relevance: 80, speakers: ["A"],
+      evidence: [], origin: "ai", highlights: [],
+    }]);
+    const dup = { ...good.moments[0]!, title: "Dup" };
+    const fresh = { ...good.moments[0]!, title: "Fresh", start: "00:03:00", end: "00:03:40" };
+    await handleFindMore({ db, llm: new FakeLLM([{ moments: [dup, fresh] }]) }, { requestId: r.row.id }, FIRST);
+    expect(await state(r)).toMatchObject({ status: "done", momentCount: 1 });
+    expect((await listPersonalMoments(db, "owner", r.analysisId)).map((m) => m.title)).toEqual(["Fresh"]);
   });
 
   it("a missing key fails the row with its message and doesn't rethrow", async () => {

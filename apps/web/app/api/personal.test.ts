@@ -427,14 +427,14 @@ describe("/api/sessions/[id]/find-more", () => {
 
   it("202 and one send of moment.find_more with JOB_OPTIONS; 409 while it runs", async () => {
     const { sessionId, analysisId, personId } = await named();
-    expect(await (await get(sessionId, personId)).json()).toEqual({ status: "none", momentCount: 0, error: null });
+    expect(await (await get(sessionId, personId)).json()).toEqual({ status: "none", momentCount: 0, error: null, requestId: null });
     const res = await postFindMore(req({ personId }), ctx(sessionId));
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ status: "pending" });
     const row = (await getFindMore(h.db, { ownerId: OWNER_ID, analysisId, personId }))!;
     expect(h.send).toHaveBeenCalledTimes(1);
     expect(h.send).toHaveBeenCalledWith(QUEUES.findMore, { requestId: row.id }, JOB_OPTIONS);
-    expect(await (await get(sessionId, personId)).json()).toEqual({ status: "pending", momentCount: 0, error: null });
+    expect(await (await get(sessionId, personId)).json()).toEqual({ status: "pending", momentCount: 0, error: null, requestId: row.id });
 
     await claimFindMore(h.db, row.id);
     const again = await postFindMore(req({ personId }), ctx(sessionId));

@@ -37,6 +37,7 @@ const pa2 = moment("pa2", "passage", "t1", 100, 140, { relevance: 30, types: ["d
 const ex2 = moment("ex2", "exchange", "t2", 300, 500, { relevance: 60, types: ["heated"] });
 const pu2 = moment("pu2", "punchline", "t2", 310, 320, { speakers: ["B"], relevance: 85, types: ["light"], inside: "ex2" });
 const cnt = moment("cnt", "exchange", "t2", 400, 560, { relevance: 5, types: ["longest_speech"], origin: "counted" });
+const found = moment("found", "exchange", "t2", 600, 700, { relevance: 40, origin: "find_more" });
 const mine = moment("mine", "passage", "t2", 330, 380, { relevance: 0, speakers: ["A"], origin: "user" });
 const all = [ex1, pa1, pu1, pa2, ex2, pu2, cnt, mine];
 
@@ -46,6 +47,12 @@ type Shape = [string, Shape[]];
 const shape = (views: MomentView[]): Shape[] => views.map((v) => [v.moment.id, shape(v.children)]);
 
 describe("filterMoments", () => {
+  it("the relevance floor applies to found moments (model-scored)", () => {
+    const strong = moment("strong", "exchange", "t2", 700, 800, { relevance: 60, origin: "find_more" });
+    expect(shape(filterMoments([found, strong], {}, f({ minRelevance: 50 }), topics)).map(([id]) => id)).toEqual(["strong"]);
+    expect(shape(filterMoments([found, strong], {}, f(), topics)).map(([id]) => id)).toEqual(["found", "strong"]);
+  });
+
   it("filterMoments nests punchlines under their exchange", () => {
     expect(shape(filterMoments(all, {}, f(), topics))).toEqual([
       ["ex1", [["pa1", []], ["pu1", []], ["pa2", []]]],

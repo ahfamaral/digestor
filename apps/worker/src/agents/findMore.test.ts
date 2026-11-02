@@ -77,6 +77,16 @@ describe("findMoreMoments", () => {
     expect(Math.max(...out.map((m) => m.relevance))).toBe(79); // the best 20 by relevance
   });
 
+  it("drops a draft that repeats a moment already shown (same granularity, overlap over 0.6)", async () => {
+    const t = transcript(40 * 60, 1500);
+    const llm = new FakeLLM([{ moments: [lm(100 * S, 140 * S, { title: "dup" }), lm(300 * S, 340 * S, { title: "new" }), lm(100 * S, 140 * S, { title: "other level", granularity: "exchange", start: ts(100 * S), end: ts(200 * S) })] }]);
+    const out = await findMoreMoments(llm, {
+      card, transcript: t, topics, personTurns: [{ startMs: 0, endMs: 1500 * S }], personName: "Tralli",
+      existing: [{ granularity: "passage", startMs: 105 * S, endMs: 140 * S }],
+    });
+    expect(out.map((m) => m.title).sort()).toEqual(["new", "other level"]);
+  });
+
   it("makes no call when the person has no turns", async () => {
     const llm = new FakeLLM([]);
     expect(await findMoreMoments(llm, { card, transcript: transcript(600), topics, personTurns: [], personName: "X" })).toEqual([]);

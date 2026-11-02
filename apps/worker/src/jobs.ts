@@ -6,6 +6,7 @@ import {
   failFindMore,
   finishFindMore,
   getFindMoreById,
+  listShownRanges,
   getPersons,
   listAttributions,
   getAnalysisTopics,
@@ -358,6 +359,7 @@ export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: 
         ? []
         : await findMoreMoments(llm, {
             card, transcript, topics: await getAnalysisTopics(db, version.id), personTurns: turns, personName: person.displayName,
+            existing: await listShownRanges(db, { analysisId: row.analysisId, ownerId: row.ownerId, requestId: row.id }),
           });
     await finishFindMore(db, row.id, found);
   } catch (err) {

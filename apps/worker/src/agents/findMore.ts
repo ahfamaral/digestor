@@ -5,9 +5,11 @@ import {
   renderTranscript,
   sliceWords,
   speakersIn,
+  overlapRatio,
   toSentences,
   type Attribution,
   type ContextCard,
+  type Granularity,
   type Range,
   type Topic,
   type Transcript,
@@ -22,6 +24,7 @@ import {
   aiTypes,
   commonSystem,
   languageName,
+  MAX_OVERLAP,
   normalizeMoments,
   range,
 } from "./moments.js";
@@ -107,7 +110,7 @@ function windowsText(words: Word[], turns: Range[], durationMs: number, marginMs
  */
 export async function findMoreMoments(
   llm: StructuredLLM,
-  a: { card: ContextCard; transcript: Transcript; topics: Topic[]; personTurns: Range[]; personName: string },
+  a: { card: ContextCard; transcript: Transcript; topics: Topic[]; personTurns: Range[]; personName: string; existing?: (Range & { granularity: Granularity })[] },
 ): Promise<NewMoment[]> {
   const { words, durationMs } = a.transcript;
   if (words.length === 0 || a.personTurns.length === 0) return [];
@@ -144,6 +147,8 @@ export async function findMoreMoments(
     types,
   })
     .filter((d) => a.personTurns.reduce((n, t) => n + overlapMs(d, t), 0) >= FOCUS_MIN_MS)
+    // A stretch already listed (official, or the owner's own) is not new.
+    .filter((d) => !(a.existing ?? []).some((e) => e.granularity === d.granularity && overlapRatio(e, d) > MAX_OVERLAP))
     .slice(0, MAX_FIND_MORE_MOMENTS);
 
   return drafts.map((d) => {

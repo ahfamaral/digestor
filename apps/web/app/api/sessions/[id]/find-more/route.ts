@@ -13,7 +13,7 @@ const BodySchema = z.object({ personId: z.string().uuid() }).strict();
 const RUNNING = "Already looking for more moments with this person.";
 const NO_PERSON = "That person isn't named in this video.";
 
-/** GET /api/sessions/[id]/find-more?personId= — `{ status, momentCount, error }`; status "none" when never asked for this person. */
+/** GET /api/sessions/[id]/find-more?personId= — `{ status, momentCount, error, requestId }`; status "none" when never asked for this person. */
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   const personId = new URL(request.url).searchParams.get("personId") ?? "";
@@ -21,7 +21,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const { db } = getServer();
   const bundle = await getCurrentAnalysis(db, id);
   const row = bundle ? await getFindMore(db, { ownerId: OWNER_ID, analysisId: bundle.version.id, personId }) : null;
-  return Response.json({ status: row?.status ?? "none", momentCount: row?.momentCount ?? 0, error: row?.error ?? null });
+  return Response.json({ status: row?.status ?? "none", momentCount: row?.momentCount ?? 0, error: row?.error ?? null, requestId: row?.id ?? null });
 }
 
 /**
