@@ -12,8 +12,12 @@ import {
   createSession,
   getContextCard,
   getCurrentAnalysis,
+  getPersons,
   getSession,
   listAnalysisVersions,
+  listAttributions,
+  createCustomPerson,
+  setHumanAttribution,
   updateSession,
   type Db,
 } from "@digestor/core/server";
@@ -202,6 +206,10 @@ describe("pipeline", () => {
       },
     ]);
     expect((await getSession(db, sessionId))!.profile).toBe("supreme_court");
+    const humans = (await listAttributions(db, sessionId)).filter((a) => a.source === "human");
+    expect(humans).toHaveLength(1);
+    expect(humans[0]).toMatchObject({ speakerId: "A", startMs: null, status: "confirmed" });
+    expect((await getPersons(db, [humans[0]!.personId!]))[0]!.displayName).toBe("Maria Silva");
 
     // The second round's answers are folded into the card, then the pipeline finishes even though it is still insufficient.
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "Sometime in 2025" }], cardEdits: {} });
@@ -211,6 +219,21 @@ describe("pipeline", () => {
     expect(llm.calls[2]!.user).toContain("Q: When was this recorded or first aired?\nA: Sometime in 2025");
     expect((await getContextCard(db, sessionId))!.card.sufficient).toBe(false);
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+  });
+
+  it("a confirmed human name survives a second context round", async () => {
+    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft(), draft(), draft()] });
+    await graph.invoke({ sessionId }, cfg);
+    const p = await createCustomPerson(db, { displayName: "Joana Confirmada", createdBy: "owner" });
+    await setHumanAttribution(db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
+    await resume({ action: "continue", answers: [{ questionId: "date", answer: "Maybe last spring" }], cardEdits: {} });
+    const round2 = (await getContextCard(db, sessionId))!;
+    expect(round2.round).toBe(2);
+    expect(round2.card.participants.find((x) => x.speakerId === "A")!.name).toEqual({
+      value: "Joana Confirmada", source: "human", evidence: "Joana Confirmada",
+    });
+    expect(round2.card.openQuestions.filter((q) => q.target === "participant")).toEqual([]);
+    expect(llm.calls).toHaveLength(2);
   });
 
   it("skipping the follow-up round goes on to ready", async () => {

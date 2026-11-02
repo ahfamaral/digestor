@@ -23,6 +23,8 @@ export type ContextInput = {
   answers: { question: string; answer: string }[];
   locked: Partial<ContextCard>;
   language: { code: string; confidence: number };
+  /** Voices identified by attributions (named or anonymous): no participant question for them. */
+  named?: ReadonlySet<string>;
 };
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
@@ -174,12 +176,13 @@ export function groundContext(card: ContextCard, i: ContextInput): ContextCard {
   return out;
 }
 
-export function assessSufficiency(card: ContextCard, words: Word[]): ContextCard {
+export function assessSufficiency(card: ContextCard, words: Word[], named: ReadonlySet<string> = new Set()): ContextCard {
   const shares = speakerShares(words);
   const unidentified = Object.entries(shares)
     .filter(([, share]) => share >= MIN_SPEAKER_SHARE)
     .map(([id]) => id)
     .filter((id) => {
+      if (named.has(id)) return false;
       const p = card.participants.find((x) => x.speakerId === id);
       return !p || (p.name.value === null && p.role.value === null);
     });
@@ -267,5 +270,5 @@ export async function understandContext(llm: StructuredLLM, i: ContextInput): Pr
       evidence: `detected from audio (confidence ${i.language.confidence.toFixed(2)})`,
     },
   };
-  return assessSufficiency(groundContext(withLanguage, i), i.words);
+  return assessSufficiency(groundContext(withLanguage, i), i.words, i.named);
 }

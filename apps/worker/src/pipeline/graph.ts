@@ -8,13 +8,18 @@ import {
   isGraphInterrupt,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
-import type { ContextCard, Fact, Participant, ResumePayload, Transcript } from "@digestor/core";
+import { OWNER_ID, type ContextCard, type Fact, type Participant, type ResumePayload, type Transcript } from "@digestor/core";
 import {
+  createCustomPerson,
+  findPersonByName,
   getContextCard,
   getCurrentAnalysis,
+  getPersons,
   getSession,
   getTranscript,
+  listAttributions,
   saveContextCard,
+  setHumanAttribution,
   saveTranscript,
   setStage,
   updateSession,
@@ -28,6 +33,7 @@ import { understandContext } from "../agents/context.js";
 import type { Embedder } from "../search/embed.js";
 import { indexSession } from "../search/index.js";
 import { runAnalysis } from "./analysis.js";
+import { importContextNames, lockedParticipants, namedVoices } from "./naming.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
@@ -125,7 +131,7 @@ type CardEdits = Extract<ResumePayload, { action: "continue" }>["cardEdits"];
 
 const filled = (v: string | undefined): v is string => v !== undefined && v.trim() !== "";
 
-/** Apply the human's edits from the context screen; every typed value becomes a human-sourced fact. */
+/** Apply the human's edits from the context screen; every typed value becomes a human-sourced fact (names are attributions, see `applyNameEdits`). */
 function applyCardEdits(card: ContextCard, edits: CardEdits): ContextCard {
   const human = (value: string): Fact => ({ value, source: "human", evidence: value });
   const out: ContextCard = { ...card, participants: card.participants.map((p) => ({ ...p })) };
@@ -142,7 +148,6 @@ function applyCardEdits(card: ContextCard, edits: CardEdits): ContextCard {
         : { speakerId: e.speakerId, name: { ...NULL_FACT }, role: { ...NULL_FACT }, affiliation: { ...NULL_FACT } };
     const merged: Participant = {
       ...base,
-      ...(filled(e.name) ? { name: human(e.name) } : {}),
       ...(filled(e.role) ? { role: human(e.role) } : {}),
       ...(filled(e.affiliation) ? { affiliation: human(e.affiliation) } : {}),
     };
@@ -150,6 +155,16 @@ function applyCardEdits(card: ContextCard, edits: CardEdits): ContextCard {
     else out.participants.push(merged);
   }
   return out;
+}
+
+/** A typed participant name is a human attribution for the whole voice. Idempotent: persons are found by name first. */
+async function applyNameEdits(db: Db, sessionId: string, edits: CardEdits): Promise<void> {
+  for (const e of edits.participants ?? []) {
+    if (!filled(e.name)) continue;
+    const name = e.name.trim();
+    const person = (await findPersonByName(db, name)) ?? (await createCustomPerson(db, { displayName: name, createdBy: OWNER_ID }));
+    await setHumanAttribution(db, { sessionId, speakerId: e.speakerId, startMs: null, endMs: null, personId: person.id, ownerId: OWNER_ID });
+  }
 }
 
 export const downloadNode =
@@ -256,15 +271,29 @@ export const understandContextNode =
       getContextCard(db, s.sessionId),
     ]);
     if (!transcript) throw new Error(`Session ${s.sessionId} has no transcript`);
+    const atts = await listAttributions(db, s.sessionId);
+    const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
+    const fromCard = stored ? humanLocked(stored.card) : {};
+    const fromAtts = lockedParticipants(atts, persons);
+    // A confirmed attribution wins over a name the card still carries; role and affiliation come from the card.
+    const participants = [
+      ...(fromCard.participants ?? []).map((p) => {
+        const a = fromAtts.find((x) => x.speakerId === p.speakerId);
+        return a ? { ...p, name: a.name } : p;
+      }),
+      ...fromAtts.filter((a) => !(fromCard.participants ?? []).some((p) => p.speakerId === a.speakerId)),
+    ];
     const card = await understandContext(deps.llm, {
       words: transcript.words,
       language: { code: transcript.language, confidence: transcript.languageConfidence },
       metadata: flattenMetadata(session.metadata),
       hint: session.hint,
       answers: s.answers,
-      locked: stored ? humanLocked(stored.card) : {},
+      locked: { ...fromCard, ...(participants.length > 0 ? { participants } : {}) },
+      named: namedVoices(atts, [...new Set(transcript.words.map((w) => w.speaker))]),
     });
     await saveContextCard(db, s.sessionId, card, round);
+    await importContextNames(db, s.sessionId, card);
     await updateSession(db, s.sessionId, {
       profile: card.profile.value,
       ...(card.language.value !== null ? { language: card.language.value } : {}),
@@ -281,6 +310,7 @@ export const askContextNode =
 
     const stored = await getContextCard(db, s.sessionId);
     if (!stored) throw new Error(`Session ${s.sessionId} has no context card`);
+    await applyNameEdits(db, s.sessionId, resume.cardEdits);
     await saveContextCard(db, s.sessionId, applyCardEdits(stored.card, resume.cardEdits), stored.round);
 
     const questions = new Map(stored.card.openQuestions.map((q) => [q.id, q.question]));

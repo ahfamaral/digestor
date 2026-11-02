@@ -60,6 +60,16 @@ function card(over: Partial<ContextCard> = {}): ContextCard {
 const withName = (name: Fact): ContextCard =>
   card({ participants: [{ speakerId: "A", name, role: none, affiliation: none }] });
 
+describe("assessSufficiency counts voices named elsewhere", () => {
+  it("asks no participant questions for voices in `named`", () => {
+    const c = card({ participants: [] });
+    const asked = (named?: Set<string>) =>
+      assessSufficiency(c, words, named).openQuestions.filter((q) => q.target === "participant").map((q) => q.speakerId);
+    expect(asked()).toEqual(["A", "B"]);
+    expect(asked(new Set(["A", "B"]))).toEqual([]);
+  });
+});
+
 describe("groundContext", () => {
   it("drops a name the transcript never says", () => {
     const c = groundContext(withName(fact("Maria Silva", "video", "a ministra Maria Silvia")), input);
