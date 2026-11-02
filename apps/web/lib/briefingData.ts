@@ -57,12 +57,14 @@ export function peopleByMoment(
   moments: Pick<MomentWithHighlights, "id" | "startMs" | "endMs">[],
   names: NamesData,
   words: Word[],
+  sensitive = false,
 ): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   for (const m of moments) {
     const ms = new Map<string, number>();
     for (const e of peopleInRange(sliceWords(words, m), names.attributions, m, 0)) {
-      if (e.resolution.kind === "named") ms.set(e.resolution.personId, (ms.get(e.resolution.personId) ?? 0) + e.ms);
+      // Same rule as focusOptions: in a sensitive profile an unconfirmed name is not a person here.
+      if (e.resolution.kind === "named" && (e.resolution.confirmed || !sensitive)) ms.set(e.resolution.personId, (ms.get(e.resolution.personId) ?? 0) + e.ms);
     }
     out.set(m.id, new Set([...ms].filter(([, v]) => v >= FOCUS_MIN_MS).map(([id]) => id)));
   }

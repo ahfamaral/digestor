@@ -264,6 +264,16 @@ describe("person focus", () => {
     expect(pm(words, atts).get("ex1")).toEqual(new Set(["P"]));
   });
 
+  it("in a sensitive profile only confirmed speech counts for a person", () => {
+    // P confirmed on B (0–4 s, in ex1), only proposed on D (300–310 s, in ex2).
+    const words = [...run("B", 0, 4), ...run("D", 300, 310)];
+    const atts = [att({ speakerId: "B" }), att({ speakerId: "D", source: "caption", status: "proposed" })];
+    const m = peopleByMoment(all, { persons: [person("P")], attributions: atts }, words, true);
+    expect(m.get("ex1")).toEqual(new Set(["P"]));
+    expect(m.get("ex2")).toEqual(new Set());
+    expect(peopleByMoment(all, { persons: [person("P")], attributions: atts }, words, false).get("ex2")).toEqual(new Set(["P"]));
+  });
+
   it("p= round-trips through the URL and an unknown person falls back to everyone", () => {
     const state = f({ person: "p 1&2" });
     expect(toSearchParams(state)).toBe("p=p%201%262");

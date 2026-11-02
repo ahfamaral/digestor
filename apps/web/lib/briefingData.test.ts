@@ -67,6 +67,12 @@ describe("focusOptions", () => {
     expect(focusOptions(names, words, false)[0]).toEqual({ kind: "person", personId: "P", share: 30 });
   });
 
+  it("a person without speech is not listed", () => {
+    const names = { persons: [person("P", "Ana"), person("Z", "Zed")], attributions: [att({ speakerId: "B", personId: "P" })] };
+    const opts = focusOptions(names, words);
+    expect(opts.some((o) => o.kind === "person" && o.personId === "Z")).toBe(false);
+  });
+
   it("a tiny share is 0, not missing", () => {
     const big = [...Array.from({ length: 300 }, (_, i) => w("x", i, "A")), w("y", 400, "B")];
     expect(focusOptions({ persons: [], attributions: [] }, big)).toEqual([

@@ -72,19 +72,21 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
   const sensitive = PROFILES[profile].sensitive;
   const voices = Object.fromEntries(moments.map((m) => [m.id, rangeVoices(names, words, m, sensitive, m.speakers)]));
   // Focus: people by share, then the voices with no name to show. A label is resolved where its person (or voice) first speaks.
+  // One pass over the words: the label of each person / voice where it first speaks.
+  const firstLabel = new Map<string, ReturnType<typeof voiceLabel>>();
+  for (const w of words) {
+    const res = personAt(names.attributions, w.speaker, w.startMs);
+    for (const key of [`v:${w.speaker}`, ...(res.kind === "named" ? [`p:${res.personId}`] : [])]) {
+      if (!firstLabel.has(key)) firstLabel.set(key, voiceLabel(names, w.speaker, w.startMs, sensitive));
+    }
+  }
   const choices = focusOptions(names, words, sensitive).map((o) => {
-    const first = words.find((w) => {
-      if (w.speaker === undefined) return false;
-      if (o.kind === "voice") return w.speaker === o.speakerId;
-      const res = personAt(names.attributions, w.speaker, w.startMs);
-      return res.kind === "named" && res.personId === o.personId;
-    });
-    const label = first ? voiceLabel(names, first.speaker, first.startMs, sensitive) : null;
+    const label = firstLabel.get(o.kind === "person" ? `p:${o.personId}` : `v:${o.speakerId}`);
     return o.kind === "person"
       ? { kind: "person" as const, id: o.personId, share: o.share, name: label ? labelText(label) : (names.persons.find((p) => p.id === o.personId)?.displayName ?? "") }
       : { kind: "voice" as const, id: o.speakerId, share: o.share, name: label ? labelText(label) : `Speaker ${o.speakerId}` };
   });
-  const people = Object.fromEntries([...peopleByMoment(moments, names, words)].map(([id, set]) => [id, [...set]]));
+  const people = Object.fromEntries([...peopleByMoment(moments, names, words, sensitive)].map(([id, set]) => [id, [...set]]));
   const types = [...new Set([...PROFILES[profile].highlightTypes, ...present])].filter((x): x is HighlightTypeId => x in HIGHLIGHT_TYPES);
 
   return (
