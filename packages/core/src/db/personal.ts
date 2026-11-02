@@ -114,9 +114,9 @@ export async function finishFindMore(db: Db, id: string, rows: NewMoment[]): Pro
       .where(and(eq(findMoreRequests.id, id), eq(findMoreRequests.status, "running")))
       .returning();
     if (!req) return 0;
-    // Earlier moments go, except those the owner has a selection on (any status) or a live clip made from: their work is never deleted.
+    // Earlier moments go, except those the owner has a selection on (any status) or a clip made from (even a deleted one, which undo can restore): their work is never deleted.
     await tx.delete(moments).where(and(eq(moments.findMoreRequestId, id), sql`not exists (select 1 from selections s where s.moment_id = ${moments.id})
-      and not exists (select 1 from clips c where c.moment_id = ${moments.id} and c.deleted_at is null)`));
+      and not exists (select 1 from clips c where c.moment_id = ${moments.id})`));
     await saveMoments(
       t,
       req.analysisId,
@@ -155,7 +155,7 @@ export async function listShownRanges(
       granularity: moments.granularity, startMs: moments.startMs, endMs: moments.endMs,
       requestId: moments.findMoreRequestId,
       selected: sql<boolean>`exists (select 1 from selections s where s.moment_id = ${moments.id})
-        or exists (select 1 from clips c where c.moment_id = ${moments.id} and c.deleted_at is null)`,
+        or exists (select 1 from clips c where c.moment_id = ${moments.id})`,
     })
     .from(moments)
     .where(and(eq(moments.analysisId, a.analysisId), or(isNull(moments.ownerId), eq(moments.ownerId, a.ownerId))));
