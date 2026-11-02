@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { MomentChecks } from "@digestor/core";
-import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps } from "./metrics.js";
+import type { Attribution, MomentChecks, Person, Word } from "@digestor/core";
+import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps } from "./metrics.js";
 
 const t = (startMs: number, endMs: number) => ({ title: "t", startMs, endMs });
 
@@ -122,5 +122,51 @@ describe("uncheckedOnTraps", () => {
       { id: "d", startMs: 0, endMs: 40_000, checks: null },
     ];
     expect(uncheckedOnTraps(traps, moments).map((m) => m.id)).toEqual(["a", "d"]);
+  });
+});
+
+describe("attributionScore", () => {
+  const person = (id: string, displayName: string, fullName: string | null = null): Person => ({
+    id, displayName, fullName, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
+  });
+  const att = (speakerId: string, personId: string | null, over: Partial<Attribution> = {}): Attribution => ({
+    id: `${speakerId}-${personId}-${over.source ?? "human"}`, sessionId: "s", speakerId, startMs: null, endMs: null, personId,
+    source: "human", status: "confirmed", confidence: 1, evidence: { kind: "none" }, createdBy: "owner", createdAt: new Date(0), supersededAt: null, ...over,
+  });
+  const word = (speaker: string, startMs: number, endMs: number): Word => ({ text: "x", startMs, endMs, speaker, confidence: 1 }) as Word;
+  const persons = [person("p1", "Tralli", "César Tralli"), person("p2", "Flávio Bolsonaro"), person("p3", "Lula")];
+
+  it("weights wrong names five times", () => {
+    const words = [word("A", 0, 10_000), word("B", 10_000, 12_000), word("C", 12_000, 15_000)];
+    const golden = [
+      { startMs: 0, endMs: 10_000, person: "César Tralli" },
+      { startMs: 10_000, endMs: 12_000, person: "Luiz Inácio Lula da Silva" },
+      { startMs: 12_000, endMs: 15_000, person: "Flávio Bolsonaro" },
+    ];
+    const atts = [att("A", "p1"), att("B", "p2")];
+    const r = attributionScore(golden, words, atts, persons);
+    expect(r).toMatchObject({ correctMs: 10_000, wrongMs: 2_000, unnamedMs: 3_000, totalMs: 15_000, correctConfirmedMs: 10_000, score: 0 });
+  });
+
+  it("skips null spans and treats conflict as unnamed", () => {
+    const words = [word("A", 0, 4_000), word("B", 4_000, 6_000), word("C", 6_000, 9_000)];
+    const golden = [
+      { startMs: 0, endMs: 4_000, person: null },
+      { startMs: 4_000, endMs: 6_000, person: "Flávio Bolsonaro" },
+      { startMs: 6_000, endMs: 9_000, person: "Lula" },
+    ];
+    const atts = [
+      att("B", "p2", { source: "transcript", status: "proposed" }),
+      att("B", "p3", { source: "metadata", status: "proposed" }),
+      att("C", "p3", { source: "transcript", status: "proposed" }),
+    ];
+    const r = attributionScore(golden, words, atts, persons);
+    expect(r).toMatchObject({ correctMs: 3_000, wrongMs: 0, unnamedMs: 2_000, totalMs: 5_000, correctConfirmedMs: 0 });
+    expect(r.score).toBeCloseTo(0.6);
+  });
+
+  it("counts a name as right when its tokens are a subset of the golden name's", () => {
+    const r = attributionScore([{ startMs: 0, endMs: 1_000, person: "Luiz Inácio Lula da Silva" }], [word("C", 0, 1_000)], [att("C", "p3")], persons);
+    expect(r.correctMs).toBe(1_000);
   });
 });

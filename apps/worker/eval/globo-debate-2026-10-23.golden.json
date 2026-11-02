@@ -2,7 +2,7 @@
  "sessionId": "7433d1c6-458e-42b8-898c-2d92583a9f03",
  "videoPath": "data/globo-debate-lula-flavio.mp4",
  "profile": "electoral_debate",
- "labelledBy": "Drafted by Claude from the AssemblyAI transcript; reviewed and accepted by the owner (2026-11-02)",
+ "labelledBy": "Drafted by Claude from the AssemblyAI transcript; reviewed and accepted by the owner (2026-11-02); speakers drafted by Claude, owner review pending",
  "topics": [
   {
    "title": "Abertura e regras",
@@ -732,6 +732,838 @@
    "types": [
     "zinger"
    ]
+  }
+ ],
+ "speakers": [
+  {
+   "startMs": 19490,
+   "endMs": 443210,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 444956,
+   "endMs": 497050,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 499440,
+   "endMs": 586610,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 590013,
+   "endMs": 591725,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 593759,
+   "endMs": 722970,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 722970,
+   "endMs": 728150,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 728150,
+   "endMs": 817736,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 818511,
+   "endMs": 832830,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 837946,
+   "endMs": 878237,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 883460,
+   "endMs": 909403,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 911446,
+   "endMs": 960800,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 961500,
+   "endMs": 966920,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 966920,
+   "endMs": 975590,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 975590,
+   "endMs": 976720,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 977270,
+   "endMs": 980130,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 980130,
+   "endMs": 981010,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 981830,
+   "endMs": 983050,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 983050,
+   "endMs": 984862,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 984862,
+   "endMs": 985930,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 986910,
+   "endMs": 1008281,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 1008875,
+   "endMs": 1095650,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 1095650,
+   "endMs": 1250191,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 1250560,
+   "endMs": 1263935,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 1270724,
+   "endMs": 1306240,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 1306240,
+   "endMs": 1391350,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 1392990,
+   "endMs": 1539123,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 1543482,
+   "endMs": 1640049,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 1640484,
+   "endMs": 1654631,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 1661136,
+   "endMs": 1726944,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 1728584,
+   "endMs": 1797358,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 1799367,
+   "endMs": 1846680,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 1847870,
+   "endMs": 1850980,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 1850980,
+   "endMs": 1965089,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 1965688,
+   "endMs": 1979662,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 1982830,
+   "endMs": 2022905,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 2025016,
+   "endMs": 2113221,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2115870,
+   "endMs": 2257432,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 2260490,
+   "endMs": 2261876,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 2263489,
+   "endMs": 2356168,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2356281,
+   "endMs": 2373654,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 2382551,
+   "endMs": 2476550,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2478960,
+   "endMs": 2552800,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 2555280,
+   "endMs": 2641200,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2641200,
+   "endMs": 2644270,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 2645840,
+   "endMs": 2754070,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 2754070,
+   "endMs": 2895868,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 2896076,
+   "endMs": 2897553,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2898754,
+   "endMs": 2899126,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 2899143,
+   "endMs": 2905411,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2905411,
+   "endMs": 2908961,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 2909075,
+   "endMs": 2912763,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2913038,
+   "endMs": 2916320,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 2916838,
+   "endMs": 2940301,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2943036,
+   "endMs": 2966318,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 2969104,
+   "endMs": 2975851,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 2976458,
+   "endMs": 2976865,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 2977565,
+   "endMs": 3048456,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3049149,
+   "endMs": 3056390,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3056390,
+   "endMs": 3060560,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 3060630,
+   "endMs": 3064870,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3064870,
+   "endMs": 3066010,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3066010,
+   "endMs": 3067070,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 3067670,
+   "endMs": 3069730,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3069730,
+   "endMs": 3070970,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3070970,
+   "endMs": 3072310,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3072310,
+   "endMs": 3102898,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3103682,
+   "endMs": 3105690,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3106208,
+   "endMs": 3149583,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3152536,
+   "endMs": 3154280,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3155766,
+   "endMs": 3312930,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 3312930,
+   "endMs": 3329786,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3330716,
+   "endMs": 3392930,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3392930,
+   "endMs": 3397990,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3399089,
+   "endMs": 3459035,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 3459794,
+   "endMs": 3469409,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3472064,
+   "endMs": 3473562,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 3473736,
+   "endMs": 3476891,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3486896,
+   "endMs": 3533700,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 3534140,
+   "endMs": 3549800,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3549800,
+   "endMs": 3685000,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 3685290,
+   "endMs": 3691720,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3693272,
+   "endMs": 3861726,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3862323,
+   "endMs": 3872177,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3878420,
+   "endMs": 3879691,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3880310,
+   "endMs": 3881418,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 3882037,
+   "endMs": 3939870,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 3942110,
+   "endMs": 3999420,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 4000880,
+   "endMs": 4004340,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4005380,
+   "endMs": 4122390,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4124349,
+   "endMs": 4129130,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4129435,
+   "endMs": 4253240,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 4253302,
+   "endMs": 4331643,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4333116,
+   "endMs": 4335306,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 4335757,
+   "endMs": 4338060,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4340420,
+   "endMs": 4353538,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 4360660,
+   "endMs": 4390710,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4397160,
+   "endMs": 4562182,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 4563026,
+   "endMs": 4566239,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4566449,
+   "endMs": 4709213,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4710530,
+   "endMs": 4732230,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4733330,
+   "endMs": 4734340,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4735110,
+   "endMs": 4747250,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4747430,
+   "endMs": 4760930,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4761080,
+   "endMs": 4767300,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4767300,
+   "endMs": 4782475,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4786450,
+   "endMs": 4820892,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 4825559,
+   "endMs": 4856330,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4856550,
+   "endMs": 4877160,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 4877369,
+   "endMs": 4995820,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 4996900,
+   "endMs": 4998860,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 5000980,
+   "endMs": 5147690,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5148140,
+   "endMs": 5161161,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 5167570,
+   "endMs": 5168522,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5168877,
+   "endMs": 5171831,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 5173710,
+   "endMs": 5211462,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5216002,
+   "endMs": 5274870,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5277800,
+   "endMs": 5421080,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5421080,
+   "endMs": 5425703,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 5429037,
+   "endMs": 5548800,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5549150,
+   "endMs": 5622525,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 5623873,
+   "endMs": 5685540,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5685540,
+   "endMs": 5720640,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 5722482,
+   "endMs": 5793896,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5796482,
+   "endMs": 5820740,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5824420,
+   "endMs": 5850969,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5853046,
+   "endMs": 5885968,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5887846,
+   "endMs": 5917620,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5919650,
+   "endMs": 5949591,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5953372,
+   "endMs": 5972040,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5972710,
+   "endMs": 5973370,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5973370,
+   "endMs": 5974750,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5974750,
+   "endMs": 5989990,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 5990010,
+   "endMs": 5991520,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 5992470,
+   "endMs": 6000450,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6000790,
+   "endMs": 6036395,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6039340,
+   "endMs": 6088950,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6089080,
+   "endMs": 6111029,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6113470,
+   "endMs": 6136390,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6138790,
+   "endMs": 6140430,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6142640,
+   "endMs": 6144530,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6144530,
+   "endMs": 6149330,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6149690,
+   "endMs": 6150670,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6150670,
+   "endMs": 6152570,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6152610,
+   "endMs": 6153350,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6153350,
+   "endMs": 6163790,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6163790,
+   "endMs": 6209205,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6213416,
+   "endMs": 6262529,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6262529,
+   "endMs": 6263030,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6263030,
+   "endMs": 6269690,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6269690,
+   "endMs": 6325430,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6326420,
+   "endMs": 6387080,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6388026,
+   "endMs": 6426232,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6427676,
+   "endMs": 6477370,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6477370,
+   "endMs": 6521395,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6524818,
+   "endMs": 6581090,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6582400,
+   "endMs": 6618697,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6624862,
+   "endMs": 6652310,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6652310,
+   "endMs": 6656100,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 6658874,
+   "endMs": 6725920,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6725920,
+   "endMs": 6764238,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 6764850,
+   "endMs": 6856370,
+   "person": "Luiz Inácio Lula da Silva"
+  },
+  {
+   "startMs": 6856370,
+   "endMs": 6866150,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 6870040,
+   "endMs": 6927076,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 6927901,
+   "endMs": 6933382,
+   "person": "César Tralli"
+  },
+  {
+   "startMs": 6934880,
+   "endMs": 7027010,
+   "person": "Flávio Bolsonaro"
+  },
+  {
+   "startMs": 7027010,
+   "endMs": 7049360,
+   "person": "César Tralli"
   }
  ],
  "traps": [

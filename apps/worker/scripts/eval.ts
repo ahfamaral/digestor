@@ -12,9 +12,9 @@
  */
 import { readFileSync } from "node:fs";
 import { GranularitySchema, HIGHLIGHT_TYPES, ProfileIdSchema } from "@digestor/core";
-import { createDb, getAnalysisByVersion, getAnalysisVersion, getContextCard, getCurrentAnalysis, getTranscript, setMomentChecks } from "@digestor/core/server";
+import { createDb, getAnalysisByVersion, getAnalysisVersion, getContextCard, getCurrentAnalysis, getPersons, getTranscript, listAttributions, setMomentChecks } from "@digestor/core/server";
 import { checkMoment } from "../src/agents/checks.js";
-import { highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps, type Golden } from "../src/eval/metrics.js";
+import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps, type Golden } from "../src/eval/metrics.js";
 import { createOpenRouterLLM } from "../src/llm/openrouter.js";
 import { createAnthropicLLM, type StructuredLLM } from "../src/llm/structured.js";
 import { withProfile } from "../src/pipeline/analysis.js";
@@ -92,6 +92,24 @@ try {
   }
   const count = (g: string) => analysis.moments.filter((m) => m.granularity === g).length;
   rows.push(["Moments found (exchange / passage / punchline)", GranularitySchema.options.map(count).join(" / ")]);
+
+  if (golden.speakers?.length) {
+    const [transcript, atts] = await Promise.all([getTranscript(db, sessionId), listAttributions(db, sessionId)]);
+    if (!transcript) rows.push(["Attribution score", "no transcript"]);
+    else {
+      const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
+      const pct = (ms: number, total: number) => `${s(ms)} (${total ? Math.round((100 * ms) / total) : 0}%)`;
+      for (const [label, rowsOf] of [["AI only", atts.filter((a) => a.source !== "human")], ["as stored", atts]] as const) {
+        const r = attributionScore(golden.speakers, transcript.words, rowsOf, persons);
+        rows.push(
+          [`Speaking time named correctly, ${label}`, pct(r.correctMs, r.totalMs)],
+          [`Speaking time named wrongly, ${label}`, pct(r.wrongMs, r.totalMs)],
+          [`Speaking time unnamed, ${label}`, pct(r.unnamedMs, r.totalMs)],
+          [`Attribution score, ${label}`, `${r.score.toFixed(2)} (correct - 5 x wrong, over ${s(r.totalMs)}; ${s(r.correctConfirmedMs)} correct and confirmed)`],
+        );
+      }
+    }
+  }
 
   console.log(`Evaluation of session ${sessionId} (analysis v${analysis.version.version}, profile ${analysis.version.profile}; golden profile ${golden.profile})`);
   console.log(`Models: ${[...new Set(Object.values(models))].join(", ") || "not recorded"}\n`);

@@ -1,4 +1,4 @@
-import type { Granularity, HighlightTypeId, MomentChecks, ProfileId } from "@digestor/core";
+import { closeMatches, personAt, type Attribution, type Granularity, type HighlightTypeId, type MomentChecks, type Person, type ProfileId, type Word } from "@digestor/core";
 
 /** Hand-labelled expectations for one video (spec §14a). */
 export interface Golden {
@@ -7,6 +7,8 @@ export interface Golden {
   profile: ProfileId;
   topics: { title: string; startMs: number; endMs: number }[];
   moments: { granularity: Granularity; startMs: number; endMs: number; types: HighlightTypeId[] }[];
+  /** Who speaks when, by hand; `person: null` marks a stretch that is unclear and isn't scored. */
+  speakers?: { startMs: number; endMs: number; person: string | null }[];
   traps: { kind: "mid_argument" | "quoted_opponent"; startMs: number; endMs: number }[];
 }
 
@@ -96,4 +98,43 @@ export function trapHits(
 /** The moments `trapHits` can't judge yet: they overlap a trap but their checks never ran (`eval.ts --run-checks`). */
 export function uncheckedOnTraps<M extends Span & { checks: MomentChecks | null }>(traps: Span[], moments: M[]): M[] {
   return moments.filter((m) => m.checks === null && traps.some((trap) => overlapMs(trap, m) > 0));
+}
+
+/**
+ * Share of the speaking time inside the golden speaker spans that the stored attributions name correctly, wrongly or
+ * not at all. Each word counts for its own length, resolved with `personAt` at the word's start. A word is
+ * unnamed when its voice has no name, is anonymous or in conflict; spans with `person: null` are skipped.
+ * A name is right when the golden name equals the person's display or full name once normalised, or when one
+ * name's tokens are a subset of the other's (`closeMatches`, so "Tralli" matches "César Tralli").
+ * `score = (correctMs - 5 * wrongMs) / totalMs`: a wrong name costs five times what a right one earns.
+ */
+export function attributionScore(
+  golden: NonNullable<Golden["speakers"]>,
+  words: Word[],
+  atts: Attribution[],
+  persons: Person[],
+): { correctMs: number; wrongMs: number; unnamedMs: number; totalMs: number; correctConfirmedMs: number; score: number } {
+  const byId = new Map(persons.map((p) => [p.id, p]));
+  const matches = (goldenName: string, p: Person) =>
+    closeMatches(goldenName, [p]).length > 0 || (p.fullName !== null && closeMatches(goldenName, [{ ...p, displayName: p.fullName }]).length > 0);
+  let correctMs = 0;
+  let wrongMs = 0;
+  let unnamedMs = 0;
+  let correctConfirmedMs = 0;
+  for (const span of golden) {
+    if (span.person === null) continue;
+    for (const w of words) {
+      const ms = overlapMs(w, span);
+      if (ms <= 0) continue;
+      const res = personAt(atts, w.speaker, w.startMs);
+      const p = res.kind === "named" ? byId.get(res.personId) : undefined;
+      if (res.kind !== "named" || !p) unnamedMs += ms;
+      else if (matches(span.person, p)) {
+        correctMs += ms;
+        if (res.confirmed) correctConfirmedMs += ms;
+      } else wrongMs += ms;
+    }
+  }
+  const totalMs = correctMs + wrongMs + unnamedMs;
+  return { correctMs, wrongMs, unnamedMs, totalMs, correctConfirmedMs, score: totalMs === 0 ? 0 : (correctMs - 5 * wrongMs) / totalMs };
 }
