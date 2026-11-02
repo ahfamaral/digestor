@@ -1,7 +1,8 @@
-import { personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person } from "@digestor/core";
+import { PROFILES, personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person, type Resolution } from "@digestor/core";
 import {
   createCustomPerson,
   findPersonByName,
+  getPersons,
   listAttributions,
   replaceAiAttributions,
   type Db,
@@ -73,4 +74,43 @@ export function namedVoices(atts: Attribution[], speakerIds: string[]): Set<stri
       return k === "named" || k === "anonymous";
     }),
   );
+}
+
+/** Evidence text of a participant name in a prompt card: the model reads which names are confirmed. */
+export const CONFIRMED_NAME = "Confirmed name.";
+export const PROBABLE_NAME = "Probably this person: proposed, not confirmed.";
+
+function promptName(res: Resolution, byId: ReadonlyMap<string, Person>, sensitive: boolean): Fact {
+  if (res.kind !== "named") return { ...NULL_FACT }; // anonymous, conflict or unnamed: no name
+  const name = byId.get(res.personId)?.displayName;
+  if (!name) return { ...NULL_FACT };
+  if (res.confirmed) return { value: name, source: res.attribution.source === "human" ? "human" : "metadata", evidence: CONFIRMED_NAME };
+  if (sensitive) return { ...NULL_FACT }; // sensitive profiles never use an unconfirmed name
+  return { value: name, source: res.attribution.source === "metadata" ? "metadata" : "video", evidence: PROBABLE_NAME };
+}
+
+/**
+ * The card's participants as every prompt sees them (spec §6.1): the name of each voice comes only from its current
+ * whole-voice attribution (confirmed as a fact, proposed marked "probably" or dropped when `sensitive`, none for an
+ * anonymous, conflicting or unnamed voice), never from the card's own name. Role and affiliation stay from the card.
+ */
+export function participantsForPrompt(card: ContextCard, atts: Attribution[], persons: Person[], sensitive: boolean): Participant[] {
+  const byId = new Map(persons.map((p) => [p.id, p]));
+  const ids = [...new Set([...card.participants.map((p) => p.speakerId), ...atts.map((a) => a.speakerId)])];
+  return ids.map((speakerId) => {
+    const base = card.participants.find((p) => p.speakerId === speakerId);
+    return {
+      speakerId,
+      name: promptName(resolveWhole(atts, speakerId), byId, sensitive),
+      role: base ? { ...base.role } : { ...NULL_FACT },
+      affiliation: base ? { ...base.affiliation } : { ...NULL_FACT },
+    };
+  });
+}
+
+/** The context card for a prompt: participants projected from the session's current attributions (sensitivity from the card's profile). */
+export async function promptCard(db: Db, sessionId: string, card: ContextCard): Promise<ContextCard> {
+  const atts = await listAttributions(db, sessionId);
+  const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
+  return { ...card, participants: participantsForPrompt(card, atts, persons, PROFILES[card.profile.value].sensitive) };
 }

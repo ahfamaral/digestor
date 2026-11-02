@@ -236,6 +236,18 @@ describe("pipeline", () => {
     expect(llm.calls).toHaveLength(2);
   });
 
+  it("skip after a rename in Who's who: the analysis prompts carry the human name", async () => {
+    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()] });
+    await graph.invoke({ sessionId }, cfg);
+    const p = await createCustomPerson(db, { displayName: "Renomeada Na Pausa", createdBy: "owner" });
+    await setHumanAttribution(db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
+    await resume({ action: "skip" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
+    const analysis = llm.calls.filter((c) => c.name !== "context_card");
+    expect(analysis.length).toBeGreaterThan(0);
+    expect(analysis.every((c) => c.system.includes("Renomeada Na Pausa"))).toBe(true);
+  });
+
   it("skipping the follow-up round goes on to ready", async () => {
     const { graph, cfg, sessionId, contextCalls, resume, interruptValue } = await setup({ context: [draft(), draft()] });
     await graph.invoke({ sessionId }, cfg);

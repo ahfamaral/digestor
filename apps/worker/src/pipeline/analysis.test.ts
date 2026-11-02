@@ -15,8 +15,10 @@ import {
   getRunningAnalysis,
   getSession,
   listAnalysisVersions,
+  createCustomPerson,
   saveContextCard,
   saveTranscript,
+  setHumanAttribution,
   setStage,
   updateSession,
   type Db,
@@ -457,5 +459,60 @@ describe("re-analysis and check jobs", () => {
       out.mockRestore();
       err.mockRestore();
     }
+  });
+  describe("names in the prompts come from the current attributions (spec §6.1)", () => {
+    const named = (a: string, b: string): ContextCard => ({
+      ...card,
+      participants: [
+        { speakerId: "A", name: { value: a, source: "video", evidence: a }, role: none, affiliation: none },
+        { speakerId: "B", name: { value: b, source: "human", evidence: b }, role: none, affiliation: none },
+      ],
+    });
+    const prompts = (fake: FakeLLM) => fake.calls.map((c) => `${c.system}\n${c.user}`);
+
+    it("a re-analysis after a rename writes with the new name", async () => {
+      const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS, runs: 2 }) });
+      const { deps } = mkDeps(fake);
+      const id = await seed();
+      await saveContextCard(db, id, named("Velho Nome", "Outro Velho"), 1);
+      await runAnalysis(deps, id, { profile: "interview", reason: "initial" });
+      const before = fake.calls.length;
+      const p = await createCustomPerson(db, { displayName: "Nome Novo", createdBy: "owner" });
+      await setHumanAttribution(db, { sessionId: id, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
+
+      await handleReanalyze(ctxFor(deps), { sessionId: id, profile: "interview", reason: "names" }, { retryCount: 0, retryLimit: 2 });
+      const after = prompts(fake).slice(before);
+      expect(after.length).toBeGreaterThan(0);
+      expect(after.every((t) => t.includes("Nome Novo"))).toBe(true);
+      expect(after.some((t) => t.includes("Velho Nome") || t.includes("Outro Velho"))).toBe(false);
+    });
+
+    it("a voice marked No name in a trial is never named in any prompt, nor is a proposal", async () => {
+      const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) });
+      const { deps } = mkDeps(fake);
+      const id = await seed();
+      await saveContextCard(db, id, named("Pessoa Protegida", "Testemunha Humana"), 1);
+      await setHumanAttribution(db, { sessionId: id, speakerId: "A", startMs: null, endMs: null, personId: null, ownerId: "owner" });
+      await runAnalysis(deps, id, { profile: "trial", reason: "initial" });
+      const unchecked = (await getCurrentAnalysis(db, id))!.moments.find((m) => m.checks === null)!;
+      await handleCheckMoment(ctxFor(deps), { momentId: unchecked.id }, { retryCount: 0, retryLimit: 2 });
+      expect(fake.calls.at(-1)!.name).toBe("checks");
+      expect(prompts(fake).some((t) => t.includes("Pessoa Protegida") || t.includes("Testemunha Humana"))).toBe(false);
+    });
+
+    it("the on-demand check job uses the current names", async () => {
+      const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) });
+      const { deps } = mkDeps(fake);
+      const id = await seed();
+      await saveContextCard(db, id, named("Velho Nome", "Outro Velho"), 1);
+      await runAnalysis(deps, id, { profile: "interview", reason: "initial" });
+      const p = await createCustomPerson(db, { displayName: "Checada Nova", createdBy: "owner" });
+      await setHumanAttribution(db, { sessionId: id, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
+      const unchecked = (await getCurrentAnalysis(db, id))!.moments.find((m) => m.checks === null)!;
+      await handleCheckMoment(ctxFor(deps), { momentId: unchecked.id }, { retryCount: 0, retryLimit: 2 });
+      const last = prompts(fake).at(-1)!;
+      expect(last).toContain("Checada Nova");
+      expect(last).not.toContain("Velho Nome");
+    });
   });
 });

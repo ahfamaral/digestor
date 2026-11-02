@@ -5,7 +5,7 @@ import { OWNER_ID, findBoundaries, snapRange, type AskToolCallRecord, type Word 
 import {
   addAskMessage, claimAskMessage, completeAnalysisVersion, createClip, createDb, createPersonalMoment, createSession, getAskMessage, getClip, listAskMessages,
   listClipEvents, listClips, listPersonalMoments, listSelections, saveMoments, saveTopics, saveTranscript,
-  askMessages, setSelection, startAnalysisVersion, updateSession, type Db,
+  askMessages, createCustomPerson, replaceAiAttributions, saveContextCard, setHumanAttribution, setSelection, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
 import { eq } from "drizzle-orm";
 import { MissingApiKeyError } from "../errors.js";
@@ -349,6 +349,33 @@ describe("runAsk tools", () => {
 });
 
 describe("runAsk loop", () => {
+  it("names participants from the current attributions and says which are confirmed", async () => {
+    const { s } = await seed();
+    const none = { value: null, source: null, evidence: null };
+    await saveContextCard(db, s.id, {
+      language: none, profile: { value: "interview", confidence: 0.9, evidence: "x" }, title: none, summary: "s", setting: none, dateOrYear: none,
+      participants: [
+        { speakerId: "A", name: { value: "Nome Velho", source: "video", evidence: "Nome Velho" }, role: { value: "host", source: "video", evidence: "host" }, affiliation: none },
+        { speakerId: "B", name: { value: "Outro Velho", source: "video", evidence: "Outro Velho" }, role: none, affiliation: none },
+      ],
+      sufficient: true, openQuestions: [],
+    }, 1);
+    const ana = await createCustomPerson(db, { displayName: "Ana Confirmada", createdBy: OWNER_ID });
+    const bia = await createCustomPerson(db, { displayName: "Bia Provável", createdBy: "transcript" });
+    await setHumanAttribution(db, { sessionId: s.id, speakerId: "A", startMs: null, endMs: null, personId: ana.id, ownerId: OWNER_ID });
+    await replaceAiAttributions(db, s.id, "transcript", [
+      { speakerId: "B", startMs: null, endMs: null, personId: bia.id, status: "proposed", confidence: 0.7, evidence: { kind: "quote", quote: "Bia" } },
+    ]);
+    const msg = await ask(s.id, "Who speaks?");
+    const llm = new FakeToolLLM([answer("A and B.")]);
+    await runAsk(depsFor(llm), msg.id);
+    const system = llm.calls[0]!.system;
+    expect(system).toContain("A = Ana Confirmada (host), confirmed");
+    expect(system).toContain("B = probably Bia Provável, not confirmed");
+    expect(system).not.toMatch(/Nome Velho|Outro Velho/);
+    expect(system).not.toContain("Known participants (confirmed)");
+  });
+
   it("sends the prompt rules, session facts and the last 10 messages as history", async () => {
     const { s } = await seed();
     for (let i = 0; i < 6; i++) {

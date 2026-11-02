@@ -11,6 +11,8 @@ import {
 } from "@digestor/core/server";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
+import { withProfile } from "../pipeline/analysis.js";
+import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
 
 export const ASK_PROMPT_VERSION = "ask@1";
 export const MAX_ASK_STEPS = 6;
@@ -357,15 +359,21 @@ async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<ToolResu
 function buildSystem(session: Session, transcript: Transcript | null, analysis: AnalysisBundle | null, card: ContextCard | null): string {
   const speakers = [...new Set((transcript?.words ?? []).map((w) => w.speaker))];
   const profile = ProfileIdSchema.safeParse(analysis?.version.profile ?? card?.profile.value);
+  // `card` carries the names projected from the current attributions (`promptCard`): confirmed or probable.
   const known = (card?.participants ?? [])
-    .filter((p) => p.name.value && p.name.source)
-    .map((p) => `${p.speakerId} = ${p.name.value}${p.role.value ? ` (${p.role.value})` : ""}`);
+    .filter((p) => p.name.value)
+    .map((p) => {
+      const role = p.role.value ? ` (${p.role.value})` : "";
+      return p.name.evidence === CONFIRMED_NAME
+        ? `${p.speakerId} = ${p.name.value}${role}, confirmed`
+        : `${p.speakerId} = probably ${p.name.value}${role}, not confirmed`;
+    });
   const facts = [
     `Title: ${JSON.stringify(session.title)}`,
     `Duration: ${ts(transcript?.durationMs ?? session.durationMs ?? 0)}`,
     profile.success ? `Kind of video: ${PROFILES[profile.data].label}` : null,
     `Speakers: ${speakers.length ? speakers.join(", ") : "unknown"}`,
-    known.length ? `Known participants (confirmed): ${known.join("; ")}` : null,
+    known.length ? `Known participants: ${known.join("; ")}` : null,
     analysis ? null : "The analysis (topics, moments) isn't ready yet.",
   ].filter((x): x is string => x !== null);
 
@@ -377,7 +385,7 @@ Rules:
 - Cite a timestamp as [hh:mm:ss] for every claim, using the times in the tool results.
 - When the data doesn't support an answer, reply exactly: "${NOT_IN_DATA}"
 - If a tool says "${SEARCH_UNAVAILABLE}", tell the user, and use get_transcript, list_topics or list_moments instead.
-- Never invent names. Refer to speakers by their speaker id (for example "Speaker A"), unless the known participants below name them.
+- Never invent names. Refer to speakers by their speaker id (for example "Speaker A"), unless the known participants below name them. Say "probably" with a name that is not confirmed.
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
 - propose_clip, trim_clip and set_selection change the user's own clips and selections. Use them only when the user asks for that change. You can't render, export or change the official analysis.
@@ -464,7 +472,9 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     callWrote: false,
     directChanges: 0,
   };
-  const system = buildSystem(session, transcript, analysis, stored?.card ?? null);
+  const profiled = stored && analysis ? withProfile(stored.card, ProfileIdSchema.catch(stored.card.profile.value).parse(analysis.version.profile)) : stored?.card;
+  const card = profiled ? await promptCard(db, session.id, profiled) : null;
+  const system = buildSystem(session, transcript, analysis, card);
   const specs = tools.map((t) => t.spec);
   const messages: ToolMessage[] = [...history];
   const records: AskToolCallRecord[] = [];

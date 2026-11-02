@@ -120,9 +120,10 @@ function humanLocked(card: ContextCard): Partial<ContextCard> {
   if (card.profile.evidence === USER_SET_EVIDENCE) locked.profile = card.profile;
   if (isHuman(card.language)) locked.language = card.language;
   const pick = (f: Fact): Fact => (isHuman(f) ? f : { ...NULL_FACT });
+  // Names are never locked from the card: they come from the attributions (`lockedParticipants`).
   const participants = card.participants
-    .filter((p) => isHuman(p.name) || isHuman(p.role) || isHuman(p.affiliation))
-    .map((p) => ({ speakerId: p.speakerId, name: pick(p.name), role: pick(p.role), affiliation: pick(p.affiliation) }));
+    .filter((p) => isHuman(p.role) || isHuman(p.affiliation))
+    .map((p) => ({ speakerId: p.speakerId, name: { ...NULL_FACT }, role: pick(p.role), affiliation: pick(p.affiliation) }));
   if (participants.length > 0) locked.participants = participants;
   return locked;
 }
@@ -275,7 +276,7 @@ export const understandContextNode =
     const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
     const fromCard = stored ? humanLocked(stored.card) : {};
     const fromAtts = lockedParticipants(atts, persons);
-    // A confirmed attribution wins over a name the card still carries; role and affiliation come from the card.
+    // Locked names are the confirmed attributions only; human role and affiliation come from the card.
     const participants = [
       ...(fromCard.participants ?? []).map((p) => {
         const a = fromAtts.find((x) => x.speakerId === p.speakerId);

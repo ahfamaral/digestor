@@ -18,6 +18,7 @@ import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError
 import { createOpenRouterLLM } from "../src/llm/openrouter.js";
 import { createAnthropicLLM, type StructuredLLM } from "../src/llm/structured.js";
 import { withProfile } from "../src/pipeline/analysis.js";
+import { promptCard } from "../src/pipeline/naming.js";
 
 const args = process.argv.slice(2);
 const runChecks = args.includes("--run-checks");
@@ -62,8 +63,9 @@ try {
       process.exit(1);
     }
     const llm = pending.length ? llmFor(models.checks!) : null;
+    const card = stored ? await promptCard(db, sessionId, withProfile(stored.card, profile)) : null;
     for (const [i, m] of pending.entries()) {
-      const checks = await checkMoment(llm!, { card: withProfile(stored!.card, profile), moment: m, words: transcript!.words });
+      const checks = await checkMoment(llm!, { card: card!, moment: m, words: transcript!.words });
       await setMomentChecks(db, m.id, checks);
       console.error(`checked ${i + 1}/${pending.length}: ${m.granularity} ${m.title}`);
     }

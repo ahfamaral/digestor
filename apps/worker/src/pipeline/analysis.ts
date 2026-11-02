@@ -31,6 +31,7 @@ import { findMoments } from "../agents/moments.js";
 import { findTopics } from "../agents/topics.js";
 import { MissingApiKeyError } from "../errors.js";
 import { MODEL_IDS, type LLMModel, type StructuredLLM } from "../llm/structured.js";
+import { promptCard } from "./naming.js";
 
 /** Bump a version when its prompt changes; every analysis version records the set it ran with. */
 export const PROMPT_VERSIONS = {
@@ -63,7 +64,7 @@ export type AnalysisDeps = {
   media: { thumbnail(input: string, atMs: number, output: string): Promise<unknown> };
 };
 
-/** The context card the agents see: the stored one, with the analysis profile when it differs (a re-analysis). */
+/** The stored context card with the analysis profile when it differs (a re-analysis); prompts then project names with `promptCard`. */
 export function withProfile(card: ContextCard, profile: ProfileId): ContextCard {
   return card.profile.value === profile ? card : { ...card, profile: { value: profile, confidence: 1, evidence: USER_SET_EVIDENCE } };
 }
@@ -128,7 +129,8 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
   const stage = async (s: Stage, progress: number) => {
     if (initial) await setStage(db, sessionId, s, progress);
   };
-  const card = withProfile(stored.card, opts.profile);
+  // Names in every prompt are the current attributions, not the card's own (spec §6.1).
+  const card = await promptCard(db, sessionId, withProfile(stored.card, opts.profile));
 
   if (opts.analysisId) {
     // A version claimed by the web route: only fill it while it is still this session's running one.

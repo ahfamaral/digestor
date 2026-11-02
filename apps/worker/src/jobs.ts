@@ -29,6 +29,7 @@ import type { StructuredLLM } from "./llm/structured.js";
 import { checkMoment } from "./agents/checks.js";
 import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
+import { promptCard } from "./pipeline/naming.js";
 import type { BurnTrackJob, RenderClipJob } from "@digestor/core";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
@@ -190,7 +191,8 @@ export async function handleCheckMoment(ctx: JobContext, job: CheckMomentJob, at
     return;
   }
   try {
-    const checks = await checkMoment(ctx.deps.llm, { card: withProfile(stored.card, profile.data), moment, words: transcript.words });
+    const card = await promptCard(db, version.sessionId, withProfile(stored.card, profile.data));
+    const checks = await checkMoment(ctx.deps.llm, { card, moment, words: transcript.words });
     await setMomentChecks(db, moment.id, checks);
   } catch (err) {
     if (!(err instanceof MissingApiKeyError)) {
