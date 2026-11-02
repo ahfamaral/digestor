@@ -3,12 +3,12 @@ import pg from "pg";
 import { personAt } from "../attribution.ts";
 import { createDb, type Db } from "./client.ts";
 import { startAnalysisVersion } from "./analysis.ts";
-import { createSession, type Session } from "./repo.ts";
+import { createSession, saveContextCard, type Session } from "./repo.ts";
 import { analysisVersions, attributions } from "./schema.ts";
 import { eq } from "drizzle-orm";
 import {
   createCustomPerson, findPersonByName, getPersons, listAttributionHistory, listAttributions, replaceAiAttributions, searchPersons,
-  setHumanAttribution, upsertOfficialPerson,
+  sessionsWithoutNames, setHumanAttribution, upsertOfficialPerson,
 } from "./names.ts";
 
 let db: Db;
@@ -91,6 +91,25 @@ describe("attributions", () => {
       ["human", p1.id, true],
     ]);
     expect(await listAttributions(db, s.id)).toHaveLength(2);
+  });
+
+  it("sessionsWithoutNames: sessions with a context card and no attribution row at all", async () => {
+    const card = (await import("../schemas.ts")).ContextCardSchema.parse({
+      language: { value: null, source: null, evidence: null }, profile: { value: "interview", confidence: 1, evidence: null },
+      title: { value: null, source: null, evidence: null }, summary: "", setting: { value: null, source: null, evidence: null },
+      dateOrYear: { value: null, source: null, evidence: null }, participants: [], sufficient: true, openQuestions: [],
+    });
+    const named = await createSession(db, { title: "named", source: "upload" });
+    const noCard = await createSession(db, { title: "no card", source: "upload" });
+    await saveContextCard(db, s.id, card, 1);
+    await saveContextCard(db, named.id, card, 1);
+    await setHumanAttribution(db, { ...human(null), sessionId: named.id });
+    expect(await sessionsWithoutNames(db, [s.id, named.id, noCard.id])).toEqual([s.id]);
+    const all = await sessionsWithoutNames(db);
+    expect(all).toContain(s.id);
+    expect(all).not.toContain(named.id);
+    expect(await sessionsWithoutNames(db, [named.id, noCard.id])).toEqual([]);
+    expect(await sessionsWithoutNames(db, [])).toEqual([]);
   });
 });
 

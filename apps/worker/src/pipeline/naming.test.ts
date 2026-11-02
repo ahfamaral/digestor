@@ -9,8 +9,10 @@ import {
   getPersons,
   type Db,
 } from "@digestor/core/server";
+import { getAnalysisVersion, listAttributionHistory, saveContextCard, startAnalysisVersion } from "@digestor/core/server";
+import { namesChangedSince } from "@digestor/core";
 import {
-  CONFIRMED_NAME, PROBABLE_NAME, importContextNames, lockedParticipants, namedVoices, participantsForPrompt,
+  CONFIRMED_NAME, PROBABLE_NAME, importContextNames, importNamesForOldSessions, lockedParticipants, namedVoices, participantsForPrompt,
 } from "./naming.js";
 
 const none: Fact = { value: null, source: null, evidence: null };
@@ -151,5 +153,34 @@ describe("participantsForPrompt", () => {
     const out = participantsForPrompt(card, atts, persons, true);
     expect(out.map((p) => [p.speakerId, p.name.value])).toEqual([["A", null], ["B", null], ["C", null], ["D", null]]);
     expect(participantsForPrompt(card, atts, persons, false).find((p) => p.speakerId === "A")!.name.value).toBe("Nome Proposto");
+  });
+});
+
+describe("importNamesForOldSessions", () => {
+  it("imports the card's names for sessions with a card and no attributions; skips the rest; idempotent", async () => {
+    const old = await newSession();
+    await saveContextCard(db, old, cardWith({ A: fact("Velho Nome", "video", "Velho Nome"), B: fact("Dita Humana", "human", "Dita Humana") }), 1);
+    const named = await newSession();
+    await saveContextCard(db, named, cardWith({ A: fact("Ignorado", "video", "Ignorado") }), 1);
+    const p = await createCustomPerson(db, { displayName: "Já Nomeada", createdBy: "owner" });
+    await setHumanAttribution(db, { sessionId: named, speakerId: "B", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
+    const noCard = await newSession();
+    const v = await startAnalysisVersion(db, old, { profile: "interview", reason: "initial", models: {}, promptVersions: {} });
+    const namesAt = (await getAnalysisVersion(db, v.id))!.namesAt;
+
+    const first = await importNamesForOldSessions(db, [old, named, noCard]);
+    expect(first).toEqual({ imported: [old] });
+    const atts = await listAttributions(db, old);
+    expect(atts.map((a) => [a.speakerId, a.source, a.status]).sort()).toEqual([
+      ["A", "transcript", "proposed"],
+      ["B", "transcript", "proposed"], // a human-sourced card fact stays a proposal
+    ]);
+    expect((await listAttributions(db, named)).map((a) => a.speakerId)).toEqual(["B"]);
+    expect(await listAttributions(db, noCard)).toEqual([]);
+    // The version was written with these very names: no "Names changed" notice.
+    expect(namesChangedSince(await listAttributionHistory(db, old), namesAt)).toBe(false);
+
+    expect(await importNamesForOldSessions(db, [old, named, noCard])).toEqual({ imported: [] });
+    expect(await listAttributions(db, old)).toHaveLength(2);
   });
 });

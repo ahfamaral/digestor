@@ -1,7 +1,7 @@
 import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { normaliseName, type Attribution, type AttributionSource, type Person } from "../attribution.ts";
 import type { Db } from "./client.ts";
-import { attributions, persons } from "./schema.ts";
+import { attributions, contextCards, persons } from "./schema.ts";
 
 /** What the AI sources may write: never `human`, and never a human-only status shape. */
 export type NewAiAttribution = Pick<Attribution, "speakerId" | "startMs" | "endMs" | "personId" | "status" | "confidence" | "evidence">;
@@ -141,4 +141,32 @@ export async function replaceAiAttributions(
 export async function listAttributionHistory(db: Db, sessionId: string): Promise<Attribution[]> {
   const rows = await db.select().from(attributions).where(eq(attributions.sessionId, sessionId)).orderBy(attributions.createdAt);
   return rows.map(toAttribution);
+}
+
+/** Sessions with a context card and no attribution row at all (current or superseded); `ids` limits the search. */
+export async function sessionsWithoutNames(db: Db, ids?: string[]): Promise<string[]> {
+  if (ids && ids.length === 0) return [];
+  const rows = await db
+    .select({ id: contextCards.sessionId })
+    .from(contextCards)
+    .where(
+      and(
+        ids ? inArray(contextCards.sessionId, ids) : undefined,
+        sql`not exists (select 1 from ${attributions} where ${attributions.sessionId} = ${contextCards.sessionId})`,
+      ),
+    )
+    .orderBy(contextCards.sessionId);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Only for the one-off backfill of old sessions (`importNamesForOldSessions`): dates the session's attribution rows
+ * to its context card's last update, when those names were written into the card. Otherwise names imported today
+ * would look newer than every analysis version and raise a false "Names changed" notice.
+ */
+export async function backdateNamesToCard(db: Db, sessionId: string): Promise<void> {
+  await db.execute(sql`
+    update ${attributions} set created_at = ${contextCards.updatedAt}
+    from ${contextCards}
+    where ${attributions.sessionId} = ${sessionId} and ${contextCards.sessionId} = ${sessionId}`);
 }

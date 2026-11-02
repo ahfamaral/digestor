@@ -1,10 +1,13 @@
 import { PROFILES, personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person, type Resolution } from "@digestor/core";
 import {
+  backdateNamesToCard,
   createCustomPerson,
   findPersonByName,
+  getContextCard,
   getPersons,
   listAttributions,
   replaceAiAttributions,
+  sessionsWithoutNames,
   type Db,
   type NewAiAttribution,
 } from "@digestor/core/server";
@@ -113,4 +116,23 @@ export async function promptCard(db: Db, sessionId: string, card: ContextCard): 
   const atts = await listAttributions(db, sessionId);
   const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
   return { ...card, participants: participantsForPrompt(card, atts, persons, PROFILES[card.profile.value].sensitive) };
+}
+
+/**
+ * One-off backfill for sessions analysed before speaker names existed (`scripts/import-names.ts`): the context card's
+ * names become proposals for every session that has a card and no attribution rows at all. Sessions with any row
+ * (current or superseded) are skipped, so it is safe to run again. The imported rows are dated to the card, so the
+ * versions already written with those names show no "Names changed" notice. `ids` limits it to those sessions (tests).
+ */
+export async function importNamesForOldSessions(db: Db, ids?: string[]): Promise<{ imported: string[] }> {
+  const imported: string[] = [];
+  for (const sessionId of await sessionsWithoutNames(db, ids)) {
+    const stored = await getContextCard(db, sessionId);
+    if (!stored) continue;
+    await importContextNames(db, sessionId, stored.card);
+    // The analysis was written with these very names: date them to the card, so no "Names changed" notice follows.
+    await backdateNamesToCard(db, sessionId);
+    imported.push(sessionId);
+  }
+  return { imported };
 }
