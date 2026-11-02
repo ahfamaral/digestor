@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, Person, Word } from "@digestor/core";
-import { badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -150,5 +150,17 @@ describe("whosWhoRows conflicts and ranged rows", () => {
     expect(rowRange(whole)).toBeNull();
     expect(confirmBody(whole)).toEqual({ action: "confirm", speakerId: "C" });
     expect(anonymousBody(whole)).toEqual({ action: "anonymous", speakerId: "C" });
+  });
+});
+
+describe("unconfirmedVoices", () => {
+  it("gives a ranged proposal its own range and an assign body; a whole-voice one a plain confirm", () => {
+    const words = [word("C", 0, 10_000), word("C", 10_000, 20_000)];
+    const ranged: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed", startMs: 0, endMs: 10_000 })] };
+    const [first, second] = unconfirmedVoices(ranged, words, { startMs: 0, endMs: 20_000 }, false);
+    expect(first).toMatchObject({ speakerId: "C", range: { startMs: 0, endMs: 10_000 }, confirm: { action: "assign", speakerId: "C", personId: "p1", startMs: 0, endMs: 10_000 } });
+    expect(second).toMatchObject({ range: null, confirm: null }); // the unnamed rest of the voice
+    const whole: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed" })] };
+    expect(unconfirmedVoices(whole, words, { startMs: 0, endMs: 20_000 }, false)).toMatchObject([{ range: null, confirm: { action: "confirm", speakerId: "C" } }]);
   });
 });

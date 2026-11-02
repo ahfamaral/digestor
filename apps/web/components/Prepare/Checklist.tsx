@@ -3,7 +3,7 @@
 import type { ChecklistId, Range } from "@digestor/core";
 import { Check, Circle } from "lucide-react";
 import { NamePopover } from "@/components/Names/NamePopover";
-import type { NamesData, VoiceLabel } from "@/lib/names";
+import type { NamesData, UnconfirmedVoice } from "@/lib/names";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -14,7 +14,7 @@ export interface ChecklistProps {
   items: { id: ChecklistId; ok: boolean }[];
   protectedAck: boolean;
   /** Voices of the clip whose name is not confirmed; they say who is missing in the `speaker` item. */
-  unconfirmed: { speakerId: string; label: VoiceLabel; atMs: number }[];
+  unconfirmed: UnconfirmedVoice[];
   names: NamesData;
   sessionId: string;
   range: Range;
@@ -63,7 +63,9 @@ export function Checklist({ clipId, items, unconfirmed, names, sessionId, range,
                           speakerId={v.speakerId}
                           label={v.label}
                           names={names}
-                          range={range}
+                          range={v.range ?? range}
+                          rangeOnly={v.range !== null}
+                          confirmBody={v.confirm ?? undefined}
                           offerNoName
                           trigger={
                             <button

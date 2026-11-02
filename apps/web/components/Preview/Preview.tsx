@@ -156,6 +156,10 @@ export function Preview({ session, analysis, speakers, named, names, namesChange
     return () => clearTimeout(timer);
   }, [flash]);
 
+  // The Full briefing's Re-analyse link arrives with ?reanalyze=1: use it once, so a remount or reload never reopens the dialog.
+  useEffect(() => {
+    if (openReanalyze) router.replace(`/s/${session.id}`, { scroll: false });
+  }, [openReanalyze, router, session.id]);
   const [offOpen, setOffOpen] = useState(false);
   const [reanalyzeOpen, setReanalyzeOpen] = useState(openReanalyze && !analysis.running);
   const [reportOpen, setReportOpen] = useState(false);

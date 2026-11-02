@@ -44,14 +44,25 @@ export function momentPeople(
   }));
 }
 
+/** A voice to confirm: `range` is set when its name comes from a ranged row (one part of a split voice), and `confirm` is what Confirm sends. */
+export interface UnconfirmedVoice {
+  speakerId: string;
+  label: VoiceLabel;
+  atMs: number;
+  range: Range | null;
+  confirm: Record<string, unknown> | null;
+}
+
 /** Voices of a range whose name still needs confirming (a proposal, a conflict, or no name at all), longest first. */
 export function unconfirmedVoices(
   names: NamesData,
   words: Pick<Word, "startMs" | "endMs" | "speaker">[],
   r: Range,
   sensitive: boolean,
-): { speakerId: string; label: VoiceLabel; atMs: number }[] {
-  return unconfirmedSpeakers(momentPeople(names, words, r, sensitive)).map(({ speakerId, label, atMs }) => ({ speakerId, label, atMs }));
+): UnconfirmedVoice[] {
+  return unconfirmedSpeakers(momentPeople(names, words, r, sensitive)).map(({ speakerId, label, atMs, resolution }) => ({
+    speakerId, label, atMs, range: rowRange({ resolution }), confirm: confirmBody({ speakerId, resolution }),
+  }));
 }
 
 /** The exact badge copy for a source. */
@@ -146,14 +157,14 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
 }
 
 /** The range a row's name applies to when it comes from a ranged attribution (one turn of a split voice); null for a whole-voice row. */
-export function rowRange(row: WhosWhoRow): Range | null {
+export function rowRange(row: Pick<WhosWhoRow, "resolution">): Range | null {
   const res = row.resolution;
   const a = res.kind === "named" || res.kind === "anonymous" ? res.attribution : res.kind === "conflict" ? res.attributions[0] : undefined;
   return a && a.startMs !== null && a.endMs !== null ? { startMs: a.startMs, endMs: a.endMs } : null;
 }
 
 /** The body the names API gets for a row's Confirm button; null when the row has no single proposal. A ranged row confirms as a ranged human assignment. */
-export function confirmBody(row: WhosWhoRow): Record<string, unknown> | null {
+export function confirmBody(row: Pick<WhosWhoRow, "speakerId" | "resolution">): Record<string, unknown> | null {
   const res = row.resolution;
   if (res.kind !== "named" || res.confirmed) return null;
   const range = rowRange(row);
