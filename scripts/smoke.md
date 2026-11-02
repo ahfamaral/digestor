@@ -60,6 +60,16 @@ The Ask fakes (`FakeToolLLM`) are shaped from the `@langchain/anthropic` 1.6 / `
 - [ ] A question that needs two tool rounds works: the second request carries the first turn's `thinking` blocks unchanged (Claude 5.5 rejects edited or dropped ones).
 - [ ] Record one raw tool-call response to `apps/worker/test/fixtures/anthropic/ask-tool-call.recorded.json` and feed it through `fromAIMessage` in a test.
 
+## 3b. Find more moments with a person
+
+On a `ready` session with a confirmed name (Who's who) and an LLM key. This is one paid `reasoning` call (about $0.03 on Haiku).
+
+- [ ] Full briefing → Focus on that person → "Find more moments with <name>" shows beside the picker (and under the list when fewer than 5 moments are at the selected level).
+- [ ] Click it: the button reads "Finding…", then the line "Found N moments with <name>." appears (with " M are at the Passage or Punchline level." when some sit at other levels), or "No new moments found.".
+- [ ] New rows carry the "Found for you" marker and the AI badge, and none repeats a moment already listed.
+- [ ] Clicking again replaces the earlier found moments, except ones you approved, marked neutral or made a clip from.
+- [ ] The browser console and network tab show no errors (with the Playwright drive: `errors.txt` is empty).
+
 ## 4. OpenRouter (`LLM_PROVIDER=openrouter`)
 
 The OpenRouter fakes in `apps/worker/src/llm/openrouter.test.ts` are shaped from OpenRouter's docs (OpenAI-compatible Chat Completions) and the `@langchain/openai` 1.8 code, not from a recorded response. Set `LLM_PROVIDER=openrouter` and `OPENROUTER_API_KEY` in `.env`, then `docker compose up -d worker`:

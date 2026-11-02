@@ -320,6 +320,10 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   };
   const isDefault = toSearchParams(filters) === "";
   const shown = order.length;
+  // "Fewer than 5 moments at the selected granularity": finer moments nested under a row don't count.
+  const atLevel = (function count(list: typeof views): number {
+    return list.reduce((n, v) => n + (v.moment.granularity === filters.granularity ? 1 : 0) + count(v.children), 0);
+  })(views);
   const confirmDisabled = approved.length === 0 || busy !== null || session.videoRemoved;
 
   return (
@@ -447,7 +451,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
               </div>
             )}
 
-            {focusedPerson && personName && shown < 5 && (
+            {focusedPerson && personName && atLevel < 5 && (
               <div className="mt-3 flex justify-center">
                 <button
                   type="button"

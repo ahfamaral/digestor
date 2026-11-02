@@ -32,7 +32,7 @@ import {
   type Db,
 } from "@digestor/core/server";
 import { ASK_FAILED, AskRunError, runAsk, type AskDeps } from "./agents/ask.js";
-import { findMoreMoments, personTurnRanges } from "./agents/findMore.js";
+import { findMoreMoments, personConfirmed, personTurnRanges } from "./agents/findMore.js";
 import { translateBriefing } from "./agents/translateBriefing.js";
 import type { StructuredLLM } from "./llm/structured.js";
 import { checkMoment } from "./agents/checks.js";
@@ -352,13 +352,14 @@ export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: 
       return;
     }
     // Only turns the name may be used for: a sensitive profile counts confirmed names only.
-    const turns = personTurnRanges(transcript.words, await listAttributions(db, version.sessionId), person.id, PROFILES[profile.data].sensitive);
+    const atts = await listAttributions(db, version.sessionId);
+    const turns = personTurnRanges(transcript.words, atts, person.id, PROFILES[profile.data].sensitive);
     const card = await promptCard(db, version.sessionId, withProfile(stored.card, profile.data));
     const found =
       turns.length === 0
         ? []
         : await findMoreMoments(llm, {
-            card, transcript, topics: await getAnalysisTopics(db, version.id), personTurns: turns, personName: person.displayName,
+            card, transcript, topics: await getAnalysisTopics(db, version.id), personTurns: turns, personName: person.displayName, confirmed: personConfirmed(transcript.words, atts, person.id),
             existing: await listShownRanges(db, { analysisId: row.analysisId, ownerId: row.ownerId, requestId: row.id }),
           });
     await finishFindMore(db, row.id, found);

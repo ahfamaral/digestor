@@ -32,11 +32,11 @@ import {
 /** Cost cap (spec §8.3): about 40k tokens of transcript; the person's turns are cut to fit. */
 export const FIND_MORE_MAX_CHARS = 160_000;
 export const MAX_FIND_MORE_MOMENTS = 20;
-/** Context kept around each of the person's turns, so a moment can start at the question that led to it. */
 /** Room left in the user text for its heading lines, so the whole text stays under FIND_MORE_MAX_CHARS. */
 const PROMPT_HEADROOM = 400;
 /** When the cap forces cuts, a stretch is split into pieces of at most this. */
 const MAX_PIECE_MS = 10 * 60_000;
+/** Context kept around each of the person's turns, so a moment can start at the question that led to it. */
 export const FIND_MORE_CONTEXT_MS = 30_000;
 
 /**
@@ -67,7 +67,26 @@ function mergeRanges(rs: Range[]): Range[] {
   return out;
 }
 
-const overlapMs = (a: Range, b: Range) => Math.max(0, Math.min(a.endMs, b.endMs) - Math.max(a.startMs, b.startMs));
+/** Sum of the word durations inside `r` that belong to the person (a word starting inside one of their turns), as `peopleInRange` sums them. */
+function personWordMs(words: Word[], turns: Range[], r: Range): number {
+  let ms = 0;
+  for (const w of words) {
+    if (!turns.some((t) => t.startMs <= w.startMs && w.startMs < t.endMs)) continue;
+    ms += Math.max(0, Math.min(w.endMs, r.endMs) - Math.max(w.startMs, r.startMs));
+  }
+  return ms;
+}
+
+/** Said in the prompt when the name is only proposed. */
+const PROBABLE_NAME_NOTE = "proposed, not confirmed: don't state it as fact";
+
+/** True when every word that resolves to the person does so through a confirmed attribution. */
+export function personConfirmed(words: Word[], atts: Attribution[], personId: string): boolean {
+  return words.every((w) => {
+    const res = personAt(atts, w.speaker, w.startMs);
+    return !(res.kind === "named" && res.personId === personId) || res.confirmed;
+  });
+}
 
 /**
  * The person's turns, each with `marginMs` around it and merged, as the transcript the model reads (the person's lines
@@ -110,7 +129,7 @@ function windowsText(words: Word[], turns: Range[], durationMs: number, marginMs
  */
 export async function findMoreMoments(
   llm: StructuredLLM,
-  a: { card: ContextCard; transcript: Transcript; topics: Topic[]; personTurns: Range[]; personName: string; existing?: (Range & { granularity: Granularity })[] },
+  a: { card: ContextCard; transcript: Transcript; topics: Topic[]; personTurns: Range[]; personName: string; existing?: (Range & { granularity: Granularity })[]; confirmed?: boolean },
 ): Promise<NewMoment[]> {
   const { words, durationMs } = a.transcript;
   if (words.length === 0 || a.personTurns.length === 0) return [];
@@ -132,7 +151,7 @@ export async function findMoreMoments(
     TIMESTAMP_RULE,
   ]);
   const user = [
-    `Focus person: ${a.personName}`,
+    `Focus person: ${a.personName}${a.confirmed === false ? ` (${PROBABLE_NAME_NOTE})` : ""}`,
     "",
     `Transcript of ${a.personName}'s turns, with the lines around them (separate stretches are divided by a blank line):`,
     text,
@@ -146,7 +165,8 @@ export async function findMoreMoments(
     allowed: ["exchange", "passage", "punchline"],
     types,
   })
-    .filter((d) => a.personTurns.reduce((n, t) => n + overlapMs(d, t), 0) >= FOCUS_MIN_MS)
+    // The Focus filter's rule: the person's word time inside the moment (not the gaps between words).
+    .filter((d) => personWordMs(sliceWords(words, d), a.personTurns, d) >= FOCUS_MIN_MS)
     // A stretch already listed (official, or the owner's own) is not new.
     .filter((d) => !(a.existing ?? []).some((e) => e.granularity === d.granularity && overlapRatio(e, d) > MAX_OVERLAP))
     .slice(0, MAX_FIND_MORE_MOMENTS);

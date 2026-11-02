@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, ContextCard, Fact, Topic, Transcript, Word } from "@digestor/core";
-import { FIND_MORE_MAX_CHARS, MAX_FIND_MORE_MOMENTS, findMoreMoments, personTurnRanges } from "./findMore.js";
+import { FIND_MORE_MAX_CHARS, MAX_FIND_MORE_MOMENTS, findMoreMoments, personConfirmed, personTurnRanges } from "./findMore.js";
 import { FakeLLM } from "../llm/structured.js";
 
 const S = 1000;
@@ -87,6 +87,28 @@ describe("findMoreMoments", () => {
     expect(out.map((m) => m.title).sort()).toEqual(["new", "other level"]);
   });
 
+  it("drops a moment whose turn overlap is 3 s but whose word time is under 3 s", async () => {
+    // words are 500 ms long every second: 5 words (4.5 s span, 2.5 s of words) lie in the window
+    const t = transcript(40 * 60);
+    const llm = new FakeLLM([{ moments: [lm(100 * S, 125 * S, { title: "gappy" }), lm(300 * S, 330 * S, { title: "dense" })] }]);
+    const out = await findMoreMoments(llm, {
+      card, transcript: t, topics, personName: "Tralli",
+      personTurns: [{ startMs: 121 * S, endMs: 125 * S }, { startMs: 300 * S, endMs: 330 * S }],
+    });
+    expect(out.map((m) => m.title)).toEqual(["dense"]);
+  });
+
+  it("the focus line says a proposed name is not confirmed", async () => {
+    const run = async (confirmed?: boolean) => {
+      const llm = new FakeLLM([{ moments: [] }]);
+      await findMoreMoments(llm, { card, transcript: transcript(600), topics, personTurns: [{ startMs: 0, endMs: 100 * S }], personName: "Tralli", confirmed });
+      return llm.calls[0]!.user.split("\n")[0];
+    };
+    expect(await run(true)).toBe("Focus person: Tralli");
+    expect(await run()).toBe("Focus person: Tralli");
+    expect(await run(false)).toBe("Focus person: Tralli (proposed, not confirmed: don't state it as fact)");
+  });
+
   it("makes no call when the person has no turns", async () => {
     const llm = new FakeLLM([]);
     expect(await findMoreMoments(llm, { card, transcript: transcript(600), topics, personTurns: [], personName: "X" })).toEqual([]);
@@ -107,5 +129,17 @@ describe("personTurnRanges", () => {
   it("sensitive profiles ignore an unconfirmed name", () => {
     expect(personTurnRanges(words, [att("A", "p1", "proposed")], "p1", true)).toEqual([]);
     expect(personTurnRanges(words, [{ ...att("A", "p1", "confirmed"), source: "human" }], "p1", true)).toHaveLength(1);
+  });
+});
+
+describe("personConfirmed", () => {
+  const att = (status: Attribution["status"], source: Attribution["source"]): Attribution => ({
+    id: "a", sessionId: "s", speakerId: "A", startMs: null, endMs: null, personId: "p1", source, status, confidence: 0.7,
+    evidence: { kind: "none" }, createdBy: "t", createdAt: new Date(), supersededAt: null,
+  });
+  const words = transcript(10).words;
+  it("true for a human-confirmed name, false for a proposal", () => {
+    expect(personConfirmed(words, [att("confirmed", "human")], "p1")).toBe(true);
+    expect(personConfirmed(words, [att("proposed", "transcript")], "p1")).toBe(false);
   });
 });

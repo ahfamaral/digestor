@@ -522,6 +522,21 @@ describe("find more", () => {
     expect(await getFindMore(db, { ownerId: OWNER, analysisId, personId: tralli.id })).toMatchObject({ status: "done", momentCount: 1 });
   });
 
+  it("finishFindMore keeps a found moment a live clip was made from, even with its selection cleared", async () => {
+    const p = await createCustomPerson(db, { displayName: "Tralli", createdBy: "t" });
+    const first = await run(p.id, [found("Clipped", 200_000), found("Plain", 300_000)]);
+    const clipped = (await listPersonalMoments(db, OWNER, analysisId)).find((m) => m.title === "Clipped")!;
+    await setSelection(db, OWNER, clipped.id, "approved");
+    const clip = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: clipped.id, startMs: 200_000, endMs: 240_000, actor: "user" });
+    await setSelection(db, OWNER, clipped.id, null); // back to proposed: the clip stays
+    const req = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId: p.id }))!;
+    expect(req.id).toBe(first.id);
+    await claimFindMore(db, req.id);
+    expect(await finishFindMore(db, req.id, [found("New", 400_000)])).toBe(1);
+    expect((await listPersonalMoments(db, OWNER, analysisId)).map((m) => m.title).sort()).toEqual(["Clipped", "New"]);
+    expect((await getClip(db, clip.id))?.momentId).toBe(clipped.id);
+  });
+
   it("finishFindMore stores nothing for a request that isn't running", async () => {
     const p = await createCustomPerson(db, { displayName: "Tralli", createdBy: "t" });
     const r = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId: p.id }))!;
