@@ -168,5 +168,6 @@ export async function backdateNamesToCard(db: Db, sessionId: string): Promise<vo
   await db.execute(sql`
     update ${attributions} set created_at = ${contextCards.updatedAt}
     from ${contextCards}
-    where ${attributions.sessionId} = ${sessionId} and ${contextCards.sessionId} = ${sessionId}`);
+    where ${attributions.sessionId} = ${sessionId} and ${contextCards.sessionId} = ${sessionId}
+      and ${attributions.source} in ('transcript', 'metadata') and ${attributions.createdBy} = ${attributions.source}`);
 }

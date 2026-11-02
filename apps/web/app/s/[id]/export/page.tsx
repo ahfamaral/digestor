@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OWNER_ID, PROFILES, exportChecklist, peopleInRange } from "@digestor/core";
+import { OWNER_ID, PROFILES, exportChecklist, speakersInRange } from "@digestor/core";
 import { getMoment, getSession, getTranscript, listClips, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { ExportList, type ExportClipData } from "@/components/ExportList";
@@ -34,7 +34,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
   const data: ExportClipData[] = await Promise.all(
     clips.map(async (clip) => {
       const [moment, tracks] = await Promise.all([clip.momentId ? getMoment(db, clip.momentId) : null, listTracks(db, clip.id)]);
-      const failing = exportChecklist({ clip, moment, tracks, profile, speakers: peopleInRange(transcript?.words ?? [], names.attributions, clip) })
+      const failing = exportChecklist({ clip, moment, tracks, profile, speakers: speakersInRange(transcript?.words ?? [], names.attributions, clip) })
         .filter((i) => !i.ok)
         .map((i) => i.id);
       return {

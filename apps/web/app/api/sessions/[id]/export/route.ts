@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { JOB_OPTIONS, OWNER_ID, QUEUES, exportChecklist, peopleInRange, type ProfileId } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, exportChecklist, speakersInRange, type ProfileId } from "@digestor/core";
 import {
   claimClipRender, claimTrackBurn, getMoment, getTranscript, listAttributions, listClips, listTracks, setClipRenderStatus, setTrackBurnStatus,
 } from "@digestor/core/server";
@@ -50,7 +50,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     const moment = clip.momentId ? await getMoment(db, clip.momentId) : null;
     if (moment && moment.checks === null) await sendMomentCheckQuietly(db, boss, moment.id);
     const tracks = await listTracks(db, clip.id);
-    const failing = exportChecklist({ clip, moment, tracks, profile, speakers: peopleInRange(words, atts, clip) }).filter((i) => !i.ok).map((i) => i.id);
+    const failing = exportChecklist({ clip, moment, tracks, profile, speakers: speakersInRange(words, atts, clip) }).filter((i) => !i.ok).map((i) => i.id);
     if (failing.length > 0) blocked.push({ clipId: clip.id, failing });
     else exportable.push({ clip, tracks });
   }

@@ -102,9 +102,11 @@ export function participantsForPrompt(card: ContextCard, atts: Attribution[], pe
   const ids = [...new Set([...card.participants.map((p) => p.speakerId), ...atts.map((a) => a.speakerId)])];
   return ids.map((speakerId) => {
     const base = card.participants.find((p) => p.speakerId === speakerId);
+    // A part of the voice a human marked "No name" keeps the whole voice's name out of every prompt, in every profile.
+    const partAnonymous = atts.some((a) => a.speakerId === speakerId && a.supersededAt === null && !wholeVoice(a) && a.status === "anonymous");
     return {
       speakerId,
-      name: promptName(resolveWhole(atts, speakerId), byId, sensitive),
+      name: partAnonymous ? { ...NULL_FACT } : promptName(resolveWhole(atts, speakerId), byId, sensitive),
       role: base ? { ...base.role } : { ...NULL_FACT },
       affiliation: base ? { ...base.affiliation } : { ...NULL_FACT },
     };
@@ -115,7 +117,41 @@ export function participantsForPrompt(card: ContextCard, atts: Attribution[], pe
 export async function promptCard(db: Db, sessionId: string, card: ContextCard): Promise<ContextCard> {
   const atts = await listAttributions(db, sessionId);
   const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
-  return { ...card, participants: participantsForPrompt(card, atts, persons, PROFILES[card.profile.value].sensitive) };
+  const sensitive = PROFILES[card.profile.value].sensitive;
+  const participants = participantsForPrompt(card, atts, persons, sensitive);
+  const projected = { ...card, participants };
+  return sensitive ? hideProtectedNames(projected, card, atts, persons) : projected;
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Sensitive profiles: the card's free text (title, summary, setting) was written by the context agent and may still
+ * name a voice whose name the prompts withhold (anonymous, unconfirmed, conflicting). Those names (the card's own
+ * name for the voice, and any person attributed to it) become "Speaker <id>"; names of voices that stay named do not.
+ */
+function hideProtectedNames(projected: ContextCard, original: ContextCard, atts: Attribution[], persons: Person[]): ContextCard {
+  const byId = new Map(persons.map((p) => [p.id, p.displayName]));
+  const keep = new Set<string>();
+  const hide = new Map<string, string>(); // lower-case name -> replacement
+  for (const p of projected.participants) {
+    const own = original.participants.find((o) => o.speakerId === p.speakerId)?.name.value?.trim();
+    if (p.name.value !== null) {
+      keep.add(p.name.value.toLowerCase());
+      continue;
+    }
+    const names = [own, ...atts.filter((a) => a.speakerId === p.speakerId && a.personId).map((a) => byId.get(a.personId!))];
+    for (const n of names) if (n?.trim()) hide.set(n.trim().toLowerCase(), `Speaker ${p.speakerId}`);
+  }
+  const names = [...hide.keys()].filter((n) => !keep.has(n)).sort((a, b) => b.length - a.length);
+  if (names.length === 0) return projected;
+  const scrub = (text: string) =>
+    names.reduce(
+      (t, n) => t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(n)}(?![\\p{L}\\p{N}])`, "giu"), hide.get(n)!),
+      text,
+    );
+  const fact = (f: Fact): Fact => ({ ...f, value: f.value === null ? null : scrub(f.value) });
+  return { ...projected, title: fact(projected.title), setting: fact(projected.setting), summary: scrub(projected.summary) };
 }
 
 /**
@@ -129,9 +165,13 @@ export async function importNamesForOldSessions(db: Db, ids?: string[]): Promise
   for (const sessionId of await sessionsWithoutNames(db, ids)) {
     const stored = await getContextCard(db, sessionId);
     if (!stored) continue;
-    await importContextNames(db, sessionId, stored.card);
-    // The analysis was written with these very names: date them to the card, so no "Names changed" notice follows.
-    await backdateNamesToCard(db, sessionId);
+    // One transaction: a human edit made meanwhile can neither be back-dated nor half-see the import.
+    await db.transaction(async (tx) => {
+      const t = tx as unknown as Db;
+      await importContextNames(t, sessionId, stored.card);
+      // The analysis was written with these very names: date them to the card, so no "Names changed" notice follows.
+      await backdateNamesToCard(t, sessionId);
+    });
     imported.push(sessionId);
   }
   return { imported };

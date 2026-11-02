@@ -22,7 +22,7 @@ export function checksForClip(clip: ClipBounds, moment: MomentForChecks | null):
  * What must hold before a clip is exported. `argument`, `context` and `flags` are ok when the moment's checks say
  * so, or when the user acknowledged the warnings; with no checks for this cut (they couldn't run, or the clip was
  * trimmed away from its moment's bounds) only the acknowledgement lets the clip through. `subtitles`: no track is
- * outdated, and every track with a burn request is approved. `speaker`: every voice in the clip (`peopleInRange`)
+ * outdated, and every track with a burn request is approved. `speaker`: every voice in the clip (`speakersInRange`)
  * is a confirmed name or marked "no name"; it ignores `warningsAck`. `protected` exists for the trial profile only.
  */
 export type ClipSpeaker = { speakerId: string; resolution: Resolution; ms: number };

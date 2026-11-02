@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Attribution, ContextCard, Fact, Person } from "@digestor/core";
 import {
+  backdateNamesToCard,
   createCustomPerson,
   createDb,
   createSession,
@@ -11,8 +12,9 @@ import {
 } from "@digestor/core/server";
 import { getAnalysisVersion, listAttributionHistory, saveContextCard, startAnalysisVersion } from "@digestor/core/server";
 import { namesChangedSince } from "@digestor/core";
+import { sql } from "drizzle-orm";
 import {
-  CONFIRMED_NAME, PROBABLE_NAME, importContextNames, importNamesForOldSessions, lockedParticipants, namedVoices, participantsForPrompt,
+  CONFIRMED_NAME, PROBABLE_NAME, importContextNames, importNamesForOldSessions, lockedParticipants, namedVoices, participantsForPrompt, promptCard,
 } from "./naming.js";
 
 const none: Fact = { value: null, source: null, evidence: null };
@@ -156,7 +158,69 @@ describe("participantsForPrompt", () => {
   });
 });
 
+describe("participantsForPrompt, ranged No name", () => {
+  const persons = [person("p1", "Xavier Nome")];
+  const card = cardWith({ B: none });
+  const whole = att({ speakerId: "B", personId: "p1" });
+  const nameOfB = (atts: Attribution[], sensitive = false) =>
+    participantsForPrompt(card, atts, persons, sensitive).find((p) => p.speakerId === "B")!.name;
+
+  it("a ranged No name keeps the voice's name out of prompts", () => {
+    const ranged = att({ speakerId: "B", personId: null, status: "anonymous", startMs: 120_000, endMs: 180_000 });
+    expect(nameOfB([whole])).toMatchObject({ value: "Xavier Nome" });
+    expect(nameOfB([whole, ranged])).toEqual(none);
+    expect(nameOfB([whole, ranged], true)).toEqual(none);
+    expect(nameOfB([whole, { ...ranged, supersededAt: new Date() }])).toMatchObject({ value: "Xavier Nome" });
+  });
+});
+
+describe("promptCard in a sensitive profile", () => {
+  const trialCard = (): ContextCard => ({
+    ...cardWith({ A: fact("Maria Confirmada", "video", "x"), B: fact("Rui Proposto", "video", "x") }),
+    profile: { value: "trial", confidence: 0.9, evidence: "x" },
+    title: fact("Julgamento de Rui Proposto", "video", "x"),
+    summary: "Maria Confirmada ouve rui proposto, e depois Ana Sugerida.",
+    setting: fact("Sala 3", "video", "x"),
+  });
+  const setup = async (profile: "trial" | "interview") => {
+    const id = await newSession();
+    const confirmed = await createCustomPerson(db, { displayName: "Maria Confirmada", createdBy: "owner" });
+    await setHumanAttribution(db, { sessionId: id, speakerId: "A", startMs: null, endMs: null, personId: confirmed.id, ownerId: "owner" });
+    const card = { ...trialCard(), profile: { value: profile, confidence: 0.9, evidence: "x" } };
+    await importContextNames(db, id, { ...card, participants: [...card.participants, { speakerId: "C", name: fact("Ana Sugerida", "video", "x"), role: none, affiliation: none }] });
+    return { id, card };
+  };
+
+  it("a sensitive card hides an unconfirmed name in its free text", async () => {
+    const { id, card } = await setup("trial");
+    const out = await promptCard(db, id, card);
+    expect(out.title.value).toBe("Julgamento de Speaker B");
+    expect(out.summary).toBe("Maria Confirmada ouve Speaker B, e depois Speaker C.");
+    expect(out.setting.value).toBe("Sala 3");
+  });
+  it("a non-sensitive card keeps its free text", async () => {
+    const { id, card } = await setup("interview");
+    const out = await promptCard(db, id, card);
+    expect(out.title.value).toBe("Julgamento de Rui Proposto");
+    expect(out.summary).toBe(card.summary);
+  });
+});
+
 describe("importNamesForOldSessions", () => {
+  it("the backfill leaves a human row's date alone", async () => {
+    const id = await newSession();
+    await saveContextCard(db, id, cardWith({ A: fact("Velho Nome", "video", "Velho Nome") }), 1);
+    await db.execute(sql`update context_cards set updated_at = '2026-01-01T00:00:00Z' where session_id = ${id}`);
+    await importContextNames(db, id, cardWith({ A: fact("Velho Nome", "video", "Velho Nome") }));
+    const p = await createCustomPerson(db, { displayName: "Edição Humana", createdBy: "owner" });
+    await setHumanAttribution(db, { sessionId: id, speakerId: "B", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
+    await backdateNamesToCard(db, id);
+    const atts = await listAttributions(db, id);
+    expect(atts.find((a) => a.source === "transcript")!.createdAt.toISOString()).toBe("2026-01-01T00:00:00.000Z");
+    expect(atts.find((a) => a.source === "human")!.createdAt.getFullYear()).toBeGreaterThan(2026 - 1 + 0);
+    expect(atts.find((a) => a.source === "human")!.createdAt.getTime()).toBeGreaterThan(Date.parse("2026-06-01"));
+  });
+
   it("imports the card's names for sessions with a card and no attributions; skips the rest; idempotent", async () => {
     const old = await newSession();
     await saveContextCard(db, old, cardWith({ A: fact("Velho Nome", "video", "Velho Nome"), B: fact("Dita Humana", "human", "Dita Humana") }), 1);

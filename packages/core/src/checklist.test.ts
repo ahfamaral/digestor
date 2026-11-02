@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "./analysisTypes.ts";
-import { peopleInRange, type Attribution } from "./attribution.ts";
+import { speakersInRange, type Attribution } from "./attribution.ts";
 import type { Word } from "./schemas.ts";
 import { checksForClip, exportChecklist } from "./checklist.ts";
 
@@ -84,7 +84,7 @@ describe("exportChecklist", () => {
     const voice = (speakerId: string, startMs: number, endMs: number): Word => ({ text: "x", startMs, endMs, speaker: speakerId, confidence: 1 });
     const speakerOk = (atts: Attribution[], words: Word[], over: Partial<typeof clip> = {}) => {
       const c = { ...clip, ...over };
-      return run({ clip: c, speakers: peopleInRange(words, atts, c) }).speaker;
+      return run({ clip: c, speakers: speakersInRange(words, atts, c) }).speaker;
     };
     const words = [voice("A", 10_000, 25_000), voice("C", 25_000, 40_000)];
 
@@ -99,6 +99,13 @@ describe("exportChecklist", () => {
         att({ source: "human", status: "confirmed", personId: "P3", speakerId: "A" }),
       ];
       expect(speakerOk(two, words)).toBe(false); // conflict
+    });
+    it("the speaker item counts a voice by its total time", () => {
+      // C: 0-2 s proposed as P1 (whole voice), 2-4 s unnamed (a ranged human "no name" elsewhere keeps the rest apart)
+      const part = [att({ startMs: 0, endMs: 2_000 })];
+      const both = [voice("C", 0, 2_000), voice("C", 2_000, 4_000)];
+      expect(speakerOk(part, both, { startMs: 0, endMs: 4_000 })).toBe(false); // 4 s total, each part under 3 s
+      expect(speakerOk(part, [voice("C", 0, 2_000)], { startMs: 0, endMs: 4_000 })).toBe(true); // 2 s total: ignored
     });
     it("follows the clip's bounds", () => {
       const atts = [att({ source: "human", status: "confirmed", personId: "P3", speakerId: "A" })];

@@ -129,9 +129,6 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
   const stage = async (s: Stage, progress: number) => {
     if (initial) await setStage(db, sessionId, s, progress);
   };
-  // Names in every prompt are the current attributions, not the card's own (spec §6.1).
-  const card = await promptCard(db, sessionId, withProfile(stored.card, opts.profile));
-
   if (opts.analysisId) {
     // A version claimed by the web route: only fill it while it is still this session's running one.
     const claimed = await getRunningAnalysis(db, sessionId);
@@ -146,6 +143,9 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
     models: analysisModels(llm.modelIds ?? MODEL_IDS),
     promptVersions: { ...PROMPT_VERSIONS },
   });
+  // Names in every prompt are the current attributions, not the card's own (spec §6.1). Read after the version's
+  // `names_at` stamp, so they are never older than it.
+  const card = await promptCard(db, sessionId, withProfile(stored.card, opts.profile));
 
   await stage("finding_topics", 75);
   const drafts = await findTopics(llm, { card, transcript });

@@ -14,7 +14,7 @@ import type { SearchHit } from "../search/index.js";
 import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
 
-export const ASK_PROMPT_VERSION = "ask@1";
+export const ASK_PROMPT_VERSION = "ask@2";
 export const MAX_ASK_STEPS = 6;
 export const MAX_TOOL_OUTPUT = 4000;
 export const HISTORY_LIMIT = 10;

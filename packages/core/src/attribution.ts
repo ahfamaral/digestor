@@ -148,6 +148,23 @@ export function peopleInRange(
   return [...totals.values()].filter((t) => t.ms >= minMs).sort((a, b) => b.ms - a.ms);
 }
 
+/**
+ * The voices that count for the export check (spec §8.5): a voice qualifies when its total time in `r` reaches
+ * `minMs`, and then every resolution of it inside `r` is returned (any time > 0), so a short unnamed part of a
+ * voice that is also proposed as someone cannot hide behind the 3-second rule. Longest first.
+ */
+export function speakersInRange(
+  words: Pick<Word, "startMs" | "endMs" | "speaker">[],
+  atts: Attribution[],
+  r: Range,
+  minMs: number = FOCUS_MIN_MS,
+): { speakerId: string; resolution: Resolution; ms: number }[] {
+  const parts = peopleInRange(words, atts, r, 0);
+  const total = new Map<string, number>();
+  for (const p of parts) total.set(p.speakerId, (total.get(p.speakerId) ?? 0) + p.ms);
+  return parts.filter((p) => total.get(p.speakerId)! >= minMs);
+}
+
 /** Consecutive words by the same voice, as one turn. */
 export function turnsOf(words: Word[]): Turn[] {
   const turns: Turn[] = [];

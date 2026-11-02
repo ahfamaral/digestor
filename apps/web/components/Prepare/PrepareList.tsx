@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  PROFILES, checksForClip, exportChecklist, formatLength, formatTimestamp, peopleInRange, type ClipFormat, type MomentChecks, type ProfileId, type Range,
+  PROFILES, checksForClip, exportChecklist, formatLength, formatTimestamp, speakersInRange, type ClipFormat, type MomentChecks, type ProfileId, type Range,
 } from "@digestor/core";
 import { SpeakerName } from "@/components/Names/SpeakerName";
 import { unconfirmedVoices, type NamesData, type Voice } from "@/lib/names";
@@ -233,7 +233,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
         moment: i.momentRange ? { ...i.momentRange, checks: i.checks } : null,
         tracks: i.tracks.map((tr) => ({ status: tr.status, burnStatus: tr.burnStatus, approvedAt: tr.approved ? new Date(0) : null })),
         profile: session.profile,
-        speakers: peopleInRange(i.speakerWords, names.attributions, i.clip),
+        speakers: speakersInRange(i.speakerWords, names.attributions, i.clip),
       }),
     ]),
   );
