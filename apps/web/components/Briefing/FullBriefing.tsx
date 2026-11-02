@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   formatMinutes, formatTimestamp, type ClipStatus, type HighlightTypeId, type MomentWithHighlights, type SelectionStatus, type Topic,
 } from "@digestor/core";
+import { Button } from "@/components/ui/button";
 import { AskDrawer } from "@/components/Ask/AskDrawer";
 import { AppBar } from "@/components/AppBar";
 import {
@@ -19,7 +20,8 @@ import {
 import { StatusQueue } from "@/lib/statusQueue";
 import { t, type MessageKey } from "@/lib/i18n";
 import { Controls, type SpeakerOption } from "./Controls";
-import type { NamesData, Voice } from "@/lib/names";
+import { WhosWhoDrawer } from "@/components/Names/WhosWho";
+import type { NamesData, Voice, WhosWhoRow } from "@/lib/names";
 import { MomentRow, type RowContext } from "./MomentRow";
 
 export interface FullBriefingProps {
@@ -34,6 +36,7 @@ export interface FullBriefingProps {
   selections: Record<string, SelectionStatus>;
   speakers: SpeakerOption[];
   names: NamesData;
+  whoRows: WhosWhoRow[];
   /** Who to show per moment id (longest speaking first). */
   voices: Record<string, Voice[]>;
   sensitive: boolean;
@@ -65,10 +68,12 @@ const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: r
  * Full briefing: every moment of the session by topic, with instant on-screen filters (kept in the URL), keyboard
  * triage (A/N/R, E, ↓/↑) and "Confirm selection → Prepare clips". Render it with `key={analysis.id}`.
  */
-export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, speakers, names, voices, sensitive, types, earlier }: FullBriefingProps) {
+export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, speakers, names, whoRows, voices, sensitive, types, earlier }: FullBriefingProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lang = session.language ?? undefined;
+  const [whoOpen, setWhoOpen] = useState(false);
+  const whoRef = useRef<HTMLButtonElement>(null);
   const [filters, setFilters] = useState<BriefingFilters>(() => fromSearchParams(searchParams, { speakers: speakers.map((s) => s.id) }));
   const [statuses, setStatuses] = useState<Record<string, SelectionStatus>>(selections);
   const [focus, setFocus] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
@@ -241,8 +246,23 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
             <h1 lang={lang} dir="auto" className="min-w-0 text-xl font-bold tracking-tight break-words">
               {session.title}
             </h1>
-            <AskDrawer sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} />
+            <div className="flex shrink-0 items-center gap-2">
+              <Button ref={whoRef} variant="outline" onClick={() => setWhoOpen(true)}>
+                {t("names.whoOpen")}
+              </Button>
+              <AskDrawer sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} />
+            </div>
           </div>
+          <WhosWhoDrawer
+            open={whoOpen}
+            onOpenChange={setWhoOpen}
+            finalFocus={whoRef}
+            sessionId={session.id}
+            rows={whoRows}
+            names={names}
+            sensitive={sensitive}
+            language={lang}
+          />
           <p className="mt-1 font-mono text-xs text-muted-foreground">
             {t("briefing.title")} · {t("preview.analysisVersion", { n: analysis.version })}
           </p>

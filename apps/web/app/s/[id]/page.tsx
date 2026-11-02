@@ -12,7 +12,7 @@ import { Processing } from "@/components/Processing";
 import { isUuid } from "@/lib/ids";
 import { asProfile, latestFailedAfter, versionNote } from "@/lib/preview";
 import { loadNames } from "@/lib/namesServer";
-import { namedCount, rangeVoices } from "@/lib/names";
+import { namedCount, rangeVoices, whosWhoRows } from "@/lib/names";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
 
@@ -37,9 +37,10 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
   let body: React.ReactNode;
   if (stage === "awaiting_context") {
     current = "Context";
-    const found = await getContextCard(getServer().db, id);
+    const { db } = getServer();
+    const [found, names, transcript] = await Promise.all([getContextCard(db, id), loadNames(db, id), getTranscript(db, id)]);
     body = found ? (
-      <ContextCheck sessionId={session.id} card={found.card} />
+      <ContextCheck sessionId={session.id} card={found.card} names={names} rows={whosWhoRows(names, transcript?.words ?? [])} />
     ) : (
       <div role="alert" className="rounded-xl border border-border bg-white p-5 text-sm text-red-700">
         {t("session.contextMissing")}
@@ -130,6 +131,7 @@ async function PreviewScreen({ session }: { session: Session }) {
           speakers={speakers}
           named={namedCount(names, speakerIds, sensitive)}
           names={names}
+          whoRows={whosWhoRows(names, words)}
           voices={voices}
           topics={topics}
           moments={moments}

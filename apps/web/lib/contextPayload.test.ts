@@ -28,6 +28,15 @@ describe("buildContextPayload", () => {
       cardEdits: { dateOrYear: "2021", profile: "trial", participants: [{ speakerId: "A", role: "Host" }] },
     });
   });
+  it("no longer sends participant names", () => {
+    const edited: ContextFields = {
+      ...original,
+      participants: [{ speakerId: "A", name: "Ana Souza", role: "Host", affiliation: "TV" }],
+    };
+    expect(buildContextPayload(original, edited, []).cardEdits.participants).toEqual([{ speakerId: "A", role: "Host", affiliation: "TV" }]);
+    const nameOnly: ContextFields = { ...original, participants: [{ speakerId: "A", name: "Ana Souza", role: "", affiliation: "" }] };
+    expect(buildContextPayload(original, nameOnly, []).cardEdits).toEqual({});
+  });
   it("treats a whitespace-only change as unchanged", () => {
     expect(buildContextPayload(original, { ...original, title: " Talk " }, []).cardEdits).toEqual({});
   });

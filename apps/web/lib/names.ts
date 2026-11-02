@@ -1,5 +1,5 @@
 import {
-  peopleInRange, personAt, speakerLabel,
+  peopleInRange, personAt, speakerLabel, turnsOf,
   type Attribution, type AttributionSource, type Person, type Range, type Resolution, type Word,
 } from "@digestor/core";
 import { t } from "./i18n";
@@ -76,4 +76,60 @@ export function rangeVoices(names: NamesData, words: Word[], r: Range, sensitive
   const people = momentPeople(names, words, r, sensitive);
   if (people.length > 0) return people.map(({ speakerId, atMs }) => ({ speakerId, atMs }));
   return fallback.map((speakerId) => ({ speakerId, atMs: r.startMs }));
+}
+
+/** A voice is a main voice of the session when it speaks at least this share of the words' time. */
+export const MIN_SPEAKER_SHARE = 0.1;
+/** A turn this long makes a good ▶ sample. */
+const SAMPLE_MIN_MS = 8_000;
+
+export interface WhosWhoRow {
+  speakerId: string;
+  resolution: Resolution;
+  /** Speaking time of this voice under this name. */
+  ms: number;
+  /** `ms` as a share of all speaking time. */
+  share: number;
+  sampleStartMs: number;
+  /** The voice (all its names together) speaks at least `MIN_SPEAKER_SHARE`. */
+  main: boolean;
+}
+
+/** One row per (voice, name at that moment): a voice the record named as two people gets two rows. Longest first. */
+export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
+  const key = (res: Resolution, speakerId: string) =>
+    res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : `none:${speakerId}`;
+  const groups = new Map<string, { speakerId: string; resolution: Resolution; ms: number; firstMs: number; k: string }>();
+  const perVoice = new Map<string, number>();
+  let total = 0;
+  for (const w of words) {
+    const ms = w.endMs - w.startMs;
+    if (ms <= 0) continue;
+    const resolution = personAt(names.attributions, w.speaker, w.startMs);
+    const k = key(resolution, w.speaker);
+    const gk = `${w.speaker}\u0000${k}`;
+    const cur = groups.get(gk);
+    if (cur) cur.ms += ms;
+    else groups.set(gk, { speakerId: w.speaker, resolution, ms, firstMs: w.startMs, k });
+    perVoice.set(w.speaker, (perVoice.get(w.speaker) ?? 0) + ms);
+    total += ms;
+  }
+  const turns = turnsOf(words);
+  return [...groups.values()]
+    .map((g) => {
+      const long = turns.find(
+        (tn) =>
+          tn.speakerId === g.speakerId && tn.endMs - tn.startMs >= SAMPLE_MIN_MS &&
+          key(personAt(names.attributions, g.speakerId, tn.startMs), g.speakerId) === g.k,
+      );
+      return {
+        speakerId: g.speakerId,
+        resolution: g.resolution,
+        ms: g.ms,
+        share: total > 0 ? g.ms / total : 0,
+        sampleStartMs: long?.startMs ?? g.firstMs,
+        main: total > 0 && (perVoice.get(g.speakerId) ?? 0) / total >= MIN_SPEAKER_SHARE,
+      };
+    })
+    .sort((a, b) => b.ms - a.ms);
 }

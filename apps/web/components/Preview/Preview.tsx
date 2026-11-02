@@ -14,7 +14,8 @@ import { ReportProblem, previewTargets } from "@/components/ReportProblem";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
-import type { NamesData, Voice } from "@/lib/names";
+import { WhosWhoDrawer } from "@/components/Names/WhosWho";
+import type { NamesData, Voice, WhosWhoRow } from "@/lib/names";
 import { voiceLabel } from "@/lib/names";
 import { buildSections, mostDiscussedCard } from "@/lib/preview";
 import { startRefreshLoop } from "@/lib/refreshLoop";
@@ -39,6 +40,8 @@ export interface PreviewProps {
   /** How many of the speakers have a name to show. */
   named: number;
   names: NamesData;
+  /** Who's who rows (voice and name, longest first). */
+  whoRows: WhosWhoRow[];
   /** Who to show per moment id. */
   voices: Record<string, Voice[]>;
   topics: Topic[];
@@ -61,7 +64,7 @@ const prefersReducedMotion = () => typeof window !== "undefined" && window.match
  * Preview, the proof step (render it with `key={analysis.id}` so a new analysis version starts with fresh state): header, session timeline, top highlight cards and the grounded briefing, with
  * "Looks right → Full briefing" and "Something's off" (re-run with another profile, or report a problem).
  */
-export function Preview({ session, analysis, speakers, named, names, voices, topics, moments, briefing, card }: PreviewProps) {
+export function Preview({ session, analysis, speakers, named, names, whoRows, voices, topics, moments, briefing, card }: PreviewProps) {
   const router = useRouter();
   const lang = session.language ?? undefined;
   const sensitive = PROFILES[analysis.profile].sensitive;
@@ -155,13 +158,27 @@ export function Preview({ session, analysis, speakers, named, names, voices, top
   const [reportSent, setReportSent] = useState(false);
   const targets = useMemo(() => previewTargets(analysis.id, sections), [analysis.id, sections]);
 
+  const [whoOpen, setWhoOpen] = useState(false);
+  const whoRef = useRef<HTMLButtonElement>(null);
+  const speakersText = speakers === 1 ? t("preview.speakersOne") : t("preview.speakersMany", { n: speakers });
+  const namedText = t("preview.namedCount", { named });
   const meta = [
     session.durationMs > 0 ? formatTimestamp(session.durationMs) : null,
-    speakers > 0 ? (speakers === 1 ? t("preview.speakersOne") : t("preview.speakersMany", { n: speakers })) : null,
-    speakers > 0 ? t("preview.namedCount", { named }) : null,
+    speakers > 0 ? (
+      <button
+        key="who"
+        ref={whoRef}
+        type="button"
+        aria-label={t("names.whoOpenFromCount", { text: `${speakersText}, ${namedText}` })}
+        onClick={() => setWhoOpen(true)}
+        className="rounded-sm underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+      >
+        {speakersText} · {namedText}
+      </button>
+    ) : null,
     session.language ? languageName(session.language) : null,
     t(`profile.${analysis.profile}`),
-  ].filter((x): x is string => Boolean(x));
+  ].filter((x): x is NonNullable<typeof x> => Boolean(x));
 
   return (
     <>
@@ -275,6 +292,16 @@ export function Preview({ session, analysis, speakers, named, names, voices, top
         )}
       </div>
 
+      <WhosWhoDrawer
+        open={whoOpen}
+        onOpenChange={setWhoOpen}
+        finalFocus={whoRef}
+        sessionId={session.id}
+        rows={whoRows}
+        names={names}
+        sensitive={sensitive}
+        language={lang}
+      />
       <ReanalyzeDialog
         open={reanalyzeOpen}
         onOpenChange={setReanalyzeOpen}

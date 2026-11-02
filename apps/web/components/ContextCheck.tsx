@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LANGUAGES, PROFILES, type ContextCard, type ProfileId, type Fact } from "@digestor/core";
+import { WhosWho } from "@/components/Names/WhosWho";
+import type { NamesData, WhosWhoRow } from "@/lib/names";
+import { voiceLabel } from "@/lib/names";
 import { factBadge, profileBadge } from "@/lib/contextBadge";
 import { buildContextPayload, type ContextFields } from "@/lib/contextPayload";
 import { cn } from "@/lib/utils";
@@ -17,12 +20,10 @@ const BADGES = {
 } as const satisfies Record<string, { text: MessageKey; cls: string }>;
 
 const FIELD_LABEL = {
-  name: "context.fieldName",
   role: "context.fieldRole",
   affiliation: "context.fieldAffiliation",
 } as const satisfies Record<string, MessageKey>;
 const FIELD_ARIA = {
-  name: "context.speakerName",
   role: "context.speakerRole",
   affiliation: "context.speakerAffiliation",
 } as const satisfies Record<string, MessageKey>;
@@ -61,7 +62,9 @@ function Row({ label, badge, audio, children }: { label: string; badge: keyof ty
 }
 
 /** Context check screen: review what the agent understood, answer its questions, then continue or skip. */
-export function ContextCheck({ sessionId, card }: { sessionId: string; card: ContextCard }) {
+export function ContextCheck({
+  sessionId, card, names, rows,
+}: { sessionId: string; card: ContextCard; names: NamesData; rows: WhosWhoRow[] }) {
   const router = useRouter();
   const [original] = useState(() => toFields(card));
   const [edited, setEdited] = useState<ContextFields>(original);
@@ -76,7 +79,7 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
   }, []);
 
   const set = <K extends keyof ContextFields>(key: K, value: ContextFields[K]) => setEdited((e) => ({ ...e, [key]: value }));
-  const setPerson = (i: number, key: "name" | "role" | "affiliation", value: string) =>
+  const setPerson = (i: number, key: "role" | "affiliation", value: string) =>
     setEdited((e) => ({ ...e, participants: e.participants.map((p, j) => (j === i ? { ...p, [key]: value } : p)) }));
 
   function hear(startMs: number) {
@@ -131,7 +134,8 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
   );
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="flex flex-col gap-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <section className="rounded-xl border border-border bg-white p-5">
         <h2 className="mb-2 text-base font-bold">{t("context.understood")}</h2>
         <Row
@@ -178,8 +182,8 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
           const e = edited.participants[i];
           return (
             <div key={p.speakerId} className="border-b border-border py-2 last:border-b-0">
-              <div className="mb-1 text-xs font-semibold text-muted-foreground">{t("context.speaker", { id: p.speakerId })}</div>
-              {(["name", "role", "affiliation"] as const).map((k) => (
+              <div className="mb-1 text-xs font-semibold text-muted-foreground">{voiceLabel(names, p.speakerId, 0, false).text}</div>
+              {(["role", "affiliation"] as const).map((k) => (
                 <div key={k} className="mb-1 flex items-center gap-2">
                   <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(FIELD_LABEL[k])}</span>
                   <input
@@ -251,6 +255,12 @@ export function ContextCheck({ sessionId, card }: { sessionId: string; card: Con
             {t("context.skip")}
           </button>
         </div>
+      </section>
+    </div>
+      <section aria-labelledby="whos-who-title" className="rounded-xl border border-border bg-white p-5">
+        <h2 id="whos-who-title" className="mb-1 text-base font-bold">{t("names.whoTitle")}</h2>
+        <p className="mb-2 text-xs text-muted-foreground">{t("names.whoHint")}</p>
+        <WhosWho sessionId={sessionId} rows={rows} names={names} sensitive={PROFILES[edited.profile].sensitive} language={edited.language || undefined} mode="context" />
       </section>
     </div>
   );

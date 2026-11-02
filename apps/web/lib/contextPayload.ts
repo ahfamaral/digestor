@@ -36,9 +36,10 @@ export function buildContextPayload(
   const participants: NonNullable<ContinuePayload["cardEdits"]["participants"]> = [];
   for (const p of edited.participants) {
     const before = original.participants.find((o) => o.speakerId === p.speakerId);
-    const diff: { speakerId: string; name?: string; role?: string; affiliation?: string } = { speakerId: p.speakerId };
+    const diff: { speakerId: string; role?: string; affiliation?: string } = { speakerId: p.speakerId };
     let changed = false;
-    for (const key of ["name", "role", "affiliation"] as const) {
+    // Names are not sent: Who's who writes them directly as attributions.
+    for (const key of ["role", "affiliation"] as const) {
       const value = p[key].trim();
       if (value !== "" && value !== (before?.[key] ?? "").trim()) {
         diff[key] = value;

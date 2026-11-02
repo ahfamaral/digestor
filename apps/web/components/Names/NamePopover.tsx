@@ -29,6 +29,7 @@ export function NamePopover({
   names,
   range,
   trigger,
+  startChanging = false,
 }: {
   sessionId: string;
   speakerId: string;
@@ -36,10 +37,12 @@ export function NamePopover({
   names: NamesData;
   range?: Range;
   trigger: ReactElement<Record<string, unknown>>;
+  /** Open straight on the name search (a "Change…" button of its own). */
+  startChanging?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [changing, setChanging] = useState(false);
+  const [changing, setChanging] = useState(startChanging);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Person[]>([]);
   const [active, setActive] = useState(0);
@@ -87,7 +90,7 @@ export function NamePopover({
   function reset(next: boolean) {
     setOpen(next);
     if (!next) {
-      setChanging(false);
+      setChanging(startChanging);
       setQuery("");
       setFound([]);
       setActive(0);

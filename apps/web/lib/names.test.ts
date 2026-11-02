@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, Person, Word } from "@digestor/core";
-import { badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, type NamesData } from "./names";
+import { badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, whosWhoRows, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -84,5 +84,42 @@ describe("evidenceLine", () => {
     expect(
       evidenceLine(att({ source: "record", evidence: { kind: "record", speechId: "12", score: 0.91, url: "u", fetchedAt: "2026-11-04" } })),
     ).toBe("From the official record: speech 12, 0.91 match");
+  });
+});
+
+describe("whosWhoRows", () => {
+  // A speaks 0-20 s (one long turn), B 20-30 s, A 30-100 s, B 100-110 s (named differently), C 110-112 s.
+  const run = (speaker: string, from: number, to: number): Word[] =>
+    Array.from({ length: (to - from) / 1000 }, (_, i) => word(speaker, from + i * 1000, from + (i + 1) * 1000));
+  const words = [...run("A", 0, 20_000), ...run("B", 20_000, 30_000), ...run("A", 30_000, 100_000), ...run("B", 100_000, 110_000), ...run("C", 110_000, 112_000)];
+
+  it("splits a voice the record named as two people", () => {
+    const names: NamesData = {
+      persons,
+      attributions: [
+        att({ id: "1", speakerId: "B", personId: "p1" }),
+        att({ id: "2", speakerId: "B", personId: "p2", startMs: 100_000, endMs: 110_000 }),
+      ],
+    };
+    const rows = whosWhoRows(names, words).filter((r) => r.speakerId === "B");
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.resolution.kind === "named" && r.resolution.personId).sort()).toEqual(["p1", "p2"]);
+    expect(rows.find((r) => r.resolution.kind === "named" && r.resolution.personId === "p2")?.sampleStartMs).toBe(100_000);
+  });
+  it("sorts by speaking time and samples the first turn of 8 s or more", () => {
+    const rows = whosWhoRows({ persons, attributions: [] }, words);
+    expect(rows.map((r) => r.speakerId)).toEqual(["A", "B", "C"]);
+    expect(rows[0]).toMatchObject({ ms: 90_000, sampleStartMs: 0 });
+    expect(rows[1]!.ms).toBe(20_000);
+    expect(rows[2]).toMatchObject({ sampleStartMs: 110_000 });
+  });
+  it("marks voices under 10% as not main", () => {
+    const rows = whosWhoRows({ persons, attributions: [] }, words);
+    expect(rows.map((r) => r.main)).toEqual([true, true, false]);
+    expect(rows[2]!.share).toBeCloseTo(2 / 112);
+  });
+  it("samples the first word when no turn is long enough", () => {
+    const short = [...run("A", 0, 3_000), ...run("B", 3_000, 5_000), ...run("A", 5_000, 7_000)];
+    expect(whosWhoRows({ persons, attributions: [] }, short).find((r) => r.speakerId === "A")!.sampleStartMs).toBe(0);
   });
 });
