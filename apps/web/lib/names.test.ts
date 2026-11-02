@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Attribution, Person, Word } from "@digestor/core";
+import { exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
 import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
@@ -165,6 +165,22 @@ describe("unconfirmedVoices", () => {
     expect(second).toMatchObject({ range: null, confirm: null }); // the unnamed rest of the voice
     const whole: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed" })] };
     expect(unconfirmedVoices(whole, words, { startMs: 0, endMs: 20_000 }, false)).toMatchObject([{ range: null, confirm: { action: "confirm", speakerId: "C" } }]);
+  });
+});
+
+describe("unconfirmedVoices and the export check agree", () => {
+  it("a voice with 2 s proposed and 2 s unnamed fails the check and lists both parts", () => {
+    const words = [word("C", 0, 2_000), word("C", 2_000, 4_000)];
+    const r = { startMs: 0, endMs: 4_000 };
+    const names: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed", startMs: 0, endMs: 2_000 })] };
+    const clip = { ...r, credit: "x", noCreditNeeded: false, warningsAck: true, protectedAck: false };
+    const item = exportChecklist({ clip, moment: null, tracks: [], profile: "interview", speakers: speakersInRange(words, names.attributions, r) }).find((i) => i.id === "speaker");
+    expect(item?.ok).toBe(false);
+    const listed = unconfirmedVoices(names, words, r, false);
+    expect(listed).toHaveLength(2);
+    expect(listed[0]).toMatchObject({ speakerId: "C", confirm: { action: "assign", speakerId: "C", personId: "p1", startMs: 0, endMs: 2_000 } });
+    // a voice with only 2 s in total is ignored by both
+    expect(unconfirmedVoices(names, [word("C", 0, 2_000)], r, false)).toEqual([]);
   });
 });
 

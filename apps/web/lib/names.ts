@@ -1,5 +1,5 @@
 import {
-  peopleInRange, personAt, speakerLabel, turnsOf, unconfirmedSpeakers,
+  peopleInRange, personAt, speakerLabel, speakersInRange, turnsOf, unconfirmedSpeakers,
   type Attribution, type AttributionSource, type Person, type Range, type Resolution, type Word,
 } from "@digestor/core";
 import { t } from "./i18n";
@@ -27,21 +27,26 @@ export function momentPeople(
   sensitive: boolean,
 ): { speakerId: string; label: VoiceLabel; resolution: Resolution; ms: number; atMs: number }[] {
   const persons = personMap(names);
-  const key = (res: Resolution, speakerId: string) =>
-    res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : `none:${speakerId}`;
   return peopleInRange(words, names.attributions, r).map(({ speakerId, resolution, ms }) => ({
     speakerId,
     label: speakerLabel(resolution, persons, speakerId, sensitive),
     resolution,
     ms,
-    // Where this name (not just this voice) first speaks in the range, so each entry resolves to its own name.
-    atMs:
-      words.find(
-        (w) =>
-          w.speaker === speakerId && w.endMs > r.startMs && w.startMs < r.endMs &&
-          key(personAt(names.attributions, speakerId, w.startMs), speakerId) === key(resolution, speakerId),
-      )?.startMs ?? r.startMs,
+    atMs: firstSpeakingAs(names, words, r, speakerId, resolution),
   }));
+}
+
+/** Where this name (not just this voice) first speaks in the range, so each entry resolves to its own name. */
+function firstSpeakingAs(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], r: Range, speakerId: string, resolution: Resolution): number {
+  const key = (res: Resolution) =>
+    res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : `none:${speakerId}`;
+  return (
+    words.find(
+      (w) =>
+        w.speaker === speakerId && w.endMs > r.startMs && w.startMs < r.endMs &&
+        key(personAt(names.attributions, speakerId, w.startMs)) === key(resolution),
+    )?.startMs ?? r.startMs
+  );
 }
 
 /** A voice to confirm: `range` is set when its name comes from a ranged row (one part of a split voice), and `confirm` is what Confirm sends. */
@@ -60,8 +65,14 @@ export function unconfirmedVoices(
   r: Range,
   sensitive: boolean,
 ): UnconfirmedVoice[] {
-  return unconfirmedSpeakers(momentPeople(names, words, r, sensitive)).map(({ speakerId, label, atMs, resolution }) => ({
-    speakerId, label, atMs, range: rowRange({ resolution }), confirm: confirmBody({ speakerId, resolution }),
+  // The export check's per-voice rule (`speakersInRange`): a voice counts by its total time, and then each of its names is listed.
+  const persons = personMap(names);
+  return unconfirmedSpeakers(speakersInRange(words, names.attributions, r)).map(({ speakerId, resolution }) => ({
+    speakerId,
+    label: speakerLabel(resolution, persons, speakerId, sensitive),
+    atMs: firstSpeakingAs(names, words, r, speakerId, resolution),
+    range: rowRange({ resolution }),
+    confirm: confirmBody({ speakerId, resolution }),
   }));
 }
 

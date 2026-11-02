@@ -198,6 +198,11 @@ describe("promptCard in a sensitive profile", () => {
     expect(out.summary).toBe("Maria Confirmada ouve Speaker B, e depois Speaker C.");
     expect(out.setting.value).toBe("Sala 3");
   });
+  it("a sensitive card also scrubs the evidence quotes of its free-text facts", async () => {
+    const { id, card } = await setup("trial");
+    const out = await promptCard(db, id, { ...card, title: fact("Julgamento", "video", "ouvimos Rui Proposto") });
+    expect(out.title).toEqual(fact("Julgamento", "video", "ouvimos Speaker B"));
+  });
   it("a non-sensitive card keeps its free text", async () => {
     const { id, card } = await setup("interview");
     const out = await promptCard(db, id, card);
@@ -208,19 +213,21 @@ describe("promptCard in a sensitive profile", () => {
 
 describe("importNamesForOldSessions", () => {
   it("the backfill leaves a human row's date alone", async () => {
+    // A session that already has a human row is skipped by the import, so a concurrent edit cannot be staged: the
+    // import runs through importNamesForOldSessions (transaction path), then a human row is added and the back-date
+    // is called again, as a later run would.
     const id = await newSession();
     await saveContextCard(db, id, cardWith({ A: fact("Velho Nome", "video", "Velho Nome") }), 1);
     await db.execute(sql`update context_cards set updated_at = '2026-01-01T00:00:00Z' where session_id = ${id}`);
-    await importContextNames(db, id, cardWith({ A: fact("Velho Nome", "video", "Velho Nome") }));
+    const before = Date.now();
+    expect(await importNamesForOldSessions(db, [id])).toEqual({ imported: [id] });
     const p = await createCustomPerson(db, { displayName: "Edição Humana", createdBy: "owner" });
     await setHumanAttribution(db, { sessionId: id, speakerId: "B", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
     await backdateNamesToCard(db, id);
     const atts = await listAttributions(db, id);
     expect(atts.find((a) => a.source === "transcript")!.createdAt.toISOString()).toBe("2026-01-01T00:00:00.000Z");
-    expect(atts.find((a) => a.source === "human")!.createdAt.getFullYear()).toBeGreaterThan(2026 - 1 + 0);
-    expect(atts.find((a) => a.source === "human")!.createdAt.getTime()).toBeGreaterThan(Date.parse("2026-06-01"));
+    expect(atts.find((a) => a.source === "human")!.createdAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
   });
-
   it("imports the card's names for sessions with a card and no attributions; skips the rest; idempotent", async () => {
     const old = await newSession();
     await saveContextCard(db, old, cardWith({ A: fact("Velho Nome", "video", "Velho Nome"), B: fact("Dita Humana", "human", "Dita Humana") }), 1);

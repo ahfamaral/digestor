@@ -150,8 +150,15 @@ function hideProtectedNames(projected: ContextCard, original: ContextCard, atts:
       (t, n) => t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(n)}(?![\\p{L}\\p{N}])`, "giu"), hide.get(n)!),
       text,
     );
-  const fact = (f: Fact): Fact => ({ ...f, value: f.value === null ? null : scrub(f.value) });
-  return { ...projected, title: fact(projected.title), setting: fact(projected.setting), summary: scrub(projected.summary) };
+  // The prompts render the whole card as JSON, so a fact's evidence quote is scrubbed with its value.
+  const fact = (f: Fact): Fact => ({ ...f, value: f.value === null ? null : scrub(f.value), evidence: f.evidence === null ? null : scrub(f.evidence) });
+  return {
+    ...projected,
+    title: fact(projected.title),
+    setting: fact(projected.setting),
+    summary: scrub(projected.summary),
+    participants: projected.participants.map((p) => ({ ...p, role: fact(p.role), affiliation: fact(p.affiliation) })),
+  };
 }
 
 /**

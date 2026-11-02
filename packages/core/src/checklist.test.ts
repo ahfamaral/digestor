@@ -101,7 +101,7 @@ describe("exportChecklist", () => {
       expect(speakerOk(two, words)).toBe(false); // conflict
     });
     it("the speaker item counts a voice by its total time", () => {
-      // C: 0-2 s proposed as P1 (whole voice), 2-4 s unnamed (a ranged human "no name" elsewhere keeps the rest apart)
+      // C: 0-2 s proposed as P1 (a ranged row), 2-4 s unnamed
       const part = [att({ startMs: 0, endMs: 2_000 })];
       const both = [voice("C", 0, 2_000), voice("C", 2_000, 4_000)];
       expect(speakerOk(part, both, { startMs: 0, endMs: 4_000 })).toBe(false); // 4 s total, each part under 3 s
