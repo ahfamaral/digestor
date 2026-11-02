@@ -71,12 +71,13 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
   const present = new Set(moments.flatMap((m) => m.highlights.map((h) => h.type)));
   const sensitive = PROFILES[profile].sensitive;
   const voices = Object.fromEntries(moments.map((m) => [m.id, rangeVoices(names, words, m, sensitive, m.speakers)]));
-  // Focus: people by share, then the voices with no name to show. A label is resolved where its person (or voice) first speaks.
-  // One pass over the words: the label of each person / voice where it first speaks.
+  // Focus: people by share, then the voices with no name to show. A label is resolved where its person (or voice) first
+  // speaks as that option (in a sensitive profile, a person only where the name is confirmed), in one pass over the words.
   const firstLabel = new Map<string, ReturnType<typeof voiceLabel>>();
   for (const w of words) {
     const res = personAt(names.attributions, w.speaker, w.startMs);
-    for (const key of [`v:${w.speaker}`, ...(res.kind === "named" ? [`p:${res.personId}`] : [])]) {
+    const person = res.kind === "named" && (res.confirmed || !sensitive) ? [`p:${res.personId}`] : [];
+    for (const key of [`v:${w.speaker}`, ...person]) {
       if (!firstLabel.has(key)) firstLabel.set(key, voiceLabel(names, w.speaker, w.startMs, sensitive));
     }
   }
