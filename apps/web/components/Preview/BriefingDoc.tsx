@@ -6,6 +6,8 @@ import {
   LANGUAGES, briefingToMarkdown, formatLength, formatMinutes, formatTimestamp, type BriefingContent, type MomentWithHighlights,
   type Topic,
 } from "@digestor/core";
+import { SpeakerName } from "@/components/Names/SpeakerName";
+import type { NamesData, Voice } from "@/lib/names";
 import { HighlightChip } from "@/components/HighlightChip";
 import { translationFromResponse, type Translation } from "@/lib/briefingTranslation";
 import { errorMessage } from "@/lib/http";
@@ -41,6 +43,9 @@ export function BriefingDoc({
   topics,
   moments,
   sections,
+  names,
+  voices,
+  sensitive,
   activeTopicId,
   flashMomentId,
   sectionRef,
@@ -56,6 +61,9 @@ export function BriefingDoc({
   topics: Topic[];
   moments: MomentWithHighlights[];
   sections: PreviewSection[];
+  names: NamesData;
+  voices: Record<string, Voice[]>;
+  sensitive: boolean;
   activeTopicId: string | null;
   flashMomentId: string | null;
   sectionRef: (topicId: string, el: HTMLElement | null) => void;
@@ -288,6 +296,9 @@ export function BriefingDoc({
                     key={m.id}
                     moment={m}
                     sessionId={sessionId}
+                    names={names}
+                    voices={voices[m.id] ?? []}
+                    sensitive={sensitive}
                     language={lang}
                     hasVideo={hasVideo}
                     videoRemoved={videoRemoved}
@@ -312,6 +323,9 @@ export function BriefingDoc({
 function HighlightRow({
   moment: m,
   sessionId,
+  names,
+  voices,
+  sensitive,
   language,
   hasVideo,
   videoRemoved,
@@ -325,6 +339,9 @@ function HighlightRow({
 }: {
   moment: MomentWithHighlights;
   sessionId: string;
+  names: NamesData;
+  voices: Voice[];
+  sensitive: boolean;
   language: string | undefined;
   hasVideo: boolean;
   videoRemoved: boolean;
@@ -352,6 +369,19 @@ function HighlightRow({
         <span className="font-mono text-xs text-muted-foreground">
           {formatTimestamp(m.startMs)} · {formatLength(m.endMs - m.startMs)}
         </span>
+        {voices.map((v) => (
+          <SpeakerName
+            key={v.speakerId}
+            speakerId={v.speakerId}
+            atMs={v.atMs}
+            names={names}
+            sensitive={sensitive}
+            sessionId={sessionId}
+            range={{ startMs: m.startMs, endMs: m.endMs }}
+            language={language}
+            className="text-xs"
+          />
+        ))}
         <span className="flex gap-1.5">
           <button
             type="button"

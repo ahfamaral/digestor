@@ -20,7 +20,7 @@ export function Timeline({
   onPin,
 }: {
   bands: (TimelineBand & { startMs: number })[];
-  pins: (TimelinePin & { title: string; startMs: number })[];
+  pins: (TimelinePin & { title: string; startMs: number; people: string[] })[];
   durationMs: number;
   activeTopicId: string | null;
   onBand: (topicId: string) => void;
@@ -63,7 +63,7 @@ export function Timeline({
                 type="button"
                 onClick={() => onPin(p.momentId)}
                 aria-label={t("preview.timelinePin", { type: t(`highlight.${p.type}`), title: p.title, time: formatTimestamp(p.startMs) })}
-                title={`${t(`highlight.${p.type}`)} · ${formatTimestamp(p.startMs)}`}
+                title={[t(`highlight.${p.type}`), formatTimestamp(p.startMs), ...(p.people.length > 0 ? [p.people.join(", ")] : [])].join(" · ")}
                 style={{ left: `${p.leftPct}%` }}
                 className={cn("absolute top-0 grid size-5 -translate-x-1/2 place-items-center rounded-full", FOCUS)}
               >

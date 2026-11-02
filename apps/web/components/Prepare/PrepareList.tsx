@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  checksForClip, exportChecklist, formatLength, formatTimestamp, type ClipFormat, type MomentChecks, type ProfileId, type Range,
+  PROFILES, checksForClip, exportChecklist, formatLength, formatTimestamp, type ClipFormat, type MomentChecks, type ProfileId, type Range,
 } from "@digestor/core";
+import { SpeakerName } from "@/components/Names/SpeakerName";
+import type { NamesData, Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { fetchChecks, fetchTracks, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
@@ -33,6 +35,8 @@ export interface PrepareClipData {
   /** Cut positions inside the trim window (clip ± 30 s), computed server-side from the transcript. */
   points: { starts: number[]; ends: number[] };
   canUndo: boolean;
+  /** Who speaks in the clip's current range (longest first). */
+  voices: Voice[];
   thumbUrl: string | null;
 }
 
@@ -48,6 +52,7 @@ export interface PrepareListProps {
   };
   /** The credit a clip starts with (YouTube channel), or "" for uploads. */
   defaultCredit: string;
+  names: NamesData;
   clips: PrepareClipData[];
 }
 
@@ -84,7 +89,7 @@ function merge(local: Item[], server: Item[]): Item[] {
  * Prepare clips: one card per confirmed clip with the trim strip, checks, format, credit, subtitles and the
  * pre-export checklist, and "Export ready clips →".
  */
-export function PrepareList({ session, defaultCredit, clips }: PrepareListProps) {
+export function PrepareList({ session, defaultCredit, names, clips }: PrepareListProps) {
   const router = useRouter();
   const [seen, setSeen] = useState(clips);
   const [items, setItems] = useState(clips);
@@ -272,6 +277,7 @@ export function PrepareList({ session, defaultCredit, clips }: PrepareListProps)
                 item={item}
                 session={session}
                 defaultCredit={defaultCredit}
+                names={names}
                 timedOut={timedOut && !retrying[item.clip.id]}
                 busy={busy[item.clip.id] ?? false}
                 error={errors[item.clip.id] ?? null}
@@ -307,6 +313,7 @@ interface ClipCardProps {
   item: Item;
   session: PrepareListProps["session"];
   defaultCredit: string;
+  names: NamesData;
   timedOut: boolean;
   busy: boolean;
   error: string | null;
@@ -319,7 +326,7 @@ interface ClipCardProps {
 }
 
 function ClipCard({
-  n, item, session, defaultCredit, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
+  n, item, session, defaultCredit, names, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
 }: ClipCardProps) {
   const { clip, title } = item;
   // R30: once the video is removed the clip is frozen; only the acknowledgements can change.
@@ -363,6 +370,23 @@ function ClipCard({
             <h2 id={headingId} lang={lang} dir="auto" className="text-[15px] font-bold break-words">
               {title || t("prepare.clipHeading", { n })}
             </h2>
+            {item.voices.length > 0 && (
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                <span className="sr-only">{t("briefing.speakers")}: </span>
+                {item.voices.map((v) => (
+                  <SpeakerName
+                    key={v.speakerId}
+                    speakerId={v.speakerId}
+                    atMs={v.atMs}
+                    names={names}
+                    sensitive={PROFILES[session.profile].sensitive}
+                    sessionId={session.id}
+                    range={{ startMs: clip.startMs, endMs: clip.endMs }}
+                    language={lang}
+                  />
+                ))}
+              </p>
+            )}
           </div>
           <button
             type="button"

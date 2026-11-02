@@ -2,6 +2,8 @@
 
 import { formatLength, formatTimestamp, type SelectionStatus } from "@digestor/core";
 import { HighlightChip } from "@/components/HighlightChip";
+import { SpeakerName } from "@/components/Names/SpeakerName";
+import type { NamesData, Voice } from "@/lib/names";
 import type { MomentView } from "@/lib/briefingFilters";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -30,6 +32,9 @@ export interface RowContext {
   focusedId: string | null;
   playingId: string | null;
   excerpts: Record<string, string>;
+  names: NamesData;
+  voices: Record<string, Voice[]>;
+  sensitive: boolean;
   errors: Record<string, string>;
   onFocusRow: (id: string) => void;
   onStatus: (id: string, status: SelectionStatus) => void;
@@ -72,10 +77,21 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
             {formatTimestamp(m.startMs)} · {formatLength(m.endMs - m.startMs)}
           </span>
           <span className="rounded bg-background px-1.5 text-[11px] font-medium text-muted-foreground">{t(`granularity.${m.granularity}`)}</span>
-          {m.speakers.length > 0 && (
-            <span className="text-xs text-muted-foreground">
+          {(ctx.voices[m.id] ?? []).length > 0 && (
+            <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
               <span className="sr-only">{t("briefing.speakers")}: </span>
-              {m.speakers.map((id) => t("briefing.speaker", { id })).join(", ")}
+              {(ctx.voices[m.id] ?? []).map((v) => (
+                <SpeakerName
+                  key={v.speakerId}
+                  speakerId={v.speakerId}
+                  atMs={v.atMs}
+                  names={ctx.names}
+                  sensitive={ctx.sensitive}
+                  sessionId={ctx.sessionId}
+                  range={{ startMs: m.startMs, endMs: m.endMs }}
+                  language={ctx.language}
+                />
+              ))}
             </span>
           )}
           {types.map((h) => (

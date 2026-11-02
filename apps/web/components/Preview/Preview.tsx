@@ -14,6 +14,8 @@ import { ReportProblem, previewTargets } from "@/components/ReportProblem";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
+import type { NamesData, Voice } from "@/lib/names";
+import { voiceLabel } from "@/lib/names";
 import { buildSections, mostDiscussedCard } from "@/lib/preview";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { buildTimeline } from "@/lib/timeline";
@@ -34,6 +36,11 @@ export interface PreviewProps {
     failedVersion: number | null;
   };
   speakers: number;
+  /** How many of the speakers have a name to show. */
+  named: number;
+  names: NamesData;
+  /** Who to show per moment id. */
+  voices: Record<string, Voice[]>;
   topics: Topic[];
   moments: MomentWithHighlights[];
   briefing: BriefingContent | null;
@@ -54,9 +61,10 @@ const prefersReducedMotion = () => typeof window !== "undefined" && window.match
  * Preview, the proof step (render it with `key={analysis.id}` so a new analysis version starts with fresh state): header, session timeline, top highlight cards and the grounded briefing, with
  * "Looks right → Full briefing" and "Something's off" (re-run with another profile, or report a problem).
  */
-export function Preview({ session, analysis, speakers, topics, moments, briefing, card }: PreviewProps) {
+export function Preview({ session, analysis, speakers, named, names, voices, topics, moments, briefing, card }: PreviewProps) {
   const router = useRouter();
   const lang = session.language ?? undefined;
+  const sensitive = PROFILES[analysis.profile].sensitive;
   const sections = useMemo(() => buildSections(topics, moments, briefing, analysis.profile), [topics, moments, briefing, analysis.profile]);
   const top = useMemo(() => topHighlights(moments, analysis.profile), [moments, analysis.profile]);
   const mostDiscussed = useMemo(() => mostDiscussedCard(topics), [topics]);
@@ -66,9 +74,14 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
     const startOf = new Map(topics.map((tp) => [tp.id, tp.startMs]));
     return {
       bands: bands.map((b) => ({ ...b, startMs: startOf.get(b.topicId) ?? 0 })),
-      pins: pins.map((p) => ({ ...p, title: byId.get(p.momentId)?.title ?? "", startMs: byId.get(p.momentId)?.startMs ?? 0 })),
+      pins: pins.map((p) => ({
+        ...p,
+        title: byId.get(p.momentId)?.title ?? "",
+        startMs: byId.get(p.momentId)?.startMs ?? 0,
+        people: (voices[p.momentId] ?? []).map((v) => voiceLabel(names, v.speakerId, v.atMs, sensitive).text),
+      })),
     };
-  }, [topics, top, moments, session.durationMs]);
+  }, [topics, top, moments, session.durationMs, voices, names, sensitive]);
   const topicOfMoment = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of sections) for (const m of s.rows) map.set(m.id, s.topic.id);
@@ -145,6 +158,7 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
   const meta = [
     session.durationMs > 0 ? formatTimestamp(session.durationMs) : null,
     speakers > 0 ? (speakers === 1 ? t("preview.speakersOne") : t("preview.speakersMany", { n: speakers })) : null,
+    speakers > 0 ? t("preview.namedCount", { named }) : null,
     session.language ? languageName(session.language) : null,
     t(`profile.${analysis.profile}`),
   ].filter((x): x is string => Boolean(x));
@@ -207,7 +221,7 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
         onBand={goToTopic}
         onPin={goToMoment}
       />
-      <TopHighlights top={top} mostDiscussed={mostDiscussed} language={lang} onMoment={goToMoment} onTopic={goToTopic} />
+      <TopHighlights top={top} names={names} voices={voices} sensitive={sensitive} mostDiscussed={mostDiscussed} language={lang} onMoment={goToMoment} onTopic={goToTopic} />
 
       <BriefingDoc
         sessionId={session.id}
@@ -221,6 +235,9 @@ export function Preview({ session, analysis, speakers, topics, moments, briefing
         topics={topics}
         moments={moments}
         sections={sections}
+        names={names}
+        voices={voices}
+        sensitive={sensitive}
         activeTopicId={active}
         flashMomentId={flash}
         sectionRef={sectionRef}

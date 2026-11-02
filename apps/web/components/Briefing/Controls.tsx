@@ -23,6 +23,8 @@ export interface SpeakerOption {
   id: string;
   /** Whole percent of the spoken words; null when unknown. */
   share: number | null;
+  /** The voice's name, or "Speaker C" when it has none to show. */
+  name: string;
 }
 
 /** "73% of spoken words" for the option's tooltip; null when the share is unknown. */
@@ -32,8 +34,8 @@ function speakerShareTitle(s: SpeakerOption): string | undefined {
 }
 
 export function speakerName(s: SpeakerOption): string {
-  if (s.share === null) return t("briefing.speaker", { id: s.id });
-  return s.share === 0 ? t("briefing.speakerShareSmall", { id: s.id }) : t("briefing.speakerShare", { id: s.id, share: s.share });
+  if (s.share === null) return s.name;
+  return s.share === 0 ? t("briefing.speakerShareSmall", { name: s.name }) : t("briefing.speakerShare", { name: s.name, share: s.share });
 }
 
 /**

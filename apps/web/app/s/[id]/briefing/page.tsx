@@ -8,6 +8,8 @@ import {
 import { AppBar } from "@/components/AppBar";
 import { FullBriefing } from "@/components/Briefing/FullBriefing";
 import { earlierSelections, momentExcerpt, speakerOptions } from "@/lib/briefingData";
+import { loadNames } from "@/lib/namesServer";
+import { rangeVoices, voiceLabel } from "@/lib/names";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
@@ -48,11 +50,12 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const analysisId = bundle.version.id;
-  const [personal, selections, byVersion, transcript] = await Promise.all([
+  const [personal, selections, byVersion, transcript, names] = await Promise.all([
     listPersonalMoments(db, OWNER_ID, analysisId),
     listSelections(db, OWNER_ID, id),
     countSelectionsByAnalysis(db, OWNER_ID, id),
     getTranscript(db, id),
+    loadNames(db, id),
   ]);
   const words = transcript?.words ?? [];
   // Personal moments are stored without speakers; take them from the transcript so Focus finds them too.
@@ -65,6 +68,8 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
   const excerpts = Object.fromEntries(moments.map((m) => [m.id, momentExcerpt(words, m)]));
   const profile = asProfile(bundle.version.profile);
   const present = new Set(moments.flatMap((m) => m.highlights.map((h) => h.type)));
+  const sensitive = PROFILES[profile].sensitive;
+  const voices = Object.fromEntries(moments.map((m) => [m.id, rangeVoices(names, words, m, sensitive, m.speakers)]));
   const types = [...new Set([...PROFILES[profile].highlightTypes, ...present])].filter((x): x is HighlightTypeId => x in HIGHLIGHT_TYPES);
 
   return (
@@ -82,7 +87,10 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
       moments={moments}
       excerpts={excerpts}
       selections={current}
-      speakers={speakerOptions(words, moments.flatMap((m) => m.speakers))}
+      speakers={speakerOptions(words, moments.flatMap((m) => m.speakers)).map((s) => ({ ...s, name: voiceLabel(names, s.id, 0, sensitive).text }))}
+      names={names}
+      voices={voices}
+      sensitive={sensitive}
       types={types}
       earlier={earlierSelections(byVersion, analysisId)}
     />

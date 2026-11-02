@@ -1,8 +1,9 @@
 import { Suspense } from "react";
+import { PROFILES } from "@digestor/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  getContextCard, getCurrentAnalysis, getRunningAnalysis, getSession, listAnalysisVersions, type Session,
+  getContextCard, getCurrentAnalysis, getRunningAnalysis, getSession, getTranscript, listAnalysisVersions, type Session,
 } from "@digestor/core/server";
 import { AppBar, type Step } from "@/components/AppBar";
 import { ContextCheck } from "@/components/ContextCheck";
@@ -10,6 +11,8 @@ import { Preview } from "@/components/Preview/Preview";
 import { Processing } from "@/components/Processing";
 import { isUuid } from "@/lib/ids";
 import { asProfile, latestFailedAfter, versionNote } from "@/lib/preview";
+import { loadNames } from "@/lib/namesServer";
+import { namedCount, rangeVoices } from "@/lib/names";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
 
@@ -76,11 +79,13 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
 /** Preview: the current analysis (topics, moments, briefing) plus its version history and any running re-analysis. */
 async function PreviewScreen({ session }: { session: Session }) {
   const { db } = getServer();
-  const [bundle, versions, running, context] = await Promise.all([
+  const [bundle, versions, running, context, names, transcript] = await Promise.all([
     getCurrentAnalysis(db, session.id),
     listAnalysisVersions(db, session.id),
     getRunningAnalysis(db, session.id),
     getContextCard(db, session.id),
+    loadNames(db, session.id),
+    getTranscript(db, session.id),
   ]);
   if (!bundle) {
     return (
@@ -95,7 +100,11 @@ async function PreviewScreen({ session }: { session: Session }) {
   }
   const { topics, moments, briefing } = bundle;
   const durationMs = session.durationMs ?? topics.at(-1)?.endMs ?? 0;
-  const speakers = context?.card.participants.length || new Set(moments.flatMap((m) => m.speakers)).size;
+  const words = transcript?.words ?? [];
+  const speakerIds = [...new Set(words.length > 0 ? words.map((w) => w.speaker) : moments.flatMap((m) => m.speakers))].sort();
+  const speakers = speakerIds.length || context?.card.participants.length || 0;
+  const sensitive = PROFILES[asProfile(bundle.version.profile)].sensitive;
+  const voices = Object.fromEntries(moments.map((m) => [m.id, rangeVoices(names, words, m, sensitive, m.speakers)]));
   return (
     <>
       <AppBar current="Preview" />
@@ -119,6 +128,9 @@ async function PreviewScreen({ session }: { session: Session }) {
             failedVersion: latestFailedAfter(versions, bundle.version.id),
           }}
           speakers={speakers}
+          named={namedCount(names, speakerIds, sensitive)}
+          names={names}
+          voices={voices}
           topics={topics}
           moments={moments}
           briefing={briefing}

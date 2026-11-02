@@ -1,6 +1,8 @@
 import { formatLength, formatTimestamp, type HighlightTypeId, type MomentWithHighlights } from "@digestor/core";
 import { HighlightChip, MethodBadge } from "@/components/HighlightChip";
 import type { mostDiscussedCard } from "@/lib/preview";
+import { voiceLabel, type NamesData, type Voice } from "@/lib/names";
+import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
 const CARD =
@@ -9,12 +11,18 @@ const CARD =
 /** One card per highlight type with its single best moment, plus the most discussed topic. Cards jump to the briefing. */
 export function TopHighlights({
   top,
+  names,
+  voices,
+  sensitive,
   mostDiscussed,
   language,
   onMoment,
   onTopic,
 }: {
   top: { type: HighlightTypeId; moment: MomentWithHighlights }[];
+  names: NamesData;
+  voices: Record<string, Voice[]>;
+  sensitive: boolean;
   mostDiscussed: ReturnType<typeof mostDiscussedCard>;
   language: string | undefined;
   onMoment: (momentId: string) => void;
@@ -34,6 +42,22 @@ export function TopHighlights({
             <span className="font-mono text-[11px] text-muted-foreground">
               {formatTimestamp(moment.startMs)} · {formatLength(moment.endMs - moment.startMs)}
             </span>
+            {(voices[moment.id] ?? []).length > 0 && (
+              <span className="line-clamp-2 text-[11.5px] text-muted-foreground">
+                <span className="sr-only">{t("briefing.speakers")}: </span>
+                {(voices[moment.id] ?? []).map((v, i) => {
+                  const label = voiceLabel(names, v.speakerId, v.atMs, sensitive);
+                  return (
+                    <span key={v.speakerId}>
+                      {i > 0 && ", "}
+                      <span dir="auto" className={cn(label.proposed && "underline decoration-dotted underline-offset-2")}>
+                        {label.text}
+                      </span>
+                    </span>
+                  );
+                })}
+              </span>
+            )}
           </button>
         );
       })}

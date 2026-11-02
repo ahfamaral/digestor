@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { OWNER_ID, findBoundaries } from "@digestor/core";
+import { OWNER_ID, PROFILES, findBoundaries } from "@digestor/core";
 import { getMoment, getSession, getTranscript, listClipEvents, listClips, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { PrepareList, type PrepareClipData } from "@/components/Prepare/PrepareList";
@@ -9,6 +9,8 @@ import { isUuid } from "@/lib/ids";
 import { canUndo, defaultCredit, toClipView, toTrackView } from "@/lib/prepareData";
 import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
+import { loadNames } from "@/lib/namesServer";
+import { rangeVoices } from "@/lib/names";
 import { cutPoints, trimView } from "@/lib/trim";
 import { t } from "@/lib/i18n";
 
@@ -49,6 +51,8 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
   const transcript = clips.length > 0 ? await getTranscript(db, id) : null;
   const durationMs = session.durationMs ?? transcript?.durationMs ?? Math.max(0, ...clips.map((c) => c.endMs));
   // Boundaries are computed here and only the clip's window (± 30 s) is sent, as plain numbers.
+  const names = await loadNames(db, id);
+  const sensitive = PROFILES[asProfile(session.profile)].sensitive;
   const boundaries = transcript ? findBoundaries(transcript.words, durationMs) : [];
 
   const data: PrepareClipData[] = await Promise.all(
@@ -67,6 +71,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
         tracks: tracks.map(toTrackView),
         points: cutPoints(boundaries, view.viewStart, view.viewEnd),
         canUndo: canUndo(events),
+        voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
         thumbUrl: moment?.thumbKey ? `/api/files/${id}/thumbs/${moment.id}.jpg` : null,
       };
     }),
@@ -84,6 +89,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
         profile: asProfile(session.profile),
       }}
       defaultCredit={defaultCredit(session)}
+      names={names}
       clips={data}
     />
   );

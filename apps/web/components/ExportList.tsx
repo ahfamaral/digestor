@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LANGUAGES, formatLength, formatTimestamp, type ChecklistId } from "@digestor/core";
+import { SpeakerName } from "@/components/Names/SpeakerName";
+import type { NamesData, Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
 import { WarningIcon } from "@/components/WarningNote";
 import { inFlight, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
@@ -21,11 +23,14 @@ export interface ExportClipData {
   endMs: number;
   /** Checklist items that don't hold yet. Empty = ready to export. */
   failing: ChecklistId[];
+  /** Who speaks in the clip (longest first). */
+  voices: Voice[];
   row: ExportRow;
 }
 
 export interface ExportListProps {
-  session: { id: string; title: string; language: string | null; videoRemoved: boolean };
+  session: { id: string; title: string; language: string | null; videoRemoved: boolean; sensitive: boolean };
+  names: NamesData;
   clips: ExportClipData[];
 }
 
@@ -36,7 +41,7 @@ const NOTICE = "mb-3 rounded-lg border px-3 py-2 text-sm";
 const languageLabel = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? languageName(code);
 
 /** Export: each prepared clip with its checklist, the Export button, and every download (MP4, SRT/VTT, burned-in). */
-export function ExportList({ session, clips }: ExportListProps) {
+export function ExportList({ session, names, clips }: ExportListProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -119,7 +124,7 @@ export function ExportList({ session, clips }: ExportListProps) {
         ) : (
           <ol className="grid gap-3">
             {clips.map((clip, n) => (
-              <ClipRow key={clip.id} n={n + 1} clip={clip} sessionId={session.id} lang={lang} />
+              <ClipRow key={clip.id} n={n + 1} clip={clip} sessionId={session.id} lang={lang} names={names} sensitive={session.sensitive} />
             ))}
           </ol>
         )}
@@ -145,7 +150,16 @@ export function ExportList({ session, clips }: ExportListProps) {
   );
 }
 
-function ClipRow({ n, clip, sessionId, lang }: { n: number; clip: ExportClipData; sessionId: string; lang: string | undefined }) {
+function ClipRow({
+  n, clip, sessionId, lang, names, sensitive,
+}: {
+  n: number;
+  clip: ExportClipData;
+  sessionId: string;
+  lang: string | undefined;
+  names: NamesData;
+  sensitive: boolean;
+}) {
   const { row } = clip;
   const heading = clip.title || t("exportScreen.clipHeading", { n });
   const status = t(`exportScreen.status.${row.renderStatus}`);
@@ -160,6 +174,23 @@ function ClipRow({ n, clip, sessionId, lang }: { n: number; clip: ExportClipData
           <h2 lang={lang} dir="auto" className="text-base font-semibold break-words">
             {heading}
           </h2>
+          {clip.voices.length > 0 && (
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              <span className="sr-only">{t("briefing.speakers")}: </span>
+              {clip.voices.map((v) => (
+                <SpeakerName
+                  key={v.speakerId}
+                  speakerId={v.speakerId}
+                  atMs={v.atMs}
+                  names={names}
+                  sensitive={sensitive}
+                  sessionId={sessionId}
+                  range={{ startMs: clip.startMs, endMs: clip.endMs }}
+                  language={lang}
+                />
+              ))}
+            </p>
+          )}
         </div>
         <p
           role="status"

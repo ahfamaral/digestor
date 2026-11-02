@@ -19,6 +19,7 @@ import {
 import { StatusQueue } from "@/lib/statusQueue";
 import { t, type MessageKey } from "@/lib/i18n";
 import { Controls, type SpeakerOption } from "./Controls";
+import type { NamesData, Voice } from "@/lib/names";
 import { MomentRow, type RowContext } from "./MomentRow";
 
 export interface FullBriefingProps {
@@ -32,6 +33,10 @@ export interface FullBriefingProps {
   /** The owner's selections on these moments (no entry = proposed). */
   selections: Record<string, SelectionStatus>;
   speakers: SpeakerOption[];
+  names: NamesData;
+  /** Who to show per moment id (longest speaking first). */
+  voices: Record<string, Voice[]>;
+  sensitive: boolean;
   types: HighlightTypeId[];
   /** Selections left on an earlier analysis version, or null. */
   earlier: { count: number; version: number } | null;
@@ -60,7 +65,7 @@ const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: r
  * Full briefing: every moment of the session by topic, with instant on-screen filters (kept in the URL), keyboard
  * triage (A/N/R, E, ↓/↑) and "Confirm selection → Prepare clips". Render it with `key={analysis.id}`.
  */
-export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, speakers, types, earlier }: FullBriefingProps) {
+export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, speakers, names, voices, sensitive, types, earlier }: FullBriefingProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lang = session.language ?? undefined;
@@ -207,6 +212,9 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
     focusedId: currentId,
     playingId: playing,
     excerpts,
+    names,
+    voices,
+    sensitive,
     errors,
     onFocusRow: focusRow,
     onStatus: (id, s) => {

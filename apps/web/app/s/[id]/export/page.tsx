@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OWNER_ID, exportChecklist } from "@digestor/core";
-import { getMoment, getSession, listClips, listTracks } from "@digestor/core/server";
+import { OWNER_ID, PROFILES, exportChecklist } from "@digestor/core";
+import { getMoment, getSession, getTranscript, listClips, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { ExportList, type ExportClipData } from "@/components/ExportList";
 import { exportRows } from "@/lib/exportRows";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
+import { loadNames } from "@/lib/namesServer";
+import { rangeVoices } from "@/lib/names";
 import { getServer } from "@/lib/server";
 
 /** Export: checklist status, render start and downloads per clip. Reads the DB per request (inside Suspense). */
@@ -27,6 +29,8 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
 
   const profile = asProfile(session.profile);
   const clips = await listClips(db, OWNER_ID, id);
+  const [names, transcript] = clips.length > 0 ? await Promise.all([loadNames(db, id), getTranscript(db, id)]) : [{ persons: [], attributions: [] }, null];
+  const sensitive = PROFILES[profile].sensitive;
   const data: ExportClipData[] = await Promise.all(
     clips.map(async (clip) => {
       const [moment, tracks] = await Promise.all([clip.momentId ? getMoment(db, clip.momentId) : null, listTracks(db, clip.id)]);
@@ -39,6 +43,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         startMs: clip.startMs,
         endMs: clip.endMs,
         failing,
+        voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
         row: exportRows([clip], tracks)[0]!,
       };
     }),
@@ -46,7 +51,8 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <ExportList
-      session={{ id: session.id, title: session.title, language: session.language, videoRemoved: session.videoDeletedAt !== null }}
+      session={{ id: session.id, title: session.title, language: session.language, videoRemoved: session.videoDeletedAt !== null, sensitive }}
+      names={names}
       clips={data}
     />
   );
