@@ -1,7 +1,7 @@
 import { formatLength, formatTimestamp, type HighlightTypeId, type MomentWithHighlights } from "@digestor/core";
 import { HighlightChip, MethodBadge } from "@/components/HighlightChip";
 import type { mostDiscussedCard } from "@/lib/preview";
-import { voiceLabel, type NamesData, type Voice } from "@/lib/names";
+import { labelText, voiceLabel, type NamesData, type Voice } from "@/lib/names";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
@@ -51,7 +51,7 @@ export function TopHighlights({
                     <span key={`${v.speakerId}:${v.atMs}`}>
                       {i > 0 && ", "}
                       <span dir="auto" className={cn(label.proposed && "underline decoration-dotted underline-offset-2")}>
-                        {label.text}
+                        {labelText(label)}
                       </span>
                     </span>
                   );

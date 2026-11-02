@@ -1,6 +1,6 @@
 import { OWNER_ID, personAt } from "@digestor/core";
 import {
-  createCustomPerson, findPersonByName, getPersons, getSession, getTranscript, listAttributions, setHumanAttribution, type Db,
+  createCustomPerson, getPersons, getSession, getTranscript, listAttributions, setHumanAttribution, type Db,
 } from "@digestor/core/server";
 import { z } from "zod";
 import { errorResponse } from "@/lib/http";
@@ -74,8 +74,8 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       break;
     }
     case "create": {
-      const person =
-        (await findPersonByName(db, body.displayName)) ?? (await createCustomPerson(db, { displayName: body.displayName, createdBy: OWNER_ID }));
+      // "New person" always creates one: reusing an existing person is what the close-match options (assign) are for.
+      const person = await createCustomPerson(db, { displayName: body.displayName, createdBy: OWNER_ID });
       await write(body.speakerId, person.id, startMs, endMs);
       break;
     }
@@ -84,11 +84,12 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       break;
     case "confirm":
     case "confirm_all": {
-      // Whole-voice resolution only. A voice with current ranged rows is confirmed part by part: a whole-voice human row
-      // would shadow the per-turn names.
+      // Whole-voice resolution only. A voice with current ranged AI rows is confirmed part by part: a whole-voice human
+      // row would shadow those per-turn names. A human ranged row ("Only this part") already beats a whole human row.
       const all = await listAttributions(db, id);
       const isRanged = (a: (typeof all)[number]) => a.startMs !== null && a.endMs !== null;
-      const hasRanged = (voice: string) => all.some((a) => a.speakerId === voice && a.supersededAt === null && a.status !== "rejected" && isRanged(a));
+      const hasRanged = (voice: string) =>
+        all.some((a) => a.speakerId === voice && a.supersededAt === null && a.status !== "rejected" && a.source !== "human" && isRanged(a));
       const whole = all.filter((a) => !isRanged(a));
       if (body.action === "confirm" && hasRanged(body.speakerId)) return errorResponse(409, "Confirm each part of this voice separately.");
       const voices = body.action === "confirm" ? [body.speakerId] : [...new Set(transcript.words.map((w) => w.speaker))].filter((v) => !hasRanged(v));

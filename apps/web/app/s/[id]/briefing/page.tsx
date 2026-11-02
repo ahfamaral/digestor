@@ -9,7 +9,7 @@ import { AppBar } from "@/components/AppBar";
 import { FullBriefing } from "@/components/Briefing/FullBriefing";
 import { earlierSelections, momentExcerpt, speakerOptions } from "@/lib/briefingData";
 import { loadNames, namesChangedSince } from "@/lib/namesServer";
-import { rangeVoices, voiceLabel, whosWhoRows } from "@/lib/names";
+import { labelText, rangeVoices, voiceLabel, whosWhoRows } from "@/lib/names";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
@@ -88,7 +88,7 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
       moments={moments}
       excerpts={excerpts}
       selections={current}
-      speakers={speakerOptions(words, moments.flatMap((m) => m.speakers)).map((s) => ({ ...s, name: voiceLabel(names, s.id, 0, sensitive).text }))}
+      speakers={speakerOptions(words, moments.flatMap((m) => m.speakers)).map((s) => ({ ...s, name: labelText(voiceLabel(names, s.id, 0, sensitive)) }))}
       names={names}
       namesChanged={namesChanged}
       whoRows={whosWhoRows(names, words)}

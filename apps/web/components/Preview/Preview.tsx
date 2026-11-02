@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { errorMessage } from "@/lib/http";
 import { WhosWhoDrawer } from "@/components/Names/WhosWho";
 import type { NamesData, Voice, WhosWhoRow } from "@/lib/names";
-import { voiceLabel } from "@/lib/names";
+import { labelText, voiceLabel } from "@/lib/names";
 import { buildSections, mostDiscussedCard } from "@/lib/preview";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { buildTimeline } from "@/lib/timeline";
@@ -85,7 +85,7 @@ export function Preview({ session, analysis, speakers, named, names, namesChange
         ...p,
         title: byId.get(p.momentId)?.title ?? "",
         startMs: byId.get(p.momentId)?.startMs ?? 0,
-        people: (voices[p.momentId] ?? []).map((v) => voiceLabel(names, v.speakerId, v.atMs, sensitive).text),
+        people: (voices[p.momentId] ?? []).map((v) => labelText(voiceLabel(names, v.speakerId, v.atMs, sensitive))),
       })),
     };
   }, [topics, top, moments, session.durationMs, voices, names, sensitive]);
@@ -317,6 +317,7 @@ export function Preview({ session, analysis, speakers, named, names, namesChange
         names={names}
         sensitive={sensitive}
         language={lang}
+        videoRemoved={session.videoRemoved}
       />
       <ReanalyzeDialog
         open={reanalyzeOpen}

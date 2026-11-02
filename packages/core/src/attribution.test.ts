@@ -3,6 +3,7 @@ import type { Word } from "./schemas.ts";
 import {
   FOCUS_MIN_MS,
   closeMatches,
+  namesChangedSince,
   normaliseName,
   peopleInRange,
   personAt,
@@ -149,5 +150,47 @@ describe("speakerLabel", () => {
     const confirmed: Resolution = { kind: "named", personId: "P1", confirmed: true, attribution: a };
     expect(speakerLabel(confirmed, persons, "C", true)).toEqual({ text: "Ana Souza", badge: "caption", proposed: false });
     expect(speakerLabel({ ...confirmed, personId: "missing" }, persons, "C", false)).toEqual(fallback);
+  });
+});
+
+describe("namesChangedSince", () => {
+  const t = (min: number) => new Date(Date.UTC(2026, 10, 2, 10, min));
+  const at = t(30); // the analysis version's names_at
+  const row = (o: Partial<Attribution>) => att({ createdAt: t(0), ...o });
+  const proposal = row({ id: "ai", speakerId: "A", personId: "P1", source: "transcript", status: "proposed" });
+
+  it("a confirmation of the same name after the analysis is no change", () => {
+    const confirm = row({ id: "h", speakerId: "A", personId: "P1", source: "human", status: "confirmed", createdAt: t(40) });
+    expect(namesChangedSince([proposal, confirm], at)).toBe(false);
+  });
+  it("a rename after the analysis is a change", () => {
+    const rename = row({ id: "h", speakerId: "A", personId: "P2", source: "human", status: "confirmed", createdAt: t(40) });
+    expect(namesChangedSince([proposal, rename], at)).toBe(true);
+  });
+  it("No name after the analysis is a change", () => {
+    const anon = row({ id: "h", speakerId: "A", personId: null, source: "human", status: "anonymous", createdAt: t(40) });
+    expect(namesChangedSince([proposal, anon], at)).toBe(true);
+  });
+  it("a change made before the analysis is no change", () => {
+    const rename = row({ id: "h", speakerId: "A", personId: "P2", source: "human", status: "confirmed", createdAt: t(10) });
+    expect(namesChangedSince([proposal, rename], at)).toBe(false);
+  });
+  it("reads the history: a row superseded after names_at counted then, a row superseded before did not", () => {
+    const old = row({ id: "h1", speakerId: "A", personId: "P2", source: "human", status: "confirmed", createdAt: t(10), supersededAt: t(40) });
+    const back = row({ id: "h2", speakerId: "A", personId: "P1", source: "human", status: "confirmed", createdAt: t(40) });
+    expect(namesChangedSince([proposal, old, back], at)).toBe(true); // P2 then, P1 now
+    const early = row({ id: "h1", speakerId: "A", personId: "P2", source: "human", status: "confirmed", createdAt: t(10), supersededAt: t(20) });
+    const same = row({ id: "h2", speakerId: "A", personId: "P1", source: "human", status: "confirmed", createdAt: t(20) });
+    expect(namesChangedSince([proposal, early, same], at)).toBe(false);
+  });
+  it("compares each ranged part too", () => {
+    const part = row({ id: "r", speakerId: "A", startMs: 1000, endMs: 5000, personId: "P2", source: "human", status: "confirmed", createdAt: t(40) });
+    expect(namesChangedSince([proposal, part], at)).toBe(true);
+    const samePart = row({ id: "r", speakerId: "A", startMs: 1000, endMs: 5000, personId: "P1", source: "human", status: "confirmed", createdAt: t(40) });
+    expect(namesChangedSince([proposal, samePart], at)).toBe(false);
+  });
+  it("a new voice named after the analysis is a change; no rows is none", () => {
+    expect(namesChangedSince([proposal, row({ id: "b", speakerId: "B", personId: "P3", source: "human", status: "confirmed", createdAt: t(40) })], at)).toBe(true);
+    expect(namesChangedSince([], at)).toBe(false);
   });
 });

@@ -7,7 +7,7 @@ import { createSession, type Session } from "./repo.ts";
 import { analysisVersions, attributions } from "./schema.ts";
 import { eq } from "drizzle-orm";
 import {
-  createCustomPerson, findPersonByName, getPersons, listAttributions, namesChangedAt, replaceAiAttributions, searchPersons,
+  createCustomPerson, findPersonByName, getPersons, listAttributionHistory, listAttributions, replaceAiAttributions, searchPersons,
   setHumanAttribution, upsertOfficialPerson,
 } from "./names.ts";
 
@@ -78,19 +78,19 @@ describe("attributions", () => {
     expect(await listAttributions(db, s.id)).toHaveLength(2);
   });
 
-  it("namesChangedAt is null with only AI proposals, set after human or confirmed record rows", async () => {
-    const p = await createCustomPerson(db, { displayName: "P1", createdBy: "owner" });
-    await replaceAiAttributions(db, s.id, "transcript", [ai(p.id)]);
-    expect(await namesChangedAt(db, s.id)).toBeNull();
-    await replaceAiAttributions(db, s.id, "record", [ai(p.id, { confidence: 0.9 })]);
-    expect(await namesChangedAt(db, s.id)).toBeNull();
-    await replaceAiAttributions(db, s.id, "record", [ai(p.id, { status: "confirmed" })]);
-    expect(await namesChangedAt(db, s.id)).toBeInstanceOf(Date);
-    await replaceAiAttributions(db, s.id, "record", []);
-    expect(await namesChangedAt(db, s.id)).toBeInstanceOf(Date);
-    const s2 = await createSession(db, { title: "T2", source: "upload" });
-    await setHumanAttribution(db, { ...human(null), sessionId: s2.id });
-    expect(await namesChangedAt(db, s2.id)).toBeInstanceOf(Date);
+  it("listAttributionHistory returns superseded rows too", async () => {
+    const p1 = await createCustomPerson(db, { displayName: "P1", createdBy: "owner" });
+    const p2 = await createCustomPerson(db, { displayName: "P2", createdBy: "owner" });
+    await replaceAiAttributions(db, s.id, "transcript", [ai(p1.id)]);
+    await setHumanAttribution(db, human(p2.id));
+    await setHumanAttribution(db, human(p1.id));
+    const history = await listAttributionHistory(db, s.id);
+    expect(history.map((a) => [a.source, a.personId, a.supersededAt === null])).toEqual([
+      ["transcript", p1.id, true],
+      ["human", p2.id, false],
+      ["human", p1.id, true],
+    ]);
+    expect(await listAttributions(db, s.id)).toHaveLength(2);
   });
 });
 

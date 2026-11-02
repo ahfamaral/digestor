@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { normaliseName, type Attribution, type AttributionSource, type Person } from "../attribution.ts";
 import type { Db } from "./client.ts";
 import { attributions, persons } from "./schema.ts";
@@ -137,18 +137,8 @@ export async function replaceAiAttributions(
   });
 }
 
-/** Latest time a human or a confirmed record row was written (superseded ones count), or null. */
-export async function namesChangedAt(db: Db, sessionId: string): Promise<Date | null> {
-  const [row] = await db
-    .select({ at: attributions.createdAt })
-    .from(attributions)
-    .where(
-      and(
-        eq(attributions.sessionId, sessionId),
-        or(eq(attributions.source, "human"), and(eq(attributions.source, "record"), eq(attributions.status, "confirmed"))),
-      ),
-    )
-    .orderBy(desc(attributions.createdAt))
-    .limit(1);
-  return row?.at ?? null;
+/** Every attribution row of a session, superseded ones included (oldest first): the history `namesChangedSince` reads. */
+export async function listAttributionHistory(db: Db, sessionId: string): Promise<Attribution[]> {
+  const rows = await db.select().from(attributions).where(eq(attributions.sessionId, sessionId)).orderBy(attributions.createdAt);
+  return rows.map(toAttribution);
 }

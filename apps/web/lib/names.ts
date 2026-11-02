@@ -70,12 +70,17 @@ export function badgeText(source: AttributionSource): string {
   return t(`names.badge.${source}`);
 }
 
+/** A voice label as plain text (tooltips, option lists, compact lists): a proposed name carries its badge, "Ana Souza (from caption)". */
+export function labelText(label: VoiceLabel): string {
+  return label.proposed && label.badge ? `${label.text} (${badgeText(label.badge)})` : label.text;
+}
+
 /** One line for the badge tooltip: where the name comes from, and the evidence when there is one. */
 export function evidenceLine(a: Attribution): string {
   const e = a.evidence;
   if (e.kind === "record") return t("names.evidenceRecord", { speech: e.speechId, score: e.score.toFixed(2) });
   if (e.kind === "caption") return t("names.evidenceCaption", { text: e.text });
-  if (e.kind === "quote") return t("names.evidenceQuote", { quote: e.quote });
+  if (e.kind === "quote") return t("names.evidenceQuote", { from: t(`names.evidence.${a.source}`), quote: e.quote });
   return t(`names.evidence.${a.source}`);
 }
 

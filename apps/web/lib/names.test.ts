@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, Person, Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -81,6 +81,9 @@ describe("evidenceLine", () => {
       "From a caption on screen: “SEN. ANA”",
     );
     expect(evidenceLine(att({ source: "transcript", evidence: { kind: "quote", quote: "I am Ana" } }))).toBe("From the transcript: “I am Ana”");
+    expect(evidenceLine(att({ source: "metadata", evidence: { kind: "quote", quote: "Ana Souza interview" } }))).toBe(
+      "From the video details: “Ana Souza interview”",
+    );
     expect(
       evidenceLine(att({ source: "record", evidence: { kind: "record", speechId: "12", score: 0.91, url: "u", fetchedAt: "2026-11-04" } })),
     ).toBe("From the official record: speech 12, 0.91 match");
@@ -162,5 +165,15 @@ describe("unconfirmedVoices", () => {
     expect(second).toMatchObject({ range: null, confirm: null }); // the unnamed rest of the voice
     const whole: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed" })] };
     expect(unconfirmedVoices(whole, words, { startMs: 0, endMs: 20_000 }, false)).toMatchObject([{ range: null, confirm: { action: "confirm", speakerId: "C" } }]);
+  });
+});
+
+describe("labelText", () => {
+  it("adds the source badge to a proposed name on plain-text surfaces", () => {
+    expect(labelText({ text: "Ana Souza", badge: "caption", proposed: true })).toBe("Ana Souza (from caption)");
+    expect(labelText({ text: "Ana Souza", badge: "human", proposed: false })).toBe("Ana Souza");
+    expect(labelText({ text: "Speaker C", badge: null, proposed: false })).toBe("Speaker C");
+    const names: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "transcript", status: "proposed" })] };
+    expect(labelText(voiceLabel(names, "C", 0, false))).toBe("Ana Souza (from transcript)");
   });
 });

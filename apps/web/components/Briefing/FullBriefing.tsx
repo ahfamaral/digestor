@@ -264,6 +264,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
             names={names}
             sensitive={sensitive}
             language={lang}
+            videoRemoved={session.videoRemoved}
           />
           <p className="mt-1 font-mono text-xs text-muted-foreground">
             {t("briefing.title")} · {t("preview.analysisVersion", { n: analysis.version })}

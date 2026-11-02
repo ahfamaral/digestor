@@ -95,6 +95,39 @@ function resolutionKey(res: Resolution, speakerId: string): string {
   return `none:${speakerId}`;
 }
 
+/** The rows that were current at `at` (written by then, superseded later or never), as current rows for `personAt`. */
+export function attributionsAt(history: Attribution[], at: Date): Attribution[] {
+  const t = at.getTime();
+  return history
+    .filter((a) => a.createdAt.getTime() <= t && (a.supersededAt === null || a.supersededAt.getTime() > t))
+    .map((a) => ({ ...a, supersededAt: null }));
+}
+
+/** What a resolution means for AI text: a person, "no name", or nothing usable (unnamed or a conflict). Confirming does not change it. */
+function textKey(res: Resolution): string {
+  if (res.kind === "named") return `person:${res.personId}`;
+  return res.kind === "anonymous" ? "anonymous" : "none";
+}
+
+/**
+ * True when some voice resolves differently now than it did at `at` (an analysis version's `names_at`), so AI text
+ * written then may use earlier names (spec §8.4). Compares each voice's whole-voice resolution, and each ranged part
+ * present in either set. Confirming the name the AI already used is no change. `history` holds superseded rows too.
+ */
+export function namesChangedSince(history: Attribution[], at: Date): boolean {
+  const then = attributionsAt(history, at);
+  const now = history.filter((a) => a.supersededAt === null);
+  const whole = (rows: Attribution[]) => rows.filter((a) => !isRanged(a));
+  for (const speakerId of new Set([...then, ...now].map((a) => a.speakerId))) {
+    if (textKey(personAt(whole(then), speakerId, 0)) !== textKey(personAt(whole(now), speakerId, 0))) return true;
+  }
+  for (const part of [...then, ...now].filter(isRanged)) {
+    const ms = part.startMs!;
+    if (textKey(personAt(then, part.speakerId, ms)) !== textKey(personAt(now, part.speakerId, ms))) return true;
+  }
+  return false;
+}
+
 /** Voices speaking at least `minMs` inside `r`, longest first. */
 export function peopleInRange(
   words: Pick<Word, "startMs" | "endMs" | "speaker">[],

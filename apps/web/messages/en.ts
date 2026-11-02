@@ -145,7 +145,7 @@ export const en = {
     },
     evidenceRecord: "From the official record: speech {speech}, {score} match",
     evidenceCaption: "From a caption on screen: “{text}”",
-    evidenceQuote: "From the transcript: “{quote}”",
+    evidenceQuote: "{from}: “{quote}”",
     speaker: "Speaker {id}",
     confirm: "Confirm",
     change: "Change…",

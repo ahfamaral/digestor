@@ -58,6 +58,7 @@ export function WhosWho({
   sensitive,
   language,
   mode,
+  videoRemoved = false,
 }: {
   sessionId: string;
   rows: WhosWhoRow[];
@@ -65,6 +66,8 @@ export function WhosWho({
   sensitive: boolean;
   language?: string;
   mode: "context" | "drawer";
+  /** Retention removed the video (and its proxy): no ▶ samples. */
+  videoRemoved?: boolean;
 }) {
   const router = useRouter();
   const [showAll, setShowAll] = useState(false);
@@ -149,14 +152,16 @@ export function WhosWho({
               return (
                 <li key={`${row.speakerId}-${res.kind === "named" ? res.personId : res.kind}`} className="py-3">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    <button
-                      type="button"
-                      className={BTN}
-                      aria-label={t("names.hearLabel", { label: label.text })}
-                      onClick={() => hear(row.sampleStartMs)}
-                    >
-                      {t("names.hear")}
-                    </button>
+                    {!videoRemoved && (
+                      <button
+                        type="button"
+                        className={BTN}
+                        aria-label={t("names.hearLabel", { label: label.text })}
+                        onClick={() => hear(row.sampleStartMs)}
+                      >
+                        {t("names.hear")}
+                      </button>
+                    )}
                     <SpeakerName
                       speakerId={row.speakerId}
                       atMs={row.sampleStartMs}
@@ -234,7 +239,7 @@ export function WhosWho({
           {error}
         </p>
       )}
-      <video ref={player} src={`/api/files/${sessionId}/proxy.mp4`} preload="none" className="hidden" data-mode={mode} />
+      {!videoRemoved && <video ref={player} src={`/api/files/${sessionId}/proxy.mp4`} preload="none" className="hidden" data-mode={mode} />}
     </div>
   );
 }

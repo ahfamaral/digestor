@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { OWNER_ID, type Word } from "@digestor/core";
 import {
-  createCustomPerson, createSession, findPersonByName, listAttributions, replaceAiAttributions, saveTranscript, updateSession,
+  completeAnalysisVersion, createCustomPerson, createSession, findPersonByName, listAttributions, replaceAiAttributions, saveTranscript,
+  getAnalysisVersion, startAnalysisVersion, updateSession,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
 import { GET as getNames, POST as postNames } from "./sessions/[id]/names/route";
 import { GET as getPersons } from "./persons/route";
+import { namesChangedSince } from "@/lib/namesServer";
 
 let h: Harness;
 beforeAll(() => {
@@ -47,8 +49,10 @@ describe("names", () => {
 
     res = await post(sessionId, { action: "create", speakerId: "A", displayName: "Lula", startMs: 1000, endMs: 5000 });
     body = await res.json();
+    // "New person" always creates one, even when the name exists: reusing a person is the close-match options' job.
     const ranged = body.attributions.find((a: { startMs: number | null }) => a.startMs === 1000);
-    expect(ranged.personId).toBe(lula.id);
+    expect(ranged.personId).not.toBe(lula.id);
+    expect(body.persons.find((p: { id: string }) => p.id === ranged.personId)).toMatchObject({ displayName: "Lula", kind: "custom" });
 
     res = await post(sessionId, { action: "create", speakerId: "A", displayName: "Brand New", startMs: 6000, endMs: 8000 });
     body = await res.json();
@@ -99,6 +103,21 @@ describe("names", () => {
     expect(humans.map((a) => [a.speakerId, a.personId])).toEqual([["B", p2.id]]);
   });
 
+  it("names: a human \"Only this part\" row does not block Confirm of the whole voice", async () => {
+    const sid = await twoVoiceSession();
+    const p1 = await createCustomPerson(h.db, { displayName: "Kai Todo", createdBy: OWNER_ID });
+    const p2 = await createCustomPerson(h.db, { displayName: "Lia Parte", createdBy: OWNER_ID });
+    await replaceAiAttributions(h.db, sid, "transcript", [proposed("A", p1.id), proposed("B", p1.id)]);
+    expect((await post(sid, { action: "assign", speakerId: "A", personId: p2.id, startMs: 0, endMs: 900 })).status).toBe(200);
+    expect((await post(sid, { action: "assign", speakerId: "B", personId: p2.id, startMs: 1000, endMs: 1900 })).status).toBe(200);
+    let res = await post(sid, { action: "confirm", speakerId: "A" });
+    expect(res.status).toBe(200);
+    res = await post(sid, { action: "confirm_all" });
+    expect(res.status).toBe(200);
+    const humans = (await listAttributions(h.db, sid)).filter((a) => a.source === "human" && a.startMs === null);
+    expect(humans.map((a) => [a.speakerId, a.personId]).sort()).toEqual([["A", p1.id], ["B", p1.id]]);
+  });
+
   it("names: a range needs both ends and start < end", async () => {
     const { sessionId } = await seedReadySession(h.db);
     const p = await createCustomPerson(h.db, { displayName: "Fay Cruz", createdBy: OWNER_ID });
@@ -123,6 +142,34 @@ describe("names", () => {
       expect(await res.json()).toEqual({ error: "Session not found." });
     }
     expect((await getNames(new Request("http://localhost/x"), ctx("nope"))).status).toBe(404);
+  });
+});
+
+describe("names changed notice", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+  // names_at comes from the database clock (the host's may differ from the container's): take it from a real version.
+  const version = async (sid: string) => {
+    const v = await startAnalysisVersion(h.db, sid, { profile: "interview", reason: "test", models: {}, promptVersions: {} });
+    await completeAnalysisVersion(h.db, v.id);
+    return (await getAnalysisVersion(h.db, v.id))!.namesAt;
+  };
+  it("a confirmation of the AI's name is no change; a rename or No name is", async () => {
+    const sid = await twoVoiceSession();
+    const p1 = await createCustomPerson(h.db, { displayName: "Iara Notada", createdBy: OWNER_ID });
+    await replaceAiAttributions(h.db, sid, "transcript", [proposed("A", p1.id), proposed("B", p1.id)]);
+    await tick();
+    const namesAt = await version(sid);
+    await tick();
+    expect(await namesChangedSince(h.db, sid, namesAt)).toBe(false);
+    expect((await post(sid, { action: "confirm_all" })).status).toBe(200);
+    expect(await namesChangedSince(h.db, sid, namesAt)).toBe(false);
+    await post(sid, { action: "anonymous", speakerId: "B" });
+    expect(await namesChangedSince(h.db, sid, namesAt)).toBe(true);
+    await tick();
+    expect(await namesChangedSince(h.db, sid, await version(sid))).toBe(false); // a later version was written with these names
+    const p2 = await createCustomPerson(h.db, { displayName: "Jonas Novo", createdBy: OWNER_ID });
+    await post(sid, { action: "assign", speakerId: "A", personId: p2.id });
+    expect(await namesChangedSince(h.db, sid, namesAt)).toBe(true);
   });
 });
 
