@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { JOB_OPTIONS, OWNER_ID, QUEUES, exportChecklist, type ProfileId } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, exportChecklist, peopleInRange, type ProfileId } from "@digestor/core";
 import {
-  claimClipRender, claimTrackBurn, getMoment, listClips, listTracks, setClipRenderStatus, setTrackBurnStatus,
+  claimClipRender, claimTrackBurn, getMoment, getTranscript, listAttributions, listClips, listTracks, setClipRenderStatus, setTrackBurnStatus,
 } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
@@ -39,6 +39,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (wanted.some((c) => c === undefined)) return errorResponse(400, "Choose clips from this video.");
   const profile = (session.profile ?? "other") as ProfileId;
 
+  // attributions and transcript words are read once for all clips
+  const [atts, transcript] = await Promise.all([listAttributions(db, id), getTranscript(db, id)]);
+  const words = transcript?.words ?? [];
+
   const blocked: { clipId: string; failing: string[] }[] = [];
   const exportable = [];
   for (const clip of wanted) {
@@ -46,7 +50,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     const moment = clip.momentId ? await getMoment(db, clip.momentId) : null;
     if (moment && moment.checks === null) await sendMomentCheckQuietly(db, boss, moment.id);
     const tracks = await listTracks(db, clip.id);
-    const failing = exportChecklist({ clip, moment, tracks, profile }).filter((i) => !i.ok).map((i) => i.id);
+    const failing = exportChecklist({ clip, moment, tracks, profile, speakers: peopleInRange(words, atts, clip) }).filter((i) => !i.ok).map((i) => i.id);
     if (failing.length > 0) blocked.push({ clipId: clip.id, failing });
     else exportable.push({ clip, tracks });
   }

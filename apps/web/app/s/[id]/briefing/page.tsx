@@ -8,7 +8,7 @@ import {
 import { AppBar } from "@/components/AppBar";
 import { FullBriefing } from "@/components/Briefing/FullBriefing";
 import { earlierSelections, momentExcerpt, speakerOptions } from "@/lib/briefingData";
-import { loadNames } from "@/lib/namesServer";
+import { loadNames, namesChangedSince } from "@/lib/namesServer";
 import { rangeVoices, voiceLabel, whosWhoRows } from "@/lib/names";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
@@ -50,6 +50,7 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const analysisId = bundle.version.id;
+  const namesChanged = await namesChangedSince(db, id, bundle.version.namesAt);
   const [personal, selections, byVersion, transcript, names] = await Promise.all([
     listPersonalMoments(db, OWNER_ID, analysisId),
     listSelections(db, OWNER_ID, id),
@@ -89,6 +90,7 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
       selections={current}
       speakers={speakerOptions(words, moments.flatMap((m) => m.speakers)).map((s) => ({ ...s, name: voiceLabel(names, s.id, 0, sensitive).text }))}
       names={names}
+      namesChanged={namesChanged}
       whoRows={whosWhoRows(names, words)}
       voices={voices}
       sensitive={sensitive}

@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import {
-  approveTrack, createClip, createTrack, getClip, getTrack, requestTrackBurn, setMomentChecks, setTrackCues, updateClip,
-  updateSession,
+  approveTrack, createClip, createTrack, createCustomPerson, getClip, getTrack, replaceAiAttributions, requestTrackBurn, setHumanAttribution,
+  setMomentChecks, setTrackCues, updateClip, updateSession,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
@@ -24,10 +24,12 @@ const clean = {
 const sends = (queue: string) => h.send.mock.calls.filter((c) => c[0] === queue);
 
 /** A session with two clips; the first passes the checklist, the second has no checks, credit or acknowledgement. */
-async function twoClips() {
+async function twoClips(voiceNamed = true) {
   const { sessionId, moments } = await seedReadySession(h.db, [[10_000, 30_000], [40_000, 60_000]]);
   const mk = (i: number) =>
     createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: moments[i]!.id, startMs: 10_000 + i * 30_000, endMs: 30_000 + i * 30_000, actor: "user" });
+  // the one voice of the transcript is marked "no name", so the speaker item passes unless a test changes that
+  if (voiceNamed) await setHumanAttribution(h.db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: null, ownerId: OWNER_ID });
   const good = await mk(0);
   const bad = await mk(1);
   await setMomentChecks(h.db, moments[0]!.id, clean);
@@ -134,5 +136,20 @@ describe("POST /api/sessions/[id]/export", () => {
     expect((await post("nope", { clipIds: [good.id] })).status).toBe(404);
     await updateSession(h.db, sessionId, { stage: "finding_moments" });
     expect((await post(sessionId, { clipIds: [good.id] })).status).toBe(409);
+  });
+
+  it("export route refuses a clip with an unconfirmed speaker", async () => {
+    const { sessionId, good } = await twoClips(false);
+    const person = await createCustomPerson(h.db, { displayName: "Lula", createdBy: OWNER_ID });
+    await replaceAiAttributions(h.db, sessionId, "transcript", [
+      { speakerId: "A", startMs: null, endMs: null, personId: person.id, status: "proposed", confidence: 0.6, evidence: { kind: "none" } },
+    ]);
+    await updateClip(h.db, good.id, { warningsAck: true }, "user"); // an acknowledgement can't wave it through
+    const res = await post(sessionId, { clipIds: [good.id] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).blocked).toEqual([{ clipId: good.id, failing: ["speaker"] }]);
+    expect(sends(QUEUES.renderClip)).toHaveLength(0);
+    await setHumanAttribution(h.db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: person.id, ownerId: OWNER_ID });
+    expect((await post(sessionId, { clipIds: [good.id] })).status).toBe(200);
   });
 });

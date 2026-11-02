@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  PROFILES, checksForClip, exportChecklist, formatLength, formatTimestamp, type ClipFormat, type MomentChecks, type ProfileId, type Range,
+  PROFILES, checksForClip, exportChecklist, formatLength, formatTimestamp, peopleInRange, type ClipFormat, type MomentChecks, type ProfileId, type Range,
 } from "@digestor/core";
 import { SpeakerName } from "@/components/Names/SpeakerName";
-import type { NamesData, Voice } from "@/lib/names";
+import { unconfirmedVoices, type NamesData, type Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { fetchChecks, fetchTracks, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
@@ -37,6 +37,8 @@ export interface PrepareClipData {
   canUndo: boolean;
   /** Who speaks in the clip's current range (longest first). */
   voices: Voice[];
+  /** Who speaks where in the trim window (clip ± 30 s), the least the speaker check needs to follow a trim. */
+  speakerWords: { startMs: number; endMs: number; speaker: string }[];
   thumbUrl: string | null;
 }
 
@@ -231,6 +233,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
         moment: i.momentRange ? { ...i.momentRange, checks: i.checks } : null,
         tracks: i.tracks.map((tr) => ({ status: tr.status, burnStatus: tr.burnStatus, approvedAt: tr.approved ? new Date(0) : null })),
         profile: session.profile,
+        speakers: peopleInRange(i.speakerWords, names.attributions, i.clip),
       }),
     ]),
   );
@@ -483,6 +486,12 @@ function ClipCard({
             <Checklist
               clipId={clip.id}
               items={checklist}
+              unconfirmed={unconfirmedVoices(names, item.speakerWords, clip, PROFILES[session.profile].sensitive)}
+              names={names}
+              sessionId={session.id}
+              range={{ startMs: clip.startMs, endMs: clip.endMs }}
+              language={lang}
+              frozen={frozen}
               protectedAck={clip.protectedAck}
               busy={busy}
               onProtected={(v) => void onChange({ protectedAck: v })}

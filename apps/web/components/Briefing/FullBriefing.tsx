@@ -36,6 +36,8 @@ export interface FullBriefingProps {
   selections: Record<string, SelectionStatus>;
   speakers: SpeakerOption[];
   names: NamesData;
+  /** A name changed after this analysis was written. */
+  namesChanged: boolean;
   whoRows: WhosWhoRow[];
   /** Who to show per moment id (longest speaking first). */
   voices: Record<string, Voice[]>;
@@ -68,7 +70,7 @@ const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: r
  * Full briefing: every moment of the session by topic, with instant on-screen filters (kept in the URL), keyboard
  * triage (A/N/R, E, ↓/↑) and "Confirm selection → Prepare clips". Render it with `key={analysis.id}`.
  */
-export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, speakers, names, whoRows, voices, sensitive, types, earlier }: FullBriefingProps) {
+export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, speakers, names, namesChanged, whoRows, voices, sensitive, types, earlier }: FullBriefingProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lang = session.language ?? undefined;
@@ -273,6 +275,14 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
             {earlier.count === 1
               ? t("briefing.earlierOne", { version: earlier.version })
               : t("briefing.earlierMany", { n: earlier.count, version: earlier.version })}
+          </p>
+        )}
+        {namesChanged && (
+          <p role="status" className={`${NOTICE} border-border bg-white text-foreground`}>
+            {t("names.changedNotice")}{" "}
+            <Link href={`/s/${session.id}?reanalyze=1`} className="font-medium underline underline-offset-2">
+              {t("names.reanalyse")}
+            </Link>
           </p>
         )}
         {session.videoRemoved && (

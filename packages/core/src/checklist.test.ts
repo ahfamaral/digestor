@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "./analysisTypes.ts";
+import { peopleInRange, type Attribution } from "./attribution.ts";
+import type { Word } from "./schemas.ts";
 import { checksForClip, exportChecklist } from "./checklist.ts";
 
 const clean: MomentChecks = {
@@ -10,12 +12,12 @@ const moment = (checks: MomentChecks | null) => ({ startMs: 10_000, endMs: 40_00
 type Over = Partial<Omit<Parameters<typeof exportChecklist>[0], "moment">> & { checks?: MomentChecks | null };
 const run = ({ checks = clean, ...over }: Over = {}) =>
   Object.fromEntries(
-    exportChecklist({ clip, moment: moment(checks), tracks: [], profile: "interview", ...over }).map((i) => [i.id, i.ok]),
+    exportChecklist({ clip, moment: moment(checks), tracks: [], profile: "interview", speakers: [], ...over }).map((i) => [i.id, i.ok]),
   );
 
 describe("exportChecklist", () => {
   it("passes a clean clip", () => {
-    expect(run()).toEqual({ argument: true, context: true, flags: true, subtitles: true, credit: true });
+    expect(run()).toEqual({ argument: true, context: true, flags: true, subtitles: true, credit: true, speaker: true });
   });
   it("argument: needs a complete argument or an acknowledgement", () => {
     expect(run({ checks: { ...clean, argumentComplete: false } }).argument).toBe(false);
@@ -55,7 +57,7 @@ describe("exportChecklist", () => {
     const trimmed = { ...clip, endMs: 38_000 };
     expect(run({ clip: trimmed })).toMatchObject({ argument: false, context: false, flags: false });
     expect(run({ clip: { ...trimmed, warningsAck: true } })).toMatchObject({ argument: true, context: true, flags: true });
-    expect(exportChecklist({ clip: trimmed, moment: null, tracks: [], profile: "interview" }).find((i) => i.id === "argument")?.ok).toBe(false);
+    expect(exportChecklist({ clip: trimmed, moment: null, tracks: [], profile: "interview", speakers: [] }).find((i) => i.id === "argument")?.ok).toBe(false);
   });
   it("checksForClip says whether the checks belong to this cut", () => {
     expect(checksForClip(clip, moment(clean))).toEqual({ checks: clean, originalCut: false });
@@ -72,5 +74,38 @@ describe("exportChecklist", () => {
     expect("protected" in run({ profile: "interview" })).toBe(false);
     expect(run({ profile: "trial" }).protected).toBe(false);
     expect(run({ profile: "trial", clip: { ...clip, protectedAck: true } }).protected).toBe(true);
+  });
+
+  describe("speaker", () => {
+    const att = (o: Partial<Attribution>): Attribution => ({
+      id: Math.random().toString(), sessionId: "S", speakerId: "C", startMs: null, endMs: null, personId: "P1", source: "transcript",
+      status: "proposed", confidence: 0.5, evidence: { kind: "none" }, createdBy: "owner", createdAt: new Date(2026, 10, 2), supersededAt: null, ...o,
+    });
+    const voice = (speakerId: string, startMs: number, endMs: number): Word => ({ text: "x", startMs, endMs, speaker: speakerId, confidence: 1 });
+    const speakerOk = (atts: Attribution[], words: Word[], over: Partial<typeof clip> = {}) => {
+      const c = { ...clip, ...over };
+      return run({ clip: c, speakers: peopleInRange(words, atts, c) }).speaker;
+    };
+    const words = [voice("A", 10_000, 25_000), voice("C", 25_000, 40_000)];
+
+    it("passes only for confirmed or anonymous voices", () => {
+      expect(speakerOk([att({ status: "proposed" })], words)).toBe(false);
+      expect(speakerOk([att({ status: "proposed" })], words, { warningsAck: true })).toBe(false);
+      expect(speakerOk([att({ status: "proposed", personId: "P1" }), att({ source: "human", status: "confirmed", personId: "P2" }), att({ source: "human", status: "confirmed", personId: "P3", speakerId: "A" })], words)).toBe(true);
+      expect(speakerOk([att({ source: "human", status: "anonymous", personId: null }), att({ source: "human", status: "anonymous", personId: null, speakerId: "A" })], words)).toBe(true);
+      expect(speakerOk([], words)).toBe(false); // unnamed
+      const two = [
+        att({ source: "caption", status: "proposed", personId: "P1" }), att({ source: "transcript", status: "proposed", personId: "P2" }),
+        att({ source: "human", status: "confirmed", personId: "P3", speakerId: "A" }),
+      ];
+      expect(speakerOk(two, words)).toBe(false); // conflict
+    });
+    it("follows the clip's bounds", () => {
+      const atts = [att({ source: "human", status: "confirmed", personId: "P3", speakerId: "A" })];
+      const w = [voice("A", 0, 10_000), voice("C", 14_000, 20_000)];
+      expect(speakerOk(atts, w, { startMs: 0, endMs: 10_000 })).toBe(true);
+      expect(speakerOk(atts, w, { startMs: 0, endMs: 20_000 })).toBe(false);
+      expect(speakerOk(atts, w, { startMs: 0, endMs: 10_000 })).toBe(true);
+    });
   });
 });

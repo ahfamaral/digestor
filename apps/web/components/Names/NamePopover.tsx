@@ -32,6 +32,7 @@ export function NamePopover({
   startChanging = false,
   rangeOnly = false,
   confirmBody,
+  offerNoName = false,
 }: {
   sessionId: string;
   speakerId: string;
@@ -45,6 +46,8 @@ export function NamePopover({
   rangeOnly?: boolean;
   /** What Confirm sends instead of a whole-voice confirm (a ranged proposal confirms as a ranged assignment). */
   confirmBody?: Record<string, unknown>;
+  /** Offer "No name" for a voice with no name too (the export check needs it confirmed or marked "no name"). */
+  offerNoName?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -169,7 +172,7 @@ export function NamePopover({
                 >
                   {t("names.change")}
                 </button>
-                {label.badge !== null && (
+                {(label.badge !== null || offerNoName) && (
                   <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "anonymous", speakerId, ...part })}>
                     {t("names.noName")}
                   </button>

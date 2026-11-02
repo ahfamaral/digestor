@@ -192,7 +192,7 @@ async function loadBundle(db: Db, v: AnalysisVersion): Promise<AnalysisBundle> {
   const withHighlights: MomentWithHighlights[] = momentRows.map((m) => ({ ...m, highlights: byMoment.get(m.id) ?? [] }));
   const b = briefingRow[0];
   return {
-    version: { id: v.id, version: v.version, reason: v.reason, status: v.status, createdAt: v.createdAt, profile: v.profile },
+    version: { id: v.id, version: v.version, reason: v.reason, status: v.status, createdAt: v.createdAt, profile: v.profile, namesAt: v.namesAt },
     topics: topicRows,
     moments: withHighlights,
     briefing: b ? { lead: b.lead, sections: b.sections } : null,

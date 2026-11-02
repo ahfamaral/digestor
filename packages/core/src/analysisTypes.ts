@@ -53,6 +53,8 @@ export interface AnalysisVersion {
   promptVersions: Record<string, string>;
   reason: string;
   isCurrent: boolean;
+  /** When the session's names stood as this version's text was written. */
+  namesAt: Date;
   createdAt: Date;
 }
 
@@ -95,7 +97,7 @@ export interface MomentHighlight {
 export type MomentWithHighlights = Moment & { highlights: MomentHighlight[] };
 
 export interface AnalysisBundle {
-  version: Pick<AnalysisVersion, "id" | "version" | "reason" | "status" | "createdAt" | "profile">;
+  version: Pick<AnalysisVersion, "id" | "version" | "reason" | "status" | "createdAt" | "profile" | "namesAt">;
   topics: Topic[];
   moments: MomentWithHighlights[];
   briefing: BriefingContent | null;

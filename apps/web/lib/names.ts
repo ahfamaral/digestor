@@ -1,5 +1,5 @@
 import {
-  peopleInRange, personAt, speakerLabel, turnsOf,
+  peopleInRange, personAt, speakerLabel, turnsOf, unconfirmedSpeakers,
   type Attribution, type AttributionSource, type Person, type Range, type Resolution, type Word,
 } from "@digestor/core";
 import { t } from "./i18n";
@@ -22,16 +22,17 @@ export function voiceLabel(names: NamesData, speakerId: string, atMs: number, se
 /** Voices speaking long enough inside `r` (no interjections), longest first; `atMs` is where the voice first speaks there. */
 export function momentPeople(
   names: NamesData,
-  words: Word[],
+  words: Pick<Word, "startMs" | "endMs" | "speaker">[],
   r: Range,
   sensitive: boolean,
-): { speakerId: string; label: VoiceLabel; ms: number; atMs: number }[] {
+): { speakerId: string; label: VoiceLabel; resolution: Resolution; ms: number; atMs: number }[] {
   const persons = personMap(names);
   const key = (res: Resolution, speakerId: string) =>
     res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : `none:${speakerId}`;
   return peopleInRange(words, names.attributions, r).map(({ speakerId, resolution, ms }) => ({
     speakerId,
     label: speakerLabel(resolution, persons, speakerId, sensitive),
+    resolution,
     ms,
     // Where this name (not just this voice) first speaks in the range, so each entry resolves to its own name.
     atMs:
@@ -41,6 +42,16 @@ export function momentPeople(
           key(personAt(names.attributions, speakerId, w.startMs), speakerId) === key(resolution, speakerId),
       )?.startMs ?? r.startMs,
   }));
+}
+
+/** Voices of a range whose name still needs confirming (a proposal, a conflict, or no name at all), longest first. */
+export function unconfirmedVoices(
+  names: NamesData,
+  words: Pick<Word, "startMs" | "endMs" | "speaker">[],
+  r: Range,
+  sensitive: boolean,
+): { speakerId: string; label: VoiceLabel; atMs: number }[] {
+  return unconfirmedSpeakers(momentPeople(names, words, r, sensitive)).map(({ speakerId, label, atMs }) => ({ speakerId, label, atMs }));
 }
 
 /** The exact badge copy for a source. */
@@ -72,7 +83,7 @@ export interface Voice {
  * The voices shown for a range: those speaking long enough, longest first. A range too short for any voice to count
  * (a punchline) shows the voices in `fallback` instead, resolved at the range start.
  */
-export function rangeVoices(names: NamesData, words: Word[], r: Range, sensitive: boolean, fallback: string[] = []): Voice[] {
+export function rangeVoices(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], r: Range, sensitive: boolean, fallback: string[] = []): Voice[] {
   const people = momentPeople(names, words, r, sensitive);
   if (people.length > 0) return people.map(({ speakerId, atMs }) => ({ speakerId, atMs }));
   return fallback.map((speakerId) => ({ speakerId, atMs: r.startMs }));

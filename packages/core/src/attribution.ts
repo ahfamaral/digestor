@@ -97,7 +97,7 @@ function resolutionKey(res: Resolution, speakerId: string): string {
 
 /** Voices speaking at least `minMs` inside `r`, longest first. */
 export function peopleInRange(
-  words: Word[],
+  words: Pick<Word, "startMs" | "endMs" | "speaker">[],
   atts: Attribution[],
   r: Range,
   minMs: number = FOCUS_MIN_MS,

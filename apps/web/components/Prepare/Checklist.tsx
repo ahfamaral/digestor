@@ -1,7 +1,9 @@
 "use client";
 
-import type { ChecklistId } from "@digestor/core";
+import type { ChecklistId, Range } from "@digestor/core";
 import { Check, Circle } from "lucide-react";
+import { NamePopover } from "@/components/Names/NamePopover";
+import type { NamesData, VoiceLabel } from "@/lib/names";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -11,12 +13,20 @@ export interface ChecklistProps {
   /** `exportChecklist` items; `protected` is present for the trial profile only. */
   items: { id: ChecklistId; ok: boolean }[];
   protectedAck: boolean;
+  /** Voices of the clip whose name is not confirmed; they say who is missing in the `speaker` item. */
+  unconfirmed: { speakerId: string; label: VoiceLabel; atMs: number }[];
+  names: NamesData;
+  sessionId: string;
+  range: Range;
+  language?: string;
+  /** The video was removed: names can't be changed from here. */
+  frozen?: boolean;
   busy: boolean;
   onProtected: (ack: boolean) => void;
 }
 
 /** The pre-export checklist of one clip (spec §9.4). The trial item is the acknowledgement itself. */
-export function Checklist({ clipId, items, protectedAck, busy, onProtected }: ChecklistProps) {
+export function Checklist({ clipId, items, unconfirmed, names, sessionId, range, language, frozen, protectedAck, busy, onProtected }: ChecklistProps) {
   return (
     <section aria-labelledby={`checklist-h-${clipId}`}>
       <h3 id={`checklist-h-${clipId}`} className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -41,6 +51,34 @@ export function Checklist({ clipId, items, protectedAck, busy, onProtected }: Ch
               <span>
                 {t(`prepare.item.${item.id}`)}
                 <span className="sr-only">: {item.ok ? t("prepare.itemOk") : t("prepare.itemTodo")}</span>
+                {item.id === "speaker" && !item.ok && (
+                  <ul className="mt-1 grid gap-1">
+                    {unconfirmed.map((v) => (
+                      <li key={`${v.speakerId}:${v.atMs}`} className="flex flex-wrap items-center gap-2 text-foreground">
+                        <span lang={v.label.badge ? language : undefined} dir="auto">
+                          {t("prepare.speakerNotConfirmed", { label: v.label.text })}
+                        </span>
+                        <NamePopover
+                          sessionId={sessionId}
+                          speakerId={v.speakerId}
+                          label={v.label}
+                          names={names}
+                          range={range}
+                          offerNoName
+                          trigger={
+                            <button
+                              type="button"
+                              disabled={busy || frozen}
+                              className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
+                            >
+                              {t("prepare.confirmNames")}
+                            </button>
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </span>
             </li>
           ),

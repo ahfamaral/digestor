@@ -23,6 +23,8 @@ export interface ExportClipData {
   endMs: number;
   /** Checklist items that don't hold yet. Empty = ready to export. */
   failing: ChecklistId[];
+  /** Voices of the clip whose name is not confirmed yet, as the screens show them ("Speaker C"). */
+  unconfirmed: string[];
   /** Who speaks in the clip (longest first). */
   voices: Voice[];
   row: ExportRow;
@@ -205,9 +207,13 @@ function ClipRow({
         <div className="mt-2 text-[13px]">
           <p className="font-medium">{t("exportScreen.needsAttention")}</p>
           <ul className="mt-1 list-disc pl-5 text-muted-foreground">
-            {clip.failing.map((id) => (
-              <li key={id}>{t(`prepare.item.${id}`)}</li>
-            ))}
+            {clip.failing.map((id) =>
+              id === "speaker" && clip.unconfirmed.length > 0 ? (
+                <li key={id}>{clip.unconfirmed.map((label) => t("prepare.speakerNotConfirmed", { label })).join(" · ")}</li>
+              ) : (
+                <li key={id}>{t(`prepare.item.${id}`)}</li>
+              ),
+            )}
           </ul>
           <Link href={`/s/${sessionId}/prepare`} className="mt-1.5 inline-block text-foreground underline underline-offset-2">
             {t("exportScreen.fixInPrepare")}

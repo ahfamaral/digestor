@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { OWNER_ID, PROFILES, exportChecklist } from "@digestor/core";
+import { OWNER_ID, PROFILES, exportChecklist, peopleInRange } from "@digestor/core";
 import { getMoment, getSession, getTranscript, listClips, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { ExportList, type ExportClipData } from "@/components/ExportList";
@@ -8,7 +8,7 @@ import { exportRows } from "@/lib/exportRows";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
 import { loadNames } from "@/lib/namesServer";
-import { rangeVoices } from "@/lib/names";
+import { rangeVoices, unconfirmedVoices } from "@/lib/names";
 import { getServer } from "@/lib/server";
 
 /** Export: checklist status, render start and downloads per clip. Reads the DB per request (inside Suspense). */
@@ -34,7 +34,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
   const data: ExportClipData[] = await Promise.all(
     clips.map(async (clip) => {
       const [moment, tracks] = await Promise.all([clip.momentId ? getMoment(db, clip.momentId) : null, listTracks(db, clip.id)]);
-      const failing = exportChecklist({ clip, moment, tracks, profile })
+      const failing = exportChecklist({ clip, moment, tracks, profile, speakers: peopleInRange(transcript?.words ?? [], names.attributions, clip) })
         .filter((i) => !i.ok)
         .map((i) => i.id);
       return {
@@ -43,6 +43,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         startMs: clip.startMs,
         endMs: clip.endMs,
         failing,
+        unconfirmed: unconfirmedVoices(names, transcript?.words ?? [], clip, sensitive).map((v) => v.label.text),
         voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
         row: exportRows([clip], tracks)[0]!,
       };

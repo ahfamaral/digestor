@@ -72,6 +72,11 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
         points: cutPoints(boundaries, view.viewStart, view.viewEnd),
         canUndo: canUndo(events),
         voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
+        speakerWords: transcript
+          ? transcript.words
+              .filter((w) => w.endMs > view.viewStart && w.startMs < view.viewEnd)
+              .map((w) => ({ startMs: w.startMs, endMs: w.endMs, speaker: w.speaker }))
+          : [],
         thumbUrl: moment?.thumbKey ? `/api/files/${id}/thumbs/${moment.id}.jpg` : null,
       };
     }),

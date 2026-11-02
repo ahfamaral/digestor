@@ -127,6 +127,8 @@ export const en = {
     bannerDismiss: "Dismiss context summary",
   },
   names: {
+    changedNotice: "Names changed after this analysis was written. AI text may use earlier names.",
+    reanalyse: "Re-analyse",
     badge: {
       record: "from record",
       caption: "from caption",
@@ -482,7 +484,10 @@ export const en = {
       subtitles: "Subtitles approved for every burned language",
       credit: "Credit line added",
       protected: "I checked that no protected person (witness, victim or minor) can be identified.",
+      speaker: "Every speaker confirmed or marked “no name”",
     },
+    speakerNotConfirmed: "{label} is not confirmed",
+    confirmNames: "Confirm names",
     itemOk: "done",
     itemTodo: "to do",
     readyCount: "{n} of {total} clips ready to export",

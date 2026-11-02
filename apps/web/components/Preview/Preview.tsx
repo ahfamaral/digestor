@@ -40,6 +40,10 @@ export interface PreviewProps {
   /** How many of the speakers have a name to show. */
   named: number;
   names: NamesData;
+  /** A name changed after this analysis was written. */
+  namesChanged: boolean;
+  /** Open the re-analysis dialog at once (the Full briefing's notice links here). */
+  openReanalyze?: boolean;
   /** Who's who rows (voice and name, longest first). */
   whoRows: WhosWhoRow[];
   /** Who to show per moment id. */
@@ -64,7 +68,7 @@ const prefersReducedMotion = () => typeof window !== "undefined" && window.match
  * Preview, the proof step (render it with `key={analysis.id}` so a new analysis version starts with fresh state): header, session timeline, top highlight cards and the grounded briefing, with
  * "Looks right → Full briefing" and "Something's off" (re-run with another profile, or report a problem).
  */
-export function Preview({ session, analysis, speakers, named, names, whoRows, voices, topics, moments, briefing, card }: PreviewProps) {
+export function Preview({ session, analysis, speakers, named, names, namesChanged, openReanalyze = false, whoRows, voices, topics, moments, briefing, card }: PreviewProps) {
   const router = useRouter();
   const lang = session.language ?? undefined;
   const sensitive = PROFILES[analysis.profile].sensitive;
@@ -153,7 +157,7 @@ export function Preview({ session, analysis, speakers, named, names, whoRows, vo
   }, [flash]);
 
   const [offOpen, setOffOpen] = useState(false);
-  const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
+  const [reanalyzeOpen, setReanalyzeOpen] = useState(openReanalyze && !analysis.running);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSent, setReportSent] = useState(false);
   const targets = useMemo(() => previewTargets(analysis.id, sections), [analysis.id, sections]);
@@ -216,6 +220,14 @@ export function Preview({ session, analysis, speakers, named, names, whoRows, vo
       {analysis.failedVersion !== null && !analysis.running && (
         <p role="alert" className={`${NOTICE} border-border bg-white text-red-700`}>
           {t("preview.rerunFailed")}
+        </p>
+      )}
+      {namesChanged && (
+        <p role="status" className={`${NOTICE} border-border bg-white text-foreground`}>
+          {t("names.changedNotice")}{" "}
+          <button type="button" onClick={() => setReanalyzeOpen(true)} className="font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
+            {t("names.reanalyse")}
+          </button>
         </p>
       )}
       {session.videoRemoved && (
