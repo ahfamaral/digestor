@@ -40,6 +40,12 @@ export const PUNCHLINE_EVERY_MS = 45_000;
 export const MAX_MOMENTS = 250;
 /** Cost cap (Ruling R9): only the most relevant exchanges session-wide get a punchline call. */
 export const MAX_PUNCHLINE_PARENTS = 40;
+/** Stretches between exchanges shorter than this get no punchline call. */
+export const MIN_GAP_MS = 30_000;
+/** A longer stretch is split into equal windows of at most this, about one long exchange each. */
+export const MAX_GAP_WINDOW_MS = 6 * 60_000;
+/** Cost cap: only this many stretches outside exchanges get a punchline call, longest first. */
+export const MAX_GAP_CALLS = 20;
 /** Slack when checking that a model range lies inside its topic/exchange; the result is clamped to the parent anyway. */
 const WITHIN_SLACK_MS = 2_000;
 
@@ -216,6 +222,35 @@ export function punchlineCap(exchange: Range): number {
   return Math.min(MAX_PUNCHLINES_PER_EXCHANGE, Math.max(MIN_PUNCHLINES_PER_EXCHANGE, n));
 }
 
+/**
+ * The stretches of each topic that no exchange covers, as windows for a punchline call: at least `MIN_GAP_MS`,
+ * longer ones split into equal windows of at most `MAX_GAP_WINDOW_MS`. A punchline is only looked for inside
+ * an exchange or one of these, so without them a sharp line between exchanges is never found.
+ */
+export function gapsBetween<T extends Range>(topics: T[], exchanges: Range[]): { topic: T; startMs: number; endMs: number }[] {
+  const sorted = [...exchanges].sort((x, y) => x.startMs - y.startMs);
+  const out: { topic: T; startMs: number; endMs: number }[] = [];
+  for (const topic of topics) {
+    const free: Range[] = [];
+    let cursor = topic.startMs;
+    for (const ex of sorted) {
+      if (ex.endMs <= topic.startMs || ex.startMs >= topic.endMs) continue;
+      if (ex.startMs > cursor) free.push({ startMs: cursor, endMs: ex.startMs });
+      cursor = Math.max(cursor, ex.endMs);
+    }
+    if (topic.endMs > cursor) free.push({ startMs: cursor, endMs: topic.endMs });
+    for (const g of free) {
+      const length = g.endMs - g.startMs;
+      if (length < MIN_GAP_MS) continue;
+      const n = Math.ceil(length / MAX_GAP_WINDOW_MS);
+      for (let i = 0; i < n; i++) {
+        out.push({ topic, startMs: g.startMs + Math.round((length * i) / n), endMs: g.startMs + Math.round((length * (i + 1)) / n) });
+      }
+    }
+  }
+  return out;
+}
+
 export function buildPunchlinesPrompt(a: { card: ContextCard; exchange: Range & { title: string }; words: Word[] }): {
   system: string;
   user: string;
@@ -234,6 +269,29 @@ export function buildPunchlinesPrompt(a: { card: ContextCard; exchange: Range & 
     "",
     "Transcript of the exchange:",
     renderTranscript(toSentences(sliceWords(a.words, a.exchange))),
+  ].join("\n");
+  return { system, user };
+}
+
+/** The same task for a stretch of a topic between exchanges (`gapsBetween`). */
+export function buildGapPunchlinesPrompt(a: { card: ContextCard; topic: { title: string }; gap: Range; words: Word[] }): {
+  system: string;
+  user: string;
+} {
+  const system = commonSystem(a.card, "You are an editor who finds the sharpest short punchlines inside one stretch of a video.", [
+    "Every punchline must lie entirely inside the stretch's time range.",
+    "Never start or end a punchline in the middle of a sentence.",
+    `Each punchline has granularity punchline and is ${range("punchline")}; at most ${punchlineCap(a.gap)}. If nothing in the stretch is sharp, return none.`,
+    `Write every title and why in ${languageName(a.card)}.`,
+    ORDER_RULE,
+    "Put in evidence short verbatim quotes from the transcript that justify the punchline.",
+    TIMESTAMP_RULE,
+  ]);
+  const user = [
+    `Stretch of the topic "${a.topic.title}" between exchanges, from ${formatTimestamp(a.gap.startMs)} to ${formatTimestamp(a.gap.endMs)}.`,
+    "",
+    "Transcript of the stretch:",
+    renderTranscript(toSentences(sliceWords(a.words, a.gap))),
   ].join("\n");
   return { system, user };
 }
@@ -297,40 +355,61 @@ export async function findMoments(
   });
   const pool: Node[] = perTopic.flat();
 
-  // Pass B: punchlines, one call per kept exchange.
+  // Pass B: punchlines, one call per kept exchange and per stretch between them (longest first, capped).
   const exchanges = pool
     .filter((n) => n.granularity === "exchange")
     .sort((x, y) => y.relevance - x.relevance || x.startMs - y.startMs)
     .slice(0, MAX_PUNCHLINE_PARENTS);
+  const passages = pool.filter((n) => n.granularity === "passage");
+  const gaps = gapsBetween(a.topics, exchanges)
+    .sort((x, y) => y.endMs - y.startMs - (x.endMs - x.startMs) || x.startMs - y.startMs)
+    .slice(0, MAX_GAP_CALLS);
+  type Span = { within: Range; label: string; name: string; prompt: { system: string; user: string }; topicId: string | null; parent?: Node };
+  const spans: Span[] = [
+    ...exchanges.map((ex) => ({
+      within: ex,
+      label: ex.title,
+      name: "punchlines",
+      prompt: buildPunchlinesPrompt({ card: a.card, exchange: ex, words }),
+      topicId: ex.topicId,
+      parent: ex,
+    })),
+    ...gaps.map((g) => ({
+      within: g,
+      label: `${g.topic.title} ${formatTimestamp(g.startMs)}`,
+      name: "gap_punchlines",
+      prompt: buildGapPunchlinesPrompt({ card: a.card, topic: g.topic, gap: g, words }),
+      topicId: g.topic.id,
+    })),
+  ];
   let keyError: MissingApiKeyError | null = null; // once set, the pool issues no further calls
-  const perExchange = await mapPool(exchanges, PASS_CONCURRENCY, async (ex): Promise<Node[]> => {
+  const perSpan = await mapPool(spans, PASS_CONCURRENCY, async (sp): Promise<Node[]> => {
     if (keyError) return [];
     try {
-      const res = await llm.generate({
-        schema: PunchlinesOutput,
-        name: "punchlines",
-        ...buildPunchlinesPrompt({ card: a.card, exchange: ex, words }),
-        model: "reasoning",
-      });
+      const res = await llm.generate({ schema: PunchlinesOutput, name: sp.name, ...sp.prompt, model: "reasoning" });
       return normalizeMoments(res.punchlines, {
         durationMs,
         boundaries,
-        within: ex,
+        within: sp.within,
         allowed: ["punchline"],
         types,
       })
-        .slice(0, punchlineCap(ex))
-        .map((d) => ({ ...toNode(d, ex.topicId), parent: ex }));
+        .slice(0, punchlineCap(sp.within))
+        .map((d) => {
+          // Between exchanges, a punchline nests under the passage it lies in, if any.
+          const i = sp.parent ? null : insideOf(d, passages);
+          return { ...toNode(d, sp.topicId), parent: sp.parent ?? (i !== null ? passages[i] : undefined) };
+        });
     } catch (err) {
       if (err instanceof MissingApiKeyError) {
         keyError ??= err;
         throw err; // deterministic: fail the session (Ruling R8)
       }
-      console.error(`[moments] punchline call failed for "${ex.title}":`, err);
+      console.error(`[moments] punchline call failed for "${sp.label}":`, err);
       return [];
     }
   });
-  pool.push(...perExchange.flat());
+  pool.push(...perSpan.flat());
 
   // Counted fact, not a cut suggestion: no upper length cap. Relevance 100 keeps it above AI picks in listings.
   const counted: Node[] = [];

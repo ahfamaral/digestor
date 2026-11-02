@@ -36,7 +36,7 @@ import { MODEL_IDS, type LLMModel, type StructuredLLM } from "../llm/structured.
 export const PROMPT_VERSIONS = {
   topics: "topics@1",
   moments: "moments@1",
-  punchlines: "punchlines@1",
+  punchlines: "punchlines@2", // per-exchange cap, and stretches between exchanges
   briefing: "briefing@1",
   checks: "checks@1",
 } as const;

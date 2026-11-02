@@ -147,6 +147,8 @@ describe("runAnalysis", () => {
       "moments@finding_moments:82",
       "punchlines@finding_moments:82",
       "punchlines@finding_moments:82",
+      "gap_punchlines@finding_moments:82",
+      "gap_punchlines@finding_moments:82",
       "briefing@writing_briefing:92",
       "checks@writing_briefing:92",
       "checks@writing_briefing:92",
@@ -162,7 +164,7 @@ describe("runAnalysis", () => {
       reason: "initial",
       profile: "interview",
       pipelineVersion: "2.0.0",
-      promptVersions: { topics: "topics@1", moments: "moments@1", punchlines: "punchlines@1", briefing: "briefing@1", checks: "checks@1" },
+      promptVersions: { topics: "topics@1", moments: "moments@1", punchlines: "punchlines@2", briefing: "briefing@1", checks: "checks@1" },
       models: {
         topics: "claude-sonnet-5-5",
         moments: "claude-sonnet-5-5",

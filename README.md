@@ -180,11 +180,22 @@ What the misses show:
 | Check warnings on traps, mid-argument / quoted opponent | 2/4 · 5/5 | 4/4 · 4/5 | 2/4 · 5/5 |
 | Moments found (exchange / passage / punchline) | 25 / 86 / 84 | 22 / 86 / 112 | 23 / 89 / 103 |
 
-Inside an exchange the fix works: long exchanges now get 6–8 punchlines and the hit rate rose from 73% to 84–88%. Overall punchline recall did not move, because a punchline can only be found inside an exchange, and how many golden punchlines the exchanges cover varies from run to run (17–22 of 26). Run-to-run noise is large in general: passage recall went from 20 to 26 between v3 and v4, with the same code and model. Single runs can't separate models that differ by a few moments; the next lever for punchlines is finding them outside exchanges too.
+Inside an exchange the fix works: long exchanges now get 6–8 punchlines and the hit rate rose from 73% to 84–88%. Overall punchline recall did not move, because a punchline can only be found inside an exchange, and how many golden punchlines the exchanges cover varies from run to run (17–22 of 26). Run-to-run noise is large in general: passage recall went from 20 to 26 between v3 and v4, with the same code and model. Single runs can't separate models that differ by a few moments.
+
+**Punchlines between exchanges.** Each topic's stretches that no exchange covers (at least 30 s, split into windows of at most 6 min, at most 20 calls, longest first) now get their own punchline call; such a punchline nests under the passage it lies in, if any (`gapsBetween`, prompt `punchlines@2`). Two Haiku runs:
+
+| Metric | Haiku v3 / v4 (exchanges only) | Haiku v5 | Haiku v6 |
+| --- | --- | --- | --- |
+| Moment recall, punchline | 18/26 · 16/26 | 18/26 | 21/26 |
+| Punchlines found (of them between exchanges) | 112 · 103 | 143 (42) | 143 (25) |
+| Moment recall, exchange / passage | 9 · 10 / 20 · 26 | 8/14 · 22/31 | 11/14 · 17/31 |
+| Moments in total | 220 · 215 | 240 | 250 (the cap) |
+
+Punchline recall rises from 16–18 to 18–21 of 26, and no golden punchline lies outside every call any more. The remaining misses are choices: of v5's 8, 6 sit inside an exchange and 2 in a gap window whose call picked a neighbouring line, and two overlap a found punchline by 36–45%, just under the 50% that counts. A run cost about $0.13–0.15 with or without the extra calls; the real cost is more punchlines to triage. v6 hit the 250-moment cap; it cut moments below relevance 35–40, which the briefing would list last anyway.
 
 The context check also kept dropping a human answer: replaying the round-1 call six times, the model once quoted the answer loosely as evidence, and the verbatim check threw the correct date away, so the date question came back. Grounding now keeps a human-sourced value whose words appear in the human's answers, however the model quoted them. The eval doesn't cover this step (re-analysis reuses the context card); the replayed case is a unit test.
 
-Cost of the replays, both runs and their checks on OpenRouter: about $0.32.
+Cost of the replays, the four runs and their checks on OpenRouter: about $0.60.
 
 Attribution accuracy (speaker names) comes with Plan 3. The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script.
 

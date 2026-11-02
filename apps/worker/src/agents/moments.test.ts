@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Boundary, ContextCard, Fact, Topic, Transcript, Word } from "@digestor/core";
-import { PASS_CONCURRENCY, buildPunchlinesPrompt, findMoments, normalizeMoments, punchlineCap } from "./moments.js";
+import { MAX_GAP_CALLS, PASS_CONCURRENCY, buildPunchlinesPrompt, findMoments, gapsBetween, normalizeMoments, punchlineCap } from "./moments.js";
 import { FakeLLM, type StructuredLLM } from "../llm/structured.js";
 import { MissingApiKeyError } from "../errors.js";
 
@@ -225,6 +225,54 @@ describe("findMoments", () => {
     const words = makeTranscript().words;
     const short = buildPunchlinesPrompt({ card: card(), exchange: { startMs: 0, endMs: 2 * MIN, title: "Short" }, words });
     expect(short.system).toContain("at most 4.");
+  });
+
+  it("gapsBetween: stretches of each topic no exchange covers, at least 30 s, long ones split", () => {
+    const t = (startMs: number, endMs: number) => ({ id: "t", startMs, endMs });
+    const ex = (a: number, b: number) => ({ startMs: a, endMs: b });
+    const gaps = gapsBetween([t(0, 20 * MIN)], [ex(2 * MIN, 5 * MIN), ex(5 * MIN + 10_000, 8 * MIN), ex(7 * MIN, 8 * MIN + 20_000), ex(8 * MIN + 50_000, 20 * MIN), ex(30 * MIN, 32 * MIN)]);
+    // 0–2:00 kept; 5:00–5:10 and 8:00–8:20 (overlapped) are too short; 8:20–8:50 is exactly 30 s.
+    expect(gaps.map((g) => [g.startMs, g.endMs])).toEqual([[0, 2 * MIN], [8 * MIN + 20_000, 8 * MIN + 50_000]]);
+    // 13 minutes with no exchange: three equal windows of 4:20.
+    expect(gapsBetween([t(0, 13 * MIN)], []).map((g) => g.endMs - g.startMs)).toEqual([260_000, 260_000, 260_000]);
+  });
+
+  it("finds punchlines between exchanges and nests them under the passage they lie in", async () => {
+    const calls: { name: string; user: string }[] = [];
+    const llm: StructuredLLM = {
+      generate: async (a) => {
+        calls.push({ name: a.name, user: a.user });
+        if (a.name === "moments") {
+          return a.schema.parse({
+            moments: [m({ a: 2 * MIN, b: 8 * MIN, title: "Round" }), m({ a: 10 * MIN, b: 11 * MIN, title: "Aside", granularity: "passage" })],
+          });
+        }
+        // Offered to every stretch: only the one it lies in may keep it.
+        const between = m({ a: 10 * MIN + 20_000, b: 10 * MIN + 35_000, title: "Between", granularity: "punchline" });
+        return a.schema.parse({ punchlines: a.name === "gap_punchlines" ? [between] : [] });
+      },
+    };
+    const out = await findMoments(llm, { card: card("interview"), transcript: makeTranscript(), topics: oneTopic });
+    // 0:00–2:00, and 8:00–40:00 split into six windows of 5:20.
+    const gapCalls = calls.filter((c) => c.name === "gap_punchlines");
+    expect(gapCalls).toHaveLength(7);
+    expect(gapCalls[0]!.user).toContain('Stretch of the topic "Topic t1" between exchanges');
+    expect(out.filter((x) => x.title === "Between")).toHaveLength(1);
+    const pl = out.find((x) => x.title === "Between")!;
+    expect(pl).toMatchObject({ granularity: "punchline", topicId: "t1" });
+    expect(pl.insideIdx).toBe(out.findIndex((x) => x.title === "Aside"));
+  });
+
+  it("punchline calls between exchanges are capped, longest stretch first", async () => {
+    const topics = [
+      ...Array.from({ length: MAX_GAP_CALLS + 5 }, (_, k) => topic(`s${k}`, k, k * 80_000, (k + 1) * 80_000)),
+      topic("long", MAX_GAP_CALLS + 5, (MAX_GAP_CALLS + 5) * 80_000, DURATION),
+    ];
+    const fake = new FakeLLM({ byName: { moments: topics.map(() => ({ moments: [] })), gap_punchlines: Array.from({ length: MAX_GAP_CALLS }, () => ({ punchlines: [] })) } });
+    await findMoments(fake, { card: card("interview"), transcript: makeTranscript(), topics });
+    const gapCalls = fake.calls.filter((c) => c.name === "gap_punchlines");
+    expect(gapCalls).toHaveLength(MAX_GAP_CALLS);
+    expect(gapCalls.filter((c) => c.user.includes('topic "Topic long"'))).toHaveLength(Math.ceil((DURATION - (MAX_GAP_CALLS + 5) * 80_000) / (6 * MIN)));
   });
 
   it("punchline calls are limited to the 40 most relevant exchanges", async () => {

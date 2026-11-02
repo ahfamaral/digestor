@@ -74,7 +74,7 @@ export const CHECKS_OK = {
 const times = <T>(n: number, x: T): T[] => Array.from({ length: n }, () => x);
 
 /**
- * Responses for `runs` full analyses (each run: one topics call, then per-topic, per-exchange and per-highlight calls).
+ * Responses for `runs` full analyses (each run: one topics call, then per-topic, per-exchange, per-stretch and per-highlight calls).
  * `topics` defaults to an empty answer, i.e. the whole-session fallback topic.
  */
 export function analysisResponses(o: { topics?: { title: string; startMs: number; endMs: number }[]; runs?: number } = {}) {
@@ -83,6 +83,7 @@ export function analysisResponses(o: { topics?: { title: string; startMs: number
     topics: times(runs, topicsResponse(o.topics ?? [])),
     moments: times(runs * 30, momentsResponder),
     punchlines: times(runs * 40, punchlinesResponder),
+    gap_punchlines: times(runs * 20, { punchlines: [] }), // stretches between exchanges: nothing sharp
     briefing: times(runs, briefingResponder),
     checks: times(runs * 10, CHECKS_OK),
   };
@@ -92,6 +93,7 @@ export function analysisResponses(o: { topics?: { title: string; startMs: number
 export const emptyAnalysisResponses = () => ({
   topics: [{ topics: [] }],
   moments: [{ moments: [] }],
+  gap_punchlines: times(20, { punchlines: [] }),
   briefing: [{ lead: [], sections: [] }],
 });
 
