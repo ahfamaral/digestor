@@ -4,6 +4,8 @@ import {
   DEFAULT_FILTERS, SHOW_HIDDEN_FILTERS, filterMoments, fromSearchParams, groupByTopic, hiddenApprovedCount, toSearchParams, type BriefingFilters,
   type MomentView,
 } from "./briefingFilters";
+import { peopleByMoment } from "./briefingData";
+import type { Attribution, Person, Word } from "@digestor/core";
 
 const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
   id, analysisId: "a", idx, startMs, endMs, title: id, summary: "",
@@ -196,7 +198,7 @@ describe("groupByTopic", () => {
 
 describe("search params", () => {
   it("filter state round-trips through search params", () => {
-    const state: BriefingFilters = { granularity: "passage", speaker: "B", minRelevance: 40, types: ["heated", "laughter"], show: "all" };
+    const state: BriefingFilters = { granularity: "passage", speaker: "B", person: null, minRelevance: 40, types: ["heated", "laughter"], show: "all" };
     const qs = toSearchParams(state);
     expect(qs).toBe("g=passage&s=B&r=40&t=heated,laughter&show=all");
     expect(fromSearchParams(new URLSearchParams(qs))).toEqual(state);
@@ -222,5 +224,55 @@ describe("search params", () => {
   it("a speaker id with URL-special characters survives the round trip", () => {
     const state = f({ speaker: "spk 1&2" });
     expect(fromSearchParams(new URLSearchParams(toSearchParams(state)))).toEqual(state);
+  });
+});
+
+// Person focus: P is voice B in turn 1 (0–10 s) and voice D in turn 5 (400–410 s); voice A is someone else.
+const person = (id: string): Person => ({
+  id, displayName: id, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
+});
+const att = (o: Partial<Attribution>): Attribution => ({
+  id: "a", sessionId: "s", speakerId: "B", startMs: null, endMs: null, personId: "P", source: "human", status: "confirmed",
+  confidence: 1, evidence: { kind: "none" }, createdBy: "owner", createdAt: new Date(0), supersededAt: null, ...o,
+});
+const run = (speaker: string, fromS: number, toS: number): Word[] =>
+  Array.from({ length: toS - fromS }, (_, i) => ({ text: "x", startMs: (fromS + i) * 1000, endMs: (fromS + i) * 1000 + 900, speaker, confidence: 1 }) as Word);
+const pm = (words: Word[], attributions: Attribution[]) =>
+  peopleByMoment(all, { persons: [person("P")], attributions }, words);
+
+describe("person focus", () => {
+  it("person focus keeps moments where the person speaks at least 3 s", () => {
+    // ex1 (0–200 s): P (voice B) speaks 0–4 s = 4 s; ex2 (300–400 s): P speaks 300–302 = 2 s only.
+    const words = [...run("B", 0, 4), ...run("A", 4, 100), ...run("B", 300, 302), ...run("A", 302, 390)];
+    const ctx = { peopleByMoment: pm(words, [att({ speakerId: "B" })]) };
+    const ids = filterMoments(all, {}, f({ person: "P" }), topics, ctx).map((v) => v.moment.id);
+    expect(ids).toContain("ex1");
+    expect(ids).not.toContain("ex2");
+  });
+
+  it("person focus follows ranged record names across voices", () => {
+    // P is voice B in turn 1 (0–10 s, inside ex1) and voice D in turn 5 (310–320 s, inside ex2).
+    const words = [...run("B", 0, 10), ...run("A", 10, 100), ...run("D", 310, 320)];
+    const atts = [att({ speakerId: "B", startMs: 0, endMs: 10_000 }), att({ speakerId: "D", startMs: 310_000, endMs: 320_000 })];
+    const ids = filterMoments(all, {}, f({ person: "P" }), topics, { peopleByMoment: pm(words, atts) }).map((v) => v.moment.id);
+    expect(ids).toEqual(expect.arrayContaining(["ex1", "ex2"]));
+  });
+
+  it("a person split across two voices in one moment sums to the 3 s", () => {
+    const words = [...run("B", 0, 2), ...run("D", 2, 4)];
+    const atts = [att({ speakerId: "B" }), att({ speakerId: "D" })];
+    expect(pm(words, atts).get("ex1")).toEqual(new Set(["P"]));
+  });
+
+  it("p= round-trips through the URL and an unknown person falls back to everyone", () => {
+    const state = f({ person: "p 1&2" });
+    expect(toSearchParams(state)).toBe("p=p%201%262");
+    expect(fromSearchParams(new URLSearchParams(toSearchParams(state)))).toEqual(state);
+    expect(fromSearchParams(new URLSearchParams("p=P"), { persons: ["P"] }).person).toBe("P");
+    expect(fromSearchParams(new URLSearchParams("p=Z"), { persons: ["P"] }).person).toBeNull();
+    // person and speaker are exclusive: the person wins
+    const both = fromSearchParams(new URLSearchParams("p=P&s=B"), { persons: ["P"] });
+    expect(both.person).toBe("P");
+    expect(both.speaker).toBeNull();
   });
 });

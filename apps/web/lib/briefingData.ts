@@ -1,4 +1,5 @@
-import { sliceWords, speakerShares, toSentences, type Word } from "@digestor/core";
+import { FOCUS_MIN_MS, peopleInRange, personAt, sliceWords, toSentences, type MomentWithHighlights, type Word } from "@digestor/core";
+import type { NamesData } from "./names";
 
 /**
  * The transcript's own words inside the moment (never the model's evidence, which isn't checked as verbatim), cut to
@@ -18,14 +19,54 @@ export function momentExcerpt(words: Word[], range: { startMs: number; endMs: nu
   return `${cut.trimEnd().replace(/[\s.,;:!?。、，；：！？،؛]+$/u, "")}…`;
 }
 
+export type FocusOption =
+  | { kind: "person"; personId: string; share: number }
+  | { kind: "voice"; speakerId: string; share: number };
+
 /**
- * The session's speakers for the Focus picker, sorted by id, each with its share of the spoken words (whole percent,
- * from the stored transcript). Speakers seen only in moments, or a session without a transcript, get `share: null`.
+ * The Focus picker's options: people (every name a voice has, resolved word by word, a person across voices counted
+ * once) by speaking share, then the voices with no name to show. `share` is a whole percent of the spoken words.
+ * With `sensitive`, an unconfirmed name is not listed as a person: that speech stays with its voice, as "Speaker X".
  */
-export function speakerOptions(words: Word[], momentSpeakers: string[]): { id: string; share: number | null }[] {
-  const shares = words.length > 0 ? speakerShares(words) : {};
-  const ids = [...new Set([...Object.keys(shares), ...momentSpeakers])].sort();
-  return ids.map((id) => ({ id, share: id in shares ? Math.round(shares[id]! * 100) : null }));
+export function focusOptions(names: NamesData, words: Word[], sensitive = false): FocusOption[] {
+  const persons = new Map<string, number>();
+  const voices = new Map<string, number>();
+  let total = 0;
+  for (const w of words) {
+    const ms = w.endMs - w.startMs;
+    if (ms <= 0) continue;
+    total += ms;
+    const res = personAt(names.attributions, w.speaker, w.startMs);
+    if (res.kind === "named" && (res.confirmed || !sensitive) && names.persons.some((p) => p.id === res.personId)) {
+      persons.set(res.personId, (persons.get(res.personId) ?? 0) + ms);
+    } else voices.set(w.speaker, (voices.get(w.speaker) ?? 0) + ms);
+  }
+  const pct = (ms: number) => (total > 0 ? Math.round((ms / total) * 100) : 0);
+  const byShare = <T extends [string, number]>(a: T, b: T) => b[1] - a[1] || a[0].localeCompare(b[0]);
+  return [
+    ...[...persons].sort(byShare).map(([personId, ms]): FocusOption => ({ kind: "person", personId, share: pct(ms) })),
+    ...[...voices].sort(byShare).map(([speakerId, ms]): FocusOption => ({ kind: "voice", speakerId, share: pct(ms) })),
+  ];
+}
+
+/**
+ * Who speaks in each moment, for the person filter: a person passes a moment when their words there add up to at least
+ * FOCUS_MIN_MS, summed across voices and names (the Focus rule, not the export check's per-voice rule). Built once.
+ */
+export function peopleByMoment(
+  moments: Pick<MomentWithHighlights, "id" | "startMs" | "endMs">[],
+  names: NamesData,
+  words: Word[],
+): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const m of moments) {
+    const ms = new Map<string, number>();
+    for (const e of peopleInRange(sliceWords(words, m), names.attributions, m, 0)) {
+      if (e.resolution.kind === "named") ms.set(e.resolution.personId, (ms.get(e.resolution.personId) ?? 0) + e.ms);
+    }
+    out.set(m.id, new Set([...ms].filter(([, v]) => v >= FOCUS_MIN_MS).map(([id]) => id)));
+  }
+  return out;
 }
 
 /**

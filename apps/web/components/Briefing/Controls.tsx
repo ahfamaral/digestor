@@ -19,41 +19,45 @@ const FIELD =
   "h-8 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const LABEL = "text-xs font-semibold text-muted-foreground";
 
-export interface SpeakerOption {
+/** One Focus choice: a person or a voice, with the text shown for it (name and badge text, or "Speaker C") and its share of the words. */
+export interface FocusChoice {
+  kind: "person" | "voice";
+  /** A person id or a speaker id. */
   id: string;
-  /** Whole percent of the spoken words; null when unknown. */
-  share: number | null;
-  /** The voice's name, or "Speaker C" when it has none to show. */
   name: string;
+  /** Whole percent of the spoken words. */
+  share: number;
 }
 
-/** "73% of spoken words" for the option's tooltip; null when the share is unknown. */
-function speakerShareTitle(s: SpeakerOption): string | undefined {
-  if (s.share === null) return undefined;
-  return s.share === 0 ? t("briefing.speakerShareSmallTitle") : t("briefing.speakerShareTitle", { share: s.share });
+/** The option's value: person and voice ids can't clash. */
+const choiceValue = (c: Pick<FocusChoice, "kind" | "id">) => `${c.kind === "person" ? "p" : "v"}:${c.id}`;
+
+/** "73% of spoken words" for the option's tooltip. */
+function shareTitle(c: FocusChoice): string {
+  return c.share === 0 ? t("briefing.speakerShareSmallTitle") : t("briefing.speakerShareTitle", { share: c.share });
 }
 
-export function speakerName(s: SpeakerOption): string {
-  if (s.share === null) return s.name;
-  return s.share === 0 ? t("briefing.speakerShareSmall", { name: s.name }) : t("briefing.speakerShare", { name: s.name, share: s.share });
+export function focusText(c: FocusChoice): string {
+  return c.share === 0 ? t("briefing.speakerShareSmall", { name: c.name }) : t("briefing.speakerShare", { name: c.name, share: c.share });
 }
 
 /**
- * The Full briefing's instant filters: granularity (Exchange / Passage / Punchline), Focus on one speaker, minimum
+ * The Full briefing's instant filters: granularity (Exchange / Passage / Punchline), Focus on one person or voice, minimum
  * relevance, highlight-type chips and which statuses to show. Every change is applied on screen at once.
  */
 export function Controls({
   filters,
   onChange,
-  speakers,
+  choices,
   types,
 }: {
   filters: BriefingFilters;
   onChange: (next: BriefingFilters) => void;
-  speakers: SpeakerOption[];
+  choices: FocusChoice[];
   types: HighlightTypeId[];
 }) {
   const set = (patch: Partial<BriefingFilters>) => onChange({ ...filters, ...patch });
+  const focusValue = filters.person !== null ? `p:${filters.person}` : filters.speaker !== null ? `v:${filters.speaker}` : "";
   const toggleType = (type: HighlightTypeId) =>
     set({ types: filters.types.includes(type) ? filters.types.filter((x) => x !== type) : [...filters.types, type] });
 
@@ -91,22 +95,27 @@ export function Controls({
               <SearchIcon aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <select
                 id="focus-speaker"
-                value={filters.speaker ?? ""}
-                onChange={(e) => set({ speaker: e.target.value || null })}
+                value={focusValue}
+                onChange={(e) => {
+                  // Person and voice are exclusive: choosing one clears the other.
+                  const [kind, ...rest] = e.target.value.split(":");
+                  const id = rest.join(":");
+                  set({ person: kind === "p" && id ? id : null, speaker: kind === "v" && id ? id : null });
+                }}
                 className={cn(FIELD, "max-w-64 pl-7")}
               >
                 <option value="">{t("briefing.everyone")}</option>
-                {speakers.map((s) => (
-                  <option key={s.id} value={s.id} title={speakerShareTitle(s)}>
-                    {speakerName(s)}
+                {choices.map((c) => (
+                  <option key={choiceValue(c)} value={choiceValue(c)} title={shareTitle(c)}>
+                    {focusText(c)}
                   </option>
                 ))}
               </select>
             </span>
-            {filters.speaker !== null && (
+            {focusValue !== "" && (
               <button
                 type="button"
-                onClick={() => set({ speaker: null })}
+                onClick={() => set({ speaker: null, person: null })}
                 aria-label={t("briefing.clearFocus")}
                 title={t("briefing.clearFocus")}
                 className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"

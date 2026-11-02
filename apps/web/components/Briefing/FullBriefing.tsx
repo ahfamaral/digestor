@@ -19,7 +19,7 @@ import {
 } from "@/lib/review";
 import { StatusQueue } from "@/lib/statusQueue";
 import { t, type MessageKey } from "@/lib/i18n";
-import { Controls, type SpeakerOption } from "./Controls";
+import { Controls, type FocusChoice } from "./Controls";
 import { WhosWhoDrawer } from "@/components/Names/WhosWho";
 import type { NamesData, Voice, WhosWhoRow } from "@/lib/names";
 import { MomentRow, type RowContext } from "./MomentRow";
@@ -34,7 +34,9 @@ export interface FullBriefingProps {
   excerpts: Record<string, string>;
   /** The owner's selections on these moments (no entry = proposed). */
   selections: Record<string, SelectionStatus>;
-  speakers: SpeakerOption[];
+  choices: FocusChoice[];
+  /** Person ids speaking at least 3 s in each moment (Focus by person). */
+  people: Record<string, string[]>;
   names: NamesData;
   /** A name changed after this analysis was written. */
   namesChanged: boolean;
@@ -70,13 +72,16 @@ const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: r
  * Full briefing: every moment of the session by topic, with instant on-screen filters (kept in the URL), keyboard
  * triage (A/N/R, E, ↓/↑) and "Confirm selection → Prepare clips". Render it with `key={analysis.id}`.
  */
-export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, speakers, names, namesChanged, whoRows, voices, sensitive, types, earlier }: FullBriefingProps) {
+export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, choices, people, names, namesChanged, whoRows, voices, sensitive, types, earlier }: FullBriefingProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lang = session.language ?? undefined;
   const [whoOpen, setWhoOpen] = useState(false);
   const whoRef = useRef<HTMLButtonElement>(null);
-  const [filters, setFilters] = useState<BriefingFilters>(() => fromSearchParams(searchParams, { speakers: speakers.map((s) => s.id) }));
+  const [filters, setFilters] = useState<BriefingFilters>(() => fromSearchParams(searchParams, {
+    speakers: choices.filter((c) => c.kind === "voice").map((c) => c.id),
+    persons: choices.filter((c) => c.kind === "person").map((c) => c.id),
+  }));
   const [statuses, setStatuses] = useState<Record<string, SelectionStatus>>(selections);
   const [focus, setFocus] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
   const [keyboardMoved, setKeyboardMoved] = useState(0);
@@ -121,7 +126,9 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
     window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
   }, [filters]);
 
-  const views = useMemo(() => filterMoments(moments, statuses, filters, topics), [moments, statuses, filters, topics]);
+  // Who speaks in each moment came from the server (it holds the words), so the person filter stays instant.
+  const focusCtx = useMemo(() => ({ peopleByMoment: new Map(Object.entries(people).map(([id, ids]) => [id, new Set(ids)])) }), [people]);
+  const views = useMemo(() => filterMoments(moments, statuses, filters, topics, focusCtx), [moments, statuses, filters, topics, focusCtx]);
   const groups = useMemo(() => groupByTopic(views, topics), [views, topics]);
   const order = useMemo(() => flattenViews(views).map((v) => v.moment.id), [views]);
   const currentId = resolveFocus(order, focus);
@@ -296,7 +303,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
           <p className="rounded-xl border border-border bg-white p-6 text-sm text-muted-foreground">{t("briefing.none")}</p>
         ) : (
           <>
-            <Controls filters={filters} onChange={setFilters} speakers={speakers} types={types} />
+            <Controls filters={filters} onChange={setFilters} choices={choices} types={types} />
 
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span aria-live="off">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>

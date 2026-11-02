@@ -11,6 +11,8 @@ export interface BriefingFilters {
   granularity: Granularity;
   /** Diarized speaker id ("A", "B"…) that must speak in the moment, or null for everyone. */
   speaker: string | null;
+  /** Person id who must speak (at least FOCUS_MIN_MS of the moment's words) in the moment, or null. Exclusive with `speaker`. */
+  person: string | null;
   /** 0–100; counted and personal moments ignore it. */
   minRelevance: number;
   /** Moments with any of these highlight types; empty = all types. */
@@ -18,7 +20,7 @@ export interface BriefingFilters {
   show: ShowFilter;
 }
 
-export const DEFAULT_FILTERS: BriefingFilters = { granularity: "exchange", speaker: null, minRelevance: 0, types: [], show: "open" };
+export const DEFAULT_FILTERS: BriefingFilters = { granularity: "exchange", speaker: null, person: null, minRelevance: 0, types: [], show: "open" };
 /** "Show hidden": every approved moment, nothing else narrowing the list. */
 export const SHOW_HIDDEN_FILTERS: BriefingFilters = { ...DEFAULT_FILTERS, show: "approved" };
 
@@ -34,8 +36,14 @@ const LEVEL: Record<Granularity, number> = { exchange: 0, passage: 1, punchline:
 
 const isPersonal = (m: MomentWithHighlights) => m.origin === "ask" || m.origin === "user";
 
-/** Every filter except the granularity floor (speaker, relevance, types, status). */
-function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters): boolean {
+/** What the person check needs: the people speaking at least FOCUS_MIN_MS in each moment, built once (`peopleByMoment`). */
+export interface FocusContext {
+  peopleByMoment: Map<string, Set<string>>;
+}
+
+/** Every filter except the granularity floor (speaker, person, relevance, types, status). */
+function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters, ctx: FocusContext): boolean {
+  if (f.person !== null && !ctx.peopleByMoment.get(m.id)?.has(f.person)) return false;
   if (f.speaker !== null && !m.speakers.includes(f.speaker)) return false;
   // Counted values aren't AI judgments, and personal moments carry no score: the relevance floor is for AI picks.
   if (m.origin === "ai" && m.relevance < f.minRelevance) return false;
@@ -72,6 +80,7 @@ export function filterMoments(
   selections: Record<string, SelectionStatus>,
   f: BriefingFilters,
   topics: TopicSpan[] = [],
+  ctx: FocusContext = { peopleByMoment: new Map() },
 ): MomentView[] {
   const flat = f.show === "approved";
   // Moments at or below the selected level that pass every filter: these build the tree.
@@ -79,7 +88,7 @@ export function filterMoments(
   const roots: MomentView[] = [];
   for (const m of moments) {
     const status = selections[m.id] ?? null;
-    if (!passesContent(m, status, f)) continue;
+    if (!passesContent(m, status, f, ctx)) continue;
     const view = { moment: m, status, children: [] };
     if (flat) roots.push(view);
     else if (LEVEL[m.granularity] >= LEVEL[f.granularity]) shown.set(m.id, view);
@@ -136,16 +145,19 @@ export function toSearchParams(f: BriefingFilters): string {
   const parts: string[] = [];
   if (f.granularity !== DEFAULT_FILTERS.granularity) parts.push(`g=${f.granularity}`);
   if (f.speaker !== null) parts.push(`s=${encodeURIComponent(f.speaker)}`);
+  if (f.person !== null) parts.push(`p=${encodeURIComponent(f.person)}`);
   if (f.minRelevance !== DEFAULT_FILTERS.minRelevance) parts.push(`r=${f.minRelevance}`);
   if (f.types.length > 0) parts.push(`t=${f.types.join(",")}`);
   if (f.show !== DEFAULT_FILTERS.show) parts.push(`show=${f.show}`);
   return parts.join("&");
 }
 
-/** Filters read back from the URL. Unknown or invalid values fall back to the defaults; with `speakers`, an unknown speaker too. */
-export function fromSearchParams(params: { get(name: string): string | null }, known: { speakers?: string[] } = {}): BriefingFilters {
+/** Filters read back from the URL. Unknown or invalid values fall back to the defaults; with `speakers` / `persons`, an unknown one too. A person wins over a speaker. */
+export function fromSearchParams(params: { get(name: string): string | null }, known: { speakers?: string[]; persons?: string[] } = {}): BriefingFilters {
   const g = GranularitySchema.safeParse(params.get("g"));
   const s = params.get("s");
+  const p = params.get("p");
+  const person = p && (!known.persons || known.persons.includes(p)) ? p : null;
   const r = params.get("r") ?? "";
   const relevance = /^\d{1,3}$/.test(r) ? Number(r) : NaN;
   const types = [
@@ -159,7 +171,8 @@ export function fromSearchParams(params: { get(name: string): string | null }, k
   const show = SHOW_FILTERS.find((x) => x === params.get("show"));
   return {
     granularity: g.success ? g.data : DEFAULT_FILTERS.granularity,
-    speaker: s && (!known.speakers || known.speakers.includes(s)) ? s : DEFAULT_FILTERS.speaker,
+    speaker: !person && s && (!known.speakers || known.speakers.includes(s)) ? s : DEFAULT_FILTERS.speaker,
+    person,
     minRelevance: relevance >= 0 && relevance <= 100 ? relevance : DEFAULT_FILTERS.minRelevance,
     types,
     show: show ?? DEFAULT_FILTERS.show,

@@ -1,13 +1,13 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { HIGHLIGHT_TYPES, OWNER_ID, PROFILES, speakersIn, type HighlightTypeId, type SelectionStatus } from "@digestor/core";
+import { HIGHLIGHT_TYPES, OWNER_ID, PROFILES, personAt, speakersIn, type HighlightTypeId, type SelectionStatus } from "@digestor/core";
 import {
   countSelectionsByAnalysis, getCurrentAnalysis, getSession, getTranscript, listPersonalMoments, listSelections,
 } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { FullBriefing } from "@/components/Briefing/FullBriefing";
-import { earlierSelections, momentExcerpt, speakerOptions } from "@/lib/briefingData";
+import { earlierSelections, focusOptions, momentExcerpt, peopleByMoment } from "@/lib/briefingData";
 import { loadNames, namesChangedSince } from "@/lib/namesServer";
 import { labelText, rangeVoices, voiceLabel, whosWhoRows } from "@/lib/names";
 import { isUuid } from "@/lib/ids";
@@ -71,6 +71,20 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
   const present = new Set(moments.flatMap((m) => m.highlights.map((h) => h.type)));
   const sensitive = PROFILES[profile].sensitive;
   const voices = Object.fromEntries(moments.map((m) => [m.id, rangeVoices(names, words, m, sensitive, m.speakers)]));
+  // Focus: people by share, then the voices with no name to show. A label is resolved where its person (or voice) first speaks.
+  const choices = focusOptions(names, words, sensitive).map((o) => {
+    const first = words.find((w) => {
+      if (w.speaker === undefined) return false;
+      if (o.kind === "voice") return w.speaker === o.speakerId;
+      const res = personAt(names.attributions, w.speaker, w.startMs);
+      return res.kind === "named" && res.personId === o.personId;
+    });
+    const label = first ? voiceLabel(names, first.speaker, first.startMs, sensitive) : null;
+    return o.kind === "person"
+      ? { kind: "person" as const, id: o.personId, share: o.share, name: label ? labelText(label) : (names.persons.find((p) => p.id === o.personId)?.displayName ?? "") }
+      : { kind: "voice" as const, id: o.speakerId, share: o.share, name: label ? labelText(label) : `Speaker ${o.speakerId}` };
+  });
+  const people = Object.fromEntries([...peopleByMoment(moments, names, words)].map(([id, set]) => [id, [...set]]));
   const types = [...new Set([...PROFILES[profile].highlightTypes, ...present])].filter((x): x is HighlightTypeId => x in HIGHLIGHT_TYPES);
 
   return (
@@ -88,7 +102,8 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
       moments={moments}
       excerpts={excerpts}
       selections={current}
-      speakers={speakerOptions(words, moments.flatMap((m) => m.speakers)).map((s) => ({ ...s, name: labelText(voiceLabel(names, s.id, 0, sensitive)) }))}
+      choices={choices}
+      people={people}
       names={names}
       namesChanged={namesChanged}
       whoRows={whosWhoRows(names, words)}

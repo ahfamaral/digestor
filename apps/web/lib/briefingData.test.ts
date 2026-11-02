@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Word } from "@digestor/core";
-import { earlierSelections, momentExcerpt, speakerOptions } from "./briefingData";
+import { earlierSelections, focusOptions, momentExcerpt } from "./briefingData";
+import type { Attribution, Person } from "@digestor/core";
 
 const w = (text: string, startS: number, speaker = "A"): Word => ({
   text, startMs: startS * 1000, endMs: startS * 1000 + 500, speaker, confidence: 0.9,
@@ -29,31 +30,48 @@ describe("momentExcerpt", () => {
   });
 });
 
-describe("speakerOptions", () => {
-  it("lists the session's speakers with their share of the spoken words, in percent", () => {
-    const words = [w("a", 0, "A"), w("b", 1, "A"), w("c", 2, "A"), w("d", 3, "B")];
-    expect(speakerOptions(words, ["B", "A"])).toEqual([
-      { id: "A", share: 75 },
-      { id: "B", share: 25 },
+const person = (id: string, displayName: string): Person => ({
+  id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
+});
+const att = (o: Partial<Attribution>): Attribution => ({
+  id: "a", sessionId: "s", speakerId: "A", startMs: null, endMs: null, personId: "P", source: "human", status: "confirmed",
+  confidence: 1, evidence: { kind: "none" }, createdBy: "owner", createdAt: new Date(0), supersededAt: null, ...o,
+});
+
+describe("focusOptions", () => {
+  // A: 6 words, B: 3 words, C: 1 word.
+  const words = [...[0, 1, 2, 3, 4, 5].map((i) => w("a", i, "A")), ...[6, 7, 8].map((i) => w("b", i, "B")), w("c", 9, "C")];
+
+  it("focusOptions lists persons by share, then unnamed voices", () => {
+    const names = { persons: [person("P", "Ana"), person("Q", "Bia")], attributions: [att({ speakerId: "B", personId: "P" }), att({ speakerId: "C", personId: "Q" })] };
+    expect(focusOptions(names, words)).toEqual([
+      { kind: "person", personId: "P", share: 30 },
+      { kind: "person", personId: "Q", share: 10 },
+      { kind: "voice", speakerId: "A", share: 60 },
     ]);
   });
 
-  it("speakers known only from moments have no share; no transcript means no shares at all", () => {
-    expect(speakerOptions([w("a", 0, "A")], ["C"])).toEqual([
-      { id: "A", share: 100 },
-      { id: "C", share: null },
-    ]);
-    expect(speakerOptions([], ["B", "A", "B"])).toEqual([
-      { id: "A", share: null },
-      { id: "B", share: null },
+  it("a person across two voices is one option; ranged names resolve per word, not at 0", () => {
+    // Voice A is P only from 3 s on: words 0–2 stay an unnamed voice A, words 3–5 plus voice B are P.
+    const names = { persons: [person("P", "Ana")], attributions: [att({ speakerId: "A", personId: "P", startMs: 3000, endMs: 6000 }), att({ speakerId: "B", personId: "P" })] };
+    expect(focusOptions(names, words)).toEqual([
+      { kind: "person", personId: "P", share: 60 },
+      { kind: "voice", speakerId: "A", share: 30 },
+      { kind: "voice", speakerId: "C", share: 10 },
     ]);
   });
 
-  it("a speaker with a tiny share shows below 1 % as 0 rather than disappearing", () => {
-    const words = [...Array.from({ length: 300 }, (_, i) => w("x", i, "A")), w("y", 400, "B")];
-    expect(speakerOptions(words, [])).toEqual([
-      { id: "A", share: 100 },
-      { id: "B", share: 0 },
+  it("an unconfirmed name in a sensitive profile is listed as its voice", () => {
+    const names = { persons: [person("P", "Ana")], attributions: [att({ speakerId: "B", personId: "P", source: "caption", status: "proposed" })] };
+    expect(focusOptions(names, words, true).map((o) => o.kind === "person" ? o.personId : o.speakerId)).toEqual(["A", "B", "C"]);
+    expect(focusOptions(names, words, false)[0]).toEqual({ kind: "person", personId: "P", share: 30 });
+  });
+
+  it("a tiny share is 0, not missing", () => {
+    const big = [...Array.from({ length: 300 }, (_, i) => w("x", i, "A")), w("y", 400, "B")];
+    expect(focusOptions({ persons: [], attributions: [] }, big)).toEqual([
+      { kind: "voice", speakerId: "A", share: 100 },
+      { kind: "voice", speakerId: "B", share: 0 },
     ]);
   });
 });
