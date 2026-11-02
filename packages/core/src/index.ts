@@ -15,3 +15,4 @@ export * from "./subtitleText.ts";
 export * from "./checklist.ts";
 export * from "./upload.ts";
 export * from "./briefingText.ts";
+export * from "./attribution.ts";
