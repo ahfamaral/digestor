@@ -1,6 +1,6 @@
 import {
   peopleInRange, personAt, speakerLabel,
-  type Attribution, type AttributionSource, type Person, type Range, type Word,
+  type Attribution, type AttributionSource, type Person, type Range, type Resolution, type Word,
 } from "@digestor/core";
 import { t } from "./i18n";
 
@@ -27,11 +27,19 @@ export function momentPeople(
   sensitive: boolean,
 ): { speakerId: string; label: VoiceLabel; ms: number; atMs: number }[] {
   const persons = personMap(names);
+  const key = (res: Resolution, speakerId: string) =>
+    res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : `none:${speakerId}`;
   return peopleInRange(words, names.attributions, r).map(({ speakerId, resolution, ms }) => ({
     speakerId,
     label: speakerLabel(resolution, persons, speakerId, sensitive),
     ms,
-    atMs: words.find((w) => w.speaker === speakerId && w.endMs > r.startMs && w.startMs < r.endMs)?.startMs ?? r.startMs,
+    // Where this name (not just this voice) first speaks in the range, so each entry resolves to its own name.
+    atMs:
+      words.find(
+        (w) =>
+          w.speaker === speakerId && w.endMs > r.startMs && w.startMs < r.endMs &&
+          key(personAt(names.attributions, speakerId, w.startMs), speakerId) === key(resolution, speakerId),
+      )?.startMs ?? r.startMs,
   }));
 }
 

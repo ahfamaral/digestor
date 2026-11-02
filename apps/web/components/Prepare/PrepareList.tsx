@@ -375,7 +375,7 @@ function ClipCard({
                 <span className="sr-only">{t("briefing.speakers")}: </span>
                 {item.voices.map((v) => (
                   <SpeakerName
-                    key={v.speakerId}
+                    key={`${v.speakerId}:${v.atMs}`}
                     speakerId={v.speakerId}
                     atMs={v.atMs}
                     names={names}

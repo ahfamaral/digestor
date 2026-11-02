@@ -12,6 +12,9 @@ const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const SEARCH_MS = 250;
 
+/** An HTTP failure whose message is the server's friendly sentence; any other thrown error stays in the log. */
+class HttpError extends Error {}
+
 type Option = { kind: "person"; person: Person } | { kind: "create"; name: string };
 
 /**
@@ -94,6 +97,7 @@ export function NamePopover({
   }
 
   async function send(body: Record<string, unknown>) {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -102,11 +106,12 @@ export function NamePopover({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(await errorMessage(res, t("names.failed")));
+      if (!res.ok) throw new HttpError(await errorMessage(res, t("names.failed")));
       reset(false);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error && err.message ? err.message : t("names.failed"));
+      console.error("names: save failed", err);
+      setError(err instanceof HttpError ? err.message : t("names.failed"));
     } finally {
       setBusy(false);
     }

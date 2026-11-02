@@ -82,7 +82,7 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
               <span className="sr-only">{t("briefing.speakers")}: </span>
               {(ctx.voices[m.id] ?? []).map((v) => (
                 <SpeakerName
-                  key={v.speakerId}
+                  key={`${v.speakerId}:${v.atMs}`}
                   speakerId={v.speakerId}
                   atMs={v.atMs}
                   names={ctx.names}

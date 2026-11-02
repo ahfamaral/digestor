@@ -371,7 +371,7 @@ function HighlightRow({
         </span>
         {voices.map((v) => (
           <SpeakerName
-            key={v.speakerId}
+            key={`${v.speakerId}:${v.atMs}`}
             speakerId={v.speakerId}
             atMs={v.atMs}
             names={names}

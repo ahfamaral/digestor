@@ -48,7 +48,7 @@ export function TopHighlights({
                 {(voices[moment.id] ?? []).map((v, i) => {
                   const label = voiceLabel(names, v.speakerId, v.atMs, sensitive);
                   return (
-                    <span key={v.speakerId}>
+                    <span key={`${v.speakerId}:${v.atMs}`}>
                       {i > 0 && ", "}
                       <span dir="auto" className={cn(label.proposed && "underline decoration-dotted underline-offset-2")}>
                         {label.text}

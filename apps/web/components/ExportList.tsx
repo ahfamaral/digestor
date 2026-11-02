@@ -179,7 +179,7 @@ function ClipRow({
               <span className="sr-only">{t("briefing.speakers")}: </span>
               {clip.voices.map((v) => (
                 <SpeakerName
-                  key={v.speakerId}
+                  key={`${v.speakerId}:${v.atMs}`}
                   speakerId={v.speakerId}
                   atMs={v.atMs}
                   names={names}

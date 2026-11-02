@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, Person, Word } from "@digestor/core";
-import { badgeText, evidenceLine, momentPeople, voiceLabel, type NamesData } from "./names";
+import { badgeText, evidenceLine, momentPeople, rangeVoices, voiceLabel, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -53,6 +53,24 @@ describe("momentPeople", () => {
       ["B", "Beto Lima", 4000],
     ]);
     expect(out[0]!.atMs).toBe(4000);
+  });
+});
+
+describe("momentPeople with a ranged name", () => {
+  it("lists a voice once per name, each resolved where that name applies", () => {
+    const names: NamesData = {
+      persons,
+      attributions: [att({ speakerId: "A", personId: "p1" }), att({ id: "r", speakerId: "A", personId: "p2", startMs: 5000, endMs: 10000 })],
+    };
+    const words = [word("A", 0, 4000), word("A", 5000, 9000)];
+    const out = momentPeople(names, words, { startMs: 0, endMs: 10000 }, false);
+    expect(out.map((p) => [p.speakerId, p.label.text, p.atMs])).toEqual([
+      ["A", "Ana Souza", 0],
+      ["A", "Beto Lima", 5000],
+    ]);
+    const v = rangeVoices(names, words, { startMs: 0, endMs: 10000 }, false);
+    expect(new Set(v.map((x) => `${x.speakerId}:${x.atMs}`)).size).toBe(2);
+    expect(v.map((x) => voiceLabel(names, x.speakerId, x.atMs, false).text)).toEqual(["Ana Souza", "Beto Lima"]);
   });
 });
 
