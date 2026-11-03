@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -162,7 +162,7 @@ describe("unconfirmedVoices", () => {
     const ranged: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed", startMs: 0, endMs: 10_000 })] };
     const [first, second] = unconfirmedVoices(ranged, words, { startMs: 0, endMs: 20_000 }, false);
     expect(first).toMatchObject({ speakerId: "C", range: { startMs: 0, endMs: 10_000 }, confirm: { action: "assign", speakerId: "C", personId: "p1", startMs: 0, endMs: 10_000 } });
-    expect(second).toMatchObject({ range: null, confirm: null }); // the unnamed rest of the voice
+    expect(second).toMatchObject({ range: { startMs: 10_000, endMs: 20_000 }, confirm: null }); // the unnamed rest of the voice: named by its own span, never as a whole voice
     const whole: NamesData = { persons, attributions: [att({ speakerId: "C", personId: "p1", source: "caption", status: "proposed" })] };
     expect(unconfirmedVoices(whole, words, { startMs: 0, endMs: 20_000 }, false)).toMatchObject([{ range: null, confirm: { action: "confirm", speakerId: "C" } }]);
   });
@@ -243,5 +243,33 @@ describe("evidenceLine for the record", () => {
   });
   it("falls back when the url carries no date", () => {
     expect(evidenceLine({ ...a, evidence: { ...(a.evidence as object), url: "https://x" } as Attribution["evidence"] })).toBe("From the official record: speech 77, 0.91 match");
+  });
+});
+
+describe("the unnamed part of a voice named part by part from the record", () => {
+  const run = (speaker: string, from: number, to: number): Word[] =>
+    Array.from({ length: (to - from) / 1000 }, (_, i) => word(speaker, from + i * 1000, from + (i + 1) * 1000));
+  // A: record p1 0-10 s, unnamed 10-20 s, B speaks 20-30 s, A unnamed again 30-40 s, record p2 40-50 s.
+  const words = [...run("A", 0, 20_000), ...run("B", 20_000, 30_000), ...run("A", 30_000, 50_000)];
+  const rec = (id: string, personId: string, startMs: number, endMs: number) =>
+    att({ id, speakerId: "A", personId, source: "record", status: "proposed", startMs, endMs });
+  const names: NamesData = { persons, attributions: [rec("1", "p1", 0, 10_000), rec("2", "p2", 40_000, 50_000)] };
+  const remainder = whosWhoRows(names, words).find((r) => r.speakerId === "A" && r.resolution.kind === "unnamed")!;
+
+  it("gives the remainder row its contiguous spans", () => {
+    expect(remainder.ranges).toEqual([{ startMs: 10_000, endMs: 20_000 }, { startMs: 30_000, endMs: 40_000 }]);
+  });
+  it("Change… and No name send ranges for it", () => {
+    expect(anonymousBody(remainder)).toEqual({ action: "anonymous", speakerId: "A", ranges: remainder.ranges });
+    expect(rangeFields(remainder.ranges)).toEqual({ ranges: remainder.ranges });
+  });
+  it("a voice with no ranged rows keeps whole-voice rows", () => {
+    const plain = whosWhoRows({ persons, attributions: [] }, words).find((r) => r.speakerId === "A")!;
+    expect(plain.ranges).toEqual([]);
+  });
+  it("the export check offers the unnamed spans of the clip's range, not a whole-voice change", () => {
+    const v = unconfirmedVoices(names, words, { startMs: 12_000, endMs: 18_000 }, false).find((x) => x.speakerId === "A")!;
+    expect(v.ranges).toEqual([{ startMs: 10_000, endMs: 20_000 }]);
+    expect(v.range).toEqual({ startMs: 10_000, endMs: 20_000 });
   });
 });

@@ -1,6 +1,6 @@
 import { OWNER_ID, personAt } from "@digestor/core";
 import {
-  createCustomPerson, getPersons, getSession, getTranscript, listAttributions, setHumanAttribution, type Db,
+  getPersons, getSession, getTranscript, listAttributions, setHumanAttribution, setHumanAttributions, type Db,
 } from "@digestor/core/server";
 import { z } from "zod";
 import { errorResponse } from "@/lib/http";
@@ -71,37 +71,34 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   const transcript = await getTranscript(db, id);
   if (!transcript) return errorResponse(409, "Names can be set once the transcript is ready.");
 
+  // A part can't reach past the end of the video.
+  const endOfVideo = Math.max(transcript.durationMs, transcript.words.at(-1)?.endMs ?? 0);
+  if (targets.some((r) => r !== null && r.endMs > endOfVideo)) return errorResponse(400, "That part is past the end of the video.");
+
   const write = (speakerId: string, personId: string | null, s: number | null, e: number | null) =>
     setHumanAttribution(db, { sessionId: id, speakerId, startMs: s, endMs: e, personId, ownerId: OWNER_ID });
-  const writeAll = (speakerId: string, personId: string | null) =>
-    db.transaction(async (tx) => {
-      for (const r of targets) {
-        await setHumanAttribution(tx as unknown as Db, { sessionId: id, speakerId, startMs: r?.startMs ?? null, endMs: r?.endMs ?? null, personId, ownerId: OWNER_ID });
-      }
-    });
-
-  // A whole-voice human row would shadow the record's per-turn names (the API is the authority; the UI scopes its actions to the turn).
-  if ((body.action === "assign" || body.action === "create" || body.action === "anonymous") && targets.some((r) => r === null)) {
-    const current = await listAttributions(db, id);
-    if (current.some((a) => a.speakerId === body.speakerId && a.source === "record" && a.supersededAt === null && a.status !== "rejected" && a.startMs !== null && a.endMs !== null)) {
-      return errorResponse(409, RECORD_VOICE);
-    }
-  }
+  // A whole-voice human row would shadow the record's per-turn names: refused (inside the lock, in core). The UI scopes its actions to the parts.
+  const writeAll = async (speakerId: string, person: { id: string | null } | { create: string }): Promise<Response | null> => {
+    const res = await setHumanAttributions(db, { sessionId: id, speakerId, ownerId: OWNER_ID, ranges: targets, person });
+    return res.ok ? null : errorResponse(409, RECORD_VOICE);
+  };
 
   switch (body.action) {
     case "assign": {
       if ((await getPersons(db, [body.personId])).length === 0) return errorResponse(404, "Person not found.");
-      await writeAll(body.speakerId, body.personId);
+      const refused = await writeAll(body.speakerId, { id: body.personId });
+      if (refused) return refused;
       break;
     }
     case "create": {
       // "New person" always creates one: reusing an existing person is what the close-match options (assign) are for.
-      const person = await createCustomPerson(db, { displayName: body.displayName, createdBy: OWNER_ID });
-      await writeAll(body.speakerId, person.id);
+      const refused = await writeAll(body.speakerId, { create: body.displayName });
+      if (refused) return refused;
       break;
     }
     case "anonymous":
-      await writeAll(body.speakerId, null);
+      const refused = await writeAll(body.speakerId, { id: null });
+      if (refused) return refused;
       break;
     case "confirm":
     case "confirm_all": {

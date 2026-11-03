@@ -1,6 +1,7 @@
+import { readdirSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { QUEUES } from "@digestor/core";
-import { createSession, getSessionRecord, updateSession } from "@digestor/core/server";
+import { createSession, getSessionRecord, sessions, updateSession } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
 import { GET as getRecord, POST as postRecord } from "./sessions/[id]/record/route";
@@ -131,7 +132,11 @@ describe("record at upload", () => {
   });
 
   it("upload: a bad ref is 400 before any file is saved", async () => {
+    const sessionsBefore = (await h.db.select().from(sessions)).length;
+    const filesBefore = readdirSync(h.root).length;
     const res = await put(`filename=a.mp4&record=nonsense`);
+    expect((await h.db.select().from(sessions)).length).toBe(sessionsBefore);
+    expect(readdirSync(h.root).length).toBe(filesBefore);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: BAD });
     expect(h.send).not.toHaveBeenCalled();

@@ -174,6 +174,22 @@ describe("names", () => {
       expect(both.status).toBe(400);
     });
 
+    it("the unnamed remainder of a part-by-part voice is named through ranges (no 409)", async () => {
+      const { sid, p2 } = await recordVoice();
+      const res = await post(sid, { action: "assign", speakerId: "A", personId: p2.id, ranges: [{ startMs: 1000, endMs: 1500 }, { startMs: 2000, endMs: 2500 }] });
+      expect(res.status).toBe(200);
+      const res2 = await post(sid, { action: "anonymous", speakerId: "A", ranges: [{ startMs: 3000, endMs: 3500 }] });
+      expect(res2.status).toBe(200);
+    });
+
+    it("a part can't end after the video", async () => {
+      const { sid, p2 } = await recordVoice();
+      const res = await post(sid, { action: "assign", speakerId: "A", personId: p2.id, startMs: 9000, endMs: 10_001 });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "That part is past the end of the video." });
+      expect((await post(sid, { action: "assign", speakerId: "A", personId: p2.id, startMs: 9000, endMs: 10_000 })).status).toBe(200);
+    });
+
     it("create with ranges makes one person for all ranges", async () => {
       const { sid } = await recordVoice();
       const res = await post(sid, { action: "create", speakerId: "A", displayName: "Nova Pessoa", ranges: [{ startMs: 0, endMs: 900 }, { startMs: 5000, endMs: 6000 }] });

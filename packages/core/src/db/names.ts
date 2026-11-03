@@ -129,6 +129,46 @@ export async function setHumanAttribution(
   });
 }
 
+/**
+ * A human names (or un-names) one voice over several ranges (`null` = the whole voice) in one transaction, under the
+ * session's advisory lock. A whole-voice write is refused (`record_voice`) while the voice has current ranged `record`
+ * rows: it would shadow their per-turn names. The check runs after the lock, so a record job finishing meanwhile (which
+ * takes the same lock) can't let one slip in. `person`: an existing person, none (`null`, "no name"), or a new custom one.
+ */
+export async function setHumanAttributions(
+  db: Db,
+  a: {
+    sessionId: string; speakerId: string; ownerId: string;
+    ranges: ({ startMs: number; endMs: number } | null)[];
+    person: { id: string | null } | { create: string };
+  },
+): Promise<{ ok: true } | { ok: false; reason: "record_voice" }> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${a.sessionId}))`);
+    if (a.ranges.some((r) => r === null)) {
+      const blocked = await tx
+        .select({ id: attributions.id })
+        .from(attributions)
+        .where(
+          and(
+            eq(attributions.sessionId, a.sessionId), eq(attributions.speakerId, a.speakerId), eq(attributions.source, "record"),
+            isNull(attributions.supersededAt), sql`${attributions.status} <> 'rejected'`,
+            sql`${attributions.startMs} is not null`, sql`${attributions.endMs} is not null`,
+          ),
+        )
+        .limit(1);
+      if (blocked.length > 0) return { ok: false as const, reason: "record_voice" as const };
+    }
+    const personId = "create" in a.person ? (await createCustomPerson(tx as unknown as Db, { displayName: a.person.create, createdBy: a.ownerId })).id : a.person.id;
+    for (const r of a.ranges) {
+      await setHumanAttribution(tx as unknown as Db, {
+        sessionId: a.sessionId, speakerId: a.speakerId, startMs: r?.startMs ?? null, endMs: r?.endMs ?? null, personId, ownerId: a.ownerId,
+      });
+    }
+    return { ok: true as const };
+  });
+}
+
 export async function replaceAiAttributions(
   db: Db,
   sessionId: string,

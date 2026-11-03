@@ -28,7 +28,15 @@ export async function POST(req: Request): Promise<Response> {
   const hint = parsed.data.hint?.trim() || null;
   // The title is the link until the download step fills in the real one.
   const session = await createSession(db, { title: url, source: "youtube", sourceUrl: url, hint });
-  if (record.ref) await linkRecord(db, session.id, record.ref);
+  // The session row has to exist before its record can be linked (foreign key), so a link failure can't stop the session
+  // from starting: log it and go on. The record stays optional: it can be linked from Who's who at any time.
+  if (record.ref) {
+    try {
+      await linkRecord(db, session.id, record.ref);
+    } catch (err) {
+      console.error("upload: linking the record failed", err);
+    }
+  }
   await sendStart(boss, session.id);
   return Response.json({ sessionId: session.id });
 }

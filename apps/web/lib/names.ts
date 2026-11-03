@@ -49,12 +49,52 @@ function firstSpeakingAs(names: NamesData, words: Pick<Word, "startMs" | "endMs"
   );
 }
 
+
+/** The key `whosWhoRows` groups a voice's words by: the person, or "no name" / "conflict" per voice. */
+function resolutionKey(res: Resolution, speakerId: string): string {
+  return res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : res.kind === "conflict" ? `conflict:${speakerId}` : `none:${speakerId}`;
+}
+
+/** True when the voice has current ranged non-human rows: it is named part by part, so a whole-voice human write would shadow them (the API refuses one for record rows). */
+function namedPartByPart(names: NamesData, speakerId: string): boolean {
+  return names.attributions.some(
+    (a) => a.speakerId === speakerId && a.source !== "human" && a.supersededAt === null && a.status !== "rejected" && a.startMs !== null && a.endMs !== null,
+  );
+}
+
+/**
+ * The contiguous spans of a voice's words that resolve to one group (turns, split where the name changes): the ranges a
+ * row for the part of a part-by-part voice that no ranged row names acts on. `within` keeps only the spans touching a range.
+ */
+function remainderSpans(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], speakerId: string, key: string, within?: Range): Range[] {
+  const spans: Range[] = [];
+  let open: Range | null = null;
+  for (const w of words) {
+    if (w.speaker !== speakerId) {
+      open = null; // another voice speaks: the turn ends
+      continue;
+    }
+    if (resolutionKey(personAt(names.attributions, speakerId, w.startMs), speakerId) !== key) {
+      open = null;
+      continue;
+    }
+    if (open) open.endMs = w.endMs;
+    else {
+      open = { startMs: w.startMs, endMs: w.endMs };
+      spans.push(open);
+    }
+  }
+  return within ? spans.filter((r) => r.endMs > within.startMs && r.startMs < within.endMs) : spans;
+}
+
 /** A voice to confirm: `range` is set when its name comes from a ranged row (one part of a split voice), and `confirm` is what Confirm sends. */
 export interface UnconfirmedVoice {
   speakerId: string;
   label: VoiceLabel;
   atMs: number;
   range: Range | null;
+  /** Every range a change applies to: the ranged rows' own, or the spans no ranged row names in a voice named part by part. */
+  ranges: Range[];
   confirm: Record<string, unknown> | null;
 }
 
@@ -67,13 +107,19 @@ export function unconfirmedVoices(
 ): UnconfirmedVoice[] {
   // The export check's per-voice rule (`speakersInRange`): a voice counts by its total time, and then each of its names is listed.
   const persons = personMap(names);
-  return unconfirmedSpeakers(speakersInRange(words, names.attributions, r)).map(({ speakerId, resolution }) => ({
-    speakerId,
-    label: speakerLabel(resolution, persons, speakerId, sensitive),
-    atMs: firstSpeakingAs(names, words, r, speakerId, resolution),
-    range: rowRange({ resolution }),
-    confirm: confirmBody({ speakerId, resolution }),
-  }));
+  return unconfirmedSpeakers(speakersInRange(words, names.attributions, r)).map(({ speakerId, resolution }) => {
+    const own = resolutionRanges(resolution);
+    const ranges =
+      own.length > 0 ? [rowRange({ resolution })!] : namedPartByPart(names, speakerId) ? remainderSpans(names, words, speakerId, resolutionKey(resolution, speakerId), r) : [];
+    return {
+      speakerId,
+      label: speakerLabel(resolution, persons, speakerId, sensitive),
+      atMs: firstSpeakingAs(names, words, r, speakerId, resolution),
+      range: ranges[0] ?? null,
+      ranges,
+      confirm: confirmBody({ speakerId, resolution, ranges }),
+    };
+  });
 }
 
 /** The exact badge copy for a source. */
@@ -150,8 +196,7 @@ export interface WhosWhoRow {
 
 /** One row per (voice, name at that moment): a voice the record named as two people gets two rows. Longest first. */
 export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
-  const key = (res: Resolution, speakerId: string) =>
-    res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : res.kind === "conflict" ? `conflict:${speakerId}` : `none:${speakerId}`;
+  const key = resolutionKey;
   const groups = new Map<string, { speakerId: string; resolution: Resolution; ms: number; firstMs: number; k: string; ranges: Map<string, Range> }>();
   const perVoice = new Map<string, number>();
   let total = 0;
@@ -186,7 +231,10 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
         share: total > 0 ? g.ms / total : 0,
         sampleStartMs: long?.startMs ?? g.firstMs,
         main: total > 0 && (perVoice.get(g.speakerId) ?? 0) / total >= MIN_SPEAKER_SHARE,
-        ranges: [...g.ranges.values()].sort((a, b) => a.startMs - b.startMs),
+        ranges:
+          g.ranges.size === 0 && namedPartByPart(names, g.speakerId)
+            ? remainderSpans(names, words, g.speakerId, g.k)
+            : [...g.ranges.values()].sort((a, b) => a.startMs - b.startMs),
       };
     })
     .sort((a, b) => b.ms - a.ms);
