@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { fakeFetch } from "./fakeFetch.js";
@@ -38,6 +39,47 @@ describe("Anthropic structured LLM", () => {
     for (const banned of ["temperature", "top_p", "top_k", "tool_choice", "tools", "thinking"]) expect(body).not.toHaveProperty(banned);
     expect(body.system).toEqual("You find topics.");
     expect(body.messages).toEqual([{ role: "user", content: "Transcript…" }]);
+  });
+
+  const PIXEL = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD"; // tiny fake base64, not a real JPEG
+
+  it("anthropic adapter sends the image as a content part next to the text", async () => {
+    const { fetch, sent } = fakeFetch([{ body: message([{ type: "text", text: '{"topics":[{"title":"Housing"}]}' }]) }]);
+    const llm = createAnthropicLLM("sk-ant-test", { fetch });
+
+    await llm.generate({
+      schema: Topics, name: "topics", system: "You read captions.", user: "What does the caption say?", model: "fast",
+      images: [{ mediaType: "image/jpeg", data: PIXEL }],
+    });
+
+    expect(sent[0]!.body.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: PIXEL } },
+          { type: "text", text: "What does the caption say?" },
+        ],
+      },
+    ]);
+    expect(sent[0]!.body.system).toBe("You read captions.");
+    for (const banned of ["temperature", "top_p", "top_k", "tool_choice", "tools"]) expect(sent[0]!.body).not.toHaveProperty(banned);
+  });
+
+  it("no images: request body unchanged (plain string content)", async () => {
+    const { fetch, sent } = fakeFetch([{ body: message([{ type: "text", text: '{"topics":[]}' }]) }]);
+    await createAnthropicLLM("k", { fetch }).generate({ schema: Topics, name: "topics", system: "s", user: "u", model: "fast", images: [] });
+    expect(sent[0]!.body.messages).toEqual([{ role: "user", content: "u" }]);
+  });
+
+  it("image request matches the fixture's wire body and its reply parses", async () => {
+    const fx = JSON.parse(readFileSync(new URL("../../test/fixtures/vision-caption-anthropic.json", import.meta.url), "utf8"));
+    const { fetch, sent } = fakeFetch([{ body: fx.response }]);
+    const out = await createAnthropicLLM("k", { fetch }).generate({
+      schema: z.object({ person: z.string().nullable(), role: z.string().nullable() }), name: "caption", model: "fast",
+      system: fx.request.system, user: fx.request.messages[0].content[1].text, images: [{ mediaType: "image/jpeg", data: PIXEL }],
+    });
+    expect(out).toEqual({ person: "FLÁVIO", role: null });
+    expect(sent[0]!.body).toEqual(JSON.parse(JSON.stringify(fx.request).replace("<BASE64_JPEG_FRAME>", PIXEL)));
   });
 
   it("uses the fast model for fast calls", async () => {

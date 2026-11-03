@@ -1,14 +1,23 @@
 import { ChatAnthropic } from "@langchain/anthropic";
+import type { MessageContent } from "@langchain/core/messages";
 import { OutputParserException } from "@langchain/core/output_parsers";
 import { toJsonSchema } from "@langchain/core/utils/json_schema";
 import { ZodError, type z } from "zod";
 
 export type LLMModel = "reasoning" | "fast";
 
+/** A base64 image (no `data:` prefix) sent next to the text of a structured call. */
+export type LLMImage = { mediaType: "image/jpeg" | "image/png"; data: string };
+
+export type GenerateArgs<T> = { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel; images?: LLMImage[] };
+
+/** One chat message: a role and plain text, or content parts (text + images). */
+export type ChatMessage = [string, MessageContent];
+
 export interface StructuredLLM {
   /** Model ids to record on analysis versions (provider-qualified); `MODEL_IDS` when absent. */
   modelIds?: Record<LLMModel, string>;
-  generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T>;
+  generate<T>(a: GenerateArgs<T>): Promise<T>;
 }
 
 export const MODEL_IDS: Record<LLMModel, string> = {
@@ -27,7 +36,7 @@ export type ClientOptions = { fetch?: typeof globalThis.fetch };
  */
 export function createAnthropicLLM(apiKey: string, opts: ClientOptions = {}): StructuredLLM {
   return {
-    async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }) {
+    async generate<T>(a: GenerateArgs<T>) {
       const json = new ChatAnthropic({
         apiKey,
         model: MODEL_IDS[a.model],
@@ -81,9 +90,9 @@ export function llmJsonSchema(schema: z.ZodType<unknown>): Record<string, unknow
 }
 
 /** The chat's JSON, checked against the zod schema (a mismatch is a ZodError, so a parse error). */
-export function validated<T>(chat: { invoke(m: [string, string][]): Promise<unknown> }, schema: z.ZodType<T>) {
+export function validated<T>(chat: { invoke(m: ChatMessage[]): Promise<unknown> }, schema: z.ZodType<T>) {
   return {
-    invoke: async (m: [string, string][]) => {
+    invoke: async (m: ChatMessage[]) => {
       const out = await chat.invoke(m);
       return out == null ? out : schema.parse(out);
     },
@@ -95,12 +104,12 @@ export function validated<T>(chat: { invoke(m: [string, string][]): Promise<unkn
  * A reply that parses to nothing (e.g. prose instead of a forced tool call) counts as a parse error too.
  */
 export async function invokeWithOneRetry<T>(
-  chat: { invoke(messages: [string, string][]): Promise<unknown> },
-  a: { system: string; user: string },
+  chat: { invoke(messages: ChatMessage[]): Promise<unknown> },
+  a: { system: string; user: string; images?: LLMImage[] },
 ): Promise<T> {
-  const messages: [string, string][] = [
+  const messages: ChatMessage[] = [
     ["system", a.system],
-    ["human", a.user],
+    ["human", a.images?.length ? userContent(a.user, a.images) : a.user],
   ];
   const once = async () => {
     const out = await chat.invoke(messages);
@@ -115,12 +124,23 @@ export async function invokeWithOneRetry<T>(
   }
 }
 
+/**
+ * Content parts for a human message with images: LangChain's `image_url` data-URL part, which @langchain/anthropic
+ * converts to `{type:"image", source:{type:"base64",…}}` and @langchain/openai sends as is. Images first, then text.
+ */
+function userContent(text: string, images: LLMImage[]): MessageContent {
+  return [
+    ...images.map((i) => ({ type: "image_url", image_url: { url: `data:${i.mediaType};base64,${i.data}` } })),
+    { type: "text", text },
+  ];
+}
+
 /** A reply that isn't the JSON we asked for (`SyntaxError`: JSON.parse inside the OpenAI SDK's `parse`). */
 export function isParseError(err: unknown): boolean {
   return err instanceof ZodError || err instanceof OutputParserException || err instanceof SyntaxError;
 }
 
-export type FakeCall = { name: string; system: string; user: string; model: LLMModel };
+export type FakeCall = { name: string; system: string; user: string; model: LLMModel; /** How many images came with the call. */ images: number };
 /** A canned response, or a function of the call (may be async: block on a promise, throw, or read ids from the prompt). */
 export type FakeResponse = unknown;
 
@@ -138,8 +158,8 @@ export class FakeLLM implements StructuredLLM {
       this.byName = new Map(Object.entries(responses.byName).map(([k, v]) => [k, [...v]]));
     }
   }
-  async generate<T>(a: { schema: z.ZodType<T>; name: string; system: string; user: string; model: LLMModel }): Promise<T> {
-    const call: FakeCall = { name: a.name, system: a.system, user: a.user, model: a.model };
+  async generate<T>(a: GenerateArgs<T>): Promise<T> {
+    const call: FakeCall = { name: a.name, system: a.system, user: a.user, model: a.model, images: a.images?.length ?? 0 };
     this.calls.push(call);
     const q = this.byName ? (this.byName.get(a.name) ?? []) : this.queue;
     if (q.length === 0) throw new Error(`FakeLLM response queue is empty (call "${a.name}")`);

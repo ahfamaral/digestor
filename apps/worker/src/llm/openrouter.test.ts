@@ -57,6 +57,49 @@ describe("OpenRouter structured LLM", () => {
     for (const banned of ["temperature", "top_p", "top_k", "tools", "tool_choice"]) expect(req!.body).not.toHaveProperty(banned);
   });
 
+  it("openrouter adapter sends image_url data parts", async () => {
+    const PIXEL = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
+    const { fetch, sent } = fakeFetch([{ body: completion({ content: '{"topics":[]}' }) }]);
+    const llm = createOpenRouterLLM("k", MODELS, { fetch });
+
+    await llm.generate({
+      schema: Topics, name: "topics", system: "You read captions.", user: "What does the caption say?", model: "fast",
+      images: [{ mediaType: "image/jpeg", data: PIXEL }],
+    });
+
+    expect(sent[0]!.body.messages).toEqual([
+      { role: "system", content: "You read captions." },
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: `data:image/jpeg;base64,${PIXEL}` } },
+          { type: "text", text: "What does the caption say?" },
+        ],
+      },
+    ]);
+  });
+
+  it("no images: request body unchanged (plain string content)", async () => {
+    const { fetch, sent } = fakeFetch([{ body: completion({ content: '{"topics":[]}' }) }]);
+    await createOpenRouterLLM("k", MODELS, { fetch }).generate({ schema: Topics, name: "topics", system: "s", user: "u", model: "fast" });
+    expect(sent[0]!.body.messages).toEqual([
+      { role: "system", content: "s" },
+      { role: "user", content: "u" },
+    ]);
+  });
+
+  it("image request matches the recorded wire body and the recorded reply parses", async () => {
+    const PIXEL = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
+    const fx = JSON.parse(readFileSync(new URL("../../test/fixtures/vision-caption-openrouter.json", import.meta.url), "utf8"));
+    const { fetch, sent } = fakeFetch([{ body: fx.response }]);
+    const out = await createOpenRouterLLM("k", { reasoning: "x", fast: fx.request.model }, { fetch }).generate({
+      schema: z.object({ person: z.string().nullable(), role: z.string().nullable() }), name: "caption", model: "fast",
+      system: fx.request.messages[0].content, user: fx.request.messages[1].content[1].text, images: [{ mediaType: "image/jpeg", data: PIXEL }],
+    });
+    expect(out).toEqual({ person: "FLÁVIO", role: null });
+    expect(sent[0]!.body).toEqual(JSON.parse(JSON.stringify(fx.request).replace("<BASE64_JPEG_FRAME>", PIXEL)));
+  });
+
   it("uses the fast model for fast calls", async () => {
     const { fetch, sent } = fakeFetch([{ body: completion({ content: '{"topics":[]}' }) }]);
     await createOpenRouterLLM("k", MODELS, { fetch }).generate({ schema: Topics, name: "topics", system: "s", user: "u", model: "fast" });
