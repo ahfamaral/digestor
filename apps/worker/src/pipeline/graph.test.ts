@@ -25,6 +25,9 @@ import {
   createCustomPerson,
   setHumanAttribution,
   updateSession,
+  claimProxy,
+  failProxy,
+  PREVIEW_FAILED,
   type Db,
 } from "@digestor/core/server";
 import * as media from "../media/ffmpeg.js";
@@ -38,7 +41,7 @@ import { analysisResponses, captionOf, crashOnInsert, emptyAnalysisResponses } f
 import { nameSpeakersNode } from "./naming.js";
 import { FIXTURE_DATE, fakeSenadoFetch, transcriptOfSpeeches } from "../records/fakeSenado.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
-import { buildPipeline, type PipelineDeps } from "./graph.js";
+import { analyzeNode, buildPipeline, type PipelineDeps } from "./graph.js";
 import { runProxy } from "./proxy.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
@@ -217,6 +220,29 @@ describe("pipeline", () => {
     expect(await getCurrentAnalysis(db, sessionId)).not.toBeNull();
     await runProxy({ db, storage, media }, sessionId); // the job finishes last and closes it
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, proxyStatus: "done", proxyKey: `${sessionId}/proxy.mp4` });
+  });
+
+  it("a copy that failed during the context pause fails the session before the paid analysis", async () => {
+    const enqueueProxy = vi.fn(async (_id: string) => {});
+    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()], enqueueProxy });
+    await graph.invoke({ sessionId }, cfg);
+    await claimProxy(db, sessionId);
+    await failProxy(db, sessionId); // the job's last attempt (or the sweep) gave up meanwhile
+    await resume({ action: "skip" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: PREVIEW_FAILED });
+    expect(llm.calls.filter((c) => c.name !== "context_card" && c.name !== "captions")).toHaveLength(0);
+    expect(await getCurrentAnalysis(db, sessionId)).toBeNull();
+  });
+
+  it("re-running the analysis step on a ready session leaves it ready and untouched", async () => {
+    const { graph, cfg, sessionId, deps } = await setup({ context: [sufficientDraft()] });
+    await graph.invoke({ sessionId }, cfg);
+    const before = await getSession(db, sessionId);
+    expect(before).toMatchObject({ stage: "ready" });
+    await analyzeNode(deps)({ sessionId } as Parameters<ReturnType<typeof analyzeNode>>[0]); // a replay after a crash before the checkpoint
+    const after = await getSession(db, sessionId);
+    expect(after).toMatchObject({ stage: "ready", progress: 100 });
+    expect(after!.updatedAt.getTime()).toBe(before!.updatedAt.getTime());
   });
 
   it("skip goes on to the analysis and ready after the single context pause", async () => {

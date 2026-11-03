@@ -235,9 +235,12 @@ d("sweepStaleJobRows (R32)", () => {
     const live = await mk({ stage: "preparing_preview", status: "running", ageMin: 45 });
     const fresh = await mk({ stage: "preparing_preview", status: "running", ageMin: 5 });
     await jobWith(QUEUES.proxy, { sessionId: live }, "active");
+    const earlyClock = (await getSession(db, early))!.updatedAt.getTime();
     expect(await sweepStaleJobRows(db)).toMatchObject({ proxies: 2 });
     expect(await getSession(db, waiting)).toMatchObject({ proxyStatus: "failed", stage: "failed", error: "The video preview couldn't be prepared. Please try again." });
-    expect(await getSession(db, early)).toMatchObject({ proxyStatus: "failed", stage: "awaiting_context" }); // the join fails it when the analysis ends
+    expect(await getSession(db, early)).toMatchObject({ proxyStatus: "failed", stage: "awaiting_context" }); // the analysis step fails it before paying
+    // Failing the copy doesn't restart the session's own 120-minute clock.
+    expect((await getSession(db, early))!.updatedAt.getTime()).toBe(earlyClock);
     expect(await getSession(db, live)).toMatchObject({ proxyStatus: "running", stage: "preparing_preview" });
     expect(await getSession(db, fresh)).toMatchObject({ proxyStatus: "running", stage: "preparing_preview" });
   });

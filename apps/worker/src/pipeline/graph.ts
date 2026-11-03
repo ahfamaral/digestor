@@ -20,6 +20,7 @@ import {
   listAttributions,
   requestProxy,
   settlePreview,
+  PREVIEW_FAILED,
   saveContextCard,
   setHumanAttribution,
   saveTranscript,
@@ -365,8 +366,15 @@ export const analyzeNode =
     const { db } = deps;
     // Completed before a crash that kept this node from checkpointing: don't analyse (and pay) again.
     if (await getCurrentAnalysis(db, s.sessionId)) {
+      if ((await requireSession(db, s.sessionId)).stage === "ready") return {}; // the join already closed it
       await setStage(db, s.sessionId, "preparing_preview", 96);
       await settlePreview(db, s.sessionId);
+      return {};
+    }
+    // The preview copy already gave up (during the context pause): fail now rather than after a paid analysis.
+    const session = await requireSession(db, s.sessionId);
+    if (session.proxyStatus === "failed") {
+      await setStage(db, s.sessionId, "failed", session.progress, PREVIEW_FAILED);
       return {};
     }
     const stored = await getContextCard(db, s.sessionId);

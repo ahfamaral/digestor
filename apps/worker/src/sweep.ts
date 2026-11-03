@@ -130,8 +130,9 @@ export async function sweepStaleJobRows(
       and not ${hasLiveJobFor(QUEUES.start, { sessionId: "r.session_id" })}
       and not ${hasLiveJobFor(QUEUES.resume, { sessionId: "r.session_id" })}
   `);
+  // No `updated_at` bump: that clock is the session's own 120-minute rule, which this must not restart.
   const stuckProxies = await db.execute<{ id: string }>(sql`
-    update sessions s set proxy_status = 'failed', updated_at = now()
+    update sessions s set proxy_status = 'failed'
     where s.proxy_status in ('pending', 'running') and s.updated_at < ${cutoff}
       and not ${hasLiveJobFor(QUEUES.proxy, { sessionId: "s.id" })}
     returning s.id
