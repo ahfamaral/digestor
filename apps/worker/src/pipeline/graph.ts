@@ -33,7 +33,7 @@ import { understandContext } from "../agents/context.js";
 import type { Embedder } from "../search/embed.js";
 import { indexSession } from "../search/index.js";
 import { runAnalysis } from "./analysis.js";
-import { importContextNames, lockedParticipants, namedVoices } from "./naming.js";
+import { importContextNames, lockedParticipants, nameSpeakersNode, namedVoices } from "./naming.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
@@ -367,6 +367,7 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     .addNode("download", downloadNode(deps))
     .addNode("ingest", ingestNode(deps))
     .addNode("transcribe", transcribeNode(deps))
+    .addNode("name_speakers", nameSpeakersNode(deps))
     .addNode("understand_context", understandContextNode(deps))
     .addNode("ask_context", askContextNode(deps))
     .addNode("index", indexNode(deps))
@@ -381,7 +382,8 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     )
     .addConditionalEdges("download", unlessFailed("ingest"), ["ingest", END])
     .addConditionalEdges("ingest", unlessFailed("transcribe"), ["transcribe", END])
-    .addConditionalEdges("transcribe", unlessFailed("understand_context"), ["understand_context", END])
+    .addConditionalEdges("transcribe", unlessFailed("name_speakers"), ["name_speakers", END])
+    .addConditionalEdges("name_speakers", unlessFailed("understand_context"), ["understand_context", END])
     .addConditionalEdges(
       "understand_context",
       async (s) => {

@@ -12,6 +12,7 @@ const PROCESSING_STAGES: ReadonlySet<Stage> = new Set<Stage>([
   "downloading",
   "preparing",
   "transcribing",
+  "naming_speakers",
   "understanding",
   "indexing",
   "finding_topics",

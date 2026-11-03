@@ -16,6 +16,8 @@ import {
   getSession,
   listAnalysisVersions,
   listAttributions,
+  replaceAiAttributions,
+  saveTranscript,
   createCustomPerson,
   setHumanAttribution,
   updateSession,
@@ -24,10 +26,12 @@ import {
 import * as media from "../media/ffmpeg.js";
 import { FakeTranscriber, TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { handleStart, type JobContext } from "../jobs.js";
+import { MissingApiKeyError } from "../errors.js";
 import { FakeLLM } from "../llm/structured.js";
 import { FakeEmbedder } from "../search/embed.js";
 import { collectionName, deleteSessionIndex } from "../search/index.js";
-import { analysisResponses, crashOnInsert, emptyAnalysisResponses } from "./fakeAnalysis.js";
+import { analysisResponses, captionOf, crashOnInsert, emptyAnalysisResponses } from "./fakeAnalysis.js";
+import { nameSpeakersNode } from "./naming.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
 import { buildPipeline, type PipelineDeps } from "./graph.js";
 
@@ -66,6 +70,9 @@ function draft(date: Fact = none): ContextCard {
   };
 }
 const sufficientDraft = () => draft(fact("2026", "video", "Sentence number 3."));
+
+/** The analysis calls: the frame reads of `name_speakers` are asserted in their own tests. */
+const modelCalls = (llm: FakeLLM) => llm.calls.filter((c) => c.name !== "captions");
 
 const exists = (p: string) => access(p).then(() => true, () => false);
 
@@ -160,7 +167,7 @@ describe("pipeline", () => {
     expect(stored.card.sufficient).toBe(false);
     expect(stored.card.openQuestions.map((q) => q.id)).toEqual(["date"]);
     expect(stored.card.language).toMatchObject({ value: "en", source: "video" });
-    expect(llm.calls).toHaveLength(1);
+    expect(modelCalls(llm)).toHaveLength(1);
   });
 
   it("skip goes on to the analysis and ready after the single context pause", async () => {
@@ -187,9 +194,9 @@ describe("pipeline", () => {
     // Still insufficient after round 1's answers: the follow-up round pauses with its own questions.
     expect(await interruptValue()).toEqual({ type: "context" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", progress: 55 });
-    expect(llm.calls.map((c) => c.name)).toEqual(["context_card", "context_card"]);
-    expect(llm.calls[1]!.user).toContain("Q: When was this recorded or first aired?\nA: Maybe last spring");
-    expect(llm.calls[1]!.user).not.toContain("ignored answer");
+    expect(modelCalls(llm).map((c) => c.name)).toEqual(["context_card", "context_card"]);
+    expect(modelCalls(llm)[1]!.user).toContain("Q: When was this recorded or first aired?\nA: Maybe last spring");
+    expect(modelCalls(llm)[1]!.user).not.toContain("ignored answer");
 
     const round2 = (await getContextCard(db, sessionId))!;
     expect(round2.round).toBe(2);
@@ -215,8 +222,8 @@ describe("pipeline", () => {
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "Sometime in 2025" }], cardEdits: {} });
     expect((await graph.getState(cfg)).next).toEqual([]);
     expect(contextCalls()).toHaveLength(3);
-    expect(llm.calls[2]!.user).toContain("A: Maybe last spring");
-    expect(llm.calls[2]!.user).toContain("Q: When was this recorded or first aired?\nA: Sometime in 2025");
+    expect(modelCalls(llm)[2]!.user).toContain("A: Maybe last spring");
+    expect(modelCalls(llm)[2]!.user).toContain("Q: When was this recorded or first aired?\nA: Sometime in 2025");
     expect((await getContextCard(db, sessionId))!.card.sufficient).toBe(false);
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
   });
@@ -233,7 +240,7 @@ describe("pipeline", () => {
       value: "Joana Confirmada", source: "human", evidence: "Joana Confirmada",
     });
     expect(round2.card.openQuestions.filter((q) => q.target === "participant")).toEqual([]);
-    expect(llm.calls).toHaveLength(2);
+    expect(modelCalls(llm)).toHaveLength(2);
   });
 
   it("skip after a rename in Who's who: the analysis prompts carry the human name", async () => {
@@ -243,7 +250,7 @@ describe("pipeline", () => {
     await setHumanAttribution(db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
     await resume({ action: "skip" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
-    const analysis = llm.calls.filter((c) => c.name !== "context_card");
+    const analysis = modelCalls(llm).filter((c) => c.name !== "context_card");
     expect(analysis.length).toBeGreaterThan(0);
     expect(analysis.every((c) => c.system.includes("Renomeada Na Pausa"))).toBe(true);
   });
@@ -310,7 +317,7 @@ describe("pipeline", () => {
     expect(s.originalKey).toBe(`${sessionId}/original.mp4`);
     expect(s.metadata).toMatchObject({ uploadDate: "2026-03-14", channel: "Canal X", encoder: expect.any(String) });
 
-    const user = llm.calls[0]!.user;
+    const user = modelCalls(llm)[0]!.user;
     expect(user).toContain("uploadDate: 2026-03-14");
     expect(user).toContain("channel: Canal X");
     expect(user).toContain("title: Minister interview");
@@ -432,7 +439,7 @@ describe("analysis", () => {
     await graph.invoke({ sessionId }, cfg);
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, profile: "interview" });
     expect((await graph.getState(cfg)).next).toEqual([]);
-    expect(llm.calls.map((c) => c.name)).toEqual([
+    expect(modelCalls(llm).map((c) => c.name)).toEqual([
       "context_card", "topics", "moments", "punchlines", "briefing", "checks", "checks", "checks",
     ]);
     const bundle = (await getCurrentAnalysis(db, sessionId))!;
@@ -478,10 +485,10 @@ describe("analysis", () => {
       });
       await graph.invoke({ sessionId }, cfg);
       expect((await getSession(db, sessionId))!.stage).toBe("ready");
-      const calls = llm.calls.length;
+      const calls = modelCalls(llm).length;
       const ctx: JobContext = { db, deps, graph };
       await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
-      expect(llm.calls).toHaveLength(calls);
+      expect(modelCalls(llm)).toHaveLength(calls);
       expect(await listAnalysisVersions(db, sessionId)).toHaveLength(1);
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
     } finally {
@@ -527,11 +534,11 @@ describe("crash and resume", () => {
       expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
       expect(extracted).toHaveLength(1); // ingest ran once
       expect(transcribeCalls).toBe(2);
-      expect(llm.calls.map((c) => c.name)).toEqual(["context_card"]);
+      expect(modelCalls(llm).map((c) => c.name)).toEqual(["context_card"]);
 
       // A duplicate start job for the same session (e.g. redelivered after the pause) changes nothing.
       await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
-      expect(llm.calls).toHaveLength(1);
+      expect(modelCalls(llm)).toHaveLength(1);
     } finally {
       log.mockRestore();
     }
@@ -567,5 +574,93 @@ describe("crash and resume", () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe("name_speakers", () => {
+  const captionRows = async (sessionId: string) =>
+    (await listAttributions(db, sessionId)).filter((a) => a.source === "caption" && a.supersededAt === null);
+  const withCaptions = (captions: unknown[]) => ({ ...emptyAnalysisResponses(), captions });
+  const unique = () => `Zeno${Math.random().toString(36).slice(2, 8)}`;
+
+  it("graph: name_speakers writes caption proposals and is idempotent", async () => {
+    const first = unique();
+    const name = `${first} Quimby`;
+    const { graph, cfg, sessionId, deps, llm } = await setup({
+      context: [draft()],
+      analysis: withCaptions(Array.from({ length: 4 }, () => captionOf(name, "PL"))),
+    });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect(llm.calls.filter((c) => c.name === "captions")).toMatchObject([{ model: "fast", images: 1 }, { model: "fast", images: 1 }]);
+    const [row, ...rest] = await captionRows(sessionId);
+    expect(rest).toEqual([]);
+    expect(row).toMatchObject({
+      speakerId: "A", startMs: null, endMs: null, status: "proposed", confidence: 1, createdBy: "caption",
+      evidence: { kind: "caption", frameKey: `${sessionId}/names/A-1000.jpg`, text: name.toUpperCase(), atMs: 1000 },
+    });
+    expect((await getPersons(db, [row!.personId!]))[0]).toMatchObject({ displayName: name, kind: "custom" });
+    expect(await exists(storage.resolve(`${sessionId}/names/A-1000.jpg`))).toBe(true);
+
+    await nameSpeakersNode(deps)({ sessionId }); // a re-run after a crash
+    const again = await captionRows(sessionId);
+    expect(again).toHaveLength(1);
+    expect(again[0]!.personId).toBe(row!.personId);
+  });
+
+  it("a short caption reuses the person already proposed for the same voice", async () => {
+    const first = unique();
+    const { graph, cfg, sessionId, deps } = await setup({ context: [draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    const full = await createCustomPerson(db, { displayName: `${first} Quimby`, createdBy: "owner" });
+    // The transcript named the voice before the captions were read (e.g. a re-run of the step).
+    await updateSession(db, sessionId, { stage: "transcribing" });
+    await saveTranscript(db, sessionId, transcript);
+    await replaceAiAttributions(db, sessionId, "transcript", [
+      { speakerId: "A", startMs: null, endMs: null, personId: full.id, status: "proposed", confidence: 0.7, evidence: { kind: "quote", quote: "x" } },
+    ]);
+    await nameSpeakersNode(deps)({ sessionId });
+    expect((await captionRows(sessionId)).map((r) => r.personId)).toEqual([full.id]);
+    void graph; void cfg;
+  });
+
+  it("graph: audio-only or a deleted original skips captions", async () => {
+    const audio = await setup({ fixture: AUDIO, audioOnlyAck: true, context: [draft()] });
+    await audio.graph.invoke({ sessionId: audio.sessionId }, audio.cfg);
+    expect(audio.llm.calls.filter((c) => c.name === "captions")).toEqual([]);
+    expect(await captionRows(audio.sessionId)).toEqual([]);
+
+    const gone = await setup({});
+    await saveTranscript(db, gone.sessionId, transcript);
+    await updateSession(db, gone.sessionId, { videoDeletedAt: new Date() });
+    await nameSpeakersNode(gone.deps)({ sessionId: gone.sessionId });
+    const missing = await setup({});
+    await saveTranscript(db, missing.sessionId, transcript);
+    await rm(storage.resolve(`${missing.sessionId}/original.mp4`));
+    await nameSpeakersNode(missing.deps)({ sessionId: missing.sessionId });
+    expect(gone.llm.calls.length + missing.llm.calls.length).toBe(0);
+  });
+
+  it("graph: a caption failure doesn't fail the session", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const boom = () => {
+        throw new Error("vision is down");
+      };
+      const { graph, cfg, sessionId } = await setup({ context: [draft()], analysis: withCaptions(Array.from({ length: 4 }, () => boom)) });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", error: null });
+      expect(await captionRows(sessionId)).toEqual([]);
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("a missing API key escapes the node (the job fails the session, Ruling R8)", async () => {
+    const missing = () => {
+      throw new MissingApiKeyError("OPENROUTER_API_KEY");
+    };
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], analysis: withCaptions([missing, missing]) });
+    await expect(graph.invoke({ sessionId }, cfg)).rejects.toBeInstanceOf(MissingApiKeyError);
   });
 });

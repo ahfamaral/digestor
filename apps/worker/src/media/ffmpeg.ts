@@ -78,8 +78,11 @@ export const makeProxy = (input: string, output: string, opts: { hasVideo?: bool
     output,
   ]);
 
-export const thumbnail = (input: string, atMs: number, output: string) =>
-  ffmpeg(["-ss", secs(atMs), "-i", input, "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "3", output]);
+/** One JPEG frame at `atMs`, scaled to `width` px wide. */
+export const frame = (input: string, atMs: number, output: string, width: number) =>
+  ffmpeg(["-ss", secs(atMs), "-i", input, "-frames:v", "1", "-vf", `scale=${width}:-2`, "-q:v", "3", output]);
+
+export const thumbnail = (input: string, atMs: number, output: string) => frame(input, atMs, output, 640);
 
 /**
  * Escape a path for use as the value of a filter option inside a `-vf` string. ffmpeg unescapes twice:

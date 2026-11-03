@@ -182,7 +182,7 @@ export function UploadForm() {
   const estimate =
     mode === "file" && meta ? (
       <>
-        {t("upload.estimateCost")} <b className="text-foreground">≈ {formatCost(estimateCostUsd(meta.durationMs))}</b> · {t("upload.estimateTime")}{" "}
+        {t("upload.estimateCost")} <b className="text-foreground">≈ {formatCost(estimateCostUsd(meta.durationMs, { captions: !audioOnly }))}</b> · {t("upload.estimateTime")}{" "}
         <b className="text-foreground">≈ {t("upload.minutes", { n: estimateMinutes(meta.durationMs) })}</b>
       </>
     ) : mode === "file" && file ? (

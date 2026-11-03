@@ -1,16 +1,24 @@
-import { PROFILES, personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person, type Resolution } from "@digestor/core";
+import { access } from "node:fs/promises";
+import { PROFILES, closeMatches, personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person, type Resolution } from "@digestor/core";
 import {
   backdateNamesToCard,
   createCustomPerson,
   findPersonByName,
   getContextCard,
   getPersons,
+  getSession,
+  getTranscript,
   listAttributions,
   replaceAiAttributions,
   sessionsWithoutNames,
+  setStage,
   type Db,
   type NewAiAttribution,
 } from "@digestor/core/server";
+
+import { readCaptions, captionVotes, type CaptionVote } from "../agents/captions.js";
+import { MissingApiKeyError } from "../errors.js";
+import type { PipelineDeps } from "./graph.js";
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
 const wholeVoice = (a: Attribution) => a.startMs === null && a.endMs === null;
@@ -183,3 +191,66 @@ export async function importNamesForOldSessions(db: Db, ids?: string[]): Promise
   }
   return { imported };
 }
+
+/**
+ * The person a caption vote names. An existing person of that name is reused; a short caption ("FLÁVIO") reuses the one
+ * person already proposed for the same voice whose name contains it; otherwise a custom person is created.
+ * Re-running finds the person it created before, by name.
+ */
+async function personForVote(db: Db, vote: CaptionVote, current: Attribution[]): Promise<Person> {
+  const byName = await findPersonByName(db, vote.name);
+  if (byName) return byName;
+  const ids = new Set(
+    current
+      .filter((a) => a.speakerId === vote.speakerId && wholeVoice(a) && (a.source === "transcript" || a.source === "metadata") && a.personId)
+      .map((a) => a.personId!),
+  );
+  const close = closeMatches(vote.name, await getPersons(db, [...ids]));
+  if (close.length === 1) return close[0]!;
+  return createCustomPerson(db, { displayName: vote.name, createdBy: "caption" });
+}
+
+/**
+ * Reads the lower-third captions of the original video and proposes names (source `caption`, status `proposed`, never
+ * confirmed). Skipped for audio-only sessions and once the video is gone. Safe to run twice: it supersedes only its
+ * own rows (keeping a person a human rejected) and reuses persons by name. Only a missing API key fails the session
+ * (Ruling R8); any other failure is logged and the pipeline goes on without caption names.
+ */
+export const nameSpeakersNode =
+  (deps: PipelineDeps) =>
+  async (s: { sessionId: string }): Promise<Record<string, never>> => {
+    const { db, storage } = deps;
+    await setStage(db, s.sessionId, "naming_speakers", 50);
+    try {
+      const session = await getSession(db, s.sessionId);
+      if (!session || !session.hasVideo || session.videoDeletedAt || !session.originalKey) return {};
+      const original = storage.resolve(session.originalKey);
+      if (!(await access(original).then(() => true, () => false))) return {};
+      const transcript = await getTranscript(db, s.sessionId);
+      if (!transcript) return {};
+      const reads = await readCaptions({ llm: deps.llm, storage, media: deps.media }, s.sessionId, session.originalKey, transcript.words);
+      const current = await listAttributions(db, s.sessionId);
+      const rejected = current.filter((a) => a.source === "caption" && a.status === "rejected");
+      const rows: NewAiAttribution[] = [];
+      for (const vote of captionVotes(reads)) {
+        const res = resolveWhole(current, vote.speakerId);
+        if (res.kind === "anonymous" || (res.kind === "named" && res.attribution.source === "human")) continue;
+        const person = await personForVote(db, vote, current);
+        if (rejected.some((r) => r.speakerId === vote.speakerId && r.personId === person.id)) continue;
+        rows.push({
+          speakerId: vote.speakerId, startMs: null, endMs: null, personId: person.id, status: "proposed",
+          confidence: vote.agreeing / vote.total, evidence: { kind: "caption", frameKey: vote.frameKey, text: vote.text, atMs: vote.atMs },
+        });
+      }
+      const kept = rejected.map((a) => ({
+        speakerId: a.speakerId, startMs: a.startMs, endMs: a.endMs, personId: a.personId, status: a.status,
+        confidence: a.confidence, evidence: a.evidence,
+      }));
+      if (rows.length === 0 && !current.some((a) => a.source === "caption")) return {};
+      await replaceAiAttributions(db, s.sessionId, "caption", [...rows, ...kept]);
+    } catch (err) {
+      if (err instanceof MissingApiKeyError) throw err; // deterministic: fail the session (Ruling R8)
+      console.error(`name_speakers: could not read captions for session ${s.sessionId}; continuing without caption names`, err);
+    }
+    return {};
+  };

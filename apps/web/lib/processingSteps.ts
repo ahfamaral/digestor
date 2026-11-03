@@ -12,13 +12,14 @@ export interface Step {
 }
 
 export const STEP_KEYS = [
-  "intake", "transcribing", "understanding", "indexing", "finding_topics", "finding_moments", "writing_briefing", "ready",
+  "intake", "transcribing", "naming_speakers", "understanding", "indexing", "finding_topics", "finding_moments", "writing_briefing", "ready",
 ] as const;
 export type StepKey = (typeof STEP_KEYS)[number];
 
 const LABEL: Record<StepKey, MessageKey> = {
   intake: "processing.uploading",
   transcribing: "processing.transcribing",
+  naming_speakers: "processing.naming_speakers",
   understanding: "processing.understanding",
   indexing: "processing.indexing",
   finding_topics: "processing.finding_topics",
@@ -33,6 +34,7 @@ export const STAGE_STEP: Record<StageName, StepKey | null> = {
   downloading: "intake",
   preparing: "intake",
   transcribing: "transcribing",
+  naming_speakers: "naming_speakers",
   understanding: "understanding",
   awaiting_context: "understanding",
   indexing: "indexing",

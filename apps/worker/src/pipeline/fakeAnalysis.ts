@@ -71,6 +71,13 @@ export const CHECKS_OK = {
   interpreter: false,
 };
 
+/** A frame without a caption: all three fields empty (the shape of a recorded read, `test/fixtures/vision-caption-openrouter.json`). */
+export const NO_CAPTION = { captionText: "", personName: "", partyOrRole: "" };
+/** A frame whose lower third names `name`. */
+export const captionOf = (name: string, partyOrRole = "") => ({ captionText: name.toUpperCase(), personName: name, partyOrRole });
+/** `captions` answers for a session: no caption in any frame (at most 60 frames are read). */
+export const captionsResponses = () => times(60, NO_CAPTION);
+
 const times = <T>(n: number, x: T): T[] => Array.from({ length: n }, () => x);
 
 /**
@@ -80,6 +87,7 @@ const times = <T>(n: number, x: T): T[] => Array.from({ length: n }, () => x);
 export function analysisResponses(o: { topics?: { title: string; startMs: number; endMs: number }[]; runs?: number } = {}) {
   const runs = o.runs ?? 1;
   return {
+    captions: captionsResponses(),
     topics: times(runs, topicsResponse(o.topics ?? [])),
     moments: times(runs * 30, momentsResponder),
     punchlines: times(runs * 40, punchlinesResponder),
@@ -91,6 +99,7 @@ export function analysisResponses(o: { topics?: { title: string; startMs: number
 
 /** An analysis where the model finds nothing: one fallback topic, no moments, an empty briefing (no error logs). */
 export const emptyAnalysisResponses = () => ({
+  captions: captionsResponses(),
   topics: [{ topics: [] }],
   moments: [{ moments: [] }],
   gap_punchlines: times(20, { punchlines: [] }),

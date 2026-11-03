@@ -15,6 +15,7 @@ const IN_PROGRESS = [
   "downloading",
   "preparing",
   "transcribing",
+  "naming_speakers",
   "understanding",
   "indexing",
   "finding_topics",

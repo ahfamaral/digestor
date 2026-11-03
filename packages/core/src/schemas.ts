@@ -123,6 +123,7 @@ export type Stage =
   | "downloading"
   | "preparing"
   | "transcribing"
+  | "naming_speakers"
   | "understanding"
   | "awaiting_context"
   | "indexing"

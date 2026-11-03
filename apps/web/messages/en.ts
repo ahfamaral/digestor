@@ -78,6 +78,7 @@ export const en = {
     downloading: "Downloading from YouTube",
     uploading: "Uploading",
     transcribing: "Transcribing",
+    naming_speakers: "Naming speakers",
     understanding: "Understanding context",
     indexing: "Indexing",
     finding_topics: "Finding topics",
