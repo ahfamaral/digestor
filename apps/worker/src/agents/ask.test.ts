@@ -37,14 +37,14 @@ beforeAll(() => {
 });
 afterAll(() => close());
 
-async function seed(opts: { analysis?: boolean } = {}) {
+async function seed(opts: { analysis?: boolean; profile?: "interview" | "trial" } = {}) {
   const s = await createSession(db, { title: "Interview", source: "upload" });
   await updateSession(db, s.id, { language: "en", durationMs: DURATION_MS });
   await saveTranscript(db, s.id, { language: "en", languageConfidence: 1, durationMs: DURATION_MS, words });
   let analysisId: string | null = null;
   let momentIds: string[] = [];
   if (opts.analysis !== false) {
-    const v = await startAnalysisVersion(db, s.id, { profile: "interview", reason: "initial", models: {}, promptVersions: {} });
+    const v = await startAnalysisVersion(db, s.id, { profile: opts.profile ?? "interview", reason: "initial", models: {}, promptVersions: {} });
     analysisId = v.id;
     const [topic] = await saveTopics(db, v.id, [{ idx: 0, startMs: 0, endMs: DURATION_MS, title: "Housing", summary: "Rents." }]);
     const saved = await saveMoments(
@@ -401,7 +401,7 @@ describe("runAsk loop", () => {
     const formatted = new ChatAnthropic({ apiKey: "x", model: "claude-sonnet-5-5" }).formatStructuredToolToAnthropic(c!.tools) as { input_schema: { type: string } }[];
     expect(formatted.every((t) => t.input_schema.type === "object")).toBe(true);
     expect(c!.tools.map((t) => t.name).sort()).toEqual(
-      ["get_transcript", "list_moments", "list_topics", "propose_clip", "search_transcript", "set_selection", "trim_clip"],
+      ["get_transcript", "list_moments", "list_speeches", "list_topics", "propose_clip", "search_transcript", "set_selection", "trim_clip"],
     );
   });
 
@@ -439,6 +439,92 @@ describe("runAsk loop", () => {
     await runAsk(depsFor(llm), msg.id);
     await runAsk(depsFor(llm), msg.id);
     expect(llm.calls).toHaveLength(1);
+  });
+});
+
+/** Ranged AI rows of one voice: each `[startMs, endMs)` names `personId` (record rows are confirmed, transcript rows proposed). */
+const part = (speakerId: string, startMs: number, endMs: number, personId: string, status: "confirmed" | "proposed" | "rejected") => ({
+  speakerId, startMs, endMs, personId, status, confidence: 0.9, evidence: { kind: "none" as const },
+});
+
+describe("ask knows names (T18)", () => {
+  it("known participants come from attributions with their status", async () => {
+    const { s } = await seed();
+    const davi = await createCustomPerson(db, { displayName: "Davi Alcolumbre", createdBy: "record" });
+    const eva = await createCustomPerson(db, { displayName: "Eva Proposta", createdBy: "transcript" });
+    const gil = await createCustomPerson(db, { displayName: "Gil Rejeitado", createdBy: "transcript" });
+    await replaceAiAttributions(db, s.id, "record", [part("A", 0, 60_000, davi.id, "confirmed")]);
+    await replaceAiAttributions(db, s.id, "transcript", [part("A", 240_000, 300_000, eva.id, "proposed"), part("A", 360_000, 420_000, gil.id, "rejected")]);
+    const msg = await ask(s.id, "Who speaks?");
+    const llm = new FakeToolLLM([answer("Several people.")]);
+    await runAsk(depsFor(llm), msg.id);
+    const system = llm.calls[0]!.system;
+    expect(system).toContain("Davi Alcolumbre, confirmed, speaks in parts of voice A");
+    expect(system).toContain("Eva Proposta, proposed, speaks in parts of voice A");
+    expect(system).not.toContain("Gil Rejeitado");
+  });
+
+  it("sensitive profiles name only confirmed people in the prompt", async () => {
+    const { s } = await seed({ profile: "trial" });
+    const davi = await createCustomPerson(db, { displayName: "Davi Alcolumbre", createdBy: "record" });
+    const eva = await createCustomPerson(db, { displayName: "Eva Proposta", createdBy: "transcript" });
+    await replaceAiAttributions(db, s.id, "record", [part("A", 0, 60_000, davi.id, "confirmed")]);
+    await replaceAiAttributions(db, s.id, "transcript", [part("A", 240_000, 300_000, eva.id, "proposed")]);
+    const msg = await ask(s.id, "Who speaks?");
+    const llm = new FakeToolLLM([toolStep(call("list_speeches", { person: "Eva Proposta" })), answer("Nobody.")]);
+    await runAsk(depsFor(llm), msg.id);
+    expect(llm.calls[0]!.system).toContain("Davi Alcolumbre, confirmed, speaks in parts of voice A");
+    expect(llm.calls[0]!.system).not.toContain("Eva Proposta");
+    expect(toolResults(llm.calls[1]!)[0]).toBe("No one by that name speaks in this session.");
+  });
+
+  it("list_speeches lists a person's turns with topics", async () => {
+    const { s } = await seed();
+    const sergio = await createCustomPerson(db, { displayName: "Sergio Moro", createdBy: "record" });
+    const rodrigo = await createCustomPerson(db, { displayName: "Rodrigo Moro", createdBy: "record" });
+    // Sergio holds A then B (one merged turn), and A again later; Rodrigo is another Moro.
+    await replaceAiAttributions(db, s.id, "record", [
+      part("A", 0, 60_000, sergio.id, "confirmed"), part("B", 60_000, 120_000, sergio.id, "confirmed"),
+      part("A", 240_000, 300_000, sergio.id, "confirmed"), part("A", 120_000, 180_000, rodrigo.id, "confirmed"),
+    ]);
+    const msg = await ask(s.id, "What did Sergio Moro say?");
+    const llm = new FakeToolLLM([
+      toolStep(call("list_speeches", { person: "Sergio Moro" }), call("list_speeches", { person: "sérgio  MORO" }), call("list_speeches", { person: "Moro" })),
+      answer("He spoke [00:00:00]."),
+    ]);
+    await runAsk(depsFor(llm), msg.id);
+    const [exact, accents, ambiguous] = toolResults(llm.calls[1]!);
+    expect(exact).toContain("Sergio Moro");
+    expect(exact).toMatch(/<transcript>\n\[00:00:00–00:0[12]:\d\d\] 2 min · Housing\n\[00:04:00–00:04:\d\d\] 1 min · Housing\n<\/transcript>/);
+    expect(exact).not.toContain("00:02:00");
+    expect(accents).toContain("Sergio Moro");
+    expect(ambiguous).toMatch(/Sergio Moro.*Rodrigo Moro|Rodrigo Moro.*Sergio Moro/);
+    expect(ambiguous).toMatch(/which/i);
+    expect(ambiguous).not.toContain("<transcript>");
+  });
+
+  it("list_speeches caps at 30 lines and says how many more", async () => {
+    const { s } = await seed();
+    const ana = await createCustomPerson(db, { displayName: "Ana Longa", createdBy: "record" });
+    // 35 short turns inside voice A's minutes: 6 per block, blocks every 2 minutes.
+    await replaceAiAttributions(db, s.id, "record", Array.from({ length: 35 }, (_, i) => {
+      const start = Math.floor(i / 6) * 120_000 + (i % 6) * 10_000;
+      return part("A", start, start + 5_000, ana.id, "confirmed");
+    }));
+    const msg = await ask(s.id, "Ana?");
+    const llm = new FakeToolLLM([toolStep(call("list_speeches", { person: "Ana" })), answer("Many [00:00:00].")]);
+    await runAsk(depsFor(llm), msg.id);
+    const out = toolResults(llm.calls[1]!)[0]!;
+    expect(out.match(/ · Housing/g)).toHaveLength(30);
+    expect(out).toMatch(/5 more/);
+  });
+
+  it("list_speeches answers plainly for an unknown name", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did Nobody say?");
+    const llm = new FakeToolLLM([toolStep(call("list_speeches", { person: "Fulano de Tal" })), answer(NOT_IN_DATA)]);
+    await runAsk(depsFor(llm), msg.id);
+    expect(toolResults(llm.calls[1]!)[0]).toBe("No one by that name speaks in this session.");
   });
 });
 

@@ -34,7 +34,8 @@ The stepper reads Upload › Processing › Context › Preview › Briefing ›
 6. **Full briefing:** instant filters (granularity, speaker focus, relevance, highlight type) and keyboard triage (`A` approve, `N` neutral, `R` reject, `E` open in Prepare, arrows to move). Approved moments are never hidden by filters. "Confirm selection → Prepare clips".
 7. **Prepare clips:** trim on a sentence-snapped strip, checks ("The argument continues", "Context:", "Quoting someone else", "Interpreter audio"), 16:9 or 9:16 with a crop offset, a credit line, and per-language subtitles (translated by Claude, editable, approved before burn-in).
 8. **Export:** ffmpeg cuts each ready clip from the original (H.264, optional burned-in subtitles in Noto Sans, a credit line drawn bottom-right) and offers MP4, SRT and VTT downloads.
-9. **Ask** (press `/` on Preview or Full briefing): a RAG copilot answering only from the video's stored data, with function calls that change your personal selections (undoable; bulk changes need confirmation).
+9. **Ask** (press `/` on Preview or Full briefing): a RAG copilot answering only from the video's stored data, with function calls that change your personal selections (undoable; bulk changes need confirmation). It knows the speakers' names (confirmed or proposed) and can list when a named person speaks.
+10. **Speaker names (Plan 3):** a registry of people, and a name for each voice with its source (the official Senado record, a caption on screen, the transcript, or you). Names from AI are proposals until you confirm them in Who's who; Prepare is blocked until the voices in a clip are confirmed or marked "No name"; sensitive profiles (a trial) never show an unconfirmed name. Results: the debate scores 0.99 and the Senado plenary 0.93 (see Evaluation). Câmara plenary links are matched the same way; see the "Câmara record names" paragraph under Evaluation (matching validated on recorded text only, not yet scored on a golden file). "Report a problem" on a name goes to the reports list.
 
 Progress streams to the browser over SSE; the pipeline survives worker restarts because it resumes from a Postgres checkpoint.
 
@@ -233,7 +234,7 @@ Already handled in Plan 2: lenient LLM output schemas, a sweep for sessions stuc
 
 ## Roadmap
 
-- Plan 3: the person registry, speaker names with sources, attribution from captions and official records.
+- Plan 3 (done): the person registry, speaker names with sources, attribution from captions and official records.
 - Plan 4: Câmara and Senado connectors, the Tracker home, presence and participation tables.
 
 ## Showcase

@@ -1,12 +1,12 @@
 import { z } from "zod";
 import {
-  GRANULARITY, HIGHLIGHT_TYPES, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
-  parseTimestamp, renderTranscript, sliceWords, snapRange, toSentences, VIDEO_REMOVED,
-  type AnalysisBundle, type AskToolCallRecord, type Boundary, type ContextCard, type SelectionStatus, type Transcript,
+  GRANULARITY, HIGHLIGHT_TYPES, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, closeMatches, findBoundaries, formatTimestamp,
+  normaliseName, parseTimestamp, personAt, renderTranscript, sliceWords, snapRange, toSentences, VIDEO_REMOVED,
+  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ContextCard, type Person, type SelectionStatus, type Transcript, type Word,
 } from "@digestor/core";
 import {
   claimAskMessage, createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskMessage, getClip, getContextCard,
-  getCurrentAnalysis, getMoment, getSession, getTranscript, listAskMessages, listPersonalMoments, listSelections,
+  getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
   setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
@@ -14,13 +14,15 @@ import type { SearchHit } from "../search/index.js";
 import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
 
-export const ASK_PROMPT_VERSION = "ask@2";
+export const ASK_PROMPT_VERSION = "ask@3";
 export const MAX_ASK_STEPS = 6;
 export const MAX_TOOL_OUTPUT = 4000;
 export const HISTORY_LIMIT = 10;
 const MAX_CALLS_PER_STEP = 10;
 const MAX_TRANSCRIPT_RANGE_MS = 10 * 60_000;
 const MAX_MOMENTS_LISTED = 30;
+const MAX_SPEECHES_LISTED = 30;
+const NO_SUCH_PERSON = "No one by that name speaks in this session.";
 /**
  * At most this many changes apply directly per run, counting every mutating call (R31): each moment of a direct
  * set_selection, each propose_clip and each trim_clip. Beyond it, selections wait for the user's confirmation and
@@ -75,6 +77,8 @@ type AskContext = {
   analysis: AnalysisBundle | null;
   transcript: Transcript | null;
   boundaries: Boundary[];
+  /** Who speaks when, from the current attributions (confirmed names only in a sensitive profile). */
+  names: NameIndex;
   /** Set just before a tool's first write, so a failure mid-write also counts: a retry would repeat it. */
   wrote: boolean;
   /** The same, for the tool call that is running (its chip is kept if it fails partway). */
@@ -85,6 +89,81 @@ type AskContext = {
 
 type ToolResult = { text: string } & Pick<AskToolCallRecord, "undo" | "clipId">;
 type Tool = { spec: ToolSpec; run(ctx: AskContext, args: never): Promise<ToolResult> };
+
+// ---------------------------------------------------------------- names
+
+/** One stretch of consecutive words that all resolve to the same person, whichever voice carries them. */
+type NamedRun = { personId: string; confirmed: boolean; startMs: number; endMs: number };
+type NameIndex = {
+  persons: Map<string, Person>;
+  runs: NamedRun[];
+  /** Every (voice, person) pair the words resolve to, and whether every such word was confirmed. */
+  voices: { speakerId: string; personId: string; confirmed: boolean }[];
+};
+
+const EMPTY_NAMES: NameIndex = { persons: new Map(), runs: [], voices: [] };
+
+/**
+ * Resolves every word with `personAt` (human rows win; rejected and superseded rows never count). With `confirmedOnly`
+ * (sensitive profiles) a proposed name counts as no name at all.
+ */
+function indexNames(words: Word[], atts: Attribution[], persons: Person[], confirmedOnly: boolean): NameIndex {
+  const runs: NamedRun[] = [];
+  const voices = new Map<string, { speakerId: string; personId: string; confirmed: boolean }>();
+  let cur: NamedRun | null = null;
+  for (const w of words) {
+    const res = personAt(atts, w.speaker, w.startMs);
+    if (res.kind !== "named" || (confirmedOnly && !res.confirmed)) {
+      cur = null;
+      continue;
+    }
+    const key = `${w.speaker}\u0000${res.personId}`;
+    const v = voices.get(key);
+    if (v) v.confirmed &&= res.confirmed;
+    else voices.set(key, { speakerId: w.speaker, personId: res.personId, confirmed: res.confirmed });
+    if (cur && cur.personId === res.personId) {
+      cur.endMs = w.endMs;
+      cur.confirmed &&= res.confirmed;
+    } else {
+      cur = { personId: res.personId, confirmed: res.confirmed, startMs: w.startMs, endMs: w.endMs };
+      runs.push(cur);
+    }
+  }
+  return { persons: new Map(persons.map((p) => [p.id, p])), runs, voices: [...voices.values()] };
+}
+
+/**
+ * People named on only part of a voice (a Senado record row names the chair's voice turn by turn): the per-voice
+ * lines of the context card leave them out. Each one is listed once per voice, unless the voice's own line names them.
+ */
+function sharedVoiceNames(names: NameIndex, participants: ContextCard["participants"]): string[] {
+  return names.voices
+    .filter((v) => participants.find((p) => p.speakerId === v.speakerId)?.name.value !== names.persons.get(v.personId)?.displayName)
+    .flatMap((v) => {
+      const name = names.persons.get(v.personId)?.displayName;
+      return name ? [{ speakerId: v.speakerId, text: `${name}, ${v.confirmed ? "confirmed" : "proposed"}, speaks in parts of voice ${v.speakerId}` }] : [];
+    })
+    .sort((a, b) => a.speakerId.localeCompare(b.speakerId) || a.text.localeCompare(b.text))
+    .map((x) => x.text);
+}
+
+const speechLength = (ms: number): string => {
+  const s = Math.max(1, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h ? `${h} h` : "", m ? `${m} min` : "", sec && !h ? `${sec} s` : ""].filter(Boolean).join(" ");
+};
+
+/** The one person a typed name means among those who speak: exact name first, then names sharing whole words. */
+function findPerson(ctx: AskContext, typed: string): Person[] {
+  const spoken = new Set(ctx.names.runs.map((r) => r.personId));
+  const people = [...ctx.names.persons.values()].filter((p) => spoken.has(p.id));
+  const q = normaliseName(typed);
+  const exact = people.filter((p) => normaliseName(p.displayName) === q || (p.fullName !== null && normaliseName(p.fullName) === q));
+  if (exact.length > 0) return exact;
+  return people.filter((p) => closeMatches(typed, [p]).length > 0 || (p.fullName !== null && closeMatches(typed, [{ ...p, displayName: p.fullName }]).length > 0));
+}
 
 // ---------------------------------------------------------------- helpers
 
@@ -197,6 +276,32 @@ const tools: Tool[] = [
       const words = ctx.transcript ? sliceWords(ctx.transcript.words, range) : [];
       if (words.length === 0) return { text: `Nobody speaks between ${ts(range.startMs)} and ${ts(range.endMs)}.` };
       return { text: evidence(renderTranscript(toSentences(words))) };
+    },
+  },
+  {
+    spec: {
+      name: "list_speeches",
+      description:
+        "When a named person speaks: their turns with start, end, length and topic, in time order (at most 30). Use it for questions like \"what did X say\", then read the turns with get_transcript.",
+      schema: z.object({ person: z.string().describe("The person's name, as the user wrote it") }),
+    },
+    async run(ctx, a: { person: string }) {
+      const found = findPerson(ctx, a.person);
+      if (found.length === 0) return { text: NO_SUCH_PERSON };
+      if (found.length > 1) {
+        return { text: `More than one person matches "${a.person.slice(0, 80)}": ${found.map((p) => p.displayName).join(", ")}. Ask the user which one they mean.` };
+      }
+      const person = found[0]!;
+      const runs = ctx.names.runs.filter((r) => r.personId === person.id);
+      const topics = ctx.analysis?.topics ?? [];
+      const lines = runs.slice(0, MAX_SPEECHES_LISTED).map((r) => {
+        const topic = topics.find((t) => t.startMs <= r.startMs && r.startMs < t.endMs);
+        return `${span(r)} ${speechLength(r.endMs - r.startMs)} · ${topic?.title ?? "—"}`;
+      });
+      const more = runs.length > lines.length ? `\n${runs.length - lines.length} more turns not listed.` : "";
+      const status = runs.every((r) => r.confirmed) ? "confirmed" : "name not confirmed";
+      // Topic titles were written from the transcript: evidence, never instructions (R31).
+      return { text: `${person.displayName} (${status}) speaks in ${runs.length} ${runs.length === 1 ? "turn" : "turns"}:\n${evidence(lines.join("\n"))}${more}` };
     },
   },
   {
@@ -356,7 +461,7 @@ async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<ToolResu
 
 // ---------------------------------------------------------------- prompt
 
-function buildSystem(session: Session, transcript: Transcript | null, analysis: AnalysisBundle | null, card: ContextCard | null): string {
+function buildSystem(session: Session, transcript: Transcript | null, analysis: AnalysisBundle | null, card: ContextCard | null, names: NameIndex): string {
   const speakers = [...new Set((transcript?.words ?? []).map((w) => w.speaker))];
   const profile = ProfileIdSchema.safeParse(analysis?.version.profile ?? card?.profile.value);
   // `card` carries the names projected from the current attributions (`promptCard`): confirmed or probable.
@@ -368,6 +473,7 @@ function buildSystem(session: Session, transcript: Transcript | null, analysis: 
         ? `${p.speakerId} = ${p.name.value}${role}, confirmed`
         : `${p.speakerId} = probably ${p.name.value}${role}, not confirmed`;
     });
+  known.push(...sharedVoiceNames(names, card?.participants ?? []));
   const facts = [
     `Title: ${JSON.stringify(session.title)}`,
     `Duration: ${ts(transcript?.durationMs ?? session.durationMs ?? 0)}`,
@@ -385,7 +491,7 @@ Rules:
 - Cite a timestamp as [hh:mm:ss] for every claim, using the times in the tool results.
 - When the data doesn't support an answer, reply exactly: "${NOT_IN_DATA}"
 - If a tool says "${SEARCH_UNAVAILABLE}", tell the user, and use get_transcript, list_topics or list_moments instead.
-- Never invent names. Refer to speakers by their speaker id (for example "Speaker A"), unless the known participants below name them. Say "probably" with a name that is not confirmed.
+- Never invent names. Refer to speakers by their speaker id (for example "Speaker A"), unless the known participants below name them. Say "probably" with a name that is not confirmed. For what a named person said, use list_speeches, then get_transcript for the turns that matter.
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
 - propose_clip, trim_clip and set_selection change the user's own clips and selections. Use them only when the user asks for that change. You can't render, export or change the official analysis.
@@ -467,6 +573,7 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     session,
     analysis,
     transcript,
+    names: EMPTY_NAMES,
     boundaries: transcript && transcript.words.length > 0 ? findBoundaries(transcript.words, transcript.durationMs) : [],
     wrote: false,
     callWrote: false,
@@ -474,7 +581,14 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
   };
   const profiled = stored && analysis ? withProfile(stored.card, ProfileIdSchema.catch(stored.card.profile.value).parse(analysis.version.profile)) : stored?.card;
   const card = profiled ? await promptCard(db, session.id, profiled) : null;
-  const system = buildSystem(session, transcript, analysis, card);
+  // Sensitive profiles (a trial) name only confirmed people, in the prompt and in list_speeches.
+  const profileId = ProfileIdSchema.safeParse(analysis?.version.profile ?? stored?.card.profile.value);
+  const atts = transcript && transcript.words.length > 0 ? await listAttributions(db, session.id) : [];
+  if (atts.length > 0) {
+    const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
+    ctx.names = indexNames(transcript!.words, atts, persons, profileId.success && PROFILES[profileId.data].sensitive);
+  }
+  const system = buildSystem(session, transcript, analysis, card, ctx.names);
   const specs = tools.map((t) => t.spec);
   const messages: ToolMessage[] = [...history];
   const records: AskToolCallRecord[] = [];

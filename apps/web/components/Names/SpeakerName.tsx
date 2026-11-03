@@ -59,6 +59,7 @@ export function SpeakerName({
         range={range}
         ranges={ranges}
         rangeOnly={rangeOnly}
+        atMs={atMs}
         confirmBody={confirmBody ?? voiceConfirmBody(names, speakerId, res, range) ?? undefined}
         trigger={
           <button

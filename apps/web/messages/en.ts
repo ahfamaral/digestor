@@ -176,6 +176,8 @@ export const en = {
     searchLabel: "Name for {label}",
     popoverTitle: "Who is {label}?",
     saving: "Saving…",
+    reportName: "Report a problem",
+    reportTargetName: "The name given to {label}",
     failed: "That change didn't save. Try again.",
     unconfirmed: "Not confirmed yet",
     nameOf: "{label}, {badge}. Click to confirm or change.",
@@ -588,6 +590,7 @@ export const en = {
       quote: "Quote",
       clip: "Clip",
       track: "Subtitles",
+      attribution: "Speaker name",
     },
   },
 } as const;

@@ -3,7 +3,8 @@
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
 import { Popover } from "@base-ui/react/popover";
-import { closeMatches, type Person, type Range } from "@digestor/core";
+import { closeMatches, personAt, type Person, type Range } from "@digestor/core";
+import { ReportProblem } from "@/components/ReportProblem";
 import { errorMessage } from "@/lib/http";
 import { scopeFields, type NamesData, type VoiceLabel } from "@/lib/names";
 import { t } from "@/lib/i18n";
@@ -34,6 +35,7 @@ export function NamePopover({
   rangeOnly = false,
   confirmBody,
   offerNoName = false,
+  atMs,
 }: {
   sessionId: string;
   speakerId: string;
@@ -51,6 +53,8 @@ export function NamePopover({
   confirmBody?: Record<string, unknown>;
   /** Offer "No name" for a voice with no name too (the export check needs it confirmed or marked "no name"). */
   offerNoName?: boolean;
+  /** Where the voice speaks when there is no `range`: which attribution a report points at. */
+  atMs?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -61,6 +65,7 @@ export function NamePopover({
   const [onlyThis, setOnlyThis] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -150,104 +155,130 @@ export function NamePopover({
   }
 
   const title = t("names.popoverTitle", { label: label.text });
+  // "Report a problem" points at the attribution row this name comes from; a voice with no row (unnamed, or a conflict) has none.
+  const res = personAt(names.attributions, speakerId, range?.startMs ?? ranges?.[0]?.startMs ?? atMs ?? 0);
+  const reportId = res.kind === "named" || res.kind === "anonymous" ? res.attribution.id : null;
   return (
-    <Popover.Root open={open} onOpenChange={reset}>
-      <Popover.Trigger render={trigger} />
-      <Popover.Portal>
-        <Popover.Positioner sideOffset={6} align="start" className="z-50">
-          <Popover.Popup
-            initialFocus={changing ? inputRef : undefined}
-            className="w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-white p-3 text-sm text-foreground shadow-lg outline-none"
-          >
-            <Popover.Title className="mb-2 text-[13px] font-semibold">{title}</Popover.Title>
-            {!changing ? (
-              <div className="flex flex-wrap gap-1.5">
-                {label.proposed && (
-                  <button type="button" className={BTN} disabled={busy} onClick={() => void send(confirmBody ?? { action: "confirm", speakerId })}>
-                    {t("names.confirm")}
+    <>
+      <Popover.Root open={open} onOpenChange={reset}>
+        <Popover.Trigger render={trigger} />
+        <Popover.Portal>
+          <Popover.Positioner sideOffset={6} align="start" className="z-50">
+            <Popover.Popup
+              initialFocus={changing ? inputRef : undefined}
+              className="w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-white p-3 text-sm text-foreground shadow-lg outline-none"
+            >
+              <Popover.Title className="mb-2 text-[13px] font-semibold">{title}</Popover.Title>
+              {!changing ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {label.proposed && (
+                    <button type="button" className={BTN} disabled={busy} onClick={() => void send(confirmBody ?? { action: "confirm", speakerId })}>
+                      {t("names.confirm")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={BTN}
+                    onClick={() => {
+                      setChanging(true);
+                      setTimeout(() => inputRef.current?.focus(), 0);
+                    }}
+                  >
+                    {t("names.change")}
                   </button>
-                )}
-                <button
-                  type="button"
-                  className={BTN}
-                  onClick={() => {
-                    setChanging(true);
-                    setTimeout(() => inputRef.current?.focus(), 0);
-                  }}
-                >
-                  {t("names.change")}
-                </button>
-                {(label.badge !== null || offerNoName) && (
-                  <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "anonymous", speakerId, ...part })}>
-                    {t("names.noName")}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div>
-                <input
-                  ref={inputRef}
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setActive(0);
-                  }}
-                  onKeyDown={onKey}
-                  role="combobox"
-                  aria-expanded={options.length > 0}
-                  aria-controls={listId}
-                  aria-activedescendant={options.length > 0 ? `${listId}-${Math.min(active, options.length - 1)}` : undefined}
-                  aria-autocomplete="list"
-                  aria-label={t("names.searchLabel", { label: label.text })}
-                  placeholder={t("names.search")}
-                  dir="auto"
-                  className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                />
-                <ul id={listId} role="listbox" className="mt-1 max-h-48 overflow-y-auto">
-                  {options.map((o, i) => (
-                    <li
-                      key={o.kind === "person" ? o.person.id : "create"}
-                      id={`${listId}-${i}`}
-                      role="option"
-                      aria-selected={i === Math.min(active, options.length - 1)}
-                      onMouseEnter={() => setActive(i)}
-                      onClick={() => void pick(o)}
-                      className="cursor-pointer rounded-md px-2 py-1.5 text-[13px] aria-selected:bg-muted"
+                  {(label.badge !== null || offerNoName) && (
+                    <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "anonymous", speakerId, ...part })}>
+                      {t("names.noName")}
+                    </button>
+                  )}
+                  {reportId !== null && (
+                    <button
+                      type="button"
+                      className={BTN}
+                      onClick={() => {
+                        reset(false);
+                        setReportOpen(true);
+                      }}
                     >
-                      {o.kind === "person" ? (
-                        <>
-                          <span dir="auto">{o.person.displayName}</span>
-                          {(o.person.party || o.person.role) && (
-                            <span className="ml-1.5 text-xs text-muted-foreground">{[o.person.role, o.person.party].filter(Boolean).join(" · ")}</span>
-                          )}
-                        </>
-                      ) : (
-                        t("names.newPerson", { name: o.name })
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {range && !rangeOnly && (
-              <label className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input type="checkbox" checked={onlyThis} onChange={(e) => setOnlyThis(e.target.checked)} className="size-3.5 accent-foreground" />
-                {t("names.onlyThisPart")}
-              </label>
-            )}
-            {error && (
-              <p role="alert" className="mt-2 text-xs text-red-700">
-                {error}
-              </p>
-            )}
-            {busy && (
-              <p role="status" className="mt-2 text-xs text-muted-foreground">
-                {t("names.saving")}
-              </p>
-            )}
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+                      {t("names.reportName")}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <input
+                    ref={inputRef}
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setActive(0);
+                    }}
+                    onKeyDown={onKey}
+                    role="combobox"
+                    aria-expanded={options.length > 0}
+                    aria-controls={listId}
+                    aria-activedescendant={options.length > 0 ? `${listId}-${Math.min(active, options.length - 1)}` : undefined}
+                    aria-autocomplete="list"
+                    aria-label={t("names.searchLabel", { label: label.text })}
+                    placeholder={t("names.search")}
+                    dir="auto"
+                    className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  />
+                  <ul id={listId} role="listbox" className="mt-1 max-h-48 overflow-y-auto">
+                    {options.map((o, i) => (
+                      <li
+                        key={o.kind === "person" ? o.person.id : "create"}
+                        id={`${listId}-${i}`}
+                        role="option"
+                        aria-selected={i === Math.min(active, options.length - 1)}
+                        onMouseEnter={() => setActive(i)}
+                        onClick={() => void pick(o)}
+                        className="cursor-pointer rounded-md px-2 py-1.5 text-[13px] aria-selected:bg-muted"
+                      >
+                        {o.kind === "person" ? (
+                          <>
+                            <span dir="auto">{o.person.displayName}</span>
+                            {(o.person.party || o.person.role) && (
+                              <span className="ml-1.5 text-xs text-muted-foreground">{[o.person.role, o.person.party].filter(Boolean).join(" · ")}</span>
+                            )}
+                          </>
+                        ) : (
+                          t("names.newPerson", { name: o.name })
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {range && !rangeOnly && (
+                <label className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <input type="checkbox" checked={onlyThis} onChange={(e) => setOnlyThis(e.target.checked)} className="size-3.5 accent-foreground" />
+                  {t("names.onlyThisPart")}
+                </label>
+              )}
+              {error && (
+                <p role="alert" className="mt-2 text-xs text-red-700">
+                  {error}
+                </p>
+              )}
+              {busy && (
+                <p role="status" className="mt-2 text-xs text-muted-foreground">
+                  {t("names.saving")}
+                </p>
+              )}
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
+      {reportId !== null && (
+        <ReportProblem
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          sessionId={sessionId}
+          targets={[{ kind: "attribution", id: reportId, label: t("names.reportTargetName", { label: label.text }) }]}
+          onSent={() => router.refresh()}
+        />
+      )}
+    </>
   );
 }

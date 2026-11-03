@@ -7,7 +7,7 @@ import { getServer } from "@/lib/server";
 const BodySchema = z
   .object({
     sessionId: z.string().uuid(),
-    targetKind: z.enum(["moment", "topic", "briefing", "quote", "clip", "track"]),
+    targetKind: z.enum(["moment", "topic", "briefing", "quote", "clip", "track", "attribution"]),
     targetId: z.string().trim().min(1).max(100),
     note: z.string().trim().max(1000).optional(),
   })

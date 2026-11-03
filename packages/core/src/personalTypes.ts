@@ -12,7 +12,7 @@ export type AskRole = "user" | "assistant";
 export type AskMessageStatus = "pending" | "running" | "done" | "failed";
 export type AskActionKind = "bulk_selection";
 export type AskActionStatus = "pending" | "confirmed" | "dismissed";
-export type ProblemTargetKind = "moment" | "topic" | "briefing" | "quote" | "clip" | "track";
+export type ProblemTargetKind = "moment" | "topic" | "briefing" | "quote" | "clip" | "track" | "attribution";
 
 export interface TrackCue {
   startMs: number;

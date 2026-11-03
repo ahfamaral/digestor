@@ -231,6 +231,14 @@ describe("problem reports", () => {
     expect(list.reports.filter((r: { sessionId: string }) => r.sessionId === sessionId).map((r: { targetKind: string }) => r.targetKind)).toEqual(["briefing", "moment"]);
   });
 
+  it("reports: accepts targetKind attribution", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    const res = await postReport(req({ sessionId, targetKind: "attribution", targetId: "11111111-1111-4111-8111-111111111111", note: "Wrong person" }));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ sessionId, targetKind: "attribution", note: "Wrong person" });
+    expect((await postReport(req({ sessionId, targetKind: "attribution" }))).status).toBe(400);
+  });
+
   it("refuses bad bodies and unknown sessions", async () => {
     const { sessionId } = await seedReadySession(h.db);
     for (const body of [
