@@ -167,7 +167,7 @@ What the misses show:
 - **Punchlines were capped at 4 per exchange.** The 6-minute Norte exchange alone holds 7 golden punchlines; "mordido por um carapanã" and "É você ou é o Google?" were lost on both models. Fixed since (below).
 - **Punchlines only come from inside exchanges.** Haiku left 50:09–55:16 without an exchange. That stretch is the "9 dedos" (nine fingers) fight, the most quoted moment of the debate, and neither model has it as a punchline.
 - **Haiku splits a round** (question → answer → rebuttal → counter-rebuttal) into 2–3 shorter exchanges, which costs exchange recall. Luna keeps whole rounds but finds a third fewer passages, so it misses the "9 dedos" passage too.
-- Cost on OpenRouter: about $0.25 for both full analyses plus every check, against an estimated $0.40 of AssemblyAI credit for transcribing 2 hours.
+- Cost on OpenRouter: about $0.25 for both full analyses plus every check, against about $0.46 of AssemblyAI credit for transcribing 2 hours ($0.23 an hour: Universal-3.5 Pro plus speaker labels).
 
 **After the first fixes (2026-11-02).** The punchline cap now grows with the exchange: one per 45 s, between 4 and 8 (`punchlineCap`), and the session cap rose from 200 to 250 moments. Two new Haiku runs on the same code (v3, v4) against the first Haiku run:
 
@@ -215,7 +215,7 @@ What AssemblyAI's diarization gave, with only `speaker_labels` set: 16 voices, 6
 
 The debate (no record; names from the transcript and context check) still scores 0.99: 100% named correctly, 6.8 s wrong.
 
-Cost of the Senado run: AssemblyAI, about $2.13 for 5.32 hours; OpenRouter (Claude Haiku 5.5, context check plus full analysis), at most $0.21. The Senado API is free. The 8 GB download and the 480p preview took 92 minutes before transcription started, because the preview copy is made first. Transcription itself took 6 minutes.
+Cost of the Senado run: AssemblyAI, about $1.22 for 5.32 hours (Universal-3.5 Pro $0.21 + speaker labels $0.02 an hour, the model the transcript reports); OpenRouter (Claude Haiku 5.5, context check plus full analysis), at most $0.21. The Senado API is free. The 8 GB download and the 480p preview took 92 minutes before transcription started, because the preview copy is made first. Transcription itself took 6 minutes.
 
 The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script.
 

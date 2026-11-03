@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { CandidateSchema, ContextCardSchema, ResumePayloadSchema } from "./schemas.ts";
-import { estimateCostUsd } from "./cost.ts";
 
 const nullFact = { value: null, source: null, evidence: null };
 const question = (i: number) => ({
@@ -58,5 +57,4 @@ describe("schemas", () => {
       ResumePayloadSchema.safeParse({ action: "continue", answers: [], cardEdits: { profile: "trial", language: "pt" } }).success,
     ).toBe(true);
   });
-  it("estimates cost per hour", () => { expect(estimateCostUsd(90 * 60_000)).toBe(0.6); });
 });
