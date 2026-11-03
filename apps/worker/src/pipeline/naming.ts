@@ -46,31 +46,34 @@ export const VOICE_COVER_MIN = 0.8;
 export const VOICE_COVER_OTHER_MAX = 0.1;
 
 /**
- * The one person a voice is, when the ranged (record) rows of its turns say so: one person's non-human rows cover
- * >= 80% of the voice's speaking time (word durations) and no other person's cover > 10%. `confirmed` only when all
- * of that person's ranged rows for the voice are confirmed. Null for a voice split between people (or without rows).
+ * The one person a voice is, when the ranged rows of its turns say so. Each word of the voice is resolved with
+ * `personAt` over every current row (a human's ranged correction included; whole-voice AI proposals are left out,
+ * they are not the record's): one person at >= 80% of the voice's speaking time (word durations) and nobody else at
+ * > 10% is the voice's person. `confirmed` only when every word in that person's share resolves confirmed. A human
+ * "No name" over most of the voice, or a voice split between people, gives none.
  */
 export function recordProjection(atts: Attribution[], speakerId: string, words: Word[]): { personId: string; confirmed: boolean; attribution: Attribution } | null {
-  const rows = atts.filter(
-    (a) => a.speakerId === speakerId && a.supersededAt === null && a.source !== "human" && a.status !== "rejected" && !wholeVoice(a) && a.startMs !== null && a.endMs !== null && a.personId !== null,
-  );
-  if (rows.length === 0) return null;
+  const rows = atts.filter((a) => a.speakerId === speakerId && a.supersededAt === null && (a.source === "human" || !wholeVoice(a)));
+  if (!rows.some((a) => !wholeVoice(a) && a.source !== "human" && a.status !== "rejected")) return null;
   let total = 0;
-  const covered = new Map<string, number>();
+  const share = new Map<string, { ms: number; confirmed: boolean; attribution: Attribution }>();
   for (const w of words) {
     if (w.speaker !== speakerId) continue;
     const dur = Math.max(0, w.endMs - w.startMs);
     total += dur;
-    const people = new Set(rows.filter((r) => r.startMs! <= w.startMs && w.startMs < r.endMs!).map((r) => r.personId!));
-    for (const id of people) covered.set(id, (covered.get(id) ?? 0) + dur);
+    const res = personAt(rows, speakerId, w.startMs);
+    if (res.kind !== "named") continue;
+    const cur = share.get(res.personId) ?? { ms: 0, confirmed: true, attribution: res.attribution };
+    cur.ms += dur;
+    cur.confirmed &&= res.confirmed;
+    share.set(res.personId, cur);
   }
   if (total === 0) return null;
-  const ranked = [...covered].sort((a, b) => b[1] - a[1]);
+  const ranked = [...share].sort((a, b) => b[1].ms - a[1].ms);
   const top = ranked[0];
-  if (!top || top[1] / total < VOICE_COVER_MIN) return null;
-  if (ranked.slice(1).some(([, c]) => c / total > VOICE_COVER_OTHER_MAX)) return null;
-  const mine = rows.filter((r) => r.personId === top[0]);
-  return { personId: top[0], confirmed: mine.every((r) => r.status === "confirmed"), attribution: mine[0]! };
+  if (!top || top[1].ms / total < VOICE_COVER_MIN) return null;
+  if (ranked.slice(1).some(([, v]) => v.ms / total > VOICE_COVER_OTHER_MAX)) return null;
+  return { personId: top[0], confirmed: top[1].confirmed, attribution: top[1].attribution };
 }
 
 /**
@@ -128,7 +131,8 @@ export async function importContextNames(db: Db, sessionId: string, card: Contex
     // A voice the record matched: a short or full form of the context name is that official, not a new custom person.
     const proj = words ? recordProjection(current, p.speakerId, words) : null;
     const recordPerson = proj ? closeUnique(stripTitle(name), await getPersons(db, [proj.personId])) : null;
-    if (recordPerson) person = recordPerson;
+    // It came from the record already: no whole-voice proposal (that row would name the turns the record did not match).
+    if (recordPerson) continue;
     const captionRow = current.find((a) => a.source === "caption" && a.status === "proposed" && wholeVoice(a) && a.speakerId === p.speakerId && a.personId);
     const captionPerson = !person && captionRow ? await closeUnique(name, await getPersons(db, [captionRow.personId!])) : null;
     if (captionPerson && tokenCount(captionPerson.displayName) >= tokenCount(name)) person = captionPerson; // the fuller name wins; ties keep the caption's person
@@ -378,6 +382,7 @@ async function pruneFrames(db: Db, storage: Pick<LocalStorage, "key" | "resolve"
 }
 
 export const RECORD_NOT_FOUND = "The Senado has no speeches for that date.";
+export const RECORD_ALL_REJECTED = "No speech in the record was kept for this video.";
 export const recordNoMatch = (ref: RecordRef) => `None of the speeches in the Senado record of ${recordRefDate(ref)} match this video. Check the date.`;
 
 /** A transient failure of a claimed run, carrying the ref it claimed so the caller fails only that claim. */
@@ -440,7 +445,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
     speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
   } catch (err) {
     if (err instanceof RecordNotFoundError) {
-        await failRecordFetch(db, sessionId, err.message, ref);
+      await failRecordFetch(db, sessionId, err.message, ref);
       return;
     }
     throw err;
@@ -475,7 +480,8 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
 
   const current = await listAttributions(db, sessionId);
   const rejected = current.filter((a) => a.source === "record" && a.status === "rejected");
-  const fresh = recordAttributions(turns, speeches, matches, (officialId) => personIds.get(officialId)!, { url: ref.url, fetchedAt }).filter((r) => !isRejected(rejected, r));
+  const matched = recordAttributions(turns, speeches, matches, (officialId) => personIds.get(officialId)!, { url: ref.url, fetchedAt });
+  const fresh = matched.filter((r) => !isRejected(rejected, r));
   // A re-link to another record meanwhile makes this run stale: write nothing (the new run owns the rows).
   const now = await getSessionRecord(db, sessionId);
   if (!now || now.status !== "running" || !sameRef(now.ref, ref)) {
@@ -485,7 +491,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   if (fresh.length === 0) {
     // Nothing matched: no names (an earlier run's rows go, rejections stay) and no "matched" status.
     if (current.some((a) => a.source === "record")) await replaceAiAttributions(db, sessionId, "record", keepRows(rejected));
-    await failRecordFetch(db, sessionId, recordNoMatch(ref), ref);
+    await failRecordFetch(db, sessionId, matched.length > 0 ? RECORD_ALL_REJECTED : recordNoMatch(ref), ref);
     return;
   }
   if (fresh.length > 0 && fresh.every((r) => bySpeech.get((r.evidence as { speechId: string }).speechId)?.textSource === "summary")) {

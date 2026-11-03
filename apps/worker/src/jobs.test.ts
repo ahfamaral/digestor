@@ -493,6 +493,16 @@ d("handleNames", () => {
     });
   });
 
+  it("every match rejected by a human: failed with its own line", async () => {
+    const { id, ctx } = await setup();
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    const rows = await recordRows(id);
+    await replaceAiAttributions(db, id, "record", rows.map((r) => ({ speakerId: r.speakerId, startMs: r.startMs, endMs: r.endMs, personId: r.personId, status: "rejected" as const, confidence: r.confidence, evidence: r.evidence })));
+    await linkRecord(db, id, (await getSessionRecord(db, id))!.ref); // the same record again
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "No speech in the record was kept for this video." });
+  });
+
   it("a session code that isn't on that day: the row's error is the session line", async () => {
     const { id, ctx } = await setup();
     await linkRecord(db, id, { chamber: "senado", date: FIXTURE_DATE, sessionCode: "999", url: "https://example/s" });

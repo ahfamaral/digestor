@@ -309,12 +309,41 @@ describe("record projection (a voice the record matched)", () => {
     await replaceAiAttributions(db, id, "record", [{ speakerId: "A", startMs: 0, endMs: 10_000, personId: senator.id, status: "confirmed", confidence: 0.9, evidence: { kind: "record", speechId: "1", score: 0.9, url: "u", fetchedAt: "t" } }]);
     await importContextNames(db, id, cardWith({ A: fact(`Senadora Zuleica`, "video", "a Senadora Tereza") }));
     const atts = await listAttributions(db, id);
-    const proposal = atts.find((a) => a.source === "transcript")!;
-    expect(proposal.personId).toBe(senator.id);
+    expect(atts.find((a) => a.source === "transcript")).toBeUndefined(); // no whole-voice row for a voice the record named
     expect(await findPersonByName(db, "Senadora Zuleica")).toBeNull();
     expect(personAt(atts, "A", 1000)).toMatchObject({ kind: "named", personId: senator.id, confirmed: true });
     // and the prompt card carries the official name
     const card = await promptCard(db, id, cardWith({ A: fact(`Senadora Zuleica`, "video", "x") }));
     expect(card.participants.find((p) => p.speakerId === "A")!.name).toMatchObject({ value: `Zuleica ${tag}`, evidence: CONFIRMED_NAME });
+  });
+
+  it("importContextNames: a context name for a different person on a record-matched voice is still imported", async () => {
+    const id = await newSession();
+    const tag = `Q${Math.random().toString(36).slice(2, 8)}`;
+    const senator = await upsertOfficialPerson(db, { chamber: "senado", officialId: `t${Math.random()}`, displayName: `Zuleica ${tag}` });
+    await saveTranscript(db, id, { language: "pt", languageConfidence: 1, durationMs: 10_000, words: words("A") });
+    await replaceAiAttributions(db, id, "record", [{ speakerId: "A", startMs: 0, endMs: 10_000, personId: senator.id, status: "confirmed", confidence: 0.9, evidence: { kind: "record", speechId: "1", score: 0.9, url: "u", fetchedAt: "t" } }]);
+    await importContextNames(db, id, cardWith({ A: fact(`Outra Pessoa ${tag}`, "video", "x") }));
+    const row = (await listAttributions(db, id)).find((a) => a.source === "transcript")!;
+    expect(row).toMatchObject({ speakerId: "A", startMs: null, status: "proposed" });
+    expect(row.personId).not.toBe(senator.id);
+  });
+
+  it("the projection follows human corrections: re-named turns project the new person; confirming proposals confirms", () => {
+    const ws = words("A");
+    const proposed = [rec({ status: "proposed" })];
+    expect(recordProjection(proposed, "A", ws)).toMatchObject({ personId: "senator", confirmed: false });
+    // the journalist confirms them (a ranged human row for the same person)
+    const confirmed = [...proposed, att({ speakerId: "A", personId: "senator", startMs: 0, endMs: 10_000 })];
+    expect(recordProjection(confirmed, "A", ws)).toMatchObject({ personId: "senator", confirmed: true });
+    // ...or re-names all the turns to Q
+    const renamed = [rec({}), att({ speakerId: "A", personId: "q", startMs: 0, endMs: 10_000 })];
+    expect(recordProjection(renamed, "A", ws)).toMatchObject({ personId: "q", confirmed: true });
+    expect(lockedParticipants(renamed, [person("senator", "P"), person("q", "Q")], ws)[0]!.name.value).toBe("Q");
+    // "No name" over most of the voice: no projection
+    const none = [rec({}), att({ speakerId: "A", personId: null, status: "anonymous", startMs: 0, endMs: 9000 })];
+    expect(recordProjection(none, "A", ws)).toBeNull();
+    // a whole-voice AI proposal is not the record's: no ranged row, no projection
+    expect(recordProjection([att({ source: "caption", status: "proposed", personId: "x" })], "A", ws)).toBeNull();
   });
 });
