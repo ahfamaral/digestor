@@ -25,6 +25,7 @@ export function SpeakerName({
   sensitive,
   sessionId,
   range,
+  ranges,
   language,
   className,
   rangeOnly,
@@ -36,6 +37,7 @@ export function SpeakerName({
   sensitive: boolean;
   sessionId: string;
   range?: Range;
+  ranges?: Range[];
   language?: string;
   className?: string;
   rangeOnly?: boolean;
@@ -55,6 +57,7 @@ export function SpeakerName({
         label={label}
         names={names}
         range={range}
+        ranges={ranges}
         rangeOnly={rangeOnly}
         confirmBody={confirmBody}
         trigger={

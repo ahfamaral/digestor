@@ -316,6 +316,7 @@ export function Preview({ session, analysis, speakers, named, names, namesChange
         rows={whoRows}
         names={names}
         sensitive={sensitive}
+        profile={analysis.profile}
         language={lang}
         videoRemoved={session.videoRemoved}
       />

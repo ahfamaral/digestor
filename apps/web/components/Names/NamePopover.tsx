@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Popover } from "@base-ui/react/popover";
 import { closeMatches, type Person, type Range } from "@digestor/core";
 import { errorMessage } from "@/lib/http";
-import type { NamesData, VoiceLabel } from "@/lib/names";
+import { rangeFields, type NamesData, type VoiceLabel } from "@/lib/names";
 import { t } from "@/lib/i18n";
 
 const BTN =
@@ -28,6 +28,7 @@ export function NamePopover({
   label,
   names,
   range,
+  ranges,
   trigger,
   startChanging = false,
   rangeOnly = false,
@@ -39,6 +40,8 @@ export function NamePopover({
   label: VoiceLabel;
   names: NamesData;
   range?: Range;
+  /** Every range of a row that acts on several turns of the voice (with `rangeOnly`); `range` is then the first. */
+  ranges?: Range[];
   trigger: ReactElement<Record<string, unknown>>;
   /** Open straight on the name search (a "Change…" button of its own). */
   startChanging?: boolean;
@@ -129,7 +132,8 @@ export function NamePopover({
     }
   }
 
-  const part = (onlyThis || rangeOnly) && range ? { startMs: range.startMs, endMs: range.endMs } : {};
+  const scoped = onlyThis || rangeOnly;
+  const part = scoped && ranges && ranges.length > 1 ? rangeFields(ranges) : scoped && range ? { startMs: range.startMs, endMs: range.endMs } : {};
   const pick = (o: Option) =>
     send(o.kind === "person" ? { action: "assign", speakerId, personId: o.person.id, ...part } : { action: "create", speakerId, displayName: o.name, ...part });
 

@@ -9,6 +9,7 @@ import { anonymousBody, conflictText, confirmBody, evidenceLine, rowRange, voice
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { t } from "@/lib/i18n";
 import { NamePopover } from "./NamePopover";
+import { RecordLink } from "./RecordLink";
 import { SpeakerName } from "./SpeakerName";
 
 const BTN =
@@ -58,6 +59,7 @@ export function WhosWho({
   sensitive,
   language,
   mode,
+  profile,
   videoRemoved = false,
 }: {
   sessionId: string;
@@ -66,6 +68,8 @@ export function WhosWho({
   sensitive: boolean;
   language?: string;
   mode: "context" | "drawer";
+  /** The session's profile: a parliament session offers the official-record field. */
+  profile?: string;
   /** Retention removed the video (and its proxy): no ▶ samples. */
   videoRemoved?: boolean;
 }) {
@@ -129,6 +133,7 @@ export function WhosWho({
           <span>{t("names.whoSensitive")}</span>
         </p>
       )}
+      <RecordLink sessionId={sessionId} profile={profile} />
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("names.whoEmpty")}</p>
       ) : (
@@ -170,6 +175,7 @@ export function WhosWho({
                       sessionId={sessionId}
                       language={language}
                       range={range}
+                      ranges={row.ranges}
                       rangeOnly
                       confirmBody={confirm ?? undefined}
                       className="text-sm"
@@ -203,6 +209,7 @@ export function WhosWho({
                       label={label}
                       names={names}
                       range={range}
+                      ranges={row.ranges}
                       rangeOnly
                       confirmBody={confirm ?? undefined}
                       startChanging

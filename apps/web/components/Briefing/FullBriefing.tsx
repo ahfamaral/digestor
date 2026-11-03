@@ -45,6 +45,8 @@ export interface FullBriefingProps {
   /** Who to show per moment id (longest speaking first). */
   voices: Record<string, Voice[]>;
   sensitive: boolean;
+  /** The analysis profile (a parliament session offers the official-record field in Who's who). */
+  profile: string;
   types: HighlightTypeId[];
   /** Selections left on an earlier analysis version, or null. */
   earlier: { count: number; version: number } | null;
@@ -83,7 +85,7 @@ const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: r
  * Full briefing: every moment of the session by topic, with instant on-screen filters (kept in the URL), keyboard
  * triage (A/N/R, E, ↓/↑) and "Confirm selection → Prepare clips". Render it with `key={analysis.id}`.
  */
-export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, choices, people, names, namesChanged, whoRows, voices, sensitive, types, earlier }: FullBriefingProps) {
+export function FullBriefing({ session, analysis, topics, moments, excerpts, selections, choices, people, names, namesChanged, whoRows, voices, sensitive, profile, types, earlier }: FullBriefingProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lang = session.language ?? undefined;
@@ -353,6 +355,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
             rows={whoRows}
             names={names}
             sensitive={sensitive}
+            profile={profile}
             language={lang}
             videoRemoved={session.videoRemoved}
           />

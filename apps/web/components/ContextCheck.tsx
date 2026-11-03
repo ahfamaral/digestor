@@ -260,7 +260,7 @@ export function ContextCheck({
       <section aria-labelledby="whos-who-title" className="rounded-xl border border-border bg-white p-5">
         <h2 id="whos-who-title" className="mb-1 text-base font-bold">{t("names.whoTitle")}</h2>
         <p className="mb-2 text-xs text-muted-foreground">{t("names.whoHint")}</p>
-        <WhosWho sessionId={sessionId} rows={rows} names={names} sensitive={PROFILES[edited.profile].sensitive} language={edited.language || undefined} mode="context" />
+        <WhosWho sessionId={sessionId} rows={rows} names={names} sensitive={PROFILES[edited.profile].sensitive} language={edited.language || undefined} profile={edited.profile} mode="context" />
       </section>
     </div>
   );

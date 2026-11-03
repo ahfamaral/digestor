@@ -112,6 +112,7 @@ async function BriefingScreen({ params }: { params: Promise<{ id: string }> }) {
       whoRows={whosWhoRows(names, words)}
       voices={voices}
       sensitive={sensitive}
+      profile={bundle.version.profile}
       types={types}
       earlier={earlierSelections(byVersion, analysisId)}
     />

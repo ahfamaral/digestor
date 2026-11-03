@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { recordFieldError } from "@/components/Names/RecordLink";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -121,13 +122,15 @@ export function UploadForm() {
   const [upload, setUpload] = useState<Upload>({ phase: "idle" });
   const [url, setUrl] = useState("");
   const [hint, setHint] = useState("");
+  const [record, setRecord] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const urlError = youtubeError(url);
+  const recordError = record.trim() ? recordFieldError(record) : null;
   const busy = submitting || upload.phase !== "idle";
   const audioOnly = file !== null && isAudioExtension(extOf(file.name));
-  const canSubmit = !busy && (mode === "file" ? file !== null && (!audioOnly || audioAck) : url.trim() !== "" && urlError === null);
+  const canSubmit = !busy && recordError === null && (mode === "file" ? file !== null && (!audioOnly || audioAck) : url.trim() !== "" && urlError === null);
 
   async function pick(f: File | undefined) {
     if (!f || busy) return;
@@ -158,6 +161,7 @@ export function UploadForm() {
         setUpload({ phase: "uploading", pct: 0 });
         const qs = new URLSearchParams({ filename: file.name });
         if (hint.trim()) qs.set("hint", hint.trim());
+        if (record.trim()) qs.set("record", record.trim());
         if (audioOnly) qs.set("audioOnlyAck", "1");
         sessionId = await putFile(`/api/sessions/upload?${qs}`, file, (pct) => setUpload({ phase: "uploading", pct }));
         setUpload({ phase: "done" });
@@ -165,7 +169,7 @@ export function UploadForm() {
         const res = await fetch("/api/sessions/youtube", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, hint: hint.trim() || undefined }),
+          body: JSON.stringify({ url, hint: hint.trim() || undefined, record: record.trim() || undefined }),
         });
         const text = await res.text();
         if (!res.ok) throw new Error(errorFrom(text, t("upload.errorGeneric")));
@@ -347,6 +351,26 @@ export function UploadForm() {
           onChange={(e) => setHint(e.target.value)}
           placeholder={t("upload.hintPlaceholder")}
         />
+        <label htmlFor="record" className="mt-4 font-semibold">
+          {t("upload.recordLabel")} <span className="font-normal text-muted-foreground">{t("upload.recordOptional")}</span>
+        </label>
+        <Input
+          id="record"
+          className="mt-2"
+          value={record}
+          disabled={busy}
+          dir="auto"
+          aria-invalid={recordError !== null}
+          aria-describedby="record-help"
+          onChange={(e) => {
+            setRecord(e.target.value);
+            setSubmitError(null);
+          }}
+          placeholder={t("upload.recordPlaceholder")}
+        />
+        <p id="record-help" className={cn("mt-1 text-xs break-words", recordError ? "text-destructive" : "text-muted-foreground")} role={recordError ? "alert" : undefined}>
+          {recordError ?? t("upload.recordHelp")}
+        </p>
         <p className="my-3 text-sm text-muted-foreground">{estimate}</p>
         <Button
           size="lg"

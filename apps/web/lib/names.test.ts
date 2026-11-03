@@ -193,3 +193,55 @@ describe("labelText", () => {
     expect(labelText(voiceLabel(names, "C", 0, false))).toBe("Ana Souza (from transcript)");
   });
 });
+
+describe("a person with several record turns in one voice (Who's who rows act on all of them)", () => {
+  const run = (speaker: string, from: number, to: number): Word[] =>
+    Array.from({ length: (to - from) / 1000 }, (_, i) => word(speaker, from + i * 1000, from + (i + 1) * 1000));
+  // Voice A: p1 at 0-10 s, p2 at 10-20 s, p1 again at 20-30 s, p1 again at 30-40 s.
+  const words = [...run("A", 0, 40_000)];
+  const rec = (id: string, personId: string, startMs: number, endMs: number) =>
+    att({ id, speakerId: "A", personId, source: "record", status: "proposed", startMs, endMs });
+  const names: NamesData = {
+    persons,
+    attributions: [rec("1", "p1", 0, 10_000), rec("2", "p2", 10_000, 20_000), rec("3", "p1", 20_000, 30_000), rec("4", "p1", 30_000, 40_000)],
+  };
+  const rows = whosWhoRows(names, words);
+  const p1 = rows.find((r) => r.resolution.kind === "named" && r.resolution.personId === "p1")!;
+  const p2 = rows.find((r) => r.resolution.kind === "named" && r.resolution.personId === "p2")!;
+
+  it("one row per person with every range of that person", () => {
+    expect(rows).toHaveLength(2);
+    expect(p1.ranges).toEqual([{ startMs: 0, endMs: 10_000 }, { startMs: 20_000, endMs: 30_000 }, { startMs: 30_000, endMs: 40_000 }]);
+    expect(p2.ranges).toEqual([{ startMs: 10_000, endMs: 20_000 }]);
+  });
+  it("Confirm and No name send all ranges (one range keeps the single form)", () => {
+    expect(confirmBody(p1)).toEqual({
+      action: "assign", speakerId: "A", personId: "p1",
+      ranges: [{ startMs: 0, endMs: 10_000 }, { startMs: 20_000, endMs: 30_000 }, { startMs: 30_000, endMs: 40_000 }],
+    });
+    expect(anonymousBody(p1)).toEqual({
+      action: "anonymous", speakerId: "A",
+      ranges: [{ startMs: 0, endMs: 10_000 }, { startMs: 20_000, endMs: 30_000 }, { startMs: 30_000, endMs: 40_000 }],
+    });
+    expect(confirmBody(p2)).toEqual({ action: "assign", speakerId: "A", personId: "p2", startMs: 10_000, endMs: 20_000 });
+    expect(anonymousBody(p2)).toEqual({ action: "anonymous", speakerId: "A", startMs: 10_000, endMs: 20_000 });
+  });
+  it("a whole-voice row has no ranges", () => {
+    const whole = whosWhoRows({ persons, attributions: [att({ speakerId: "A", personId: "p1", source: "caption", status: "proposed" })] }, words);
+    expect(whole[0]!.ranges).toEqual([]);
+    expect(confirmBody(whole[0]!)).toEqual({ action: "confirm", speakerId: "A" });
+  });
+});
+
+describe("evidenceLine for the record", () => {
+  const a = att({
+    source: "record", status: "proposed",
+    evidence: { kind: "record", speechId: "77", score: 0.91, url: "https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20261021/20261021", fetchedAt: "2026-11-03T10:00:00.000Z" },
+  });
+  it("names the Senado and the date of the record", () => {
+    expect(evidenceLine(a)).toBe("From the Senado record of 21/10/2026: speech 77, 0.91 match");
+  });
+  it("falls back when the url carries no date", () => {
+    expect(evidenceLine({ ...a, evidence: { ...(a.evidence as object), url: "https://x" } as Attribution["evidence"] })).toBe("From the official record: speech 77, 0.91 match");
+  });
+});

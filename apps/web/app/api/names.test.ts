@@ -118,6 +118,72 @@ describe("names", () => {
     expect(humans.map((a) => [a.speakerId, a.personId]).sort()).toEqual([["A", p1.id], ["B", p1.id]]);
   });
 
+  describe("a voice named part by part from the record", () => {
+    const rec = (speakerId: string, personId: string, startMs: number, endMs: number) => ({
+      speakerId, startMs, endMs, personId, status: "proposed" as const, confidence: 0.9,
+      evidence: { kind: "record" as const, speechId: "s1", score: 0.9, url: "https://x", fetchedAt: "2026-10-21T00:00:00.000Z" },
+    });
+    const GUARD = "This voice is named part by part from the record. Change each part separately.";
+    async function recordVoice() {
+      const sid = await twoVoiceSession();
+      const p1 = await createCustomPerson(h.db, { displayName: "Rui Senador", createdBy: OWNER_ID });
+      const p2 = await createCustomPerson(h.db, { displayName: "Sara Senadora", createdBy: OWNER_ID });
+      await replaceAiAttributions(h.db, sid, "record", [rec("A", p1.id, 0, 900), rec("B", p2.id, 1000, 1900)]);
+      return { sid, p1, p2 };
+    }
+
+    it("refuses a whole-voice assign, create and anonymous (409) and writes nothing", async () => {
+      const { sid, p2 } = await recordVoice();
+      for (const body of [
+        { action: "assign", speakerId: "A", personId: p2.id },
+        { action: "create", speakerId: "A", displayName: "Someone Else" },
+        { action: "anonymous", speakerId: "A" },
+      ]) {
+        const res = await post(sid, body);
+        expect(res.status).toBe(409);
+        expect(await res.json()).toEqual({ error: GUARD });
+      }
+      expect((await listAttributions(h.db, sid)).filter((a) => a.source === "human")).toHaveLength(0);
+      expect(await findPersonByName(h.db, "Someone Else")).toBeNull();
+    });
+
+    it("still allows a ranged write for one part and a whole-voice write for a voice without record rows", async () => {
+      const { sid, p2 } = await recordVoice();
+      expect((await post(sid, { action: "assign", speakerId: "A", personId: p2.id, startMs: 0, endMs: 900 })).status).toBe(200);
+      const c = await createCustomPerson(h.db, { displayName: "Cris Outro", createdBy: OWNER_ID });
+      // voice C has no record rows
+      expect((await post(sid, { action: "assign", speakerId: "C", personId: c.id })).status).toBe(200);
+    });
+
+    it("a superseded or rejected record row no longer guards the voice", async () => {
+      const { sid, p1 } = await recordVoice();
+      await replaceAiAttributions(h.db, sid, "record", []);
+      expect((await post(sid, { action: "assign", speakerId: "A", personId: p1.id })).status).toBe(200);
+    });
+
+    it("ranges: one call writes a human row for each range, atomically validated", async () => {
+      const { sid, p1 } = await recordVoice();
+      const res = await post(sid, { action: "assign", speakerId: "A", personId: p1.id, ranges: [{ startMs: 0, endMs: 900 }, { startMs: 5000, endMs: 6000 }] });
+      expect(res.status).toBe(200);
+      const humans = (await listAttributions(h.db, sid)).filter((a) => a.source === "human");
+      expect(humans.map((a) => [a.speakerId, a.startMs, a.endMs, a.personId]).sort()).toEqual([["A", 0, 900, p1.id], ["A", 5000, 6000, p1.id]]);
+      const bad = await post(sid, { action: "anonymous", speakerId: "B", ranges: [{ startMs: 0, endMs: 900 }, { startMs: 3000, endMs: 3000 }] });
+      expect(bad.status).toBe(400);
+      expect((await listAttributions(h.db, sid)).filter((a) => a.source === "human" && a.speakerId === "B")).toHaveLength(0);
+      const both = await post(sid, { action: "anonymous", speakerId: "B", startMs: 0, endMs: 900, ranges: [{ startMs: 0, endMs: 900 }] });
+      expect(both.status).toBe(400);
+    });
+
+    it("create with ranges makes one person for all ranges", async () => {
+      const { sid } = await recordVoice();
+      const res = await post(sid, { action: "create", speakerId: "A", displayName: "Nova Pessoa", ranges: [{ startMs: 0, endMs: 900 }, { startMs: 5000, endMs: 6000 }] });
+      expect(res.status).toBe(200);
+      const humans = (await listAttributions(h.db, sid)).filter((a) => a.source === "human");
+      expect(humans).toHaveLength(2);
+      expect(new Set(humans.map((a) => a.personId)).size).toBe(1);
+    });
+  });
+
   it("names: a range needs both ends and start < end", async () => {
     const { sessionId } = await seedReadySession(h.db);
     const p = await createCustomPerson(h.db, { displayName: "Fay Cruz", createdBy: OWNER_ID });

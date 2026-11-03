@@ -86,10 +86,20 @@ export function labelText(label: VoiceLabel): string {
   return label.proposed && label.badge ? `${label.text} (${badgeText(label.badge)})` : label.text;
 }
 
+/** The date (`DD/MM/YYYY`) of the Senado day a record evidence's `url` points at (`.../discursos/20261021/20261021`); null when it has none. */
+function recordEvidenceDate(url: string): string | null {
+  const m = /\/discursos\/(\d{4})(\d{2})(\d{2})\//.exec(url);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : null;
+}
+
 /** One line for the badge tooltip: where the name comes from, and the evidence when there is one. */
 export function evidenceLine(a: Attribution): string {
   const e = a.evidence;
-  if (e.kind === "record") return t("names.evidenceRecord", { speech: e.speechId, score: e.score.toFixed(2) });
+  if (e.kind === "record") {
+    const date = recordEvidenceDate(e.url);
+    const vars = { speech: e.speechId, score: e.score.toFixed(2) };
+    return date ? t("names.evidenceRecordSenado", { ...vars, date }) : t("names.evidenceRecord", vars);
+  }
   if (e.kind === "caption") return t("names.evidenceCaption", { text: e.text });
   if (e.kind === "quote") return t("names.evidenceQuote", { from: t(`names.evidence.${a.source}`), quote: e.quote });
   return t(`names.evidence.${a.source}`);
@@ -131,13 +141,18 @@ export interface WhosWhoRow {
   sampleStartMs: number;
   /** The voice (all its names together) speaks at least `MIN_SPEAKER_SHARE`. */
   main: boolean;
+  /**
+   * Every range this row's name comes from (one per ranged attribution; a person the record names for several turns of
+   * one voice is one row acting on all of them). Empty for a whole-voice name.
+   */
+  ranges: Range[];
 }
 
 /** One row per (voice, name at that moment): a voice the record named as two people gets two rows. Longest first. */
 export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
   const key = (res: Resolution, speakerId: string) =>
     res.kind === "named" ? res.personId : res.kind === "anonymous" ? `anon:${speakerId}` : res.kind === "conflict" ? `conflict:${speakerId}` : `none:${speakerId}`;
-  const groups = new Map<string, { speakerId: string; resolution: Resolution; ms: number; firstMs: number; k: string }>();
+  const groups = new Map<string, { speakerId: string; resolution: Resolution; ms: number; firstMs: number; k: string; ranges: Map<string, Range> }>();
   const perVoice = new Map<string, number>();
   let total = 0;
   for (const w of words) {
@@ -146,9 +161,13 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
     const resolution = personAt(names.attributions, w.speaker, w.startMs);
     const k = key(resolution, w.speaker);
     const gk = `${w.speaker}\u0000${k}`;
-    const cur = groups.get(gk);
+    let cur = groups.get(gk);
     if (cur) cur.ms += ms;
-    else groups.set(gk, { speakerId: w.speaker, resolution, ms, firstMs: w.startMs, k });
+    else {
+      cur = { speakerId: w.speaker, resolution, ms, firstMs: w.startMs, k, ranges: new Map() };
+      groups.set(gk, cur);
+    }
+    for (const r of resolutionRanges(resolution)) cur.ranges.set(`${r.startMs}-${r.endMs}`, r);
     perVoice.set(w.speaker, (perVoice.get(w.speaker) ?? 0) + ms);
     total += ms;
   }
@@ -167,31 +186,51 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
         share: total > 0 ? g.ms / total : 0,
         sampleStartMs: long?.startMs ?? g.firstMs,
         main: total > 0 && (perVoice.get(g.speakerId) ?? 0) / total >= MIN_SPEAKER_SHARE,
+        ranges: [...g.ranges.values()].sort((a, b) => a.startMs - b.startMs),
       };
     })
     .sort((a, b) => b.ms - a.ms);
 }
 
-/** The range a row's name applies to when it comes from a ranged attribution (one turn of a split voice); null for a whole-voice row. */
+function resolutionRanges(res: Resolution): Range[] {
+  const atts = res.kind === "named" || res.kind === "anonymous" ? [res.attribution] : res.kind === "conflict" ? res.attributions : [];
+  return atts.flatMap((a) => (a.startMs !== null && a.endMs !== null ? [{ startMs: a.startMs, endMs: a.endMs }] : []));
+}
+
+/** The range a row's name applies to when it comes from a ranged attribution (the first, for a row of several turns); null for a whole-voice row. */
 export function rowRange(row: Pick<WhosWhoRow, "resolution">): Range | null {
   const res = row.resolution;
   const a = res.kind === "named" || res.kind === "anonymous" ? res.attribution : res.kind === "conflict" ? res.attributions[0] : undefined;
   return a && a.startMs !== null && a.endMs !== null ? { startMs: a.startMs, endMs: a.endMs } : null;
 }
 
-/** The body the names API gets for a row's Confirm button; null when the row has no single proposal. A ranged row confirms as a ranged human assignment. */
-export function confirmBody(row: Pick<WhosWhoRow, "speakerId" | "resolution">): Record<string, unknown> | null {
+/** All the ranges a row acts on: its `ranges`, or the single `rowRange` for a row built without them. */
+export function rowRanges(row: Pick<WhosWhoRow, "resolution"> & { ranges?: Range[] }): Range[] {
+  if (row.ranges) return row.ranges;
+  const one = rowRange(row);
+  return one ? [one] : [];
+}
+
+/** The range part of a names API body: `ranges` for several, `startMs`/`endMs` for one, nothing for a whole voice. */
+export function rangeFields(ranges: Range[]): Record<string, unknown> {
+  if (ranges.length > 1) return { ranges };
+  const one = ranges[0];
+  return one ? { startMs: one.startMs, endMs: one.endMs } : {};
+}
+
+/** The body the names API gets for a row's Confirm button; null when the row has no single proposal. A ranged row confirms as a ranged human assignment (all its ranges). */
+export function confirmBody(row: Pick<WhosWhoRow, "speakerId" | "resolution"> & { ranges?: Range[] }): Record<string, unknown> | null {
   const res = row.resolution;
   if (res.kind !== "named" || res.confirmed) return null;
-  const range = rowRange(row);
-  return range
-    ? { action: "assign", speakerId: row.speakerId, personId: res.personId, ...range }
+  const ranges = rowRanges(row);
+  return ranges.length > 0
+    ? { action: "assign", speakerId: row.speakerId, personId: res.personId, ...rangeFields(ranges) }
     : { action: "confirm", speakerId: row.speakerId };
 }
 
-/** The body for a row's "No name" button. */
+/** The body for a row's "No name" button (all the row's ranges). */
 export function anonymousBody(row: WhosWhoRow): Record<string, unknown> {
-  return { action: "anonymous", speakerId: row.speakerId, ...(rowRange(row) ?? {}) };
+  return { action: "anonymous", speakerId: row.speakerId, ...rangeFields(rowRanges(row)) };
 }
 
 /** "Caption says Ana Souza · Transcript says Bia Lima" for a conflict row; null otherwise. */

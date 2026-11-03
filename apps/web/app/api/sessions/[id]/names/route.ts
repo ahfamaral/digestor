@@ -9,7 +9,13 @@ import { getServer } from "@/lib/server";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const range = { startMs: z.number().int().min(0).optional(), endMs: z.number().int().min(0).optional() };
+const ms = z.number().int().min(0);
+// One range (`startMs`/`endMs`) or several (`ranges`, a row of a person the record names for several turns of a voice).
+const range = {
+  startMs: ms.optional(), endMs: ms.optional(),
+  ranges: z.array(z.object({ startMs: ms, endMs: ms }).strict()).min(1).max(500).optional(),
+};
+const RECORD_VOICE = "This voice is named part by part from the record. Change each part separately.";
 const speaker = z.string().min(1).max(64);
 const BodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("assign"), speakerId: speaker, personId: z.string().uuid(), ...range }).strict(),
@@ -49,14 +55,15 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   if (!parsed.success) return errorResponse(400, "Send a valid name change.");
   const body = parsed.data;
 
-  let startMs: number | null = null;
-  let endMs: number | null = null;
+  // The ranges a write applies to; `[null]` is a whole-voice write.
+  let targets: ({ startMs: number; endMs: number } | null)[] = [];
   if (body.action === "assign" || body.action === "create" || body.action === "anonymous") {
-    if ((body.startMs === undefined) !== (body.endMs === undefined) || (body.startMs !== undefined && body.endMs !== undefined && body.startMs >= body.endMs)) {
-      return errorResponse(400, "Send both start and end, with start before end.");
-    }
-    startMs = body.startMs ?? null;
-    endMs = body.endMs ?? null;
+    const single = body.startMs !== undefined || body.endMs !== undefined;
+    if (single && body.ranges) return errorResponse(400, "Send one range or a list of ranges, not both.");
+    const list = body.ranges ?? (single ? [{ startMs: body.startMs as number, endMs: body.endMs as number }] : [null]);
+    if (single && (body.startMs === undefined || body.endMs === undefined)) return errorResponse(400, "Send both start and end, with start before end.");
+    if (list.some((r) => r !== null && !(r.startMs < r.endMs))) return errorResponse(400, "Send both start and end, with start before end.");
+    targets = list;
   }
 
   const { db } = getServer();
@@ -66,21 +73,35 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
 
   const write = (speakerId: string, personId: string | null, s: number | null, e: number | null) =>
     setHumanAttribution(db, { sessionId: id, speakerId, startMs: s, endMs: e, personId, ownerId: OWNER_ID });
+  const writeAll = (speakerId: string, personId: string | null) =>
+    db.transaction(async (tx) => {
+      for (const r of targets) {
+        await setHumanAttribution(tx as unknown as Db, { sessionId: id, speakerId, startMs: r?.startMs ?? null, endMs: r?.endMs ?? null, personId, ownerId: OWNER_ID });
+      }
+    });
+
+  // A whole-voice human row would shadow the record's per-turn names (the API is the authority; the UI scopes its actions to the turn).
+  if ((body.action === "assign" || body.action === "create" || body.action === "anonymous") && targets.some((r) => r === null)) {
+    const current = await listAttributions(db, id);
+    if (current.some((a) => a.speakerId === body.speakerId && a.source === "record" && a.supersededAt === null && a.status !== "rejected" && a.startMs !== null && a.endMs !== null)) {
+      return errorResponse(409, RECORD_VOICE);
+    }
+  }
 
   switch (body.action) {
     case "assign": {
       if ((await getPersons(db, [body.personId])).length === 0) return errorResponse(404, "Person not found.");
-      await write(body.speakerId, body.personId, startMs, endMs);
+      await writeAll(body.speakerId, body.personId);
       break;
     }
     case "create": {
       // "New person" always creates one: reusing an existing person is what the close-match options (assign) are for.
       const person = await createCustomPerson(db, { displayName: body.displayName, createdBy: OWNER_ID });
-      await write(body.speakerId, person.id, startMs, endMs);
+      await writeAll(body.speakerId, person.id);
       break;
     }
     case "anonymous":
-      await write(body.speakerId, null, startMs, endMs);
+      await writeAll(body.speakerId, null);
       break;
     case "confirm":
     case "confirm_all": {
