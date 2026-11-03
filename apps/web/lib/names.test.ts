@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { personAt, exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -367,5 +367,24 @@ describe("residual: turns named by a whole-voice proposal on a record voice", ()
     };
     const v = unconfirmedVoices(n2, run("A", 0, 20_000), { startMs: 6_000, endMs: 20_000 }, false);
     for (const x of v) expect(x.ranges.every((r) => r && typeof r.startMs === "number")).toBe(true);
+  });
+});
+
+describe("reportTargetId", () => {
+  const rows = [
+    att({ id: "davi", speakerId: "E", personId: "p1", source: "record", startMs: 0, endMs: 60_000 }),
+    att({ id: "damares", speakerId: "E", personId: "p2", source: "record", startMs: 60_000, endMs: 120_000 }),
+  ];
+  const names: NamesData = { persons, attributions: rows };
+  it("points at the row of the instant the name was clicked, not the moment's start", () => {
+    const moment = { startMs: 0, endMs: 120_000 };
+    expect(reportTargetId(names, "E", { atMs: 70_000, range: moment })).toBe("damares");
+    expect(reportTargetId(names, "E", { atMs: 10_000, range: moment })).toBe("davi");
+  });
+  it("falls back to the range, the first range, then 0; none for an unnamed voice", () => {
+    expect(reportTargetId(names, "E", { range: { startMs: 60_000, endMs: 90_000 } })).toBe("damares");
+    expect(reportTargetId(names, "E", { ranges: [{ startMs: 60_000, endMs: 90_000 }] })).toBe("damares");
+    expect(reportTargetId(names, "E", {})).toBe("davi");
+    expect(reportTargetId(names, "Z", { atMs: 0 })).toBeNull();
   });
 });

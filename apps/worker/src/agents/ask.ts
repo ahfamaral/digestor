@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  GRANULARITY, HIGHLIGHT_TYPES, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, closeMatches, findBoundaries, formatTimestamp,
+  GRANULARITY, HIGHLIGHT_TYPES, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
   normaliseName, parseTimestamp, personAt, renderTranscript, sliceWords, snapRange, toSentences, VIDEO_REMOVED,
   type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ContextCard, type Person, type SelectionStatus, type Transcript, type Word,
 } from "@digestor/core";
@@ -14,7 +14,7 @@ import type { SearchHit } from "../search/index.js";
 import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
 
-export const ASK_PROMPT_VERSION = "ask@3";
+export const ASK_PROMPT_VERSION = "ask@4";
 export const MAX_ASK_STEPS = 6;
 export const MAX_TOOL_OUTPUT = 4000;
 export const HISTORY_LIMIT = 10;
@@ -110,9 +110,16 @@ const EMPTY_NAMES: NameIndex = { persons: new Map(), runs: [], voices: [] };
 function indexNames(words: Word[], atts: Attribution[], persons: Person[], confirmedOnly: boolean): NameIndex {
   const runs: NamedRun[] = [];
   const voices = new Map<string, { speakerId: string; personId: string; confirmed: boolean }>();
+  // Rows by voice, once: personAt filters its rows by voice anyway.
+  const byVoice = new Map<string, Attribution[]>();
+  for (const a of atts) byVoice.set(a.speakerId, [...(byVoice.get(a.speakerId) ?? []), a]);
+  // A part of a voice a human marked "No name" keeps every name of that voice out of the prompts (naming.ts), here too.
+  const protectedVoices = new Set(
+    atts.filter((a) => a.supersededAt === null && a.status === "anonymous" && a.startMs !== null && a.endMs !== null).map((a) => a.speakerId),
+  );
   let cur: NamedRun | null = null;
   for (const w of words) {
-    const res = personAt(atts, w.speaker, w.startMs);
+    const res = protectedVoices.has(w.speaker) ? ({ kind: "unnamed" } as const) : personAt(byVoice.get(w.speaker) ?? [], w.speaker, w.startMs);
     if (res.kind !== "named" || (confirmedOnly && !res.confirmed)) {
       cur = null;
       continue;
@@ -155,14 +162,38 @@ const speechLength = (ms: number): string => {
   return [h ? `${h} h` : "", m ? `${m} min` : "", sec && !h ? `${sec} s` : ""].filter(Boolean).join(" ");
 };
 
-/** The one person a typed name means among those who speak: exact name first, then names sharing whole words. */
+/** How well a typed name fits a person: shared words over all words of either (1 = the same words), 0 = not close. */
+function nameFit(typed: string, p: Person): number {
+  const q = new Set(normaliseName(typed).split(" ").filter(Boolean));
+  let best = 0;
+  for (const name of [p.displayName, p.fullName]) {
+    if (!name) continue;
+    const c = new Set(normaliseName(name).split(" ").filter(Boolean));
+    const shared = [...q].filter((t) => c.has(t)).length;
+    if (shared === 0 || !([...q].every((t) => c.has(t)) || [...c].every((t) => q.has(t)))) continue;
+    best = Math.max(best, shared / (q.size + c.size - shared));
+  }
+  return best;
+}
+
+/** The people a typed name means among those who speak: the best fit (all of them when several fit equally well). */
 function findPerson(ctx: AskContext, typed: string): Person[] {
   const spoken = new Set(ctx.names.runs.map((r) => r.personId));
   const people = [...ctx.names.persons.values()].filter((p) => spoken.has(p.id));
-  const q = normaliseName(typed);
-  const exact = people.filter((p) => normaliseName(p.displayName) === q || (p.fullName !== null && normaliseName(p.fullName) === q));
-  if (exact.length > 0) return exact;
-  return people.filter((p) => closeMatches(typed, [p]).length > 0 || (p.fullName !== null && closeMatches(typed, [{ ...p, displayName: p.fullName }]).length > 0));
+  const scored = people.map((p) => ({ p, fit: nameFit(typed, p) })).filter((x) => x.fit > 0);
+  const top = Math.max(0, ...scored.map((x) => x.fit));
+  return scored.filter((x) => x.fit === top).map((x) => x.p);
+}
+
+/** Names for a question to the user; people who share a name get party, state or role to tell them apart. */
+function describePeople(people: Person[]): string {
+  const dup = (p: Person) => people.filter((o) => normaliseName(o.displayName) === normaliseName(p.displayName)).length > 1;
+  return people
+    .map((p) => {
+      const extra = [p.party, p.state, p.role].filter(Boolean).join(", ");
+      return dup(p) && extra ? `${p.displayName} (${extra})` : p.displayName;
+    })
+    .join("; ");
 }
 
 // ---------------------------------------------------------------- helpers
@@ -289,19 +320,24 @@ const tools: Tool[] = [
       const found = findPerson(ctx, a.person);
       if (found.length === 0) return { text: NO_SUCH_PERSON };
       if (found.length > 1) {
-        return { text: `More than one person matches "${a.person.slice(0, 80)}": ${found.map((p) => p.displayName).join(", ")}. Ask the user which one they mean.` };
+        return { text: `More than one person matches "${a.person.slice(0, 80)}": ${describePeople(found)}. Ask the user which one they mean.` };
       }
       const person = found[0]!;
       const runs = ctx.names.runs.filter((r) => r.personId === person.id);
       const topics = ctx.analysis?.topics ?? [];
-      const lines = runs.slice(0, MAX_SPEECHES_LISTED).map((r) => {
+      const all = runs.slice(0, MAX_SPEECHES_LISTED).map((r) => {
         const topic = topics.find((t) => t.startMs <= r.startMs && r.startMs < t.endMs);
-        return `${span(r)} ${speechLength(r.endMs - r.startMs)} · ${topic?.title ?? "—"}`;
+        return `${span(r)} ${speechLength(r.endMs - r.startMs)} · ${(topic?.title ?? "—").slice(0, MAX_TITLE_CHARS)}`;
       });
-      const more = runs.length > lines.length ? `\n${runs.length - lines.length} more turns not listed.` : "";
       const status = runs.every((r) => r.confirmed) ? "confirmed" : "name not confirmed";
+      const head = `${person.displayName} (${status}) speaks ${runs.length} ${runs.length === 1 ? "time" : "times"}:\n`;
+      const moreLine = (n: number) => `\n${n} more turns not listed.`;
+      // The header and the footer are part of the budget: the closing tag and the count of unlisted turns always survive.
+      const budget = MAX_TOOL_OUTPUT - head.length - moreLine(runs.length).length - "<transcript>\n\n</transcript>".length;
+      const lines = [...all];
+      while (lines.length > 0 && lines.join("\n").length > budget) lines.pop();
       // Topic titles were written from the transcript: evidence, never instructions (R31).
-      return { text: `${person.displayName} (${status}) speaks in ${runs.length} ${runs.length === 1 ? "turn" : "turns"}:\n${evidence(lines.join("\n"))}${more}` };
+      return { text: `${head}${evidence(lines.join("\n"))}${runs.length > lines.length ? moreLine(runs.length - lines.length) : ""}` };
     },
   },
   {
@@ -495,6 +531,7 @@ Rules:
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
 - propose_clip, trim_clip and set_selection change the user's own clips and selections. Use them only when the user asks for that change. You can't render, export or change the official analysis.
+- Write plain text only: no Markdown (no **, #, backticks or asterisk bullets; use "-" for a list). Timestamps stay as [hh:mm:ss].
 - Keep answers short.
 
 Session:

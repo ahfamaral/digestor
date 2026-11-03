@@ -3,10 +3,10 @@
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
 import { Popover } from "@base-ui/react/popover";
-import { closeMatches, personAt, type Person, type Range } from "@digestor/core";
+import { closeMatches, type Person, type Range } from "@digestor/core";
 import { ReportProblem } from "@/components/ReportProblem";
 import { errorMessage } from "@/lib/http";
-import { scopeFields, type NamesData, type VoiceLabel } from "@/lib/names";
+import { reportTargetId, scopeFields, type NamesData, type VoiceLabel } from "@/lib/names";
 import { t } from "@/lib/i18n";
 
 const BTN =
@@ -66,6 +66,8 @@ export function NamePopover({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -156,12 +158,11 @@ export function NamePopover({
 
   const title = t("names.popoverTitle", { label: label.text });
   // "Report a problem" points at the attribution row this name comes from; a voice with no row (unnamed, or a conflict) has none.
-  const res = personAt(names.attributions, speakerId, range?.startMs ?? ranges?.[0]?.startMs ?? atMs ?? 0);
-  const reportId = res.kind === "named" || res.kind === "anonymous" ? res.attribution.id : null;
+  const reportId = reportTargetId(names, speakerId, { atMs, range, ranges });
   return (
     <>
       <Popover.Root open={open} onOpenChange={reset}>
-        <Popover.Trigger render={trigger} />
+        <Popover.Trigger ref={triggerRef} render={trigger} />
         <Popover.Portal>
           <Popover.Positioner sideOffset={6} align="start" className="z-50">
             <Popover.Popup
@@ -273,12 +274,19 @@ export function NamePopover({
       {reportId !== null && (
         <ReportProblem
           open={reportOpen}
-          onOpenChange={setReportOpen}
+          onOpenChange={(next) => {
+            setReportOpen(next);
+            // The item that opened the dialog is gone: focus goes back to the name.
+            if (!next) setTimeout(() => triggerRef.current?.focus(), 0);
+          }}
           sessionId={sessionId}
           targets={[{ kind: "attribution", id: reportId, label: t("names.reportTargetName", { label: label.text }) }]}
-          onSent={() => router.refresh()}
+          onSent={() => setReportSent(true)}
         />
       )}
+      <span role="status" className="text-xs text-emerald-700">
+        {reportSent ? t("preview.reportSent") : null}
+      </span>
     </>
   );
 }

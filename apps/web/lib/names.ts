@@ -12,6 +12,15 @@ export interface NamesData {
 
 export type VoiceLabel = ReturnType<typeof speakerLabel>;
 
+/**
+ * The attribution row a "Report a problem" on a name points at: the row that names the voice at the instant the name
+ * was clicked (`atMs`, as the label itself), else at the start of its range, else at 0. None when no row names it.
+ */
+export function reportTargetId(names: NamesData, speakerId: string, at: { atMs?: number; range?: Range; ranges?: Range[] }): string | null {
+  const res = personAt(names.attributions, speakerId, at.atMs ?? at.range?.startMs ?? at.ranges?.[0]?.startMs ?? 0);
+  return res.kind === "named" || res.kind === "anonymous" ? res.attribution.id : null;
+}
+
 const voiceIndex = new WeakMap<Attribution[], Map<string, Attribution[]>>();
 /** The attributions of one voice (indexed once per attributions array: `personAt` filters by voice anyway). */
 function voiceAtts(names: NamesData, speakerId: string): Attribution[] {

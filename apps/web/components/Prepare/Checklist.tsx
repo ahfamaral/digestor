@@ -64,6 +64,7 @@ export function Checklist({ clipId, items, unconfirmed, names, sessionId, range,
                           label={v.label}
                           names={names}
                           range={v.range ?? range}
+                          atMs={v.atMs}
                           ranges={v.ranges}
                           rangeOnly={v.range !== null}
                           confirmBody={v.confirm ?? undefined}
