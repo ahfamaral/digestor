@@ -225,11 +225,8 @@ The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only
 
 Carried over from the Plan 1 review ledger, still open (all small):
 
-- **Language override:** let the user pick the transcription language instead of auto-detection.
-- **Hardening:** `COPY . .` before install in the prod image and a root user; a yt-dlp binary checksum; `.dockerignore` patterns that only match at the repo root; default Postgres credentials in the prod compose file.
-- **Upload robustness:** zero-byte uploads are accepted; an upload or YouTube request can leave an orphan file or row if creating the session or sending the job fails; the login comparison is not constant-time and has no throttle.
 - **Pipeline polish:** the checkpoint for an interrupted job waits up to the job expiry before a retry; thumbnails are orphaned if analysis re-runs; no CHECK constraints on enum columns or indexes on foreign keys.
-- **Text edge cases:** subtitle line wrapping for very long CJK words and Latin-after-CJK spacing; timestamp parsing accepts `99:99:99`.
+- **Text edge cases:** subtitle line wrapping for very long CJK words and Latin-after-CJK spacing.
 - **Context screen:** "other" questions collapse into one.
 
 Already handled in Plan 2: lenient LLM output schemas, a sweep for sessions stuck after a final-attempt crash, UTF-8 download filenames (`filename*`), a yt-dlp size cap and live-stream filter, the dismissible context banner. The out-of-bounds hot-take detach is obsolete (the clip finder was replaced by moments).

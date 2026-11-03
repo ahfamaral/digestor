@@ -48,3 +48,17 @@ describe("stage → step mapping covers every Stage", () => {
     for (const stage of Object.keys(every) as Stage[]) expect(buildSteps(stage, "upload")).toHaveLength(10);
   });
 });
+
+describe("audio-only sessions", () => {
+  it("have no Naming speakers step (caption reading is skipped)", () => {
+    const steps = buildSteps("indexing", "upload", false);
+    expect(steps.map((s) => s.label)).not.toContain("Naming speakers");
+    expect(steps).toHaveLength(9);
+    expect(steps.find((s) => s.label === "Indexing")?.state).toBe("running");
+    expect(buildSteps("ready", "upload", false).every((s) => s.state === "done")).toBe(true);
+  });
+  it("keep the step for video sessions, and by default", () => {
+    expect(buildSteps("indexing", "upload", true).map((s) => s.label)).toContain("Naming speakers");
+    expect(buildSteps("indexing", "upload").map((s) => s.label)).toContain("Naming speakers");
+  });
+});

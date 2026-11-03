@@ -28,6 +28,7 @@ const LABEL = "Câmara";
 
 export const CAMARA_NOT_FOUND = "The Câmara has no speeches for that session.";
 export const CAMARA_NOT_PLENARY = "Only Câmara plenary sessions are supported.";
+export const CAMARA_CANCELLED = "This Câmara session was cancelled or never confirmed.";
 export const CAMARA_NOT_COMPLETE = "The Câmara record of this session isn't complete yet. Try again later.";
 
 /** The 4-minute stenography block a stamp belongs to: `2026-06-30T13:55` → `2026-06-30T13:52`. */
@@ -95,6 +96,7 @@ export async function fetchCamaraSpeeches(
   if (!event.success) throw unexpected();
   const { orgaos, situacao } = event.data.dados;
   if (!orgaos?.some((o) => o.sigla === "PLEN")) throw new RecordNotFoundError(CAMARA_NOT_PLENARY);
+  if (situacao?.startsWith("Cancelada") || situacao === "Não Confirmada") throw new RecordNotFoundError(CAMARA_CANCELLED);
   if (!situacao?.startsWith("Encerrada")) throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
   const eventStart = event.data.dados.dataHoraInicio.slice(0, 16);
   const start = blockStart(eventStart); // stamps are 4-minute blocks: the block holding the start belongs to the event

@@ -1,8 +1,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { AUDIO_ONLY_WARNING, JOB_OPTIONS, QUEUES, UPLOAD_UNSUPPORTED } from "@digestor/core";
-import { getSession } from "@digestor/core/server";
+import { getSession, sessions } from "@digestor/core/server";
 import { AUTH_COOKIE, authToken } from "@/lib/auth";
 import { createHarness, type Harness } from "@/test/harness";
 import { PUT } from "./route";
@@ -122,5 +122,47 @@ describe("PUT /api/sessions/upload", () => {
     expect(await denied.json()).toEqual({ error: "Unauthorized." });
     const ok = await upload("filename=a.mp4", bytes(10), { cookie: `${AUTH_COOKIE}=${await authToken("hunter2")}` });
     expect(ok.status).toBe(200);
+  });
+
+  it("stores a language override and rejects one outside the list", async () => {
+    const ok = await upload("filename=a.mp4&language=pt", bytes(10));
+    const { sessionId } = (await ok.json()) as { sessionId: string };
+    expect((await getSession(h.db, sessionId))?.languageOverride).toBe("pt");
+    const none = await upload("filename=a.mp4", bytes(10));
+    expect((await getSession(h.db, ((await none.json()) as { sessionId: string }).sessionId))?.languageOverride).toBeNull();
+    const before = readdirSync(h.root).length;
+    for (const bad of ["xx", "PT", "pt-BR", ""]) {
+      const res = await upload(`filename=a.mp4&language=${bad}`, bytes(10));
+      if (bad === "") expect(res.status).toBe(200); // empty = detect automatically
+      else {
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "Pick a language from the list." });
+      }
+    }
+    expect(readdirSync(h.root).length).toBe(before + 1); // only the empty-value upload created a session
+  });
+
+  it("rejects an empty file and creates nothing", async () => {
+    const before = readdirSync(h.root).length;
+    const rows = (await h.db.select().from(sessions)).length;
+    const res = await upload("filename=a.mp4", bytes(0));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "That file is empty." });
+    expect(readdirSync(h.root).length).toBe(before);
+    expect((await h.db.select().from(sessions)).length).toBe(rows);
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("leaves no row and no file when sending the start job fails", async () => {
+    const before = readdirSync(h.root).length;
+    const rows = (await h.db.select().from(sessions)).length;
+    h.send.mockRejectedValueOnce(new Error("pg-boss down"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await upload("filename=a.mp4", bytes(10));
+    log.mockRestore();
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "We couldn't start processing. Please try again." });
+    expect(readdirSync(h.root).length).toBe(before);
+    expect((await h.db.select().from(sessions)).length).toBe(rows);
   });
 });

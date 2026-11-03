@@ -199,3 +199,26 @@ describe("mapLimit", () => {
 });
 
 const fixtureDeputadosAll = () => fixtureDeputados.dados as { id: number }[];
+
+describe("fetchCamaraSpeeches: cancelled sessions", () => {
+  const withSituacao = (situacao: string) => {
+    const ev = structuredClone(fixtureEvento);
+    ev.dados.situacao = situacao;
+    return fakeCamaraFetch({ evento: () => json(ev) }).f;
+  };
+  const CANCELLED = "This Câmara session was cancelled or never confirmed.";
+
+  it("says cancelled for Cancelada… and Não Confirmada", async () => {
+    for (const s of ["Cancelada", "Cancelada pela Presidência", "Não Confirmada"]) {
+      await expect(fetchCamaraSpeeches(FIXTURE_EVENT_ID, withSituacao(s))).rejects.toThrow(new RecordNotFoundError(CANCELLED));
+    }
+  });
+
+  it("keeps the 'isn't complete yet' line for other states", async () => {
+    for (const s of ["Em Andamento", "Convocada", "Não Confirmada pela Mesa"]) {
+      await expect(fetchCamaraSpeeches(FIXTURE_EVENT_ID, withSituacao(s))).rejects.toThrow(
+        new RecordNotFoundError("The Câmara record of this session isn't complete yet. Try again later."),
+      );
+    }
+  });
+});

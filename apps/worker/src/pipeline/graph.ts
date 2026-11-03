@@ -255,7 +255,9 @@ export const transcribeNode =
     if (!session.audioKey) throw new Error(`Session ${s.sessionId} has no extracted audio`);
     let transcript: Transcript;
     try {
-      transcript = await deps.transcriber.transcribe(storage.resolve(session.audioKey), session.durationMs ?? undefined);
+      transcript = await deps.transcriber.transcribe(storage.resolve(session.audioKey), session.durationMs ?? undefined, {
+        ...(session.languageOverride ? { languageCode: session.languageOverride } : {}),
+      });
     } catch (err) {
       if (!(err instanceof TranscriptionError && NO_SPOKEN_AUDIO.test(err.message))) throw err;
       await setStage(db, s.sessionId, "failed", 20, NO_SPEECH);

@@ -65,6 +65,7 @@ After adding a dependency: `pnpm install` on the host first (updates the lockfil
 - Approved moments are never hidden by filters: the briefing footer reads "N approved · M hidden by filters" with a "Show hidden" button.
 - Every boundary (AI or human) goes through `snapRange`; cuts never start or end mid-sentence.
 - Claude 5.5 (`claude-sonnet-5-5`, `claude-haiku-5-5`, also via OpenRouter) rejects `temperature`/`top_p`/`top_k` and forced `tool_choice`, and thinks by default: no sampling parameters, structured output via `method: "jsonSchema"`, and Ask replays each tool turn's raw content (thinking blocks) unchanged (`ToolStep.raw`). Wire-level tests use the injected `fetch` in `apps/worker/src/llm/fakeFetch.ts`.
+- A language picked at upload is stored as `sessions.language_override`; `transcribeNode` passes it as `opts.languageCode` and AssemblyAI gets `language_code` and no `language_detection`.
 - User-facing errors are friendly sentences; raw errors go to logs only.
 - Exact domain values (profiles, highlight types, statuses, fact sources, granularities, render settings) live in `packages/core/src/profiles.ts` and `schemas.ts` (and the specs) — use them verbatim.
 

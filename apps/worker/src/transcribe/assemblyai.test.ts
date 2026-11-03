@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { TranscriptSchema } from "@digestor/core";
-import { FakeTranscriber, mapAssemblyAI, TranscriptionError, throwIfError } from "./assemblyai.js";
+import { FakeTranscriber, buildTranscribeParams, mapAssemblyAI, TranscriptionError, throwIfError } from "./assemblyai.js";
 
 const raw = JSON.parse(
   readFileSync(new URL("../../test/fixtures/assemblyai-raw.json", import.meta.url), "utf8"),
@@ -111,5 +111,26 @@ describe("mapAssemblyAI on a recorded response", () => {
     expect(t.words).toHaveLength(300);
     expect(t.words[0]).toMatchObject({ text: "feitas", startMs: 256, endMs: 673, speaker: "A" });
     expect(t.words.every((w) => /^[A-Z]$/.test(w.speaker))).toBe(true);
+  });
+});
+
+describe("buildTranscribeParams", () => {
+  it("detects the language when no override is given", () => {
+    expect(buildTranscribeParams("/a.mp3")).toEqual({ audio: "/a.mp3", speaker_labels: true, language_detection: true, punctuate: true, format_text: true });
+    expect(buildTranscribeParams("/a.mp3", {})).not.toHaveProperty("language_code");
+  });
+  it("sends language_code and no language_detection when an override is given", () => {
+    const p = buildTranscribeParams("/a.mp3", { languageCode: "pt" });
+    expect(p).toEqual({ audio: "/a.mp3", speaker_labels: true, language_code: "pt", punctuate: true, format_text: true });
+    expect(p).not.toHaveProperty("language_detection");
+  });
+  it("FakeTranscriber records the options it got", async () => {
+    const fake = new FakeTranscriber(mapAssemblyAI(raw));
+    await fake.transcribe("/a.mp3", 1000, { languageCode: "es" });
+    await fake.transcribe("/b.mp3", 1000);
+    expect(fake.calls).toEqual([
+      { audioPath: "/a.mp3", fallbackDurationMs: 1000, opts: { languageCode: "es" } },
+      { audioPath: "/b.mp3", fallbackDurationMs: 1000, opts: undefined },
+    ]);
   });
 });

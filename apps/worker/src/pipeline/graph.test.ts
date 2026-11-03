@@ -484,6 +484,22 @@ describe("pipeline", () => {
     expect(Math.abs(seen[0]! - 100_000)).toBeLessThan(500);
   });
 
+  it("passes the session's language override to the transcriber, and nothing when there is none", async () => {
+    const seen: (string | undefined)[] = [];
+    const recording: Transcriber = {
+      transcribe: async (_p, _d, opts) => {
+        seen.push(opts?.languageCode);
+        return { ...transcript, words: [] };
+      },
+    };
+    const a = await setup({ transcriber: recording });
+    await updateSession(db, a.sessionId, { languageOverride: "fr" });
+    await a.graph.invoke({ sessionId: a.sessionId }, a.cfg);
+    const b = await setup({ transcriber: recording });
+    await b.graph.invoke({ sessionId: b.sessionId }, b.cfg);
+    expect(seen).toEqual(["fr", undefined]);
+  });
+
   it.each([
     ["a zero-byte file", ""],
     ["a text file renamed to .mp4", "this is not a video"],

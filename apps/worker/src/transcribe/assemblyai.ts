@@ -3,8 +3,11 @@ import { TranscriptSchema, type Transcript, type Word } from "@digestor/core";
 
 export interface Transcriber {
   /** `fallbackDurationMs` (the probed video duration) is used when the vendor doesn't report the audio duration. */
-  transcribe(audioPath: string, fallbackDurationMs?: number): Promise<Transcript>;
+  transcribe(audioPath: string, fallbackDurationMs?: number, opts?: TranscribeOptions): Promise<Transcript>;
 }
+
+/** `languageCode`: the spoken language the user picked at upload; absent means detect it. */
+export type TranscribeOptions = { languageCode?: string };
 
 /** The vendor rejected the file. `message` is the vendor's text: for logs and routing only, never shown to the user. */
 export class TranscriptionError extends Error {
@@ -64,6 +67,17 @@ export function mapAssemblyAI(raw: RawTranscript, fallbackDurationMs = 0): Trans
   });
 }
 
+/** The request: language detection by default; with a picked language, `language_code` instead (never both). */
+export function buildTranscribeParams(audio: string, opts: TranscribeOptions = {}) {
+  return {
+    audio,
+    speaker_labels: true,
+    ...(opts.languageCode ? { language_code: opts.languageCode } : { language_detection: true }),
+    punctuate: true,
+    format_text: true,
+  };
+}
+
 export class AssemblyAITranscriber implements Transcriber {
   private client: AssemblyAI;
 
@@ -71,23 +85,21 @@ export class AssemblyAITranscriber implements Transcriber {
     this.client = new AssemblyAI({ apiKey });
   }
 
-  async transcribe(audioPath: string, fallbackDurationMs?: number): Promise<Transcript> {
-    const raw = await this.client.transcripts.transcribe({
-      audio: audioPath,
-      speaker_labels: true,
-      language_detection: true,
-      punctuate: true,
-      format_text: true,
-    });
+  async transcribe(audioPath: string, fallbackDurationMs?: number, opts?: TranscribeOptions): Promise<Transcript> {
+    const raw = await this.client.transcripts.transcribe(buildTranscribeParams(audioPath, opts));
     throwIfError(raw as RawTranscript);
     return mapAssemblyAI(raw as RawTranscript, fallbackDurationMs);
   }
 }
 
 export class FakeTranscriber implements Transcriber {
+  /** What each call got, for assertions. */
+  readonly calls: { audioPath: string; fallbackDurationMs?: number; opts?: TranscribeOptions }[] = [];
+
   constructor(private readonly transcript: Transcript) {}
 
-  async transcribe(_audioPath: string, _fallbackDurationMs?: number): Promise<Transcript> {
+  async transcribe(audioPath: string, fallbackDurationMs?: number, opts?: TranscribeOptions): Promise<Transcript> {
+    this.calls.push({ audioPath, fallbackDurationMs, opts });
     return this.transcript;
   }
 }

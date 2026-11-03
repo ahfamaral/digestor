@@ -48,10 +48,13 @@ export const STAGE_STEP: Record<StageName, StepKey | null> = {
 };
 
 /** Stepper rows for a stage: earlier steps done, the matching one running, later ones waiting. `ready` completes every step. */
-export function buildSteps(stage: StageName, source: "upload" | "youtube"): Step[] {
-  const current = STAGE_STEP[stage];
-  const at = current === null ? -1 : STEP_KEYS.indexOf(current);
-  return STEP_KEYS.map((key, i) => ({
+export function buildSteps(stage: StageName, source: "upload" | "youtube", hasVideo = true): Step[] {
+  const mapped = STAGE_STEP[stage];
+  const current = !hasVideo && mapped === "naming_speakers" ? "understanding" : mapped; // a record may still name an audio session
+  // Audio-only sessions skip caption reading, so they have no naming step to show.
+  const keys: readonly StepKey[] = hasVideo ? STEP_KEYS : STEP_KEYS.filter((k) => k !== "naming_speakers");
+  const at = current === null ? -1 : keys.indexOf(current);
+  return keys.map((key, i) => ({
     key,
     label: t(key === "intake" && source === "youtube" ? "processing.downloading" : LABEL[key]),
     state: at === -1 ? "waiting" : stage === "ready" || i < at ? "done" : i === at ? "running" : "waiting",

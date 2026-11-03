@@ -14,6 +14,17 @@ export class FfmpegError extends Error {
   }
 }
 
+/** The process ran past its time limit and was killed. */
+export class FfmpegTimeoutError extends FfmpegError {
+  constructor(cmd: string, timeoutMs: number, stderrTail: string) {
+    super(cmd, null, `${cmd} timed out after ${Math.round(timeoutMs / 1000)} s and was stopped\n${stderrTail}`);
+    this.name = "FfmpegTimeoutError";
+  }
+}
+
+/** A single frame grab should take a second or two; past this the file is stuck or broken. Encodes (proxy, renders, burns) have no limit. */
+export const FRAME_TIMEOUT_MS = 60_000;
+
 /** Max stderr retained per process; only the tail matters for diagnostics. */
 export const STDERR_CAP = 64 * 1024;
 
@@ -21,7 +32,7 @@ export const STDERR_CAP = 64 * 1024;
  * Resolves with the full stdout (unbounded on purpose: ffprobe JSON needs all of it, and
  * callers that stream huge stdout should not use this) and a bounded stderr tail (last STDERR_CAP chars).
  */
-export function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+export function run(cmd: string, args: string[], opts: { timeoutMs?: number } = {}): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
@@ -31,15 +42,28 @@ export function run(cmd: string, args: string[]): Promise<{ stdout: string; stde
       stderr += d;
       if (stderr.length > STDERR_CAP) stderr = stderr.slice(-STDERR_CAP);
     });
-    child.on("error", (err) => reject(new FfmpegError(cmd, null, String(err.message))));
+    let timedOut = false;
+    const timer = opts.timeoutMs
+      ? setTimeout(() => {
+          timedOut = true;
+          child.kill("SIGKILL");
+        }, opts.timeoutMs)
+      : null;
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(new FfmpegError(cmd, null, String(err.message)));
+    });
     child.on("close", (code) => {
+      if (timer) clearTimeout(timer);
+      if (timedOut) return reject(new FfmpegTimeoutError(cmd, opts.timeoutMs!, stderr.trimEnd().split("\n").slice(-20).join("\n")));
       if (code === 0) return resolve({ stdout, stderr });
       reject(new FfmpegError(cmd, code, stderr.trimEnd().split("\n").slice(-20).join("\n")));
     });
   });
 }
 
-const ffmpeg = (args: string[]) => run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args]).then(() => undefined);
+const ffmpeg = (args: string[], opts: { timeoutMs?: number } = {}) =>
+  run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], opts).then(() => undefined);
 const secs = (ms: number) => (ms / 1000).toFixed(3);
 
 type ProbeJson = {
@@ -80,7 +104,7 @@ export const makeProxy = (input: string, output: string, opts: { hasVideo?: bool
 
 /** One JPEG frame at `atMs`, scaled to `width` px wide. */
 export const frame = (input: string, atMs: number, output: string, width: number) =>
-  ffmpeg(["-ss", secs(atMs), "-i", input, "-frames:v", "1", "-vf", `scale=${width}:-2`, "-q:v", "3", output]);
+  ffmpeg(["-ss", secs(atMs), "-i", input, "-frames:v", "1", "-vf", `scale=${width}:-2`, "-q:v", "3", output], { timeoutMs: FRAME_TIMEOUT_MS });
 
 export const thumbnail = (input: string, atMs: number, output: string) => frame(input, atMs, output, 640);
 

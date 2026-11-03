@@ -39,3 +39,11 @@ describe("formatLength", () => {
     expect(formatLength(0)).toBe("0s");
   });
 });
+
+describe("parseTimestamp field ranges", () => {
+  it("rejects minutes or seconds of 60 and over when a larger field precedes them", () => {
+    for (const bad of ["99:99:99", "01:60:00", "05:60", "00:00:99", "1:75:00"]) expect(() => parseTimestamp(bad)).toThrow(InvalidTimestampError);
+    expect(parseTimestamp("59:59")).toBe(3_599_000);
+    expect(parseTimestamp("100:59:59")).toBe(100 * 3_600_000 + 59 * 60_000 + 59_000);
+  });
+});

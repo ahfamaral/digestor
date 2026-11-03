@@ -15,6 +15,7 @@ export async function createSession(
     originalKey?: string;
     hint?: string | null;
     audioOnlyAck?: boolean;
+    languageOverride?: string | null;
   },
 ): Promise<Session> {
   const [row] = await db
@@ -27,6 +28,7 @@ export async function createSession(
       originalKey: input.originalKey ?? null,
       hint: input.hint ?? null,
       audioOnlyAck: input.audioOnlyAck ?? false,
+      languageOverride: input.languageOverride ?? null,
     })
     .returning();
   return row!;

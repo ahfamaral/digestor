@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { AUDIO_ONLY_WARNING, UPLOAD_UNSUPPORTED, isAudioExtension, isUploadExtension } from "@digestor/core";
-import { createSession, linkRecord, UploadTooLargeError } from "@digestor/core/server";
+import { createSession, deleteSession, linkRecord, UploadTooLargeError } from "@digestor/core/server";
 import { authCookieFrom, isAuthorized } from "@/lib/auth";
 import { errorResponse } from "@/lib/http";
+import { readLanguageInput, START_FAILED } from "@/lib/languageInput";
 import { readRecordInput } from "@/lib/recordInput";
 import { sendStart } from "@/lib/jobs";
 import { getServer } from "@/lib/server";
@@ -13,7 +15,7 @@ function maxUploadGb(): number {
 }
 
 /**
- * PUT /api/sessions/upload?filename=<name>&hint=<text>[&record=<date or link>][&audioOnlyAck=1] — body is the raw file stream.
+ * PUT /api/sessions/upload?filename=<name>&hint=<text>[&language=<pt|en|es|fr|de|it>][&record=<date or link>][&audioOnlyAck=1] — body is the raw file stream.
  * Audio files (mp3, m4a, wav) need `audioOnlyAck=1`: clips from them show a waveform, and the user must accept that.
  */
 export async function PUT(req: Request): Promise<Response> {
@@ -30,6 +32,8 @@ export async function PUT(req: Request): Promise<Response> {
   if (audioOnly && !audioOnlyAck) return errorResponse(400, AUDIO_ONLY_WARNING);
   const record = readRecordInput(params.get("record"));
   if ("error" in record) return record.error;
+  const language = readLanguageInput(params.get("language"));
+  if ("error" in language) return language.error;
   if (!req.body) return errorResponse(400, "No file was uploaded.");
 
   const gb = maxUploadGb();
@@ -47,18 +51,30 @@ export async function PUT(req: Request): Promise<Response> {
     if (err instanceof UploadTooLargeError) return errorResponse(413, tooLarge);
     throw err;
   }
+  if ((await stat(storage.resolve(originalKey))).size === 0) {
+    await storage.removeSession(sessionId);
+    return errorResponse(400, "That file is empty.");
+  }
 
   const hint = params.get("hint")?.trim() || null;
-  await createSession(db, { id: sessionId, title: filename.slice(0, dot), source: "upload", originalKey, hint, audioOnlyAck: audioOnly });
-  // The session row has to exist before its record can be linked (foreign key), so a link failure can't stop the session
-  // from starting: log it and go on. The record stays optional: it can be linked from Who's who at any time.
-  if (record.ref) {
-    try {
-      await linkRecord(db, sessionId, record.ref);
-    } catch (err) {
-      console.error("upload: linking the record failed", err);
+  try {
+    await createSession(db, { id: sessionId, title: filename.slice(0, dot), source: "upload", originalKey, hint, audioOnlyAck: audioOnly, languageOverride: language.code });
+    // The session row has to exist before its record can be linked (foreign key), so a link failure can't stop the session
+    // from starting: log it and go on. The record stays optional: it can be linked from Who's who at any time.
+    if (record.ref) {
+      try {
+        await linkRecord(db, sessionId, record.ref);
+      } catch (err) {
+        console.error("upload: linking the record failed", err);
+      }
     }
+    await sendStart(boss, sessionId);
+  } catch (err) {
+    // Nothing is left behind: the row (cascades to its record link) and the saved file go.
+    console.error("upload: starting the session failed", err);
+    await deleteSession(db, sessionId).catch((e) => console.error("upload: removing the session row failed", e));
+    await storage.removeSession(sessionId).catch((e) => console.error("upload: removing the session files failed", e));
+    return errorResponse(503, START_FAILED);
   }
-  await sendStart(boss, sessionId);
   return Response.json({ sessionId });
 }

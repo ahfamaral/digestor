@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FfmpegError, STDERR_CAP, escapeFilterPath, extractAudio, makeProxy, probe, renderClip, run, thumbnail } from "./ffmpeg.js";
+import { FRAME_TIMEOUT_MS, FfmpegError, FfmpegTimeoutError, STDERR_CAP, escapeFilterPath, extractAudio, makeProxy, probe, renderClip, run, thumbnail } from "./ffmpeg.js";
 import { buildAss } from "./subtitles.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
@@ -162,5 +162,25 @@ describe("ffmpeg wrappers", () => {
     const out2 = join(outDir, "o.mp4");
     await renderClip({ ...base, input: odd, output: out2, hasVideo: true });
     expect([(await probe(out2)).width, (await probe(out2)).height]).toEqual([640, 360]);
+  });
+});
+
+describe("run with a timeout", () => {
+  it("kills a slow process and rejects with a FfmpegTimeoutError", async () => {
+    const started = Date.now();
+    const err = await run("node", ["-e", "setTimeout(()=>{}, 30000)"], { timeoutMs: 300 }).catch((e) => e);
+    expect(err).toBeInstanceOf(FfmpegTimeoutError);
+    expect(err).toBeInstanceOf(FfmpegError);
+    expect(err.message).toContain("timed out");
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
+  it("does not interfere with a process that finishes in time, and has no limit by default", async () => {
+    expect((await run("node", ["-e", "console.log('ok')"], { timeoutMs: 5000 })).stdout.trim()).toBe("ok");
+    expect((await run("node", ["-e", "console.log('ok')"])).stdout.trim()).toBe("ok");
+  });
+
+  it("frames get a 60 s limit; encodes get none", () => {
+    expect(FRAME_TIMEOUT_MS).toBe(60_000);
   });
 });

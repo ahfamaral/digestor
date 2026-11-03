@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UploadIcon, XIcon } from "lucide-react";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
-import { estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
+import { SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -123,6 +123,7 @@ export function UploadForm() {
   const [url, setUrl] = useState("");
   const [hint, setHint] = useState("");
   const [record, setRecord] = useState("");
+  const [language, setLanguage] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -162,6 +163,7 @@ export function UploadForm() {
         const qs = new URLSearchParams({ filename: file.name });
         if (hint.trim()) qs.set("hint", hint.trim());
         if (record.trim()) qs.set("record", record.trim());
+        if (language) qs.set("language", language);
         if (audioOnly) qs.set("audioOnlyAck", "1");
         sessionId = await putFile(`/api/sessions/upload?${qs}`, file, (pct) => setUpload({ phase: "uploading", pct }));
         setUpload({ phase: "done" });
@@ -169,7 +171,7 @@ export function UploadForm() {
         const res = await fetch("/api/sessions/youtube", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, hint: hint.trim() || undefined, record: record.trim() || undefined }),
+          body: JSON.stringify({ url, hint: hint.trim() || undefined, record: record.trim() || undefined, language: language || undefined }),
         });
         const text = await res.text();
         if (!res.ok) throw new Error(errorFrom(text, t("upload.errorGeneric")));
@@ -370,6 +372,27 @@ export function UploadForm() {
         />
         <p id="record-help" className={cn("mt-1 text-xs break-words", recordError ? "text-destructive" : "text-muted-foreground")} role={recordError ? "alert" : undefined}>
           {recordError ?? t("upload.recordHelp")}
+        </p>
+        <label htmlFor="language" className="mt-4 font-semibold">
+          {t("upload.languageLabel")} <span className="font-normal text-muted-foreground">{t("upload.languageOptional")}</span>
+        </label>
+        <select
+          id="language"
+          className="mt-2 h-8 w-full rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+          value={language}
+          disabled={busy}
+          aria-describedby="language-help"
+          onChange={(e) => setLanguage(e.target.value)}
+        >
+          <option value="">{t("upload.languageAuto")}</option>
+          {SPOKEN_LANGUAGE_CODES.map((code) => (
+            <option key={code} value={code}>
+              {t(`upload.language_${code}`)}
+            </option>
+          ))}
+        </select>
+        <p id="language-help" className="mt-1 text-xs text-muted-foreground">
+          {t("upload.languageHelp")}
         </p>
         <p className="my-3 text-sm text-muted-foreground">{estimate}</p>
         <Button

@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "language_override" text;

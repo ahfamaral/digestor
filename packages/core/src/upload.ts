@@ -11,3 +11,9 @@ export const isUploadExtension = (ext: string): boolean => isAudioExtension(ext)
 
 /** Shown wherever a clip would need the source video after retention removed it (API 409s, disabled Play). */
 export const VIDEO_REMOVED = "The video was removed after 14 days. Re-upload it to make new clips.";
+
+/** Spoken-language overrides offered at upload (AssemblyAI `language_code`); empty = detect automatically. Labels live in the web catalogue. */
+export const SPOKEN_LANGUAGE_CODES = ["pt", "en", "es", "fr", "de", "it"] as const;
+export type SpokenLanguageCode = (typeof SPOKEN_LANGUAGE_CODES)[number];
+export const isSpokenLanguageCode = (v: unknown): v is SpokenLanguageCode => (SPOKEN_LANGUAGE_CODES as readonly unknown[]).includes(v);
+export const LANGUAGE_PICK_ERROR = "Pick a language from the list.";

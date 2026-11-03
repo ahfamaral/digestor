@@ -27,7 +27,7 @@ function eventLabel(id: string | null): string | null {
 }
 
 /** Processing screen: live stepper fed by SSE; refreshes the server page when the pipeline pauses or ends. */
-export function Processing({ sessionId, source, initial }: { sessionId: string; source: "upload" | "youtube"; initial: ProgressState }) {
+export function Processing({ sessionId, source, hasVideo = true, initial }: { sessionId: string; source: "upload" | "youtube"; hasVideo?: boolean; initial: ProgressState }) {
   const router = useRouter();
   const [state, setState] = useState(initial);
 
@@ -48,7 +48,7 @@ export function Processing({ sessionId, source, initial }: { sessionId: string; 
     return () => es.close();
   }, [sessionId, router]);
 
-  const steps = buildSteps(state.stage, source);
+  const steps = buildSteps(state.stage, source, hasVideo);
   const language = state.language;
   const type = eventLabel(state.profile);
 

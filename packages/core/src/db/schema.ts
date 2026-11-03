@@ -28,6 +28,7 @@ export const sessions = pgTable("sessions", {
   language: text("language"),
   profile: text("profile"),
   hint: text("hint"),
+  languageOverride: text("language_override"),
   stage: text("stage").$type<Stage>().notNull().default("uploaded"),
   progress: integer("progress").notNull().default(0),
   error: text("error"),
