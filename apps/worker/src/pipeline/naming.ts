@@ -240,8 +240,10 @@ async function personForVote(db: Db, vote: CaptionVote, current: Attribution[]):
 }
 
 /**
- * Reads the lower-third captions of the original video and proposes names (source `caption`, status `proposed`, never
- * confirmed). Skipped for audio-only sessions and once the video is gone. Safe to run twice: it supersedes only its
+ * Runs after the context check, once the profile is final (owner decision 2026-11-03): reads the lower-third captions
+ * of the original video and proposes names (source `caption`, status `proposed`, never confirmed). Skipped for
+ * sensitive profiles (`trial`: no frame of a witness is ever sent, even when the journalist corrected the profile at
+ * the check), audio-only sessions and once the video is gone. Safe to run twice: it supersedes only its
  * own rows (keeping a person a human rejected) and reuses persons by name. Only a missing API key fails the session
  * (Ruling R8); any other failure is logged and the pipeline goes on without caption names.
  */
@@ -249,7 +251,7 @@ export const nameSpeakersNode =
   (deps: PipelineDeps) =>
   async (s: { sessionId: string }): Promise<Record<string, never>> => {
     const { db, storage } = deps;
-    await setStage(db, s.sessionId, "naming_speakers", 50);
+    await setStage(db, s.sessionId, "naming_speakers", 60);
     try {
       const session = await getSession(db, s.sessionId);
       if (!session || !session.hasVideo || session.videoDeletedAt || !session.originalKey) return {};
@@ -257,6 +259,9 @@ export const nameSpeakersNode =
       if (!(await access(original).then(() => true, () => false))) return {};
       const transcript = await getTranscript(db, s.sessionId);
       if (!transcript) return {};
+      const stored = await getContextCard(db, s.sessionId);
+      const profile = stored?.card.profile.value ?? session.profile;
+      if (profile && profile in PROFILES && PROFILES[profile as keyof typeof PROFILES].sensitive) return {};
       const planned = captionFramePlan(transcript.words).length;
       const reads = await readCaptions({ llm: deps.llm, storage, media: deps.media }, s.sessionId, session.originalKey, transcript.words);
       try {

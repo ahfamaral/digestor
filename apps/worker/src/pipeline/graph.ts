@@ -367,9 +367,9 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     .addNode("download", downloadNode(deps))
     .addNode("ingest", ingestNode(deps))
     .addNode("transcribe", transcribeNode(deps))
-    .addNode("name_speakers", nameSpeakersNode(deps))
     .addNode("understand_context", understandContextNode(deps))
     .addNode("ask_context", askContextNode(deps))
+    .addNode("name_speakers", nameSpeakersNode(deps))
     .addNode("index", indexNode(deps))
     .addNode("analyze", analyzeNode(deps))
     .addConditionalEdges(
@@ -382,23 +382,23 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     )
     .addConditionalEdges("download", unlessFailed("ingest"), ["ingest", END])
     .addConditionalEdges("ingest", unlessFailed("transcribe"), ["transcribe", END])
-    .addConditionalEdges("transcribe", unlessFailed("name_speakers"), ["name_speakers", END])
-    .addConditionalEdges("name_speakers", unlessFailed("understand_context"), ["understand_context", END])
+    .addConditionalEdges("transcribe", unlessFailed("understand_context"), ["understand_context", END])
     .addConditionalEdges(
       "understand_context",
       async (s) => {
         const stored = await getContextCard(db, s.sessionId);
         // After the follow-up round's answers this pass only folds them into the card: no third question round.
-        return stored?.card.sufficient || s.round > MAX_CONTEXT_ROUNDS ? "index" : "ask_context";
+        return stored?.card.sufficient || s.round > MAX_CONTEXT_ROUNDS ? "name_speakers" : "ask_context";
       },
-      ["index", "ask_context"],
+      ["name_speakers", "ask_context"],
     )
     .addConditionalEdges(
       "ask_context",
       // Any other action is not valid at this pause: ask again.
-      (s) => (s.resume?.action === "skip" ? "index" : s.resume?.action === "continue" ? "understand_context" : "ask_context"),
-      ["index", "understand_context", "ask_context"],
+      (s) => (s.resume?.action === "skip" ? "name_speakers" : s.resume?.action === "continue" ? "understand_context" : "ask_context"),
+      ["name_speakers", "understand_context", "ask_context"],
     )
+    .addConditionalEdges("name_speakers", unlessFailed("index"), ["index", END])
     .addEdge("index", "analyze")
     .addEdge("analyze", END)
     .compile({ checkpointer });

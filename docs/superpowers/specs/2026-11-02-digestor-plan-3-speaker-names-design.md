@@ -121,7 +121,7 @@ Fetches run in a job (`session.names`, §6.2), and the row is job-owned, so it g
 ## 6. Pipeline
 
 ### 6.1 The `name_speakers` node
-- **Position:** after `transcribe`, before `understand_context`. Who's who shows its proposals at the context pause, and the context agent then sees names with sources. **[decided: a new node; my call: position]**
+- **Position:** after the context check (`understand_context` / `ask_context`), before `index`. Caption names therefore show in Who's who after the check, not during it. **[decided: a new node; owner decided 2026-11-03: after the context check, so trial sessions never send frames; caption names show in Who's who after the check]**
 - **Steps** (each a source that can fail alone and logs, like the moment passes):
   1. **Record** (§7.4), if a record is linked.
   2. **Captions** (§7.3), if the session has video (not audio-only) and the original is still there.
@@ -131,7 +131,7 @@ Fetches run in a job (`session.names`, §6.2), and the row is job-owned, so it g
 - **Re-runs:**
   - The node re-runs on resume only when the journalist added or changed the record link at the pause.
   - It is idempotent: it supersedes only its own earlier AI rows, never human rows (pgboss-langgraph gotcha 4: every node must be safe to run twice).
-- **Stages:** a new `naming_speakers` stage between `transcribing` and `understanding`, with progress about 50 and the label "Naming speakers". **[decided: the stage exists; builder: exact progress]**
+- **Stages:** a new `naming_speakers` stage between `awaiting_context` and `indexing`, with progress 60 and the label "Naming speakers". **[decided: the stage exists; owner decided 2026-11-03: after the context check, so trial sessions never send frames; caption names show in Who's who after the check]**
 
 ### 6.2 After the analysis (on demand)
 - **Who's who edits** after analysis are plain API writes; no job, no AI.
@@ -172,6 +172,7 @@ These are the context agent's grounded `participants` names. They stay `proposed
   - A name read from a caption must appear in at least 2 frames of the same voice, with no other name read for that voice.
   - It is then matched to `persons`: exact normalised match, or an official member found through the chamber registry search when the profile is `parliament` **[unverified: registry name search]**. If neither matches, a new custom person is created.
   - The result is a `caption` attribution, always `proposed`, with confidence from the frame agreement. Evidence keeps the frame (stored under `<sessionId>/names/<frame>.jpg`) and the text read, so Who's who can show the frame next to the name.
+- **Sensitive profiles skip captions:** a session whose final profile (the context card's, after the context check) is sensitive (`trial`) reads no captions and sends no frame to the AI provider.
 - **Cost:** about 60 Haiku image calls, roughly $0.05–0.15 per session **[builder: measure on the debate]**. The session's cost estimate (`packages/core/src/cost.ts`) includes it.
 - **Retention:** caption frames are evidence, and they are kept with the analysis. They are small, and the 14-day video rule doesn't apply to them. **[my call]**
 

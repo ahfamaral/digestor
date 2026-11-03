@@ -587,11 +587,11 @@ describe("name_speakers", () => {
     const first = unique();
     const name = `${first} Quimby`;
     const { graph, cfg, sessionId, deps, llm } = await setup({
-      context: [draft()],
+      context: [sufficientDraft()],
       analysis: withCaptions(Array.from({ length: 4 }, () => captionOf(name, "PL"))),
     });
     await graph.invoke({ sessionId }, cfg);
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
     expect(llm.calls.filter((c) => c.name === "captions")).toMatchObject([{ model: "fast", images: 1 }, { model: "fast", images: 1 }]);
     const [row, ...rest] = await captionRows(sessionId);
     expect(rest).toEqual([]);
@@ -622,7 +622,7 @@ describe("name_speakers", () => {
   });
 
   it("graph: audio-only or a deleted original skips captions", async () => {
-    const audio = await setup({ fixture: AUDIO, audioOnlyAck: true, context: [draft()] });
+    const audio = await setup({ fixture: AUDIO, audioOnlyAck: true, context: [sufficientDraft()] });
     await audio.graph.invoke({ sessionId: audio.sessionId }, audio.cfg);
     expect(audio.llm.calls.filter((c) => c.name === "captions")).toEqual([]);
     expect(await captionRows(audio.sessionId)).toEqual([]);
@@ -644,9 +644,9 @@ describe("name_speakers", () => {
       const boom = () => {
         throw new Error("vision is down");
       };
-      const { graph, cfg, sessionId } = await setup({ context: [draft()], analysis: withCaptions(Array.from({ length: 4 }, () => boom)) });
+      const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: withCaptions(Array.from({ length: 4 }, () => boom)) });
       await graph.invoke({ sessionId }, cfg);
-      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", error: null });
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null });
       expect(await captionRows(sessionId)).toEqual([]);
       expect(log).toHaveBeenCalled();
     } finally {
@@ -654,11 +654,46 @@ describe("name_speakers", () => {
     }
   });
 
+  it("graph: a trial session reads no captions", async () => {
+    const first = unique();
+    const trial = { ...sufficientDraft(), profile: { value: "trial" as const, confidence: 0.9, evidence: "Sentence number 2." } };
+    const { graph, cfg, sessionId, llm } = await setup({ context: [trial], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null });
+    expect(llm.calls.filter((c) => c.name === "captions")).toEqual([]);
+    expect(await captionRows(sessionId)).toEqual([]);
+  });
+
+  it("graph: a profile set to trial at the context check reads no captions", async () => {
+    const first = unique();
+    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft(), draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    await resume({ action: "continue", answers: [], cardEdits: { profile: "trial", dateOrYear: "2026" } });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null });
+    expect((await getContextCard(db, sessionId))!.card.profile.value).toBe("trial");
+    expect(llm.calls.filter((c) => c.name === "captions")).toEqual([]);
+    expect(await captionRows(sessionId)).toEqual([]);
+  });
+
+  it("graph: captions run after the context check", async () => {
+    const first = unique();
+    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()], analysis: withCaptions(Array.from({ length: 4 }, () => captionOf(first))) });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect(llm.calls.filter((c) => c.name === "captions")).toEqual([]);
+    expect(await captionRows(sessionId)).toEqual([]);
+    await resume({ action: "skip" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
+    expect(llm.calls.filter((c) => c.name === "captions").length).toBeGreaterThan(0);
+    expect(await captionRows(sessionId)).toHaveLength(1);
+  });
+
   it("a missing API key escapes the node (the job fails the session, Ruling R8)", async () => {
     const missing = () => {
       throw new MissingApiKeyError("OPENROUTER_API_KEY");
     };
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], analysis: withCaptions([missing, missing]) });
+    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: withCaptions([missing, missing]) });
     await expect(graph.invoke({ sessionId }, cfg)).rejects.toBeInstanceOf(MissingApiKeyError);
   });
 
@@ -723,14 +758,15 @@ describe("name_speakers", () => {
   });
   const resolveA = async (sessionId: string) => personAt((await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null), "A", 0);
 
-  it("real order: a short caption and the fuller context name end up on one person (no conflict)", async () => {
+  it("real order (context first, captions second): a short caption reuses the fuller context person (no conflict)", async () => {
     const first = unique();
-    const { graph, cfg, sessionId } = await setup({
+    const { graph, cfg, sessionId, resume } = await setup({
       transcript: saidName(first),
       context: [namedDraft(first, `${first} Quimby`)],
       analysis: withCaptions([captionOf(first.toUpperCase()), captionOf(first.toUpperCase())]),
     });
     await graph.invoke({ sessionId }, cfg);
+    await resume({ action: "skip" }); // the pause comes first; captions are read after it
     const atts = (await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null);
     const caption = atts.find((a) => a.source === "caption")!;
     const context = atts.find((a) => a.source === "transcript")!;
@@ -740,14 +776,15 @@ describe("name_speakers", () => {
     expect(caption.evidence).toMatchObject({ kind: "caption", frameKey: `${sessionId}/names/A-1000.jpg` });
   });
 
-  it("real order, mirrored: a full caption name is reused for a short context name", async () => {
+  it("real order, mirrored: a full caption name is reused for a short context name (the context row follows it)", async () => {
     const first = unique();
-    const { graph, cfg, sessionId } = await setup({
+    const { graph, cfg, sessionId, resume } = await setup({
       transcript: saidName(first),
       context: [namedDraft(first, first)],
       analysis: withCaptions([captionOf(`${first} Quimby`), captionOf(`${first} Quimby`)]),
     });
     await graph.invoke({ sessionId }, cfg);
+    await resume({ action: "skip" }); // the pause comes first; captions are read after it
     const atts = (await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null);
     const caption = atts.find((a) => a.source === "caption")!;
     expect(atts.find((a) => a.source === "transcript")!.personId).toBe(caption.personId);

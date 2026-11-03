@@ -12,7 +12,7 @@ export interface Step {
 }
 
 export const STEP_KEYS = [
-  "intake", "transcribing", "naming_speakers", "understanding", "indexing", "finding_topics", "finding_moments", "writing_briefing", "ready",
+  "intake", "transcribing", "understanding", "naming_speakers", "indexing", "finding_topics", "finding_moments", "writing_briefing", "ready",
 ] as const;
 export type StepKey = (typeof STEP_KEYS)[number];
 
