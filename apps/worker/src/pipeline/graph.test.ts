@@ -777,6 +777,8 @@ describe("name_speakers", () => {
       expect(before).toHaveLength(1);
       await nameSpeakersNode(deps)({ sessionId });
       expect((await captionRows(sessionId)).map((r) => r.id)).toEqual(before.map((r) => r.id));
+      const { frameKey } = before[0]!.evidence as { frameKey: string };
+      expect(await exists(storage.resolve(frameKey))).toBe(true); // the kept row's evidence frame survives the failed re-run
       expect(log).toHaveBeenCalledWith(expect.stringMatching(/^captions: 2 of 2 frames failed \(first: vision is down\)/));
     } finally {
       log.mockRestore();

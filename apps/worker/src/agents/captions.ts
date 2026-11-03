@@ -1,4 +1,4 @@
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rename, rm } from "node:fs/promises";
 import { z } from "zod";
 import { normaliseName, turnsOf, type Word } from "@digestor/core";
 import type { LocalStorage } from "@digestor/core/server";
@@ -124,10 +124,13 @@ export async function readCaptions(deps: CaptionDeps, sessionId: string, videoKe
   const reads = await mapPool(plan, PASS_CONCURRENCY, async (p): Promise<CaptionRead | null> => {
     const frameKey = deps.storage.key(sessionId, `names/${p.speakerId.replace(/[^\w-]/g, "_")}-${p.atMs}.jpg`);
     const file = deps.storage.resolve(frameKey);
+    // Cut to a temporary file and move it into place only once read, so a failed re-run never deletes an earlier run's evidence.
+    const tmp = deps.storage.resolve(deps.storage.key(sessionId, `names/.tmp-${p.speakerId.replace(/[^\w-]/g, "_")}-${p.atMs}.jpg`));
     try {
-      await deps.media.frame(input, p.atMs, file, CAPTION_WIDTH);
-      const data = (await readFile(file)).toString("base64");
+      await deps.media.frame(input, p.atMs, tmp, CAPTION_WIDTH);
+      const data = (await readFile(tmp)).toString("base64");
       const r = await readCaption(deps.llm, { mediaType: "image/jpeg", data });
+      await rename(tmp, file);
       return { speakerId: p.speakerId, atMs: p.atMs, frameKey, name: r.name, text: r.text };
     } catch (err) {
       if (err instanceof MissingApiKeyError) throw err;
@@ -135,7 +138,7 @@ export async function readCaptions(deps: CaptionDeps, sessionId: string, videoKe
       failed++;
       if (failed === 1) firstError = msg;
       console.error(`captions: frame at ${p.atMs} ms of voice ${p.speakerId} failed`);
-      await rm(file, { force: true });
+      await rm(tmp, { force: true });
       return null;
     }
   });
