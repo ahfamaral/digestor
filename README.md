@@ -197,7 +197,24 @@ The context check also kept dropping a human answer: replaying the round-1 call 
 
 Cost of the replays, the four runs and their checks on OpenRouter: about $0.60.
 
-Attribution accuracy (speaker names) comes with Plan 3. The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script.
+**Speaker names from the Senado record (2026-11-03).** Golden files can carry `speakers` (who speaks when; the eval scores the share of that speaking time named correctly, wrongly or not at all, with `score = (correct − 5 × wrong) / total`). Video: the Senado plenary of 30 June 2026 from TV Senado (5 h 19 min, about 2 h 40 min of speech; session `f2fce3ea`), with the record of session 564622 linked at upload (22 speeches by 17 senators, all with full text). Golden file: `apps/worker/eval/senado-2026-06-30.golden.json`, 30 turns of 18 people (179 min), drafted by Claude from the transcript and the record text; owner review pending.
+
+What AssemblyAI's diarization gave, with only `speaker_labels` set: 16 voices, 66 turns. Nearly every senator got a voice of their own, so 16 of the 17 senators landed on one voice each. The exception is the chair's voice (E), which also holds Hamilton Mourão's "pela ordem", Damares Alves and a TV Senado feature shown during the break. AssemblyAI can take the expected speaker count (`speakers_expected`, or `speaker_options` with a min and max); we don't send it yet. Here the record's 17 senators against 16 voices suggests it would change little.
+
+| Metric (AI only) | First run | After the fix |
+| --- | --- | --- |
+| Speaking time named correctly | 7,268 s (93%) | 7,272 s (93%) |
+| Speaking time named wrongly | 130 s (2%) | 0 s (0%) |
+| Speaking time unnamed | 434 s (6%) | 559 s (7%) |
+| Attribution score | 0.84 | 0.93 |
+
+**The fix.** The record prints other people's turns inside a speech, each under its own header: the chair's reply sits inside Mourão's and Jayme Campos's speeches ("O SR. PRESIDENTE (Davi Alcolumbre…) –"). The matcher scored Davi's reply against the whole speech and named it after the senator: "Hamilton Mourão", confirmed at 0.83. No threshold could fix that, because correct matches scored 0.67–0.82. Matching now keeps only the parts headed by the speech's own speaker (`speechText`). With that, every match on this video is right, and the turns left unmatched score at most 0.19 against any speech, against 0.41 for the weakest right match. So the thresholds stay at `RECORD_PROPOSE` 0.35 and `RECORD_CONFIRM` 0.6. Matches between 0.41 and 0.51 (about 7 minutes, the chair's longer interventions) stay "proposed" for a human to confirm. The unnamed time is mostly the chair's short lines ("Com a palavra…"), which the record doesn't contain.
+
+The debate (no record; names from the transcript and context check) still scores 0.99: 100% named correctly, 6.8 s wrong.
+
+Cost of the Senado run: AssemblyAI, about $2.13 for 5.32 hours; OpenRouter (Claude Haiku 5.5, context check plus full analysis), at most $0.21. The Senado API is free. The 8 GB download and the 480p preview took 92 minutes before transcription started, because the preview copy is made first. Transcription itself took 6 minutes.
+
+The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script.
 
 ## Backlog from Plan 1
 

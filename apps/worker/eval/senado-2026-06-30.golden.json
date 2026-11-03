@@ -1,0 +1,161 @@
+{
+  "sessionId": "f2fce3ea-08a8-441a-a0b2-1a2b91c96e6f",
+  "videoPath": "https://www.youtube.com/watch?v=6cc3OsLTidM",
+  "profile": "parliament",
+  "labelledBy": "drafted by Claude; owner review pending (30 turns of the Senado plenary of 30/06/2026, session 564622, labelled from the transcript and the Senado record text: who the chair gives the floor to, who the speaker addresses, the record's speech order)",
+  "topics": [],
+  "moments": [],
+  "speakers": [
+    {
+      "startMs": 1234,
+      "endMs": 102854,
+      "person": "Humberto Costa"
+    },
+    {
+      "startMs": 122412,
+      "endMs": 848116,
+      "person": "Paulo Paim"
+    },
+    {
+      "startMs": 852725,
+      "endMs": 912037,
+      "person": "Humberto Costa"
+    },
+    {
+      "startMs": 923666,
+      "endMs": 1337719,
+      "person": "Sergio Moro"
+    },
+    {
+      "startMs": 1376904,
+      "endMs": 2118762,
+      "person": "Humberto Costa"
+    },
+    {
+      "startMs": 2118976,
+      "endMs": 2133910,
+      "person": "Sergio Moro"
+    },
+    {
+      "startMs": 2135520,
+      "endMs": 2646924,
+      "person": "Eduardo Girão"
+    },
+    {
+      "startMs": 2683838,
+      "endMs": 3433895,
+      "person": "Esperidião Amin"
+    },
+    {
+      "startMs": 3436623,
+      "endMs": 3452228,
+      "person": "Humberto Costa"
+    },
+    {
+      "startMs": 9475690,
+      "endMs": 9492092,
+      "person": "Hamilton Mourão"
+    },
+    {
+      "startMs": 9493926,
+      "endMs": 9524895,
+      "person": "Davi Alcolumbre"
+    },
+    {
+      "startMs": 9654300,
+      "endMs": 9898413,
+      "person": "Teresa Leitão"
+    },
+    {
+      "startMs": 9900782,
+      "endMs": 10361517,
+      "person": "Teresa Leitão"
+    },
+    {
+      "startMs": 10362256,
+      "endMs": 11737031,
+      "person": "Davi Alcolumbre"
+    },
+    {
+      "startMs": 11875995,
+      "endMs": 12162757,
+      "person": "Davi Alcolumbre"
+    },
+    {
+      "startMs": 12168450,
+      "endMs": 12546680,
+      "person": "Irajá"
+    },
+    {
+      "startMs": 12572898,
+      "endMs": 12647625,
+      "person": "Dr. Hiran"
+    },
+    {
+      "startMs": 12647770,
+      "endMs": 12877252,
+      "person": "Davi Alcolumbre"
+    },
+    {
+      "startMs": 12884770,
+      "endMs": 13113050,
+      "person": "Romário"
+    },
+    {
+      "startMs": 13207330,
+      "endMs": 13735240,
+      "person": "Daniella Ribeiro"
+    },
+    {
+      "startMs": 13816102,
+      "endMs": 14535233,
+      "person": "Rogério Carvalho"
+    },
+    {
+      "startMs": 14576016,
+      "endMs": 14722671,
+      "person": "Dr. Hiran"
+    },
+    {
+      "startMs": 14745283,
+      "endMs": 15245060,
+      "person": "Esperidião Amin"
+    },
+    {
+      "startMs": 15484336,
+      "endMs": 15627490,
+      "person": "Davi Alcolumbre"
+    },
+    {
+      "startMs": 15632892,
+      "endMs": 15842662,
+      "person": "Laércio Oliveira"
+    },
+    {
+      "startMs": 16290109,
+      "endMs": 16449539,
+      "person": "Jayme Campos"
+    },
+    {
+      "startMs": 16449539,
+      "endMs": 16583790,
+      "person": "Davi Alcolumbre"
+    },
+    {
+      "startMs": 16724379,
+      "endMs": 17132935,
+      "person": "Carlos Portinho"
+    },
+    {
+      "startMs": 17194351,
+      "endMs": 17365803,
+      "person": "Laércio Oliveira"
+    },
+    {
+      "startMs": 18115650,
+      "endMs": 19102671,
+      "person": "Dra. Eudócia"
+    }
+  ],
+  "traps": []
+}

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Turn } from "@digestor/core";
-import { RECORD_CONFIRM, RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix, stripRecordMarkup } from "./align.js";
+import { RECORD_CONFIRM, RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix, speechText, stripRecordMarkup } from "./align.js";
 import type { RecordSpeech } from "./senado.js";
 
 const textos = JSON.parse(readFileSync(new URL("../../test/fixtures/senado-textos-2026-09-02.json", import.meta.url), "utf8")).texts as Record<string, string>;
@@ -87,6 +87,35 @@ describe("alignTurns", () => {
     // monotonic: the two swapped speeches (indexes 1 and 2) cannot both align
     const used = new Set(m.map((x) => x.speech));
     expect(used.has(1) && used.has(2)).toBe(false);
+  });
+});
+
+describe("other speakers inside a speech", () => {
+  // The shape of the real record of 30/06/2026: the chair's reply is printed inside Hamilton Mourão's "pela ordem".
+  const mourao = speech("524179", 1, {
+    name: "Hamilton Mourão",
+    text: [
+      "O SR. HAMILTON MOURÃO (Bloco Parlamentar Aliança/REPUBLICANOS - RS. Pela ordem.) – Presidente, existe o PL 2.239, de 2022, de minha relatoria, que tem requerimento de urgência da Comissão de Constituição, Justiça e Cidadania, não tem emendas; eu solicito a V. Exa., extrapauta, esse PL...",
+      "    O SR. PRESIDENTE (Davi Alcolumbre. Bloco Parlamentar Democracia/UNIÃO - AP) – Senador Hamilton Mourão, a Mesa me informa que V. Exa. já recolheu todas as assinaturas necessárias, do ponto de vista regimental, em relação a podermos incluir esta matéria como item extrapauta, já que foi também aprovado pela Comissão de Constituição e Justiça do Senado Federal, e a Mesa recolhe a solicitação de V. Exa., defere, e nós vamos incluir esta matéria como item extrapauta no final da deliberação.",
+      "    O SR. HAMILTON MOURÃO (Bloco Parlamentar Aliança/REPUBLICANOS - RS) – Muito obrigado, Presidente.",
+    ].join("\n\n"),
+  });
+
+  it("speechText keeps only the speech's own speaker, without headers", () => {
+    const out = speechText(mourao.text);
+    expect(out).toMatch(/existe o PL 2\.239/);
+    expect(out).toMatch(/Muito obrigado, Presidente\./);
+    expect(out).not.toMatch(/Mesa me informa|HAMILTON|PRESIDENTE \(|Bloco/);
+    expect(speechText(textos["524182"]!)).toBe(stripRecordMarkup(textos["524182"]!)); // a chair speech keeps all its parts
+  });
+
+  it("the chair's reply printed inside a senator's speech doesn't match that speech", () => {
+    clock = 0;
+    const reply = turn("Senador Hamilton Mourão, a mesa me informa que Vossa Excelência já recolheu todas as assinaturas necessárias do ponto de vista regimental em relação a podermos incluir esta matéria como item extrapauta, já que foi também aprovado pela Comissão de Constituição e Justiça do Senado Federal, e a mesa recolhe a solicitação de Vossa Excelência, defere, e nós vamos incluir esta matéria como item extrapauta no final da deliberação.", "E");
+    const own = turn("Presidente, existe o PL 2239 de 2022, de minha relatoria, Tem requerimento de urgência da Comissão de Constituição, Justiça e Cidadania. Não tem emendas. Eu solicito a Vossa Excelência extrapauta esse PL.", "E");
+    const sim = similarityMatrix([reply, own], [mourao]);
+    expect(sim[0]![0]!).toBeLessThan(RECORD_PROPOSE);
+    expect(sim[1]![0]!).toBeGreaterThanOrEqual(RECORD_CONFIRM);
   });
 });
 

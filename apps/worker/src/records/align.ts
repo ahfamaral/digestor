@@ -26,6 +26,27 @@ export function stripRecordMarkup(text: string): string {
   return t.replace(/^\s*(?:O|A)\s+SRA?\.[^–\n]*?\s[–-]\s+/i, " ");
 }
 
+const HEADER = /^\s*(?:O|A)\s+SRA?\.\s+([^(–\n]+?)\s*(?:\(|[–-]\s)/;
+
+/**
+ * A speech's text as its own speaker said it. The record prints other people's turns inside a speech, each under its
+ * own header ("O SR. PRESIDENTE (Davi Alcolumbre. ...) –" answering a senator's "pela ordem", a colleague's aparte);
+ * they are dropped, keeping the parts headed by the speech's first speaker. Every kept part goes through
+ * `stripRecordMarkup`.
+ */
+export function speechText(text: string): string {
+  const parts = text.split(/\n(?=\s*(?:O|A)\s+SRA?\.\s)/);
+  const owner = parts[0]?.match(HEADER)?.[1];
+  if (!owner) return stripRecordMarkup(text);
+  let current = owner;
+  const kept: string[] = [];
+  for (const part of parts) {
+    current = part.match(HEADER)?.[1] ?? current;
+    if (normaliseName(current) === normaliseName(owner)) kept.push(stripRecordMarkup(part));
+  }
+  return kept.join("\n");
+}
+
 function tokens(text: string): string[] {
   return normaliseName(text)
     .split(" ")
@@ -47,7 +68,7 @@ function termCounts(toks: string[]): Map<string, number> {
 export function similarityMatrix(turns: Turn[], speeches: RecordSpeech[]): number[][] {
   const docs = [
     ...turns.map((t) => termCounts(tokens(t.text))),
-    ...speeches.map((s) => termCounts(tokens(stripRecordMarkup(s.text)))),
+    ...speeches.map((s) => termCounts(tokens(speechText(s.text)))),
   ];
   const df = new Map<string, number>();
   for (const d of docs) for (const t of d.keys()) df.set(t, (df.get(t) ?? 0) + 1);
