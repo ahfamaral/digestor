@@ -74,7 +74,7 @@ export function parseRecordRef(input: string): RecordRef | null {
   return null;
 }
 
-/** "2 September 2026" style date for the status line; the ref's date as the journalist reads it (`DD/MM/YYYY`). */
+/** The Senado ref's date as the journalist reads it (`DD/MM/YYYY`) for the status line; null for a Câmara ref. */
 export function recordRefDate(ref: RecordRef): string | null {
   if (ref.chamber !== "senado") return null;
   const [y, m, d] = ref.date.split("-");

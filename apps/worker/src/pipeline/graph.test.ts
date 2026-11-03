@@ -14,6 +14,7 @@ import {
   getCurrentAnalysis,
   getPersons,
   getSession,
+  claimRecordFetch,
   getSessionRecord,
   linkRecord,
   listAnalysisVersions,
@@ -610,6 +611,29 @@ describe("match_record", () => {
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" }); // went on to the context check
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
     log.mockRestore();
+  });
+
+  it("a record row left running by a crashed attempt is taken over and matched", async () => {
+    const { f } = fakeSenadoFetch();
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
+    await claimRecordFetch(db, sessionId); // the crashed attempt's claim
+    expect((await getSessionRecord(db, sessionId))?.status).toBe("running");
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "matched" });
+    expect(await recordRows(sessionId)).toHaveLength(5);
+  });
+
+  it("the raw record payload survives name_speakers' frame clean-up", async () => {
+    const { f } = fakeSenadoFetch();
+    const { graph, cfg, sessionId, resume } = await setup({
+      context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f,
+      analysis: { ...emptyAnalysisResponses(), captions: Array.from({ length: 30 }, () => captionOf("Fulano Quimby", "PL")) },
+    });
+    await graph.invoke({ sessionId }, cfg);
+    await resume({ action: "skip" }); // name_speakers runs, then the analysis
+    const rec = (await getSessionRecord(db, sessionId))!;
+    expect(rec).toMatchObject({ status: "matched", rawKey: `${sessionId}/names/record.json` });
+    expect(await exists(storage.resolve(rec.rawKey!))).toBe(true);
   });
 
   it("without a linked record the step does nothing", async () => {

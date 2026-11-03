@@ -6,12 +6,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { personAt } from "@digestor/core";
 import { Command } from "@langchain/langgraph";
 import {
-  LocalStorage, getPersons, getSessionRecord, linkRecord, listAttributions,
+  LocalStorage, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
   claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, type Db,
 } from "@digestor/core/server";
-import { FIXTURE_DATE, fakeSenadoFetch, transcriptOfSpeeches } from "./records/fakeSenado.js";
+import { FIXTURE_DATE, fakeSenadoFetch, fixtureDiscursos, transcriptOfSpeeches } from "./records/fakeSenado.js";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, handleNames, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
@@ -441,6 +441,45 @@ d("handleNames", () => {
     await linkRecord(db, id, { chamber: "camara", eventId: "76000", url: "https://www.camara.leg.br/evento-legislativo/76000" });
     await handleNames(ctx, { sessionId: id }, FIRST);
     expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "Câmara records aren't supported yet." });
+  });
+
+  it("fetches a senator once even when they gave two speeches", async () => {
+    const day = structuredClone(fixtureDiscursos) as { DiscursosSessao: { Sessoes: { Sessao: { Pronunciamentos: { Pronunciamento: Record<string, unknown>[] } }[] } } };
+    for (const sess of day.DiscursosSessao.Sessoes.Sessao) {
+      for (const p of sess.Pronunciamentos.Pronunciamento) if (p.CodigoPronunciamento === "524182") p.CodigoParlamentar = "6335"; // Damares speaks twice
+    }
+    const { id, ctx, calls } = await setup({ fake: { list: () => new Response(JSON.stringify(day), { status: 200 }) } });
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(calls.filter((c) => c.includes("/senador/6335.json"))).toHaveLength(1);
+    expect(calls.filter((c) => c.includes("/senador/"))).toHaveLength(4);
+    expect((await recordRows(id)).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("a re-link to another date during a run: the old run writes nothing and doesn't mark the new row matched", async () => {
+    let id = "";
+    const other = { chamber: "senado" as const, date: "2026-09-03", sessionCode: null, url: "https://example/other" };
+    const s = await setup({ fake: { list: async () => { await linkRecord(db, id, other); return new Response(JSON.stringify(fixtureDiscursos), { status: 200 }); } } });
+    id = s.id;
+    await handleNames(s.ctx, { sessionId: id }, FIRST);
+    expect(await recordRows(id)).toEqual([]);
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "pending", ref: other, rawKey: null });
+  });
+
+  it("a record that then can't be matched leaves no rows of the earlier record current (rejections stay)", async () => {
+    const { id, ctx } = await setup();
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(await recordRows(id)).toHaveLength(5);
+    const cur = (await recordRows(id))[0]!;
+    await replaceAiAttributions(db, id, "record", [
+      ...(await recordRows(id)).map((r) => ({ speakerId: r.speakerId, startMs: r.startMs, endMs: r.endMs, personId: r.personId, status: r.id === cur.id ? ("rejected" as const) : r.status, confidence: r.confidence, evidence: r.evidence })),
+    ]);
+    await linkRecord(db, id, { chamber: "senado", date: "2026-09-04", sessionCode: null, url: "https://example/empty" });
+    const empty = fakeSenadoFetch({ list: () => new Response(JSON.stringify({ DiscursosSessao: { Sessoes: null } }), { status: 200 }) });
+    await handleNames({ db, deps: { ...ctx.deps, fetch: empty.f } as JobContext["deps"] }, { sessionId: id }, FIRST);
+    expect((await recordRows(id)).map((r) => r.status)).toEqual(["rejected"]);
+    await linkRecord(db, id, { chamber: "camara", eventId: "1", url: "https://www.camara.leg.br/evento-legislativo/1" });
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect((await recordRows(id)).map((r) => r.status)).toEqual(["rejected"]);
   });
 
   it("summary-only speeches give proposals only", async () => {

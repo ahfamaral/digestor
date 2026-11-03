@@ -9,6 +9,7 @@ const discursos = fx("senado-discursos-2026-09-02.json");
 const textos = fx("senado-textos-2026-09-02.json").texts as Record<string, string>;
 const senador = fx("senado-senador-5906.json");
 
+export { discursos as fixtureDiscursos };
 export const FIXTURE_DATE = "2026-09-02";
 /** The fixture day's speeches in record order, with the speaker codes (the one with a recorded senator page is 5906). */
 export const FIXTURE_SPEECHES = [
@@ -18,7 +19,7 @@ export const FIXTURE_SPEECHES = [
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-export type FakeSenadoOptions = { list?: () => Response; text?: (id: string) => Response; senador?: (code: string) => Response };
+export type FakeSenadoOptions = { list?: () => Response | Promise<Response>; text?: (id: string) => Response; senador?: (code: string) => Response };
 
 /** A `fetch` that answers the three Senado routes from the fixtures; `calls` records every URL. */
 export function fakeSenadoFetch(o: FakeSenadoOptions = {}) {
@@ -26,7 +27,7 @@ export function fakeSenadoFetch(o: FakeSenadoOptions = {}) {
   const f = (async (input: string | URL | Request) => {
     const url = String(input);
     calls.push(url);
-    if (url.includes("/plenario/lista/discursos/")) return o.list?.() ?? json(discursos);
+    if (url.includes("/plenario/lista/discursos/")) return (await o.list?.()) ?? json(discursos);
     const t = url.match(/texto-integral\/(\d+)$/);
     if (t) return o.text?.(t[1]!) ?? new Response(textos[t[1]!] ?? "", { status: textos[t[1]!] ? 200 : 404 });
     const s = url.match(/senador\/(\d+)\.json$/);

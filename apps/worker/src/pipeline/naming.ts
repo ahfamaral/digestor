@@ -314,6 +314,7 @@ async function pruneFrames(db: Db, storage: Pick<LocalStorage, "key" | "resolve"
       (await listAttributionHistory(db, sessionId)).flatMap((a) => (a.source === "caption" && a.evidence.kind === "caption" ? [a.evidence.frameKey] : [])),
     );
     for (const file of await readdir(dir).catch(() => [] as string[])) {
+      if (!/\.jpg$/.test(file)) continue; // only caption frames and their `.tmp-*.jpg` leftovers; e.g. record.json stays
       if (!keep.has(storage.key(sessionId, `names/${file}`))) await rm(path.join(dir, file), { force: true });
     }
   } catch (err) {
@@ -353,7 +354,8 @@ export async function runRecordStep(deps: RecordStepDeps, sessionId: string, opt
 async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRef, f: typeof fetch): Promise<void> {
   const { db, storage } = deps;
   if (ref.chamber !== "senado") {
-    await failRecordFetch(db, sessionId, RECORD_UNSUPPORTED);
+    await dropRecordRows(db, sessionId);
+    await failRecordFetch(db, sessionId, RECORD_UNSUPPORTED, ref);
     return;
   }
   const transcript = await getTranscript(db, sessionId);
@@ -366,7 +368,8 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
     speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
   } catch (err) {
     if (err instanceof RecordNotFoundError) {
-      await failRecordFetch(db, sessionId, RECORD_NOT_FOUND);
+      await dropRecordRows(db, sessionId);
+      await failRecordFetch(db, sessionId, RECORD_NOT_FOUND, ref);
       return;
     }
     throw err;
@@ -405,12 +408,28 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   if (fresh.length > 0 && fresh.every((r) => bySpeech.get((r.evidence as { speechId: string }).speechId)?.textSource === "summary")) {
     console.log(`names: session ${sessionId}: the record gave only summaries for the matched speeches; names are proposals only`);
   }
+  // A re-link to another record meanwhile makes this run stale: write nothing (the new run owns the rows).
+  const now = await getSessionRecord(db, sessionId);
+  if (!now || now.status !== "running" || !sameRef(now.ref, ref)) {
+    console.log(`names: session ${sessionId}: the linked record changed during the run; dropping its result`);
+    return;
+  }
   if (fresh.length > 0 || current.some((a) => a.source === "record")) {
     await replaceAiAttributions(db, sessionId, "record", [...fresh, ...keepRows(rejected)]);
   }
   const rawKey = storage.key(sessionId, "names/record.json");
   await writeFile(storage.resolve(rawKey), JSON.stringify({ ref, fetchedAt, speeches }));
-  await finishRecordFetch(db, sessionId, { rawKey });
+  await finishRecordFetch(db, sessionId, { rawKey, ref });
+}
+
+const sameRef = (a: RecordRef, b: RecordRef) => JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+const sortKeys = (o: object) => Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)));
+
+/** A record that can't be matched leaves no rows of an earlier one current (a rejection the human made stays). */
+async function dropRecordRows(db: Db, sessionId: string): Promise<void> {
+  const current = await listAttributions(db, sessionId);
+  if (!current.some((a) => a.source === "record")) return;
+  await replaceAiAttributions(db, sessionId, "record", keepRows(current.filter((a) => a.source === "record" && a.status === "rejected")));
 }
 
 /** The Senado serves photos as `http://`; the same path works over https (a redirect to the image), so store that. */
