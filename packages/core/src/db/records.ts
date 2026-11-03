@@ -1,7 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { Db } from "./client.ts";
-import { sessionRecords } from "./schema.ts";
+import { attributions, sessionRecords } from "./schema.ts";
 
 export type SessionRecord = {
   sessionId: string;
@@ -16,10 +16,27 @@ export type SessionRecord = {
 
 const toRecord = (r: typeof sessionRecords.$inferSelect): SessionRecord => ({ ...r });
 
-/** Links (or re-links) the session's record: one row per session, back to `pending` with the old result cleared. */
+const sortedJson = (o: object) => JSON.stringify(Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y))));
+
+/**
+ * Links (or re-links) the session's record: one row per session, back to `pending` with the old result cleared. A
+ * link to a different record than the stored one also supersedes the session's current `record` attributions
+ * (rejections a human made stay), in the same transaction under the session's advisory lock, so a failed or
+ * in-flight re-link never leaves the previous record's names visible.
+ */
 export async function linkRecord(db: Db, sessionId: string, ref: RecordRef): Promise<void> {
   const fresh = { chamber: ref.chamber, ref, status: "pending" as const, error: null, rawKey: null, fetchedAt: null, updatedAt: new Date() };
-  await db.insert(sessionRecords).values({ sessionId, ...fresh }).onConflictDoUpdate({ target: sessionRecords.sessionId, set: fresh });
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sessionId}))`);
+    const [existing] = await tx.select({ ref: sessionRecords.ref }).from(sessionRecords).where(eq(sessionRecords.sessionId, sessionId));
+    await tx.insert(sessionRecords).values({ sessionId, ...fresh }).onConflictDoUpdate({ target: sessionRecords.sessionId, set: fresh });
+    if (existing && sortedJson(existing.ref) !== sortedJson(ref)) {
+      await tx
+        .update(attributions)
+        .set({ supersededAt: sql`now()` })
+        .where(and(eq(attributions.sessionId, sessionId), eq(attributions.source, "record"), isNull(attributions.supersededAt), sql`${attributions.status} <> 'rejected'`));
+    }
+  });
 }
 
 /** Compare-and-set `pending` → `running`: the row, or null when it isn't `pending` (another run has it, or it is done). */

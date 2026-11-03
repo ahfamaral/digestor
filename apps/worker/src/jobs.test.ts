@@ -6,12 +6,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { personAt } from "@digestor/core";
 import { Command } from "@langchain/langgraph";
 import {
-  LocalStorage, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
+  LocalStorage, claimRecordFetch, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
   claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, type Db,
 } from "@digestor/core/server";
-import { FIXTURE_DATE, fakeSenadoFetch, fixtureDiscursos, transcriptOfSpeeches } from "./records/fakeSenado.js";
+import { FIXTURE_DATE, fakeSenadoFetch, fixtureDiscursos, fixtureTexts, transcriptOfSpeeches } from "./records/fakeSenado.js";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, handleNames, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
@@ -482,11 +482,72 @@ d("handleNames", () => {
     expect((await recordRows(id)).map((r) => r.status)).toEqual(["rejected"]);
   });
 
+  it("no speech matches the video: failed with the date in the line, no rows, not matched", async () => {
+    const { id, ctx } = await setup();
+    const words = Array.from({ length: 30 }, (_, i) => ({ text: `zzqx${i}`, startMs: i * 400, endMs: i * 400 + 300, speaker: "A", confidence: 1 }));
+    await saveTranscript(db, id, { language: "pt", languageConfidence: 1, durationMs: 12_000, words });
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(await recordRows(id)).toEqual([]);
+    expect(await getSessionRecord(db, id)).toMatchObject({
+      status: "failed", error: "None of the speeches in the Senado record of 02/09/2026 match this video. Check the date.",
+    });
+  });
+
+  it("a session code that isn't on that day: the row's error is the session line", async () => {
+    const { id, ctx } = await setup();
+    await linkRecord(db, id, { chamber: "senado", date: FIXTURE_DATE, sessionCode: "999", url: "https://example/s" });
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "That Senado session wasn't found on 02/09/2026." });
+  });
+
+  it("re-link A to B, B failing transiently on its final attempt: A's rows are not current, B is failed", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { id, ctx } = await setup();
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(await recordRows(id)).toHaveLength(5);
+    await linkRecord(db, id, { chamber: "senado", date: "2026-09-03", sessionCode: null, url: "https://example/b" });
+    expect(await recordRows(id)).toEqual([]); // gone at once, before any run
+    const down = { db, deps: { ...ctx.deps, fetch: fakeSenadoFetch({ list: () => new Response("boom", { status: 503 }) }).f } as JobContext["deps"] };
+    await expect(handleNames(down, { sessionId: id }, LAST)).rejects.toThrow();
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
+    expect(await recordRows(id)).toEqual([]);
+    log.mockRestore();
+  });
+
+  it("an old run's final failure doesn't fail a newer running claim", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    let id = "";
+    let first = true;
+    const b = { chamber: "senado" as const, date: "2026-09-03", sessionCode: null, url: "https://example/b" };
+    const s = await setup({
+      fake: {
+        list: async () => {
+          if (first) { first = false; await linkRecord(db, id, b); await claimRecordFetch(db, id); } // B is linked and running now
+          return new Response("boom", { status: 503 });
+        },
+      },
+    });
+    id = s.id;
+    await expect(handleNames(s.ctx, { sessionId: id }, LAST)).rejects.toThrow();
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "running", ref: b, error: null });
+    log.mockRestore();
+  });
+
   it("summary-only speeches give proposals only", async () => {
-    const { id, ctx } = await setup({ fake: { text: () => new Response("", { status: 404 }) } });
+    // The API's Resumo is a short summary: here the first half of each speech; the full texts are missing (404).
+    const day = structuredClone(fixtureDiscursos) as { DiscursosSessao: { Sessoes: { Sessao: { Pronunciamentos: { Pronunciamento: Record<string, unknown>[] } }[] } } };
+    for (const sess of day.DiscursosSessao.Sessoes.Sessao) {
+      for (const p of sess.Pronunciamentos.Pronunciamento) {
+        const text = fixtureTexts[p.CodigoPronunciamento as string];
+        if (text) p.Resumo = text.slice(0, Math.floor(text.length / 2));
+      }
+    }
+    const { id, ctx } = await setup({ fake: { list: () => new Response(JSON.stringify(day), { status: 200 }), text: () => new Response("", { status: 404 }) } });
     await handleNames(ctx, { sessionId: id }, FIRST);
     const rows = await recordRows(id);
+    expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.status === "proposed")).toBe(true);
     expect(await getSessionRecord(db, id)).toMatchObject({ status: "matched" });
   });
+
 });

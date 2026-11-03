@@ -277,7 +277,7 @@ export const understandContextNode =
     const atts = await listAttributions(db, s.sessionId);
     const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
     const fromCard = stored ? humanLocked(stored.card) : {};
-    const fromAtts = lockedParticipants(atts, persons);
+    const fromAtts = lockedParticipants(atts, persons, transcript.words);
     // Locked names are the confirmed attributions only; human role and affiliation come from the card.
     const participants = [
       ...(fromCard.participants ?? []).map((p) => {
@@ -293,7 +293,7 @@ export const understandContextNode =
       hint: session.hint,
       answers: s.answers,
       locked: { ...fromCard, ...(participants.length > 0 ? { participants } : {}) },
-      named: namedVoices(atts, [...new Set(transcript.words.map((w) => w.speaker))]),
+      named: namedVoices(atts, [...new Set(transcript.words.map((w) => w.speaker))], transcript.words),
     });
     await saveContextCard(db, s.sessionId, card, round);
     await importContextNames(db, s.sessionId, card);

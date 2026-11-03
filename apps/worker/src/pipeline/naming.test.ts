@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Attribution, ContextCard, Fact, Person } from "@digestor/core";
+import { personAt, type Attribution, type ContextCard, type Fact, type Person, type Word } from "@digestor/core";
 import {
   backdateNamesToCard,
   createCustomPerson,
@@ -8,13 +8,17 @@ import {
   listAttributions,
   setHumanAttribution,
   getPersons,
+  findPersonByName,
+  replaceAiAttributions,
+  saveTranscript,
+  upsertOfficialPerson,
   type Db,
 } from "@digestor/core/server";
 import { getAnalysisVersion, listAttributionHistory, saveContextCard, startAnalysisVersion } from "@digestor/core/server";
 import { namesChangedSince } from "@digestor/core";
 import { sql } from "drizzle-orm";
 import {
-  CONFIRMED_NAME, PROBABLE_NAME, importContextNames, importNamesForOldSessions, lockedParticipants, namedVoices, participantsForPrompt, promptCard,
+  CONFIRMED_NAME, PROBABLE_NAME, importContextNames, importNamesForOldSessions, lockedParticipants, namedVoices, participantsForPrompt, promptCard, recordProjection,
 } from "./naming.js";
 
 const none: Fact = { value: null, source: null, evidence: null };
@@ -253,5 +257,64 @@ describe("importNamesForOldSessions", () => {
 
     expect(await importNamesForOldSessions(db, [old, named, noCard])).toEqual({ imported: [] });
     expect(await listAttributions(db, old)).toHaveLength(2);
+  });
+});
+
+describe("record projection (a voice the record matched)", () => {
+  // Voice A speaks 0-10 s (10 words of 1 s); the record rows cover turns of it.
+  const words = (speaker: string, n = 10): Word[] =>
+    Array.from({ length: n }, (_, i) => ({ text: `w${i}`, startMs: i * 1000, endMs: i * 1000 + 900, speaker, confidence: 1 }));
+  const rec = (o: Partial<Attribution>) => att({ source: "record", status: "confirmed", personId: "senator", startMs: 0, endMs: 10_000, ...o });
+
+  it("a record-matched voice counts as named (so it isn't asked about at the pause) and reaches the prompt card", () => {
+    const atts = [rec({})];
+    expect([...namedVoices(atts, ["A"], words("A"))]).toEqual(["A"]);
+    expect([...namedVoices(atts, ["A"])]).toEqual([]); // without the transcript words: as before
+    expect(lockedParticipants(atts, [person("senator", "Tereza Cristina")], words("A"))[0]).toMatchObject({ speakerId: "A", name: { value: "Tereza Cristina", source: "human" } });
+    const card = cardWith({ A: none });
+    const [pa] = participantsForPrompt(card, atts, [person("senator", "Tereza Cristina")], false, words("A"));
+    expect(pa!.name).toMatchObject({ value: "Tereza Cristina", evidence: CONFIRMED_NAME });
+  });
+
+  it("a proposed projection is 'probably' in prompts and null in a sensitive profile", () => {
+    const atts = [rec({ status: "proposed" }), rec({ status: "confirmed", startMs: 0, endMs: 5000, id: "y" })];
+    const card = cardWith({ A: none });
+    expect(participantsForPrompt(card, atts, [person("senator", "Tereza")], false, words("A"))[0]!.name).toMatchObject({ value: "Tereza", evidence: PROBABLE_NAME });
+    expect(participantsForPrompt(card, atts, [person("senator", "Tereza")], true, words("A"))[0]!.name).toEqual(none);
+    expect(lockedParticipants(atts, [person("senator", "Tereza")], words("A"))).toEqual([]); // not all rows confirmed
+  });
+
+  it("a 60/40 split voice gets no projection; 90/10 does", () => {
+    const split = [rec({ endMs: 6000 }), rec({ personId: "other", startMs: 6000, endMs: 10_000, id: "o" })];
+    expect([...namedVoices(split, ["A"], words("A"))]).toEqual([]);
+    const mostly = [rec({ endMs: 9000 }), rec({ personId: "other", startMs: 9000, endMs: 10_000, id: "o" })];
+    expect(recordProjection(mostly, "A", words("A"))).toMatchObject({ personId: "senator", confirmed: true });
+    const eighty = [rec({ endMs: 8000 })];
+    expect(recordProjection(eighty, "A", words("A"))).toMatchObject({ personId: "senator" });
+    expect(recordProjection([rec({ endMs: 7000 })], "A", words("A"))).toBeNull();
+  });
+
+  it("human rows still win", () => {
+    const atts = [rec({}), att({ speakerId: "A", personId: "mine" })];
+    expect(lockedParticipants(atts, [person("senator", "S"), person("mine", "Eu")], words("A"))[0]!.name.value).toBe("Eu");
+    const anon = [rec({}), att({ speakerId: "A", personId: null, status: "anonymous" })];
+    expect(participantsForPrompt(cardWith({ A: none }), anon, [person("senator", "S")], false, words("A"))[0]!.name).toEqual(none);
+  });
+
+  it("importContextNames: a short context name reuses the record person (no custom person, no conflict)", async () => {
+    const id = await newSession();
+    const tag = `Q${Math.random().toString(36).slice(2, 8)}`;
+    const senator = await upsertOfficialPerson(db, { chamber: "senado", officialId: `t${Math.random()}`, displayName: `Zuleica ${tag}`, fullName: `Zuleica ${tag} Corrêa` });
+    await saveTranscript(db, id, { language: "pt", languageConfidence: 1, durationMs: 10_000, words: words("A") });
+    await replaceAiAttributions(db, id, "record", [{ speakerId: "A", startMs: 0, endMs: 10_000, personId: senator.id, status: "confirmed", confidence: 0.9, evidence: { kind: "record", speechId: "1", score: 0.9, url: "u", fetchedAt: "t" } }]);
+    await importContextNames(db, id, cardWith({ A: fact(`Senadora Zuleica`, "video", "a Senadora Tereza") }));
+    const atts = await listAttributions(db, id);
+    const proposal = atts.find((a) => a.source === "transcript")!;
+    expect(proposal.personId).toBe(senator.id);
+    expect(await findPersonByName(db, "Senadora Zuleica")).toBeNull();
+    expect(personAt(atts, "A", 1000)).toMatchObject({ kind: "named", personId: senator.id, confirmed: true });
+    // and the prompt card carries the official name
+    const card = await promptCard(db, id, cardWith({ A: fact(`Senadora Zuleica`, "video", "x") }));
+    expect(card.participants.find((p) => p.speakerId === "A")!.name).toMatchObject({ value: `Zuleica ${tag}`, evidence: CONFIRMED_NAME });
   });
 });

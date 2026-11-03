@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import type { Transcript, Word } from "@digestor/core";
 import { stripRecordMarkup } from "./align.js";
-import type { RecordSpeech } from "./senado.js";
+import { senadoTiming, type RecordSpeech } from "./senado.js";
+
+senadoTiming.delayMs = 0; // tests never wait for the retry
 
 /** Test helpers over the recorded Senado fixtures (shapes as the real API answers; see `senado.ts`). */
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../../test/fixtures/${name}`, import.meta.url), "utf8"));
@@ -9,7 +11,7 @@ const discursos = fx("senado-discursos-2026-09-02.json");
 const textos = fx("senado-textos-2026-09-02.json").texts as Record<string, string>;
 const senador = fx("senado-senador-5906.json");
 
-export { discursos as fixtureDiscursos };
+export { discursos as fixtureDiscursos, textos as fixtureTexts };
 export const FIXTURE_DATE = "2026-09-02";
 /** The fixture day's speeches in record order, with the speaker codes (the one with a recorded senator page is 5906). */
 export const FIXTURE_SPEECHES = [

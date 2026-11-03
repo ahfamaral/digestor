@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import type { RecordRef } from "../recordRef.ts";
 import { createDb, type Db } from "./client.ts";
+import { createCustomPerson, listAttributions, replaceAiAttributions } from "./names.ts";
 import { createSession, type Session } from "./repo.ts";
 import { claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord } from "./records.ts";
 
@@ -53,5 +54,22 @@ describe("session records", () => {
     expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The Senado has no speeches for that date." });
     await linkRecord(db, s.id, senado("2026-09-03"));
     expect(await claimRecordFetch(db, s.id)).toMatchObject({ status: "running", error: null });
+  });
+});
+
+describe("linkRecord and the record's names", () => {
+  const rowFor = (personId: string | null, status: "confirmed" | "rejected" = "confirmed") => ({
+    speakerId: "A", startMs: 0, endMs: 1000, personId, status, confidence: 0.9, evidence: { kind: "record" as const, speechId: "1", score: 0.9, url: "u", fetchedAt: "t" },
+  });
+  const current = async () => (await listAttributions(db, s.id)).filter((a) => a.source === "record");
+
+  it("linking a different record supersedes the old record's rows (rejections stay); the same record keeps them", async () => {
+    const p = await createCustomPerson(db, { displayName: "P", createdBy: "t" });
+    await linkRecord(db, s.id, senado("2026-09-02"));
+    await replaceAiAttributions(db, s.id, "record", [rowFor(p.id), { ...rowFor(p.id, "rejected"), speakerId: "B" }]);
+    await linkRecord(db, s.id, senado("2026-09-02")); // same record (a retry)
+    expect(await current()).toHaveLength(2);
+    await linkRecord(db, s.id, senado("2026-09-03")); // another one
+    expect((await current()).map((r) => r.status)).toEqual(["rejected"]);
   });
 });

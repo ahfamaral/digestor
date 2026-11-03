@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { RecordNotFoundError, fetchSenadoSpeeches, fetchSenador } from "./senado.js";
+import { RecordNotFoundError, fetchSenadoSpeeches, fetchSenador, senadoTiming } from "./senado.js";
+
+senadoTiming.delayMs = 0;
 
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../../test/fixtures/${name}`, import.meta.url), "utf8"));
 const discursos = fx("senado-discursos-2026-09-02.json");
@@ -68,6 +70,29 @@ describe("fetchSenadoSpeeches", () => {
     expect(err2).not.toBeInstanceOf(RecordNotFoundError);
     const textDown = fakeSenado({ text: () => new Response("x", { status: 500 }) });
     await expect(fetchSenadoSpeeches("2026-09-02", null, textDown.f)).rejects.not.toBeInstanceOf(RecordNotFoundError);
+  });
+
+  it("retries once on a 5xx or a network error, gives up after the second, and passes a timeout signal", async () => {
+    let n = 0;
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const flaky = fakeSenado();
+    const f = (async (input: string | URL | Request, init?: RequestInit) => {
+      signals.push(init?.signal);
+      if (String(input).includes("/plenario/lista/discursos/") && n++ === 0) throw new TypeError("fetch failed");
+      return flaky.f(input, init);
+    }) as typeof fetch;
+    expect((await fetchSenadoSpeeches("2026-09-02", null, f)).length).toBe(5);
+    expect(n).toBe(2); // the failed call and its retry
+    expect(signals.every((sig) => sig instanceof AbortSignal)).toBe(true);
+    let calls = 0;
+    const down = (async () => { calls++; return new Response("boom", { status: 503 }); }) as typeof fetch;
+    await expect(fetchSenadoSpeeches("2026-09-02", null, down)).rejects.toThrow();
+    expect(calls).toBe(2);
+  });
+
+  it("a session code that matches no session of the day has its own friendly line", async () => {
+    const { f } = fakeSenado();
+    await expect(fetchSenadoSpeeches("2026-09-02", "999", f)).rejects.toThrow("That Senado session wasn't found on 02/09/2026.");
   });
 
   it("accepts a single object where a list is expected, and falls back to the summary when a speech text is 404", async () => {

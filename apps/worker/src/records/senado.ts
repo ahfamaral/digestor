@@ -26,7 +26,7 @@ export interface RecordSpeech {
 
 /** Deterministic: the record has nothing for this day, session or senator. */
 export class RecordNotFoundError extends Error {
-  constructor(message = "The Senado record has nothing for that day.") {
+  constructor(message = "The Senado has no speeches for that date.") {
     super(message);
     this.name = "RecordNotFoundError";
   }
@@ -74,11 +74,22 @@ const senadorSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
+/** Per-call limits; tests set `delayMs` to 0. */
+export const senadoTiming = { timeoutMs: 30_000, delayMs: 1000 };
+
 async function get(url: string, accept: string, f: typeof fetch): Promise<Response> {
-  // Network failures and 5xx stay plain errors: transient, the job rethrows and pg-boss retries.
-  const res = await f(url, { headers: { accept } });
-  if (res.status >= 500) throw new Error(`Senado API answered ${res.status}.`);
-  return res;
+  // Network failures, timeouts and 5xx are transient: one retry after a short delay, then a plain error (the job rethrows
+  // and pg-boss retries it).
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await f(url, { headers: { accept }, signal: AbortSignal.timeout(senadoTiming.timeoutMs) });
+      if (res.status >= 500) throw new Error(`Senado API answered ${res.status}.`);
+      return res;
+    } catch (err) {
+      if (attempt >= 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, senadoTiming.delayMs));
+    }
+  }
 }
 
 async function getJson(url: string, f: typeof fetch): Promise<{ status: number; body: unknown }> {
@@ -129,7 +140,10 @@ export async function fetchSenadoSpeeches(date: string, sessionCode: string | nu
   const parsed = discursosSchema.safeParse(body);
   if (!parsed.success) throw new Error("The Senado API answered with an unexpected shape.");
   let sessions = parsed.data.DiscursosSessao.Sessoes?.Sessao ?? [];
-  if (sessionCode) sessions = sessions.filter((s) => s.CodigoSessao === sessionCode);
+  if (sessionCode) {
+    sessions = sessions.filter((s) => s.CodigoSessao === sessionCode);
+    if (sessions.length === 0) throw new RecordNotFoundError(`That Senado session wasn't found on ${date.split("-").reverse().join("/")}.`);
+  }
   sessions = [...sessions].sort((a: (typeof sessions)[number], b: (typeof sessions)[number]) => (a.HoraInicio ?? "").localeCompare(b.HoraInicio ?? ""));
 
   const picked: { p: z.infer<typeof pronouncementSchema>; id: string; code: string }[] = [];

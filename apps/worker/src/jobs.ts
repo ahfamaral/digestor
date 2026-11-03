@@ -39,7 +39,7 @@ import type { StructuredLLM } from "./llm/structured.js";
 import { checkMoment } from "./agents/checks.js";
 import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
-import { RECORD_FETCH_FAILED, promptCard, runRecordStep } from "./pipeline/naming.js";
+import { RECORD_FETCH_FAILED, RecordStepError, promptCard, runRecordStep } from "./pipeline/naming.js";
 import type { BurnTrackJob, RenderClipJob } from "@digestor/core";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
@@ -391,12 +391,12 @@ export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: Nam
     await runRecordStep(ctx.deps, job.sessionId, { retrying: attempt.retryCount > 0 });
   } catch (err) {
     if (attempt.retryCount >= attempt.retryLimit) {
-      await failRecordFetch(ctx.db, job.sessionId, RECORD_FETCH_FAILED);
+      await failRecordFetch(ctx.db, job.sessionId, RECORD_FETCH_FAILED, err instanceof RecordStepError ? err.ref : undefined);
       console.error(`[jobs] record of ${job.sessionId} failed:`, err);
     } else {
       console.error(`[jobs] record of ${job.sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
     }
-    throw err;
+    throw err instanceof RecordStepError ? err.original : err;
   }
 }
 
