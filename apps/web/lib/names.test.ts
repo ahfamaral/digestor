@@ -345,6 +345,13 @@ describe("residual: turns named by a whole-voice proposal on a record voice", ()
     expect(voiceConfirmBody(names, "A", res, { startMs: 10_000, endMs: 15_000 })).toEqual({ action: "assign", speakerId: "A", personId: "p2", startMs: 10_000, endMs: 15_000 });
     expect(voiceConfirmBody(names, "A", res)).toEqual({ action: "confirm", speakerId: "A" });
   });
+  it("a moment holding another person's record turn confirms only the whole-voice part (never relabels the record turn)", () => {
+    const res = personAt(names.attributions, "A", 12_000);
+    // The moment spans p1's record turn (0-10 s) and p2's whole-voice part (10-15 s): only 10-15 s becomes p2.
+    expect(voiceConfirmBody(names, "A", res, { startMs: 5_000, endMs: 15_000 })).toEqual({ action: "assign", speakerId: "A", personId: "p2", startMs: 10_000, endMs: 15_000 });
+    // A moment inside the record turn leaves nothing for p2 to confirm.
+    expect(voiceConfirmBody(names, "A", res, { startMs: 2_000, endMs: 8_000 })).toBeNull();
+  });
   it("unconfirmedRangesIn for a conflict whose first attribution is whole-voice falls back to spans (no null)", () => {
     const n2: NamesData = {
       persons,

@@ -113,14 +113,39 @@ const mergeRanges = (...lists: Range[][]): Range[] => {
 
 /**
  * Confirm's body for a name at one moment of a part-by-part voice that resolves through a whole-voice row (which a
- * whole-voice confirm would 409 on): a ranged assignment for the given range (the moment or clip). Otherwise `confirmBody`.
+ * whole-voice confirm would 409 on): a ranged assignment for the parts of the given range (the moment or clip) that no
+ * ranged row names, so a record turn of another senator on the same voice is never relabelled. Otherwise `confirmBody`.
  */
 export function voiceConfirmBody(names: NamesData, speakerId: string, resolution: Resolution, range?: Range): Record<string, unknown> | null {
   const body = confirmBody({ speakerId, resolution });
   if (body && body.action === "confirm" && range && resolution.kind === "named" && namedPartByPart(names, speakerId)) {
-    return { action: "assign", speakerId, personId: resolution.personId, startMs: range.startMs, endMs: range.endMs };
+    const free = subtractRanges(range, ranged(names, speakerId));
+    return free.length > 0 ? { action: "assign", speakerId, personId: resolution.personId, ...rangeFields(free) } : null;
   }
   return body;
+}
+
+/** The voice's current, non-rejected ranged rows of any source: the parts the voice's whole-voice resolution doesn't reach. */
+function ranged(names: NamesData, speakerId: string): Range[] {
+  return voiceAtts(names, speakerId).flatMap((a) =>
+    a.supersededAt === null && a.status !== "rejected" && a.startMs !== null && a.endMs !== null ? [{ startMs: a.startMs, endMs: a.endMs }] : [],
+  );
+}
+
+/** `r` minus every range in `cut`, as sorted, non-empty pieces. */
+function subtractRanges(r: Range, cut: Range[]): Range[] {
+  let pieces: Range[] = [r];
+  for (const c of cut) {
+    pieces = pieces.flatMap((p) =>
+      c.endMs <= p.startMs || c.startMs >= p.endMs
+        ? [p]
+        : [
+            ...(c.startMs > p.startMs ? [{ startMs: p.startMs, endMs: c.startMs }] : []),
+            ...(c.endMs < p.endMs ? [{ startMs: c.endMs, endMs: p.endMs }] : []),
+          ],
+    );
+  }
+  return pieces;
 }
 
 /** A voice to confirm: `range` is set when its name comes from a ranged row (one part of a split voice), and `confirm` is what Confirm sends. */
