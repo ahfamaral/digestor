@@ -64,6 +64,13 @@
       "when": 1793654739879,
       "tag": "0008_purple_the_santerians",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793700603007,
+      "tag": "0009_session_records",
+      "breakpoints": true
     }
   ]
 }

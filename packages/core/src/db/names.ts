@@ -30,9 +30,8 @@ export async function upsertOfficialPerson(
     fullName?: string | null; party?: string | null; state?: string | null; role?: string | null; photoUrl?: string | null;
   },
 ): Promise<Person> {
-  const fields = {
-    displayName: p.displayName, fullName: p.fullName ?? null, party: p.party ?? null, state: p.state ?? null,
-    role: p.role ?? null, photoUrl: p.photoUrl ?? null, nameNorm: nameNorm(p.displayName, p.fullName),
+  const given = {
+    fullName: p.fullName, party: p.party, state: p.state, role: p.role, photoUrl: p.photoUrl,
   };
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`person:${p.chamber}:${p.officialId}`}))`);
@@ -41,9 +40,19 @@ export async function upsertOfficialPerson(
       .from(persons)
       .where(sql`${persons.officialIds}->>${p.chamber} = ${p.officialId}`);
     if (existing) {
-      const [row] = await tx.update(persons).set(fields).where(eq(persons.id, existing.id)).returning();
+      // Only the fields this call gives (not `undefined`) change; `null` clears one.
+      const set = {
+        displayName: p.displayName,
+        ...Object.fromEntries(Object.entries(given).filter(([, v]) => v !== undefined)),
+        nameNorm: nameNorm(p.displayName, p.fullName === undefined ? existing.fullName : p.fullName),
+      };
+      const [row] = await tx.update(persons).set(set).where(eq(persons.id, existing.id)).returning();
       return toPerson(row!);
     }
+    const fields = {
+      displayName: p.displayName, fullName: p.fullName ?? null, party: p.party ?? null, state: p.state ?? null,
+      role: p.role ?? null, photoUrl: p.photoUrl ?? null, nameNorm: nameNorm(p.displayName, p.fullName),
+    };
     const [row] = await tx
       .insert(persons)
       .values({ ...fields, kind: "official", officialIds: { [p.chamber]: p.officialId }, createdBy: "record" })

@@ -32,6 +32,7 @@ describe("QUEUES", () => {
       translateBriefing: "briefing.translate",
       ask: "ask.run",
       findMore: "moment.find_more",
+      names: "session.names",
     });
   });
 

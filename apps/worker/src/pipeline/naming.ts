@@ -1,13 +1,19 @@
-import { access, readdir, rm } from "node:fs/promises";
+import { access, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { PROFILES, closeMatches, normaliseName, personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person, type Resolution } from "@digestor/core";
+import { PROFILES, closeMatches, normaliseName, personAt, turnsOf, type Attribution, type ContextCard, type Fact, type Participant, type Person, type RecordRef, type Resolution } from "@digestor/core";
 import {
   backdateNamesToCard,
+  claimRecordFetch,
   createCustomPerson,
+  failRecordFetch,
+  finishRecordFetch,
+  linkRecord,
+  upsertOfficialPerson,
   findPersonByName,
   getContextCard,
   getPersons,
   getSession,
+  getSessionRecord,
   getTranscript,
   listAttributionHistory,
   listAttributions,
@@ -19,8 +25,11 @@ import {
   type NewAiAttribution,
 } from "@digestor/core/server";
 
+import type { RecordSpeech } from "../records/senado.js";
 import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type CaptionVote } from "../agents/captions.js";
 import { MissingApiKeyError } from "../errors.js";
+import { RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix } from "../records/align.js";
+import { RecordNotFoundError, fetchSenadoSpeeches, fetchSenador } from "../records/senado.js";
 import type { PipelineDeps } from "./graph.js";
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
@@ -311,3 +320,114 @@ async function pruneFrames(db: Db, storage: Pick<LocalStorage, "key" | "resolve"
     console.error(`name_speakers: could not clean up caption frames of session ${sessionId}`, err);
   }
 }
+
+export const RECORD_NOT_FOUND = "The Senado has no speeches for that date.";
+export const RECORD_FETCH_FAILED = "The Senado record couldn't be fetched. Please try again.";
+export const RECORD_UNSUPPORTED = "Câmara records aren't supported yet.";
+
+export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & { fetch?: typeof fetch };
+
+/**
+ * Matches the session's linked official record against its transcript (the `record` source). One code path for the
+ * graph node (`match_record`) and the `session.names` job. Claims the row (`pending` → `running`; with `retrying` a
+ * `running` row is taken over, since a retry finds its own claim), fetches the speeches, aligns them to the voice turns,
+ * upserts the senators and replaces only the `record` rows (human rows are never touched and always win). Stores the
+ * raw payload at `<sessionId>/names/record.json`, then marks the row `matched`.
+ * - no speeches for the date, or an unsupported chamber: the row is `failed` with a friendly line and it returns (a retry can't help);
+ * - any other error (5xx, network): thrown, the row stays `running` so the caller decides (the job retries, then fails it).
+ * Without a linked record, with a row that isn't claimable, or before the transcript exists, it does nothing.
+ */
+export async function runRecordStep(deps: RecordStepDeps, sessionId: string, opts: { retrying?: boolean } = {}): Promise<void> {
+  const { db } = deps;
+  const f = deps.fetch ?? fetch;
+  const record = await claimRecordFetch(db, sessionId);
+  if (!record) {
+    if (!opts.retrying) return;
+    const current = await getSessionRecord(db, sessionId);
+    if (current?.status !== "running") return;
+    return runClaimed(deps, sessionId, current.ref, f);
+  }
+  return runClaimed(deps, sessionId, record.ref, f);
+}
+
+async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRef, f: typeof fetch): Promise<void> {
+  const { db, storage } = deps;
+  if (ref.chamber !== "senado") {
+    await failRecordFetch(db, sessionId, RECORD_UNSUPPORTED);
+    return;
+  }
+  const transcript = await getTranscript(db, sessionId);
+  if (!transcript) {
+    await linkRecord(db, sessionId, ref); // nothing to match yet: back to `pending` for the graph step
+    return;
+  }
+  let speeches: RecordSpeech[];
+  try {
+    speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
+  } catch (err) {
+    if (err instanceof RecordNotFoundError) {
+      await failRecordFetch(db, sessionId, RECORD_NOT_FOUND);
+      return;
+    }
+    throw err;
+  }
+  const fetchedAt = new Date().toISOString();
+  const turns = turnsOf(transcript.words);
+  const matches = alignTurns(similarityMatrix(turns, speeches)).filter((m) => m.score >= RECORD_PROPOSE);
+  const bySpeech = new Map(speeches.map((sp) => [sp.id, sp]));
+
+  // One person per matched senator, fetched once per run.
+  const personIds = new Map<string, string>();
+  for (const m of matches) {
+    const speech = speeches[m.speech]!;
+    if (personIds.has(speech.officialId)) continue;
+    let senator: Awaited<ReturnType<typeof fetchSenador>> | null = null;
+    try {
+      senator = await fetchSenador(speech.officialId, f);
+    } catch (err) {
+      if (!(err instanceof RecordNotFoundError)) throw err;
+    }
+    const person = await upsertOfficialPerson(db, {
+      chamber: "senado",
+      officialId: speech.officialId,
+      displayName: senator?.displayName ?? titleCaseName(speech.name),
+      fullName: senator?.fullName ?? undefined,
+      party: senator?.party ?? speech.party ?? undefined,
+      state: senator?.state ?? speech.state ?? undefined,
+      photoUrl: senator?.photoUrl ? httpsPhoto(senator.photoUrl) : undefined,
+    });
+    personIds.set(speech.officialId, person.id);
+  }
+
+  const current = await listAttributions(db, sessionId);
+  const rejected = current.filter((a) => a.source === "record" && a.status === "rejected");
+  const fresh = recordAttributions(turns, speeches, matches, (officialId) => personIds.get(officialId)!, { url: ref.url, fetchedAt }).filter((r) => !isRejected(rejected, r));
+  if (fresh.length > 0 && fresh.every((r) => bySpeech.get((r.evidence as { speechId: string }).speechId)?.textSource === "summary")) {
+    console.log(`names: session ${sessionId}: the record gave only summaries for the matched speeches; names are proposals only`);
+  }
+  if (fresh.length > 0 || current.some((a) => a.source === "record")) {
+    await replaceAiAttributions(db, sessionId, "record", [...fresh, ...keepRows(rejected)]);
+  }
+  const rawKey = storage.key(sessionId, "names/record.json");
+  await writeFile(storage.resolve(rawKey), JSON.stringify({ ref, fetchedAt, speeches }));
+  await finishRecordFetch(db, sessionId, { rawKey });
+}
+
+/** The Senado serves photos as `http://`; the same path works over https (a redirect to the image), so store that. */
+const httpsPhoto = (url: string) => url.replace(/^http:\/\//i, "https://");
+
+/**
+ * The graph's record step (before the context check, so the pause already shows official names): a no-op unless a record
+ * is linked. It never fails the session: any error is logged and the record row is marked failed.
+ */
+export const matchRecordNode =
+  (deps: PipelineDeps) =>
+  async (s: { sessionId: string }): Promise<Record<string, never>> => {
+    try {
+      await runRecordStep(deps, s.sessionId, { retrying: true }); // a crashed earlier attempt may have left the row running
+    } catch (err) {
+      console.error(`match_record: could not match the record of session ${s.sessionId}; continuing without it`, err);
+      await failRecordFetch(deps.db, s.sessionId, RECORD_FETCH_FAILED).catch(() => {});
+    }
+    return {};
+  };

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { ChromaClient } from "chromadb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command, MemorySaver } from "@langchain/langgraph";
-import { personAt, type ContextCard, type Fact, type ResumePayload, type Transcript, type Word } from "@digestor/core";
+import { personAt, type RecordRef, type ContextCard, type Fact, type ResumePayload, type Transcript, type Word } from "@digestor/core";
 import {
   LocalStorage,
   createDb,
@@ -14,6 +14,8 @@ import {
   getCurrentAnalysis,
   getPersons,
   getSession,
+  getSessionRecord,
+  linkRecord,
   listAnalysisVersions,
   listAttributions,
   replaceAiAttributions,
@@ -32,6 +34,7 @@ import { FakeEmbedder } from "../search/embed.js";
 import { collectionName, deleteSessionIndex } from "../search/index.js";
 import { analysisResponses, captionOf, crashOnInsert, emptyAnalysisResponses } from "./fakeAnalysis.js";
 import { nameSpeakersNode } from "./naming.js";
+import { FIXTURE_DATE, fakeSenadoFetch, transcriptOfSpeeches } from "../records/fakeSenado.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
 import { buildPipeline, type PipelineDeps } from "./graph.js";
 
@@ -104,6 +107,9 @@ type Setup = {
   youtube?: typeof downloadYouTube;
   media?: PipelineDeps["media"];
   search?: PipelineDeps["search"];
+  /** A record linked at upload (its fetches go through `fetch`). */
+  record?: RecordRef;
+  fetch?: typeof fetch;
 };
 
 const notCalled: typeof downloadYouTube = async () => {
@@ -121,6 +127,7 @@ async function setup(o: Setup = {}) {
     await copyFile(o.fixture ?? LONG, storage.resolve(originalKey));
     await updateSession(db, session.id, { originalKey, ...(o.audioOnlyAck ? { audioOnlyAck: true } : {}) });
   }
+  if (o.record) await linkRecord(db, session.id, o.record);
   const llm = new FakeLLM({ byName: { context_card: o.context ?? [], ...(o.analysis ?? emptyAnalysisResponses()) } });
   const contextCalls = () => llm.calls.filter((c) => c.name === "context_card");
   const deps: PipelineDeps = {
@@ -131,6 +138,7 @@ async function setup(o: Setup = {}) {
     media: o.media ?? media,
     youtube: { downloadYouTube: o.youtube ?? notCalled },
     search: o.search ?? { chroma: testChroma, embedder: new FakeEmbedder() },
+    ...(o.fetch ? { fetch: o.fetch } : {}),
   };
   const graph = buildPipeline(deps, new MemorySaver());
   const cfg = { configurable: { thread_id: session.id } };
@@ -574,6 +582,42 @@ describe("crash and resume", () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe("match_record", () => {
+  const record: RecordRef = { chamber: "senado", date: FIXTURE_DATE, sessionCode: null, url: "https://example/record" };
+  const recordRows = async (id: string) => (await listAttributions(db, id)).filter((a) => a.source === "record" && a.supersededAt === null);
+
+  it("graph: name_speakers runs the record step when a record is linked at upload (matched before the context pause)", async () => {
+    const { f } = fakeSenadoFetch();
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
+    await graph.invoke({ sessionId }, cfg);
+    // Paused for context, and the official names are already there.
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "matched" });
+    const rows = await recordRows(sessionId);
+    expect(rows.map((r) => r.speakerId).sort()).toEqual(["A", "B", "C", "D", "E"]);
+    const persons = await getPersons(db, rows.map((r) => r.personId!));
+    expect(persons.every((p) => p.kind === "official")).toBe(true);
+  });
+
+  it("a record that can't be fetched never fails the session", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { f } = fakeSenadoFetch({ list: () => new Response("boom", { status: 503 }) });
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" }); // went on to the context check
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
+    log.mockRestore();
+  });
+
+  it("without a linked record the step does nothing", async () => {
+    const { f, calls } = fakeSenadoFetch();
+    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], fetch: f });
+    await graph.invoke({ sessionId }, cfg);
+    expect(calls).toEqual([]);
+    expect(await getSessionRecord(db, sessionId)).toBeNull();
   });
 });
 

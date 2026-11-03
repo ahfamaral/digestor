@@ -124,6 +124,16 @@ describe("persons", () => {
     expect(c.id).not.toBe(a.id);
   });
 
+  it("upsertOfficialPerson keeps fields a later call leaves out (undefined), and sets or clears the ones it gives", async () => {
+    const base = { chamber: "senado" as const, officialId: "77", displayName: "Fulano" };
+    await upsertOfficialPerson(db, { ...base, fullName: "Fulano de Tal", party: "AA", state: "SP", role: "Senador", photoUrl: "https://x/1.jpg" });
+    const kept = await upsertOfficialPerson(db, { ...base, party: "BB" });
+    expect(kept).toMatchObject({ party: "BB", fullName: "Fulano de Tal", state: "SP", role: "Senador", photoUrl: "https://x/1.jpg" });
+    expect((await searchPersons(db, "de tal")).map((x) => x.id)).toEqual([kept.id]); // the search name keeps the full name
+    const cleared = await upsertOfficialPerson(db, { ...base, state: null });
+    expect(cleared).toMatchObject({ party: "BB", state: null });
+  });
+
   it("findPersonByName ignores accents and case; searchPersons finds by part of the name", async () => {
     const p = await upsertOfficialPerson(db, { chamber: "camara", officialId: "1", displayName: "Tabata Amaral", fullName: "Tabata Claudia Amaral de Pontes" });
     expect((await findPersonByName(db, "TÁBATA amaral"))?.id).toBe(p.id);

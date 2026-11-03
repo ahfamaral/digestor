@@ -83,14 +83,15 @@ export async function sweepStaleSessions(db: Db, now: Date = new Date(), staleMi
  * - a `pending` briefing translation → `failed` with STUCK_MESSAGE (the Preview offers to try again);
  * - a `preparing` subtitle track → `failed` with STUCK_MESSAGE ("Try again" replaces it);
  * - a clip render or track burn `queued`/`rendering` → `failed` (exporting again re-claims it);
- * - a "Find more" request `pending`/`running` → `failed` with STUCK_MESSAGE (asking again resets it).
+ * - a "Find more" request `pending`/`running` → `failed` with STUCK_MESSAGE (asking again resets it);
+ * - a linked record's fetch `pending`/`running` → `failed` with STUCK_MESSAGE (linking again resets it).
  * Returns how many rows of each kind were failed.
  */
 export async function sweepStaleJobRows(
   db: Db,
   now: Date = new Date(),
   staleMinutes = 30,
-): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number }> {
+): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number; records: number }> {
   const cutoff = sql`${new Date(now.getTime() - staleMinutes * 60_000).toISOString()}::timestamptz`;
 
   const translations = await db.execute(sql`
@@ -118,11 +119,19 @@ export async function sweepStaleJobRows(
     where r.status in ('pending', 'running') and r.updated_at < ${cutoff}
       and not ${hasLiveJobFor(QUEUES.findMore, { requestId: "r.id" })}
   `);
+  const records = await db.execute(sql`
+    update session_records r set status = 'failed', error = ${STUCK_MESSAGE}, updated_at = now()
+    where r.status in ('pending', 'running') and r.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.names, { sessionId: "r.session_id" })}
+      and not ${hasLiveJobFor(QUEUES.start, { sessionId: "r.session_id" })}
+      and not ${hasLiveJobFor(QUEUES.resume, { sessionId: "r.session_id" })}
+  `);
   return {
     translations: translations.rowCount ?? 0,
     tracks: tracks.rowCount ?? 0,
     renders: renders.rowCount ?? 0,
     burns: burns.rowCount ?? 0,
     findMore: findMore.rowCount ?? 0,
+    records: records.rowCount ?? 0,
   };
 }

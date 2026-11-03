@@ -8,6 +8,7 @@ import type {
   AskActionKind, AskActionStatus, AskMessageStatus, AskRole, ClipActor, ClipEventKind, ClipFormat, ProblemTargetKind,
   FindMoreStatus, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
+import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
 import type { ContextCard, Stage, Word } from "../schemas.ts";
 
@@ -347,3 +348,20 @@ export const attributions = pgTable(
   },
   (t) => [index("attributions_session_speaker").on(t.sessionId, t.speakerId)],
 );
+
+/** The official record linked to a session (at most one): the Senado/Câmara speeches the names are matched against. */
+export const sessionRecords = pgTable("session_records", {
+  sessionId: uuid("session_id")
+    .primaryKey()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  chamber: text("chamber", { enum: ["senado", "camara"] }).notNull(),
+  ref: jsonb("ref").$type<RecordRef>().notNull(),
+  status: text("status").$type<RecordStatus>().notNull().default("pending"),
+  /** A friendly sentence when `failed`. */
+  error: text("error"),
+  /** Storage key of the raw payload (`<sessionId>/names/record.json`) once matched. */
+  rawKey: text("raw_key"),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+  /** Last change: the sweep fails a `pending`/`running` row untouched for 30 min with no live job. */
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});

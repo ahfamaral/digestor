@@ -4,7 +4,7 @@ import { PgBoss } from "pg-boss";
 import { QUEUES } from "@digestor/core";
 import {
   claimClipRender, createClip, createDb, createSession, createTrack, getAnalysisVersion, getClip, getSession, getTrack,
-  claimFindMore, createCustomPerson, getFindMore, getTranslation, requestFindMore, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
+  claimFindMore, claimRecordFetch, getSessionRecord, linkRecord, createCustomPerson, getFindMore, getTranslation, requestFindMore, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
 } from "@digestor/core/server";
 import { STUCK_MESSAGE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 
@@ -21,7 +21,7 @@ d("sweepStaleSessions", () => {
     const boss = new PgBoss(url!);
     boss.on("error", () => {});
     await boss.start();
-    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore]) {
+    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore, QUEUES.names]) {
       await boss.createQueue(q);
     }
     await boss.stop({ graceful: false });
@@ -188,6 +188,27 @@ d("sweepStaleJobRows (R32)", () => {
     expect((await get(3))?.status).toBe("pending");
     // asking again works after the sweep
     expect((await requestFindMore(db, { ownerId: "owner", analysisId: v.id, personId: a!.id }))?.status).toBe("pending");
+  });
+
+  it("sweep fails a stuck record fetch (pending or running, 30 min, no live names/start job); a re-link counts as fresh", async () => {
+    const ref = { chamber: "senado" as const, date: "2026-09-02", sessionCode: null, url: "https://x" };
+    const ids: string[] = [];
+    for (const n of ["a", "b", "c", "d", "e"]) {
+      const s = await createSession(db, { source: "upload", title: `rec ${n}` });
+      await linkRecord(db, s.id, ref);
+      ids.push(s.id);
+    }
+    await claimRecordFetch(db, ids[1]!); // b is running
+    await db.execute(sql`update session_records set updated_at = ${ago(45)}::timestamptz where session_id in (${ids[0]!}, ${ids[1]!}, ${ids[2]!}, ${ids[3]!})`);
+    await jobWith(QUEUES.names, { sessionId: ids[2]! }, "active"); // c has a live names job
+    await jobWith(QUEUES.start, { sessionId: ids[3]! }, "created"); // d's graph has yet to run its record step; e is recent
+    expect(await sweepStaleJobRows(db)).toMatchObject({ records: 2 });
+    const status = async (i: number) => (await getSessionRecord(db, ids[i]!))?.status;
+    expect([await status(0), await status(1), await status(2), await status(3), await status(4)]).toEqual(["failed", "failed", "pending", "pending", "pending"]);
+    expect(await getSessionRecord(db, ids[0]!)).toMatchObject({ error: STUCK_MESSAGE });
+    await linkRecord(db, ids[0]!, ref); // linking again after the failure: fresh, so the next sweep leaves it
+    await sweepStaleJobRows(db);
+    expect(await status(0)).toBe("pending");
   });
 
   it("a re-requested translation counts as fresh (its job is about to be sent)", async () => {

@@ -33,7 +33,7 @@ import { understandContext } from "../agents/context.js";
 import type { Embedder } from "../search/embed.js";
 import { indexSession } from "../search/index.js";
 import { runAnalysis } from "./analysis.js";
-import { importContextNames, lockedParticipants, nameSpeakersNode, namedVoices } from "./naming.js";
+import { importContextNames, lockedParticipants, matchRecordNode, nameSpeakersNode, namedVoices } from "./naming.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
 import { YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
@@ -45,6 +45,8 @@ export type PipelineDeps = {
   media: typeof import("../media/ffmpeg.js");
   youtube: { downloadYouTube: typeof downloadYouTube };
   search: { chroma: ChromaClient; embedder: Embedder };
+  /** Injected in tests (record fetches); the real `fetch` otherwise. */
+  fetch?: typeof fetch;
 };
 
 const keep = <T>(_old: T, next: T): T => next;
@@ -376,6 +378,7 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     .addNode("download", downloadNode(deps))
     .addNode("ingest", ingestNode(deps))
     .addNode("transcribe", transcribeNode(deps))
+    .addNode("match_record", matchRecordNode(deps))
     .addNode("understand_context", understandContextNode(deps))
     .addNode("ask_context", askContextNode(deps))
     .addNode("name_speakers", nameSpeakersNode(deps))
@@ -391,7 +394,8 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
     )
     .addConditionalEdges("download", unlessFailed("ingest"), ["ingest", END])
     .addConditionalEdges("ingest", unlessFailed("transcribe"), ["transcribe", END])
-    .addConditionalEdges("transcribe", unlessFailed("understand_context"), ["understand_context", END])
+    .addConditionalEdges("transcribe", unlessFailed("match_record"), ["match_record", END])
+    .addConditionalEdges("match_record", unlessFailed("understand_context"), ["understand_context", END])
     .addConditionalEdges(
       "understand_context",
       async (s) => {

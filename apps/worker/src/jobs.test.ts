@@ -1,13 +1,20 @@
+import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { personAt } from "@digestor/core";
 import { Command } from "@langchain/langgraph";
 import {
+  LocalStorage, getPersons, getSessionRecord, linkRecord, listAttributions,
   claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, type Db,
 } from "@digestor/core/server";
+import { FIXTURE_DATE, fakeSenadoFetch, transcriptOfSpeeches } from "./records/fakeSenado.js";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
-import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
+import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, handleNames, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -339,5 +346,108 @@ describe("queues without a consumer yet", () => {
     await expect(notImplemented("track.burn")({ trackId: "x" }, FIRST)).resolves.toBeUndefined();
     expect(log).toHaveBeenCalledWith(expect.stringContaining("track.burn: not implemented yet"));
     log.mockRestore();
+  });
+});
+
+d("handleNames", () => {
+  let db: Db;
+  let close: () => Promise<void>;
+  let root: string;
+  beforeAll(async () => {
+    ({ db, close } = createDb(url!));
+    root = await mkdtemp(path.join(os.tmpdir(), "digestor-names-"));
+  });
+  afterAll(async () => {
+    await close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  async function setup(o: { fake?: Parameters<typeof fakeSenadoFetch>[0]; link?: boolean } = {}) {
+    const s = await createSession(db, { source: "upload", title: "Senado" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    if (o.link !== false) await linkRecord(db, s.id, { chamber: "senado", date: FIXTURE_DATE, sessionCode: null, url: "https://example/record" });
+    const { f, calls } = fakeSenadoFetch(o.fake);
+    const deps = { db, storage: new LocalStorage(root), fetch: f } as unknown as JobContext["deps"];
+    return { id: s.id, ctx: { db, deps }, calls };
+  }
+  const recordRows = async (id: string) => (await listAttributions(db, id)).filter((a) => a.source === "record");
+
+  it("handleNames matches the record and writes confirmed ranged rows with official persons", async () => {
+    const { id, ctx, calls } = await setup();
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    const rows = await recordRows(id);
+    expect(rows.map((r) => r.speakerId).sort()).toEqual(["A", "B", "C", "D", "E"]);
+    expect(rows.every((r) => r.status === "confirmed" && r.startMs !== null && r.endMs !== null)).toBe(true);
+    expect(rows[0]!.evidence).toMatchObject({ kind: "record", url: "https://example/record" });
+    const e = rows.find((r) => r.speakerId === "E")!; // speech 524142 by senator 5906
+    expect(e.evidence).toMatchObject({ speechId: "524142" });
+    const person = (await getPersons(db, [e.personId!]))[0]!;
+    expect(person).toMatchObject({ kind: "official", displayName: "Dra. Eudócia", party: "PSDB", state: "AL", officialIds: { senado: "5906" } });
+    expect(person.photoUrl).toBe("https://www.senado.leg.br/senadores/img/fotos-oficiais/senador5906.jpg");
+    expect(calls.filter((c) => c.includes("/senador/")).length).toBe(5); // once per senator
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "matched", error: null, rawKey: `${id}/names/record.json` });
+    expect((await readFile(path.join(root, id, "names/record.json"), "utf8")).length).toBeGreaterThan(1000);
+    // Running again (a re-link) supersedes only its own rows: one current row per voice.
+    await linkRecord(db, id, (await getSessionRecord(db, id))!.ref);
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(await recordRows(id)).toHaveLength(5);
+  });
+
+  it("handleNames never supersedes human rows", async () => {
+    const { id, ctx } = await setup();
+    const mine = await createCustomPerson(db, { displayName: "Minha Escolha", createdBy: "owner" });
+    await setHumanAttribution(db, { sessionId: id, speakerId: "A", startMs: null, endMs: null, personId: mine.id, ownerId: "owner" });
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    const humans = (await listAttributions(db, id)).filter((a) => a.source === "human");
+    expect(humans).toHaveLength(1);
+    expect(humans[0]).toMatchObject({ speakerId: "A", personId: mine.id, supersededAt: null });
+    expect(personAt(await listAttributions(db, id), "A", 1000)).toMatchObject({ kind: "named", personId: mine.id });
+  });
+
+  it("handleNames: no speeches → failed with the friendly line, no rethrow", async () => {
+    const { id, ctx } = await setup({ fake: { list: () => new Response(JSON.stringify({ DiscursosSessao: { Sessoes: null } }), { status: 200 }) } });
+    await expect(handleNames(ctx, { sessionId: id }, FIRST)).resolves.toBeUndefined();
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "The Senado has no speeches for that date." });
+    expect(await recordRows(id)).toEqual([]);
+  });
+
+  it("handleNames: a 5xx rethrows until the final attempt, then failed with the friendly line", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { id, ctx } = await setup({ fake: { list: () => new Response("boom", { status: 503 }) } });
+    await expect(handleNames(ctx, { sessionId: id }, FIRST)).rejects.toThrow();
+    expect((await getSessionRecord(db, id))?.status).toBe("running"); // still waiting for the retry
+    await expect(handleNames(ctx, { sessionId: id }, { retryCount: 1, retryLimit: 2 })).rejects.toThrow();
+    expect((await getSessionRecord(db, id))?.status).toBe("running");
+    await expect(handleNames(ctx, { sessionId: id }, LAST)).rejects.toThrow();
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
+    log.mockRestore();
+  });
+
+  it("a retry after a transient error takes over its own running row and matches", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    let down = true;
+    const { id, ctx } = await setup({ fake: { list: () => (down ? new Response("boom", { status: 503 }) : new Response(JSON.stringify(JSON.parse(readFileSync(new URL("../test/fixtures/senado-discursos-2026-09-02.json", import.meta.url), "utf8"))), { status: 200 })) } });
+    await expect(handleNames(ctx, { sessionId: id }, FIRST)).rejects.toThrow();
+    down = false;
+    await handleNames(ctx, { sessionId: id }, { retryCount: 1, retryLimit: 2 });
+    expect((await getSessionRecord(db, id))?.status).toBe("matched");
+    log.mockRestore();
+  });
+
+  it("a Câmara record fails with the unsupported line, and a session with no record is left alone", async () => {
+    const { id, ctx } = await setup({ link: false });
+    await handleNames(ctx, { sessionId: id }, FIRST); // nothing linked: nothing happens
+    expect(await getSessionRecord(db, id)).toBeNull();
+    await linkRecord(db, id, { chamber: "camara", eventId: "76000", url: "https://www.camara.leg.br/evento-legislativo/76000" });
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "Câmara records aren't supported yet." });
+  });
+
+  it("summary-only speeches give proposals only", async () => {
+    const { id, ctx } = await setup({ fake: { text: () => new Response("", { status: 404 }) } });
+    await handleNames(ctx, { sessionId: id }, FIRST);
+    const rows = await recordRows(id);
+    expect(rows.every((r) => r.status === "proposed")).toBe(true);
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "matched" });
   });
 });

@@ -1,5 +1,5 @@
 import { Command } from "@langchain/langgraph";
-import { PROFILES, ProfileIdSchema, type AskJob, type FindMoreJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { PROFILES, ProfileIdSchema, type AskJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   claimFindMore,
   failAnalysisVersion,
@@ -11,6 +11,7 @@ import {
   listAttributions,
   getAnalysisTopics,
   failTranslation,
+  failRecordFetch,
   getBriefing,
   getTranslation,
   saveTranslation,
@@ -38,7 +39,7 @@ import type { StructuredLLM } from "./llm/structured.js";
 import { checkMoment } from "./agents/checks.js";
 import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
-import { promptCard } from "./pipeline/naming.js";
+import { RECORD_FETCH_FAILED, promptCard, runRecordStep } from "./pipeline/naming.js";
 import type { BurnTrackJob, RenderClipJob } from "@digestor/core";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
@@ -374,6 +375,26 @@ export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: 
       console.error(`[jobs] find-more ${row.id} failed:`, err);
     } else {
       console.error(`[jobs] find-more ${row.id} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Matches the session's linked official record (`session.names`: a record linked at the context pause or later; at
+ * upload the graph's `match_record` node does it). `runRecordStep` fails the row itself for a deterministic result (no
+ * speeches for the date, unsupported chamber) and returns. Any other error (5xx, network) is rethrown for pg-boss to
+ * retry (the retry takes over its own `running` row), and only the final attempt marks the row failed.
+ */
+export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: NamesJob, attempt: Attempt): Promise<void> {
+  try {
+    await runRecordStep(ctx.deps, job.sessionId, { retrying: attempt.retryCount > 0 });
+  } catch (err) {
+    if (attempt.retryCount >= attempt.retryLimit) {
+      await failRecordFetch(ctx.db, job.sessionId, RECORD_FETCH_FAILED);
+      console.error(`[jobs] record of ${job.sessionId} failed:`, err);
+    } else {
+      console.error(`[jobs] record of ${job.sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
     }
     throw err;
   }
