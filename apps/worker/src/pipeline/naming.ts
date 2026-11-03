@@ -28,6 +28,17 @@ function resolveWhole(atts: Attribution[], speakerId: string) {
   return personAt(atts.filter(wholeVoice), speakerId, 0);
 }
 
+/** A human's rejection of this voice/person pair, among `rejected` rows. */
+const isRejected = (rejected: Attribution[], r: Pick<NewAiAttribution, "speakerId" | "personId">) =>
+  rejected.some((x) => x.speakerId === r.speakerId && x.personId === r.personId);
+
+/** Existing rows as new rows, so a replace keeps them (a rejection the human made stays). */
+const keepRows = (rows: Attribution[]): NewAiAttribution[] =>
+  rows.map((a) => ({
+    speakerId: a.speakerId, startMs: a.startMs, endMs: a.endMs, personId: a.personId, status: a.status,
+    confidence: a.confidence, evidence: a.evidence,
+  }));
+
 /**
  * The context card's grounded names become `proposed` attributions (transcript or metadata). Never a human row:
  * a human confirms a proposal in Who's who. Voices a human already named (or made anonymous) are left alone.
@@ -51,13 +62,7 @@ export async function importContextNames(db: Db, sessionId: string, card: Contex
   for (const source of ["transcript", "metadata"] as const) {
     // Keep a rejection the human made, and do not propose the rejected person again.
     const rejected = current.filter((a) => a.source === source && a.status === "rejected");
-    const rows = [
-      ...bySource[source].filter((r) => !rejected.some((x) => x.speakerId === r.speakerId && x.personId === r.personId)),
-      ...rejected.map((a) => ({
-        speakerId: a.speakerId, startMs: a.startMs, endMs: a.endMs, personId: a.personId, status: a.status,
-        confidence: a.confidence, evidence: a.evidence,
-      })),
-    ];
+    const rows = [...bySource[source].filter((r) => !isRejected(rejected, r)), ...keepRows(rejected)];
     if (rows.length === 0 && !current.some((a) => a.source === source)) continue;
     await replaceAiAttributions(db, sessionId, source, rows);
   }
@@ -236,18 +241,14 @@ export const nameSpeakersNode =
         const res = resolveWhole(current, vote.speakerId);
         if (res.kind === "anonymous" || (res.kind === "named" && res.attribution.source === "human")) continue;
         const person = await personForVote(db, vote, current);
-        if (rejected.some((r) => r.speakerId === vote.speakerId && r.personId === person.id)) continue;
+        if (isRejected(rejected, { speakerId: vote.speakerId, personId: person.id })) continue;
         rows.push({
           speakerId: vote.speakerId, startMs: null, endMs: null, personId: person.id, status: "proposed",
           confidence: vote.agreeing / vote.total, evidence: { kind: "caption", frameKey: vote.frameKey, text: vote.text, atMs: vote.atMs },
         });
       }
-      const kept = rejected.map((a) => ({
-        speakerId: a.speakerId, startMs: a.startMs, endMs: a.endMs, personId: a.personId, status: a.status,
-        confidence: a.confidence, evidence: a.evidence,
-      }));
       if (rows.length === 0 && !current.some((a) => a.source === "caption")) return {};
-      await replaceAiAttributions(db, s.sessionId, "caption", [...rows, ...kept]);
+      await replaceAiAttributions(db, s.sessionId, "caption", [...rows, ...keepRows(rejected)]);
     } catch (err) {
       if (err instanceof MissingApiKeyError) throw err; // deterministic: fail the session (Ruling R8)
       console.error(`name_speakers: could not read captions for session ${s.sessionId}; continuing without caption names`, err);

@@ -610,17 +610,15 @@ describe("name_speakers", () => {
 
   it("a short caption reuses the person already proposed for the same voice", async () => {
     const first = unique();
-    const { graph, cfg, sessionId, deps } = await setup({ context: [draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    const { sessionId, deps } = await setup({ analysis: withCaptions([captionOf(first), captionOf(first)]) });
     const full = await createCustomPerson(db, { displayName: `${first} Quimby`, createdBy: "owner" });
     // The transcript named the voice before the captions were read (e.g. a re-run of the step).
-    await updateSession(db, sessionId, { stage: "transcribing" });
     await saveTranscript(db, sessionId, transcript);
     await replaceAiAttributions(db, sessionId, "transcript", [
       { speakerId: "A", startMs: null, endMs: null, personId: full.id, status: "proposed", confidence: 0.7, evidence: { kind: "quote", quote: "x" } },
     ]);
     await nameSpeakersNode(deps)({ sessionId });
     expect((await captionRows(sessionId)).map((r) => r.personId)).toEqual([full.id]);
-    void graph; void cfg;
   });
 
   it("graph: audio-only or a deleted original skips captions", async () => {
@@ -662,5 +660,55 @@ describe("name_speakers", () => {
     };
     const { graph, cfg, sessionId } = await setup({ context: [draft()], analysis: withCaptions([missing, missing]) });
     await expect(graph.invoke({ sessionId }, cfg)).rejects.toBeInstanceOf(MissingApiKeyError);
+  });
+
+  it("a human-rejected caption row survives a re-run and that person is not proposed again", async () => {
+    const first = unique();
+    const { sessionId, deps } = await setup({ analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await saveTranscript(db, sessionId, transcript);
+    const p = await createCustomPerson(db, { displayName: first, createdBy: "caption" });
+    await replaceAiAttributions(db, sessionId, "caption", [
+      { speakerId: "A", startMs: null, endMs: null, personId: p.id, status: "rejected", confidence: 1, evidence: { kind: "caption", frameKey: "k", text: "t", atMs: 1 } },
+    ]);
+    await nameSpeakersNode(deps)({ sessionId });
+    expect((await captionRows(sessionId)).map((r) => [r.personId, r.status])).toEqual([[p.id, "rejected"]]);
+  });
+
+  it("a voice a human confirmed or made anonymous gets no caption row", async () => {
+    const first = unique();
+    const { sessionId, deps } = await setup({ analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await saveTranscript(db, sessionId, transcript);
+    const p = await createCustomPerson(db, { displayName: unique(), createdBy: "owner" });
+    await setHumanAttribution(db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
+    await nameSpeakersNode(deps)({ sessionId });
+    expect(await captionRows(sessionId)).toEqual([]);
+
+    const anon = await setup({ analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await saveTranscript(db, anon.sessionId, transcript);
+    await setHumanAttribution(db, { sessionId: anon.sessionId, speakerId: "A", startMs: null, endMs: null, personId: null, ownerId: "owner" });
+    await nameSpeakersNode(anon.deps)({ sessionId: anon.sessionId });
+    expect(await captionRows(anon.sessionId)).toEqual([]);
+  });
+
+  it("one failing frame read doesn't drop its voice", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const first = unique();
+      const boom = () => {
+        throw new Error("one bad read");
+      };
+      // Voice A has two long turns (4 frames); B only a short interjection between them.
+      const w = (speaker: string, startMs: number, n: number): Word[] =>
+        Array.from({ length: n }, (_, i) => ({ text: "w", startMs: startMs + i * 1000, endMs: startMs + i * 1000 + 900, speaker, confidence: 0.9 }));
+      const longer: Transcript = { ...transcript, words: [...w("A", 0, 10), ...w("B", 10_000, 2), ...w("A", 12_000, 13)] };
+      const { sessionId, deps } = await setup({ transcript: longer, analysis: withCaptions([boom, captionOf(first), captionOf(first), captionOf(first)]) });
+      await saveTranscript(db, sessionId, longer);
+      await nameSpeakersNode(deps)({ sessionId });
+      const rows = await captionRows(sessionId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ speakerId: "A", status: "proposed", confidence: 1 });
+    } finally {
+      log.mockRestore();
+    }
   });
 });
