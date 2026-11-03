@@ -16,9 +16,7 @@ RUN CI=true pnpm install --frozen-lockfile --filter "@digestor/web..."
 
 # build: `next build` with output: "standalone" (traced from the repo root)
 FROM deps AS build
-COPY tsconfig.base.json ./
-COPY packages/core packages/core
-COPY apps/web apps/web
+COPY . .
 # public/ is empty and untracked by git; make sure it exists for the runtime COPY
 RUN mkdir -p apps/web/public && pnpm --filter @digestor/web build
 

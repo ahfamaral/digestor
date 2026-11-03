@@ -10,6 +10,8 @@ x-worker-build: &worker-build
 services:
   postgres:
     ports: !reset [] # reachable only on the compose network
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
 
   chroma:
     ports: !reset []
@@ -20,7 +22,7 @@ services:
     restart: "no"
     command: ["node", "--import", "tsx", "/app/packages/core/src/db/migrate.ts"]
     environment:
-      DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+      DATABASE_URL: postgres://digestor:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/digestor
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,7 +33,7 @@ services:
     working_dir: /app/apps/worker
     command: ["node", "--import", "tsx", "src/main.ts"]
     environment: !override
-      DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+      DATABASE_URL: postgres://digestor:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/digestor
       DATA_DIR: /data
       CHROMA_URL: http://chroma:8000
       HF_HOME: /data/models
@@ -61,7 +63,7 @@ services:
     env_file: .env
     environment:
       # the container values win over the host values in .env
-      DATABASE_URL: postgres://digestor:digestor@postgres:5432/digestor
+      DATABASE_URL: postgres://digestor:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/digestor
       DATA_DIR: /data
       APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in .env - the app is public in production}
       MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}

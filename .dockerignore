@@ -1,10 +1,14 @@
-.git
-node_modules
+# Patterns are relative to the build context (the repo root). Leading "/" anchors root-only entries; "**/" matches at any depth.
+/.git
 **/node_modules
-.env
-data/
-secrets/
-.superpowers/
-.next/
-dist/
-.pnpm-store/
+/.pnpm-store
+/.env
+/.env.*
+!/.env.example
+**/.env.local
+/data
+/secrets
+/.superpowers
+**/.next
+**/dist
+**/.DS_Store

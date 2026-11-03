@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { connection } from "next/server";
 import { OWNER_ID } from "@digestor/core";
 import { getSession, listProblemReports } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
@@ -22,6 +23,7 @@ export default function ReportsPage() {
 }
 
 async function ReportList() {
+  await connection(); // per request: the production image is built without a database, so this must not be prerendered
   const { db } = getServer();
   const reports = await listProblemReports(db, OWNER_ID);
   if (reports.length === 0) return <p className="text-sm text-muted-foreground">{t("reports.empty")}</p>;

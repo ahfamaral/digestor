@@ -57,11 +57,14 @@ Fill in every variable:
 | `APP_PASSWORD` | **Required.** A strong password, for example from `openssl rand -base64 24`. The app is public, and compose refuses to start `web` without it. |
 | `MAX_UPLOAD_GB` | Upload limit (default 5). |
 | `VIDEO_RETENTION_DAYS` | Source videos (and the pipeline checkpoints) older than this are removed daily at 03:00 UTC (default 14). Sessions, briefings, thumbnails and rendered clips stay. Sessions still processing are never touched. |
+| `POSTGRES_PASSWORD` | **Required.** The database password, letters and digits only (it goes inside `DATABASE_URL`), for example `openssl rand -hex 24`. Compose refuses to start without it. It only takes effect when the `pgdata` volume is first created: on a server that already has data, also run `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres psql -U digestor -d digestor -c "ALTER USER digestor PASSWORD '<the new password>'"` before restarting. |
 | `PUBLIC_HOSTNAME` | The DNS name from step 2, for example `digestor.example.com` (no `https://`). |
 
 Optional: `HTTP_PORT` and `HTTPS_PORT` (default 80 and 443) change the host ports Caddy listens on. Keep the defaults on a VPS: Let's Encrypt needs ports 80/443 to issue the certificate. Other values are only for local rehearsals (see below).
 
 `.env` holds secrets: never commit it (it is git-ignored) and keep it readable only by you (`chmod 600 .env`).
+
+The images run as the unprivileged `node` user (uid 1000). A fresh `appdata` volume is writable by it. If the volume already exists from an older root-run image, fix its ownership once: `docker run --rm -v digestor_appdata:/data busybox chown -R 1000:1000 /data` (use your volume's real name). The cookies file in `secrets/` (mode 600) must be owned by uid 1000, the first user on most VPSes; otherwise run `sudo chown 1000 secrets/youtube-cookies.txt`, since the worker reads it as `node`.
 
 ## 7. Start
 
@@ -158,7 +161,7 @@ Each download uses its own temporary copy, so the file is never changed. When Yo
 You can run the production stack on your laptop next to the dev stack by using a separate compose project and other ports (so dev data is untouched):
 
 ```
-PUBLIC_HOSTNAME=localhost HTTP_PORT=8080 HTTPS_PORT=8443 APP_PASSWORD=<something> \
+PUBLIC_HOSTNAME=localhost HTTP_PORT=8080 HTTPS_PORT=8443 APP_PASSWORD=<something> POSTGRES_PASSWORD=<letters-and-digits> \
   docker compose -p digestor-prod -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
