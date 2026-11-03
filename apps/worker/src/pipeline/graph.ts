@@ -398,7 +398,15 @@ export function buildPipeline(deps: PipelineDeps, checkpointer: BaseCheckpointSa
       (s) => (s.resume?.action === "skip" ? "name_speakers" : s.resume?.action === "continue" ? "understand_context" : "ask_context"),
       ["name_speakers", "understand_context", "ask_context"],
     )
-    .addConditionalEdges("name_speakers", unlessFailed("index"), ["index", END])
+    .addConditionalEdges(
+      "name_speakers",
+      async (s) => {
+        if ((await getSession(db, s.sessionId))?.stage === "failed") return END;
+        // A checkpoint written by the old graph (name_speakers before the context step) has no card yet: do the context check first.
+        return (await getContextCard(db, s.sessionId)) ? "index" : "understand_context";
+      },
+      ["index", "understand_context", END],
+    )
     .addEdge("index", "analyze")
     .addEdge("analyze", END)
     .compile({ checkpointer });

@@ -689,6 +689,21 @@ describe("name_speakers", () => {
     expect(await captionRows(sessionId)).toHaveLength(1);
   });
 
+  it("an old checkpoint at name_speakers (no context card yet) still gets the context check", async () => {
+    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], analysis: withCaptions([]) });
+    await updateSession(db, sessionId, { hasVideo: true });
+    await saveTranscript(db, sessionId, transcript);
+    // The state the old graph left: name_speakers done, no context card.
+    await graph.updateState(cfg, { sessionId }, "name_speakers");
+    expect((await graph.getState(cfg)).next).toEqual(["understand_context"]);
+    await graph.invoke(null, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
+    expect(await getContextCard(db, sessionId)).not.toBeNull();
+    await resume({ action: "skip" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
+  });
+
   it("a missing API key escapes the node (the job fails the session, Ruling R8)", async () => {
     const missing = () => {
       throw new MissingApiKeyError("OPENROUTER_API_KEY");
