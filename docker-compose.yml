@@ -24,6 +24,12 @@ services:
       - "8000:8000"
     volumes:
       - chromadata:/data
+    # Chroma 1.5.0 keeps ~12 file handles per deleted collection; at the default 1024 it fails with
+    # "unable to open database file" after a few test runs (or many retention deletions).
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     # The image has no curl/wget: bash's /dev/tcp asks the heartbeat endpoint for a 200.
     healthcheck:
       test:
