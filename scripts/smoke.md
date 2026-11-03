@@ -37,6 +37,7 @@ No API keys were available while Plan 2 was built, so every AI fake is shaped fr
 
 - [ ] A real AssemblyAI transcript for a short non-English clip, a real Claude structured-output response for each of topics, moments, briefing, checks and translation, and one real Chroma query/response, each under `apps/worker/test/fixtures/` with a `*.recorded.json` name, then run them through the real parsers in tests.
 - [ ] A real embedding vector shape from `Xenova/multilingual-e5-small` (dimension, normalisation).
+- [ ] One real Anthropic image call (set `ANTHROPIC_API_KEY`): extract a frame with a lower third inside the worker container (`docker compose exec worker ffmpeg -ss <t> -i /data/<sessionId>/original.mp4 -frames:v 1 -vf scale=1280:-2 /data/caption-probe.jpg`), call `createAnthropicLLM(key).generate({ …, images: [{ mediaType: "image/jpeg", data }] })` from a throwaway script, and replace `apps/worker/test/fixtures/vision-caption-anthropic.json` with the real request and response (base64 replaced by `<BASE64_JPEG_FRAME>`; drop `_recorded: false` and `_note`). Delete the frame and the script.
 
 ## 2. Restart test
 

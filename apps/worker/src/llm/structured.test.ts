@@ -71,6 +71,7 @@ describe("Anthropic structured LLM", () => {
     expect(sent[0]!.body.messages).toEqual([{ role: "user", content: "u" }]);
   });
 
+  // UNVERIFIED: the Anthropic image fixture is not recorded live (no key at the time); smoke.md lists the recording step.
   it("image request matches the fixture's wire body and its reply parses", async () => {
     const fx = JSON.parse(readFileSync(new URL("../../test/fixtures/vision-caption-anthropic.json", import.meta.url), "utf8"));
     const { fetch, sent } = fakeFetch([{ body: fx.response }]);
