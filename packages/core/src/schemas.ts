@@ -83,27 +83,31 @@ export const CandidateSchema = z.object({
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
 
+/** Card fields the journalist changed on the context check (sent with Continue or Skip). */
+const CardEditsSchema = z.object({
+  title: z.string().optional(),
+  setting: z.string().optional(),
+  dateOrYear: z.string().optional(),
+  profile: ProfileIdSchema.optional(),
+  language: z.string().optional(),
+  participants: z
+    .array(z.object({
+      speakerId: z.string(),
+      name: z.string().optional(),
+      role: z.string().optional(),
+      affiliation: z.string().optional(),
+    }))
+    .optional(),
+});
+
 export const ResumePayloadSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("continue"),
     answers: z.array(z.object({ questionId: z.string(), answer: z.string() })),
-    cardEdits: z.object({
-      title: z.string().optional(),
-      setting: z.string().optional(),
-      dateOrYear: z.string().optional(),
-      profile: ProfileIdSchema.optional(),
-      language: z.string().optional(),
-      participants: z
-        .array(z.object({
-          speakerId: z.string(),
-          name: z.string().optional(),
-          role: z.string().optional(),
-          affiliation: z.string().optional(),
-        }))
-        .optional(),
-    }),
+    cardEdits: CardEditsSchema,
   }),
-  z.object({ action: z.literal("skip") }),
+  // Skip ends the questions but keeps the edits: a profile corrected to trial must not be dropped.
+  z.object({ action: z.literal("skip"), cardEdits: CardEditsSchema.optional() }),
 ]);
 export type ResumePayload = z.infer<typeof ResumePayloadSchema>;
 

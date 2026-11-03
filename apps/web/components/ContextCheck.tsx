@@ -7,7 +7,7 @@ import { WhosWho } from "@/components/Names/WhosWho";
 import type { NamesData, WhosWhoRow } from "@/lib/names";
 import { labelText, voiceLabel } from "@/lib/names";
 import { factBadge, profileBadge } from "@/lib/contextBadge";
-import { buildContextPayload, type ContextFields } from "@/lib/contextPayload";
+import { buildContextPayload, buildSkipPayload, type ContextFields } from "@/lib/contextPayload";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
 
@@ -117,7 +117,7 @@ export function ContextCheck({
 
   const onContinue = () =>
     submit(buildContextPayload(original, edited, card.openQuestions.map((q) => ({ questionId: q.id, answer: answers[q.id] ?? "" }))));
-  const onSkip = () => submit({ action: "skip" });
+  const onSkip = () => submit(buildSkipPayload(original, edited));
 
   const n = card.openQuestions.length;
   const textRow = (label: string, key: "title" | "setting" | "dateOrYear", fact: Fact) => (

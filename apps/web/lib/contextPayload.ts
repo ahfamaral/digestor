@@ -19,6 +19,7 @@ export interface ContextFields {
 }
 
 type ContinuePayload = Extract<ResumePayload, { action: "continue" }>;
+type SkipPayload = Extract<ResumePayload, { action: "skip" }>;
 
 /** Build the "continue" resume payload: only changed, non-blank (trimmed) fields (blanking is ignored), and only non-empty answers. */
 export function buildContextPayload(
@@ -57,4 +58,10 @@ export function buildContextPayload(
       .filter((a) => a.answer !== ""),
     cardEdits,
   };
+}
+
+/** Build the "skip" resume payload: no answers, but the same card edits as Continue, so Skip never drops them. */
+export function buildSkipPayload(original: ContextFields, edited: ContextFields): SkipPayload {
+  const { cardEdits } = buildContextPayload(original, edited, []);
+  return Object.keys(cardEdits).length > 0 ? { action: "skip", cardEdits } : { action: "skip" };
 }

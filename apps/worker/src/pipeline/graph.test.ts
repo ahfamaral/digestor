@@ -676,6 +676,17 @@ describe("name_speakers", () => {
     expect(await captionRows(sessionId)).toEqual([]);
   });
 
+  it("graph: Skip keeps a profile set to trial at the context check (no captions, analysed as trial)", async () => {
+    const first = unique();
+    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await graph.invoke({ sessionId }, cfg);
+    await resume({ action: "skip", cardEdits: { profile: "trial" } });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null, profile: "trial" });
+    expect((await getContextCard(db, sessionId))!.card.profile.value).toBe("trial");
+    expect(llm.calls.filter((c) => c.name === "captions")).toEqual([]);
+    expect(await getCurrentAnalysis(db, sessionId)).toMatchObject({ version: { profile: "trial" } });
+  });
+
   it("graph: captions run after the context check", async () => {
     const first = unique();
     const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()], analysis: withCaptions(Array.from({ length: 4 }, () => captionOf(first))) });

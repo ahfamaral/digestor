@@ -307,10 +307,19 @@ export const askContextNode =
   async (s) => {
     const { db } = deps;
     const resume = await pause(deps, s.sessionId, { type: "context" }, "awaiting_context", 55);
-    if (resume.action !== "continue") return { resume };
 
     const stored = await getContextCard(db, s.sessionId);
     if (!stored) throw new Error(`Session ${s.sessionId} has no context card`);
+    if (resume.action === "skip") {
+      // Skip asks nothing more, but keeps what the journalist changed (a profile set to trial stops caption reading).
+      if (resume.cardEdits) {
+        await applyNameEdits(db, s.sessionId, resume.cardEdits);
+        const card = applyCardEdits(stored.card, resume.cardEdits);
+        await saveContextCard(db, s.sessionId, card, stored.round);
+        await updateSession(db, s.sessionId, { profile: card.profile.value, ...(card.language.value !== null ? { language: card.language.value } : {}) });
+      }
+      return { resume };
+    }
     await applyNameEdits(db, s.sessionId, resume.cardEdits);
     await saveContextCard(db, s.sessionId, applyCardEdits(stored.card, resume.cardEdits), stored.round);
 

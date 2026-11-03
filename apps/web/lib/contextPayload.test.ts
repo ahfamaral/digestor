@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ResumePayloadSchema } from "@digestor/core";
-import { buildContextPayload, type ContextFields } from "./contextPayload";
+import { buildContextPayload, buildSkipPayload, type ContextFields } from "./contextPayload";
 
 const original: ContextFields = {
   profile: "interview",
@@ -59,5 +59,16 @@ describe("buildContextPayload", () => {
     const edited: ContextFields = { ...original, profile: "trial", dateOrYear: "2020" };
     const p = buildContextPayload(original, edited, [{ questionId: "q", answer: "x" }]);
     expect(ResumePayloadSchema.safeParse(p).success).toBe(true);
+  });
+});
+
+describe("buildSkipPayload", () => {
+  it("is a bare skip when nothing changed", () => {
+    expect(buildSkipPayload(original, original)).toEqual({ action: "skip" });
+  });
+  it("carries the changed fields, so Skip doesn't drop a profile set to trial", () => {
+    const payload = buildSkipPayload(original, { ...original, profile: "trial" });
+    expect(payload).toEqual({ action: "skip", cardEdits: { profile: "trial" } });
+    expect(ResumePayloadSchema.safeParse(payload).success).toBe(true);
   });
 });

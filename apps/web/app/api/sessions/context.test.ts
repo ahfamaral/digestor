@@ -80,12 +80,18 @@ describe("POST /api/sessions/[id]/context", () => {
     expect((await post(id, { action: "skip" })).status).toBe(409);
     expect(h.send).toHaveBeenCalledTimes(1);
   });
-  it("skip sets indexing and enqueues", async () => {
+  it("skip sets naming_speakers and enqueues", async () => {
     const id = await session("awaiting_context");
     expect((await post(id, { action: "skip" })).status).toBe(200);
     const s = await getSession(h.db, id);
-    expect([s?.stage, s?.progress]).toEqual(["indexing", 70]);
+    expect([s?.stage, s?.progress]).toEqual(["naming_speakers", 60]);
     expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload: { action: "skip" } }, { ...JOB_OPTIONS, singletonKey: id });
+  });
+  it("skip carries the card edits made on the screen", async () => {
+    const id = await session("awaiting_context");
+    const payload = { action: "skip", cardEdits: { profile: "trial" } };
+    expect((await post(id, payload)).status).toBe(200);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload }, { ...JOB_OPTIONS, singletonKey: id });
   });
 });
 
