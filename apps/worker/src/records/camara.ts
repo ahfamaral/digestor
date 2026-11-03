@@ -15,6 +15,8 @@ import { RecordNotFoundError, type RecordSpeech } from "./senado.js";
  * So the session's list is built: the event's window on its date, plus every event deputy's speeches of that day whose
  * start falls inside it (~500 calls, 4 at a time, under 3 min on the plenary). Order is by minute, then deputy id:
  * speeches of the same minute have no known order (a known limit; the aligner matches by content, not by position).
+ * Lists follow the `links` entry `rel: "next"` when the API gives one (not seen live: the probe never needed it at
+ * `itens=100`). A deputy's `/discursos` answering 404 (not seen live either) is logged and skipped, not a failure.
  */
 const BASE = "https://dadosabertos.camara.leg.br/api/v2";
 const CONCURRENCY = 4;
@@ -23,6 +25,7 @@ const LABEL = "Câmara";
 export const CAMARA_NOT_FOUND = "The Câmara has no speeches for that session.";
 
 const str = z.union([z.string(), z.number()]).transform(String).nullish().transform((v) => (v == null || v === "" ? null : v));
+const linksSchema = z.object({ links: z.array(z.object({ rel: str, href: str }).passthrough()).nullish() }).passthrough();
 const eventSchema = z.object({ dados: z.object({ dataHoraInicio: z.string().min(10), dataHoraFim: str }).passthrough() }).passthrough();
 const deputiesSchema = z.object({
   dados: z.array(z.object({ id: str, nome: str, siglaPartido: str, siglaUf: str, urlFoto: str }).passthrough()),
@@ -39,6 +42,23 @@ export interface CamaraDeputy {
 }
 
 const unexpected = () => new Error("The Câmara API answered with an unexpected shape.");
+const MAX_PAGES = 50;
+
+/** Every page of a list: `parse` reads one answer's `dados`; the next page is the `links` entry with `rel: "next"`. 404 on the first page is `null`. */
+async function getAllPages<T>(url: string, f: typeof fetch, parse: (body: unknown) => T[]): Promise<T[] | null> {
+  const out: T[] = [];
+  let next: string | null = url;
+  for (let page = 0; next && page < MAX_PAGES; page++) {
+    const res = await getJson(next, f, LABEL);
+    if (res.status === 404) {
+      if (page === 0) return null;
+      break;
+    }
+    out.push(...parse(res.body));
+    next = linksSchema.safeParse(res.body).data?.links?.find((l) => l.rel === "next")?.href ?? null;
+  }
+  return out;
+}
 
 /**
  * The speeches of a Câmara event (see the header for how they are found), the event's date (`YYYY-MM-DD`) and the
@@ -59,29 +79,42 @@ export async function fetchCamaraSpeeches(
   const end = event.data.dados.dataHoraFim?.slice(0, 16) ?? `${date}T23:59`;
   const endDate = end.slice(0, 10);
 
-  const dep = await getJson(`${BASE}/eventos/${encodeURIComponent(eventId)}/deputados`, f, LABEL);
-  if (dep.status === 404) throw new RecordNotFoundError(CAMARA_NOT_FOUND);
-  const list = deputiesSchema.safeParse(dep.body);
-  if (!list.success) throw unexpected();
+  const list = await getAllPages(`${BASE}/eventos/${encodeURIComponent(eventId)}/deputados`, f, (body) => {
+    const parsed = deputiesSchema.safeParse(body);
+    if (!parsed.success) throw unexpected();
+    return parsed.data.dados;
+  });
+  if (!list) throw new RecordNotFoundError(CAMARA_NOT_FOUND);
   const deputies: Record<string, CamaraDeputy> = {};
-  for (const d of list.data.dados) {
+  for (const d of list) {
     if (d.id == null || d.nome == null || deputies[d.id]) continue;
     deputies[d.id] = { name: d.nome, party: d.siglaPartido, state: d.siglaUf, photoUrl: d.urlFoto };
   }
   const ids = Object.keys(deputies);
 
   const perDeputy = await mapLimit(ids, CONCURRENCY, async (id) => {
-    const res = await getJson(`${BASE}/deputados/${id}/discursos?dataInicio=${date}&dataFim=${endDate}&itens=100`, f, LABEL);
-    if (res.status === 404) return [];
-    const parsed = speechesSchema.safeParse(res.body);
-    if (!parsed.success) throw unexpected();
-    return parsed.data.dados.flatMap((s, n) => {
-      const at = s.dataHoraInicio?.slice(0, 16);
-      if (!at || at < start || at > end) return [];
-      const full = s.transcricao?.trim();
-      const text = full || s.sumario?.trim();
+    const all = await getAllPages(`${BASE}/deputados/${id}/discursos?dataInicio=${date}&dataFim=${endDate}&itens=100`, f, (body) => {
+      const parsed = speechesSchema.safeParse(body);
+      if (!parsed.success) throw unexpected();
+      return parsed.data.dados;
+    });
+    if (!all) {
+      console.warn(`camara: deputy ${id} has no speeches page (404) for event ${eventId}; skipping`);
+      return [];
+    }
+    // Ids must not shift when a speech is added later the same day: number within a minute after a stable sort.
+    const sorted = all
+      .map((s) => ({ at: s.dataHoraInicio?.slice(0, 16), full: s.transcricao?.trim(), summary: s.sumario?.trim() }))
+      .filter((s): s is typeof s & { at: string } => !!s.at)
+      .sort((x, y) => x.at.localeCompare(y.at) || (x.full ?? x.summary ?? "").length - (y.full ?? y.summary ?? "").length || (x.full ?? x.summary ?? "").localeCompare(y.full ?? y.summary ?? ""));
+    const seen = new Map<string, number>();
+    return sorted.flatMap((s) => {
+      const n = seen.get(s.at) ?? 0;
+      seen.set(s.at, n + 1);
+      if (s.at < start || s.at > end) return [];
+      const text = s.full || s.summary;
       if (!text) return [];
-      return [{ id, at, n, text, textSource: full ? ("full" as const) : ("summary" as const) }];
+      return [{ id, at: s.at, n, text, textSource: s.full ? ("full" as const) : ("summary" as const) }];
     });
   });
 

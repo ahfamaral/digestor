@@ -397,8 +397,9 @@ export class RecordStepError extends Error {
     this.name = "RecordStepError";
   }
 }
+/** The failure line of a record fetch; neutral when the ref is unknown (an error that carries no claim). */
 export const recordFetchFailed = (ref?: RecordRef) =>
-  `The ${ref?.chamber === "camara" ? "Câmara" : "Senado"} record couldn't be fetched. Please try again.`;
+  `The ${ref ? (ref.chamber === "camara" ? "Câmara" : "Senado") : "official"} record couldn't be fetched. Please try again.`;
 
 export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & { fetch?: typeof fetch };
 
@@ -467,17 +468,17 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   for (const m of matches) {
     const speech = speeches[m.speech]!;
     if (personIds.has(speech.officialId)) continue;
-    let person;
+    let fields: Parameters<typeof upsertOfficialPerson>[1];
     if (ref.chamber === "camara") {
       const dep = deputies[speech.officialId];
-      person = await upsertOfficialPerson(db, {
+      fields = {
         chamber: "camara",
         officialId: speech.officialId,
         displayName: dep?.name ?? titleCaseName(speech.name),
         party: dep?.party ?? speech.party ?? undefined,
         state: dep?.state ?? speech.state ?? undefined,
         photoUrl: dep?.photoUrl ? httpsPhoto(dep.photoUrl) : undefined,
-      });
+      };
     } else {
       let senator: Awaited<ReturnType<typeof fetchSenador>> | null = null;
       try {
@@ -485,7 +486,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
       } catch (err) {
         if (!(err instanceof RecordNotFoundError)) throw err;
       }
-      person = await upsertOfficialPerson(db, {
+      fields = {
         chamber: "senado",
         officialId: speech.officialId,
         displayName: senator?.displayName ?? titleCaseName(speech.name),
@@ -493,8 +494,9 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
         party: senator?.party ?? speech.party ?? undefined,
         state: senator?.state ?? speech.state ?? undefined,
         photoUrl: senator?.photoUrl ? httpsPhoto(senator.photoUrl) : undefined,
-      });
+      };
     }
+    const person = await upsertOfficialPerson(db, fields);
     personIds.set(speech.officialId, person.id);
   }
 

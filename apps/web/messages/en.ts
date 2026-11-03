@@ -151,7 +151,7 @@ export const en = {
     },
     evidenceRecord: "From the official record: speech {speech}, {score} match",
     evidenceRecordSenado: "From the Senado record of {date}: speech {speech}, {score} match",
-    evidenceRecordCamara: "From the Câmara record: speech {speech}, {score} match",
+    evidenceRecordCamara: "From the Câmara record: speech at {time}, {score} match",
     record: {
       label: "Official record",
       help: "Senado session date (2026-10-21) or its link followed by the date, or a Câmara event link.",

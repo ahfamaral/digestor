@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { mapLimit } from "./http.js";
 import { RecordNotFoundError } from "./senado.js";
 import { fetchCamaraSpeeches } from "./camara.js";
+import { fixtureDeputados } from "./fakeCamara.js";
 import { FIXTURE_DATE, FIXTURE_EVENT_ID, SILENT_IDS, SPEAKER_IDS, fakeCamaraFetch, fixtureDiscursos, fixtureEvento } from "./fakeCamara.js";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-const times = (xs: { dataHoraInicio: string }[]) => xs.map((x) => x.dataHoraInicio);
 
 describe("fetchCamaraSpeeches", () => {
   it("builds the session's speeches from the event's deputies, inside the event window, in time order", async () => {
@@ -52,8 +53,7 @@ describe("fetchCamaraSpeeches", () => {
     late.dados[0]!.dataHoraInicio = "2026-06-30T23:30";
     const { f } = fakeCamaraFetch({ evento: () => json(open), discursos: (id) => json(id === "152605" ? late : fixtureDiscursos[id] ?? { dados: [] }) });
     const { speeches } = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, f);
-    expect(speeches.at(-1)).toMatchObject({ officialId: "152605" });
-    expect(times(late.dados)).toContain("2026-06-30T23:30");
+    expect(speeches.at(-1)).toMatchObject({ officialId: "152605", id: "152605-2026-06-30T23:30-0" });
   });
 
   it("uses the summary when a speech has no transcription, and drops one with neither", async () => {
@@ -84,4 +84,71 @@ describe("fetchCamaraSpeeches", () => {
   it("fails on an unexpected shape", async () => {
     await expect(fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch({ deputados: () => json({ nope: 1 }) }).f)).rejects.toThrow("unexpected shape");
   });
+
+  it("ids don't shift when a speech is added later the same day, and number speeches of one minute", async () => {
+    const base = structuredClone(fixtureDiscursos["152605"]!) as { dados: Record<string, unknown>[] };
+    const twin = { ...base.dados[0]!, transcricao: "Um segundo discurso no mesmo minuto, mais curto." };
+    const first = { ...base, dados: [base.dados[0]!, twin, ...base.dados.slice(1)] };
+    const extra = { ...base.dados[1]!, dataHoraInicio: "2026-06-30T16:13", transcricao: "Um discurso novo." };
+    const second = { ...first, dados: [extra, ...first.dados] }; // newest-first API: a new one appears at the top
+    const run = async (a: unknown) =>
+      (await fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch({ discursos: (id) => json(id === "152605" ? a : fixtureDiscursos[id] ?? { dados: [] }) }).f)).speeches.filter((x) => x.officialId === "152605");
+    const before = await run(first);
+    const after = await run(second);
+    const minute = before.filter((x) => x.id.includes("T16:44"));
+    expect(minute.map((x) => x.id)).toEqual(["152605-2026-06-30T16:44-0", "152605-2026-06-30T16:44-1"]);
+    expect(minute[0]!.text).toBe("Um segundo discurso no mesmo minuto, mais curto."); // shorter text sorts first
+    for (const b of before) expect(after.find((x) => x.id === b.id)?.text).toBe(b.text);
+    expect(after).toHaveLength(before.length + 1);
+  });
+
+  it("logs and skips a deputy whose speeches page is a 404", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { f } = fakeCamaraFetch({ discursos: (id) => (id === "204528" ? new Response("{}", { status: 404 }) : json(fixtureDiscursos[id] ?? { dados: [] })) });
+    const { speeches } = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, f);
+    expect(speeches.some((x) => x.officialId === "204528")).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("deputy 204528"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`event ${FIXTURE_EVENT_ID}`));
+    warn.mockRestore();
+  });
+
+  it("follows the next link of a deputy's speeches and of the event's deputies", async () => {
+    const one = fixtureDiscursos["152605"]!;
+    const page1 = { dados: one.dados.slice(0, 2), links: [{ rel: "self", href: "x" }, { rel: "next", href: "https://dadosabertos.camara.leg.br/api/v2/deputados/152605/discursos?pagina=2" }] };
+    const page2 = { dados: one.dados.slice(2), links: [{ rel: "self", href: "y" }] };
+    const depPage1 = { dados: [fixtureDeputadosAll()[0]], links: [{ rel: "next", href: "https://dadosabertos.camara.leg.br/api/v2/eventos/82635/deputados?pagina=2" }] };
+    const depPage2 = { dados: fixtureDeputadosAll().slice(1), links: [] };
+    const { f, calls } = fakeCamaraFetch({
+      deputados: () => json(depPage1),
+      discursos: (id) => json(id === "152605" ? page1 : fixtureDiscursos[id] ?? { dados: [] }),
+    });
+    const paged = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/deputados?pagina=2")) return json(depPage2);
+      if (url.endsWith("/discursos?pagina=2")) { calls.push(url); return json(page2); }
+      return f(input);
+    }) as typeof fetch;
+    const { speeches, deputies } = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, paged);
+    expect(Object.keys(deputies)).toHaveLength(8);
+    expect(speeches.filter((x) => x.officialId === "152605")).toHaveLength(one.dados.length);
+    expect(calls).toContain("https://dadosabertos.camara.leg.br/api/v2/deputados/152605/discursos?pagina=2");
+  });
 });
+
+describe("mapLimit", () => {
+  it("starts no new item once one has failed, then rejects", async () => {
+    const started: number[] = [];
+    const p = mapLimit([0, 1, 2, 3, 4, 5, 6, 7], 2, async (i) => {
+      started.push(i);
+      await new Promise((r) => setTimeout(r, 5));
+      if (i === 1) throw new Error("boom");
+      return i;
+    });
+    await expect(p).rejects.toThrow("boom");
+    await new Promise((r) => setTimeout(r, 40));
+    expect(started.length).toBeLessThanOrEqual(4); // the two in flight, plus at most the one each worker took before the failure landed
+    expect(started).not.toContain(7);
+  });
+});
+
+const fixtureDeputadosAll = () => fixtureDeputados.dados as { id: number }[];

@@ -226,7 +226,11 @@ export function evidenceLine(a: Attribution): string {
   if (e.kind === "record") {
     const date = recordEvidenceDate(e.url);
     const vars = { speech: e.speechId, score: e.score.toFixed(2) };
-    if (/^https:\/\/(www\.)?camara\.leg\.br\//.test(e.url)) return t("names.evidenceRecordCamara", vars);
+    if (/^https:\/\/(www\.)?camara\.leg\.br\//.test(e.url)) {
+      // Câmara speech ids are `<deputy>-<YYYY-MM-DDTHH:MM>-<n>`: show the time, not the id.
+      const time = /T(\d{2}:\d{2})/.exec(e.speechId)?.[1];
+      return time ? t("names.evidenceRecordCamara", { time, score: vars.score }) : t("names.evidenceRecord", vars);
+    }
     return date ? t("names.evidenceRecordSenado", { ...vars, date }) : t("names.evidenceRecord", vars);
   }
   if (e.kind === "caption") return t("names.evidenceCaption", { text: e.text });

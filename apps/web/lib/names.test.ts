@@ -243,7 +243,7 @@ describe("evidenceLine for the record", () => {
   });
   it("names the Câmara for a Câmara event link", () => {
     const c = att({ source: "record", status: "proposed", evidence: { kind: "record", speechId: "74848-2026-06-30T19:32-0", score: 0.91, url: "https://www.camara.leg.br/evento-legislativo/82635", fetchedAt: "2026-11-03T10:00:00.000Z" } });
-    expect(evidenceLine(c)).toBe("From the Câmara record: speech 74848-2026-06-30T19:32-0, 0.91 match");
+    expect(evidenceLine(c)).toBe("From the Câmara record: speech at 19:32, 0.91 match");
   });
   it("falls back when the url carries no date", () => {
     expect(evidenceLine({ ...a, evidence: { ...(a.evidence as object), url: "https://x" } as Attribution["evidence"] })).toBe("From the official record: speech 77, 0.91 match");
