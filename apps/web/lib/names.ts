@@ -12,6 +12,22 @@ export interface NamesData {
 
 export type VoiceLabel = ReturnType<typeof speakerLabel>;
 
+const voiceIndex = new WeakMap<Attribution[], Map<string, Attribution[]>>();
+/** The attributions of one voice (indexed once per attributions array: `personAt` filters by voice anyway). */
+function voiceAtts(names: NamesData, speakerId: string): Attribution[] {
+  let idx = voiceIndex.get(names.attributions);
+  if (!idx) {
+    idx = new Map();
+    for (const a of names.attributions) {
+      const list = idx.get(a.speakerId);
+      if (list) list.push(a);
+      else idx.set(a.speakerId, [a]);
+    }
+    voiceIndex.set(names.attributions, idx);
+  }
+  return idx.get(speakerId) ?? [];
+}
+
 const personMap = (names: NamesData) => new Map(names.persons.map((p) => [p.id, p]));
 
 /** The label of one voice at one moment of the video. */
@@ -57,7 +73,7 @@ function resolutionKey(res: Resolution, speakerId: string): string {
 
 /** True when the voice has current ranged non-human rows: it is named part by part, so a whole-voice human write would shadow them (the API refuses one for record rows). */
 function namedPartByPart(names: NamesData, speakerId: string): boolean {
-  return names.attributions.some(
+  return voiceAtts(names, speakerId).some(
     (a) => a.speakerId === speakerId && a.source !== "human" && a.supersededAt === null && a.status !== "rejected" && a.startMs !== null && a.endMs !== null,
   );
 }
@@ -74,7 +90,7 @@ function remainderSpans(names: NamesData, words: Pick<Word, "startMs" | "endMs" 
       open = null; // another voice speaks: the turn ends
       continue;
     }
-    if (resolutionKey(personAt(names.attributions, speakerId, w.startMs), speakerId) !== key) {
+    if (resolutionKey(personAt(voiceAtts(names, speakerId), speakerId, w.startMs), speakerId) !== key) {
       open = null;
       continue;
     }
@@ -98,6 +114,21 @@ export interface UnconfirmedVoice {
   confirm: Record<string, unknown> | null;
 }
 
+/** All the ranges of this name's proposed turns that touch `r` (a senator the record names for several turns); the first range for a conflict or a human "no name". */
+function unconfirmedRangesIn(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], speakerId: string, resolution: Resolution, r: Range): Range[] {
+  const first = rowRange({ resolution })!;
+  if (resolution.kind !== "named") return [first];
+  const found = new Map<string, Range>([[`${first.startMs}-${first.endMs}`, first]]);
+  const atts = voiceAtts(names, speakerId);
+  for (const w of words) {
+    if (w.speaker !== speakerId || w.endMs <= r.startMs || w.startMs >= r.endMs) continue;
+    const res = personAt(atts, speakerId, w.startMs);
+    if (res.kind !== "named" || res.confirmed || res.personId !== resolution.personId) continue;
+    for (const x of resolutionRanges(res)) found.set(`${x.startMs}-${x.endMs}`, x);
+  }
+  return [...found.values()].sort((a, b) => a.startMs - b.startMs);
+}
+
 /** Voices of a range whose name still needs confirming (a proposal, a conflict, or no name at all), longest first. */
 export function unconfirmedVoices(
   names: NamesData,
@@ -110,7 +141,7 @@ export function unconfirmedVoices(
   return unconfirmedSpeakers(speakersInRange(words, names.attributions, r)).map(({ speakerId, resolution }) => {
     const own = resolutionRanges(resolution);
     const ranges =
-      own.length > 0 ? [rowRange({ resolution })!] : namedPartByPart(names, speakerId) ? remainderSpans(names, words, speakerId, resolutionKey(resolution, speakerId), r) : [];
+      own.length > 0 ? unconfirmedRangesIn(names, words, speakerId, resolution, r) : namedPartByPart(names, speakerId) ? remainderSpans(names, words, speakerId, resolutionKey(resolution, speakerId), r) : [];
     return {
       speakerId,
       label: speakerLabel(resolution, persons, speakerId, sensitive),
@@ -192,27 +223,35 @@ export interface WhosWhoRow {
    * one voice is one row acting on all of them). Empty for a whole-voice name.
    */
   ranges: Range[];
+  /** The ranges of this row's name that are still only proposed (a person can have confirmed and proposed turns in one voice); `resolution` is then the unconfirmed one. */
+  unconfirmedRanges: Range[];
 }
 
 /** One row per (voice, name at that moment): a voice the record named as two people gets two rows. Longest first. */
 export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
   const key = resolutionKey;
-  const groups = new Map<string, { speakerId: string; resolution: Resolution; ms: number; firstMs: number; k: string; ranges: Map<string, Range> }>();
+  const groups = new Map<string, { speakerId: string; resolution: Resolution; ms: number; firstMs: number; k: string; ranges: Map<string, Range>; unconfirmed: Map<string, Range> }>();
   const perVoice = new Map<string, number>();
   let total = 0;
   for (const w of words) {
     const ms = w.endMs - w.startMs;
     if (ms <= 0) continue;
-    const resolution = personAt(names.attributions, w.speaker, w.startMs);
+    const resolution = personAt(voiceAtts(names, w.speaker), w.speaker, w.startMs);
     const k = key(resolution, w.speaker);
     const gk = `${w.speaker}\u0000${k}`;
     let cur = groups.get(gk);
     if (cur) cur.ms += ms;
     else {
-      cur = { speakerId: w.speaker, resolution, ms, firstMs: w.startMs, k, ranges: new Map() };
+      cur = { speakerId: w.speaker, resolution, ms, firstMs: w.startMs, k, ranges: new Map(), unconfirmed: new Map() };
       groups.set(gk, cur);
     }
-    for (const r of resolutionRanges(resolution)) cur.ranges.set(`${r.startMs}-${r.endMs}`, r);
+    const mine = resolutionRanges(resolution);
+    for (const r of mine) cur.ranges.set(`${r.startMs}-${r.endMs}`, r);
+    if (resolution.kind === "named" && !resolution.confirmed) {
+      // The row stands for its weakest turn: a person with one confirmed and several proposed turns still needs confirming.
+      if (cur.resolution.kind === "named" && cur.resolution.confirmed) cur.resolution = resolution;
+      for (const r of mine) cur.unconfirmed.set(`${r.startMs}-${r.endMs}`, r);
+    }
     perVoice.set(w.speaker, (perVoice.get(w.speaker) ?? 0) + ms);
     total += ms;
   }
@@ -222,7 +261,7 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
       const long = turns.find(
         (tn) =>
           tn.speakerId === g.speakerId && tn.endMs - tn.startMs >= SAMPLE_MIN_MS &&
-          key(personAt(names.attributions, g.speakerId, tn.startMs), g.speakerId) === g.k,
+          key(personAt(voiceAtts(names, g.speakerId), g.speakerId, tn.startMs), g.speakerId) === g.k,
       );
       return {
         speakerId: g.speakerId,
@@ -235,6 +274,7 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
           g.ranges.size === 0 && namedPartByPart(names, g.speakerId)
             ? remainderSpans(names, words, g.speakerId, g.k)
             : [...g.ranges.values()].sort((a, b) => a.startMs - b.startMs),
+        unconfirmedRanges: [...g.unconfirmed.values()].sort((a, b) => a.startMs - b.startMs),
       };
     })
     .sort((a, b) => b.ms - a.ms);
@@ -266,11 +306,21 @@ export function rangeFields(ranges: Range[]): Record<string, unknown> {
   return one ? { startMs: one.startMs, endMs: one.endMs } : {};
 }
 
+/**
+ * The range part of a Change… / No name body: all of the row's `ranges` when it has any (one or several: a part of a
+ * part-by-part voice may have just one span and no ranged row of its own), else the single `range`, else the whole voice.
+ */
+export function scopeFields(ranges: Range[] | undefined, range: Range | undefined): Record<string, unknown> {
+  if (ranges && ranges.length > 0) return rangeFields(ranges);
+  return range ? { startMs: range.startMs, endMs: range.endMs } : {};
+}
+
 /** The body the names API gets for a row's Confirm button; null when the row has no single proposal. A ranged row confirms as a ranged human assignment (all its ranges). */
-export function confirmBody(row: Pick<WhosWhoRow, "speakerId" | "resolution"> & { ranges?: Range[] }): Record<string, unknown> | null {
+export function confirmBody(row: Pick<WhosWhoRow, "speakerId" | "resolution"> & { ranges?: Range[]; unconfirmedRanges?: Range[] }): Record<string, unknown> | null {
   const res = row.resolution;
   if (res.kind !== "named" || res.confirmed) return null;
-  const ranges = rowRanges(row);
+  // Only the turns still proposed: the confirmed ones of the same person stay as they are.
+  const ranges = row.unconfirmedRanges && row.unconfirmedRanges.length > 0 ? row.unconfirmedRanges : rowRanges(row);
   return ranges.length > 0
     ? { action: "assign", speakerId: row.speakerId, personId: res.personId, ...rangeFields(ranges) }
     : { action: "confirm", speakerId: row.speakerId };

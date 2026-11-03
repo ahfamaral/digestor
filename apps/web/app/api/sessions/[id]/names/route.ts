@@ -15,7 +15,7 @@ const range = {
   startMs: ms.optional(), endMs: ms.optional(),
   ranges: z.array(z.object({ startMs: ms, endMs: ms }).strict()).min(1).max(500).optional(),
 };
-const RECORD_VOICE = "This voice is named part by part from the record. Change each part separately.";
+const RECORD_VOICE = "This voice is named part by part from the record. Use \u201cOnly this part\u201d to change one part.";
 const speaker = z.string().min(1).max(64);
 const BodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("assign"), speakerId: speaker, personId: z.string().uuid(), ...range }).strict(),
@@ -75,8 +75,6 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   const endOfVideo = Math.max(transcript.durationMs, transcript.words.at(-1)?.endMs ?? 0);
   if (targets.some((r) => r !== null && r.endMs > endOfVideo)) return errorResponse(400, "That part is past the end of the video.");
 
-  const write = (speakerId: string, personId: string | null, s: number | null, e: number | null) =>
-    setHumanAttribution(db, { sessionId: id, speakerId, startMs: s, endMs: e, personId, ownerId: OWNER_ID });
   // A whole-voice human row would shadow the record's per-turn names: refused (inside the lock, in core). The UI scopes its actions to the parts.
   const writeAll = async (speakerId: string, person: { id: string | null } | { create: string }): Promise<Response | null> => {
     const res = await setHumanAttributions(db, { sessionId: id, speakerId, ownerId: OWNER_ID, ranges: targets, person });
@@ -96,10 +94,11 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       if (refused) return refused;
       break;
     }
-    case "anonymous":
+    case "anonymous": {
       const refused = await writeAll(body.speakerId, { id: null });
       if (refused) return refused;
       break;
+    }
     case "confirm":
     case "confirm_all": {
       // Whole-voice resolution only. A voice with current ranged AI rows is confirmed part by part: a whole-voice human
@@ -110,11 +109,33 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
         all.some((a) => a.speakerId === voice && a.supersededAt === null && a.status !== "rejected" && a.source !== "human" && isRanged(a));
       const whole = all.filter((a) => !isRanged(a));
       if (body.action === "confirm" && hasRanged(body.speakerId)) return errorResponse(409, "Confirm each part of this voice separately.");
-      const voices = body.action === "confirm" ? [body.speakerId] : [...new Set(transcript.words.map((w) => w.speaker))].filter((v) => !hasRanged(v));
-      for (const voice of voices) {
-        const res = personAt(whole, voice, 0);
-        if (res.kind === "named" && !res.confirmed) await write(voice, res.personId, null, null);
-      }
+      const voices = body.action === "confirm" ? [body.speakerId] : [...new Set(transcript.words.map((w) => w.speaker))];
+      await db.transaction(async (tx) => {
+        const t = tx as unknown as Db;
+        for (const voice of voices) {
+          if (hasRanged(voice)) {
+            // "Confirm all" also confirms a part-by-part voice, turn by turn: one ranged human row per proposed turn, grouped by person.
+            if (body.action !== "confirm_all") continue;
+            const perPerson = new Map<string, Map<string, { startMs: number; endMs: number }>>();
+            for (const a of all) {
+              if (a.speakerId !== voice || a.supersededAt !== null || a.status === "rejected" || a.source === "human" || !isRanged(a)) continue;
+              const res = personAt(all, voice, a.startMs!);
+              if (res.kind !== "named" || res.confirmed || res.attribution.startMs === null || res.attribution.endMs === null) continue;
+              const m = perPerson.get(res.personId) ?? new Map();
+              m.set(`${res.attribution.startMs}-${res.attribution.endMs}`, { startMs: res.attribution.startMs, endMs: res.attribution.endMs });
+              perPerson.set(res.personId, m);
+            }
+            for (const [personId, m] of perPerson) {
+              await setHumanAttributions(t, { sessionId: id, speakerId: voice, ownerId: OWNER_ID, ranges: [...m.values()], person: { id: personId } });
+            }
+            continue;
+          }
+          const res = personAt(whole, voice, 0);
+          if (res.kind === "named" && !res.confirmed) {
+            await setHumanAttribution(t, { sessionId: id, speakerId: voice, startMs: null, endMs: null, personId: res.personId, ownerId: OWNER_ID });
+          }
+        }
+      });
       break;
     }
   }

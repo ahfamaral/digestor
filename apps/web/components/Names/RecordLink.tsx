@@ -105,7 +105,7 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
           ) : record.status === "matched" ? (
             <p role="status" className="text-foreground">{t("names.record.matched", { date: record.date ?? "" })}</p>
           ) : (
-            <p role="alert" dir="auto" className="text-red-700">{record.error ?? t("names.record.failed")}</p>
+            <p role="status" dir="auto" className="text-red-700">{record.error ?? t("names.record.failed")}</p>
           )}
           {!editing && (
             <button type="button" className={BTN} onClick={() => setEditing(true)}>

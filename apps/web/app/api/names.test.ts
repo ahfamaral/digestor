@@ -99,8 +99,9 @@ describe("names", () => {
     expect(await res.json()).toEqual({ error: "Confirm each part of this voice separately." });
     res = await post(sid, { action: "confirm_all" });
     expect(res.status).toBe(200);
+    // "Confirm all" also confirms the part-by-part voice, turn by turn (a ranged human row, never a whole-voice one).
     const humans = (await listAttributions(h.db, sid)).filter((a) => a.source === "human");
-    expect(humans.map((a) => [a.speakerId, a.personId])).toEqual([["B", p2.id]]);
+    expect(humans.map((a) => [a.speakerId, a.personId, a.startMs, a.endMs]).sort()).toEqual([["A", p1.id, 0, 900], ["B", p2.id, null, null]]);
   });
 
   it("names: a human \"Only this part\" row does not block Confirm of the whole voice", async () => {
@@ -123,7 +124,7 @@ describe("names", () => {
       speakerId, startMs, endMs, personId, status: "proposed" as const, confidence: 0.9,
       evidence: { kind: "record" as const, speechId: "s1", score: 0.9, url: "https://x", fetchedAt: "2026-10-21T00:00:00.000Z" },
     });
-    const GUARD = "This voice is named part by part from the record. Change each part separately.";
+    const GUARD = "This voice is named part by part from the record. Use \u201cOnly this part\u201d to change one part.";
     async function recordVoice() {
       const sid = await twoVoiceSession();
       const p1 = await createCustomPerson(h.db, { displayName: "Rui Senador", createdBy: OWNER_ID });
@@ -180,6 +181,15 @@ describe("names", () => {
       expect(res.status).toBe(200);
       const res2 = await post(sid, { action: "anonymous", speakerId: "A", ranges: [{ startMs: 3000, endMs: 3500 }] });
       expect(res2.status).toBe(200);
+    });
+
+    it("confirm_all confirms every proposed turn of a part-by-part voice in ranged human rows, grouped by person", async () => {
+      const { sid, p1, p2 } = await recordVoice();
+      const res = await post(sid, { action: "confirm_all" });
+      expect(res.status).toBe(200);
+      const humans = (await listAttributions(h.db, sid)).filter((a) => a.source === "human");
+      expect(humans.every((a) => a.startMs !== null)).toBe(true);
+      expect(humans.map((a) => [a.speakerId, a.personId, a.startMs, a.endMs]).sort()).toEqual([["A", p1.id, 0, 900], ["B", p2.id, 1000, 1900]]);
     });
 
     it("a part can't end after the video", async () => {

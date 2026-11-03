@@ -1,7 +1,7 @@
 "use client";
 
 import { personAt, type Range } from "@digestor/core";
-import { evidenceLine, badgeText, voiceLabel, type NamesData } from "@/lib/names";
+import { confirmBody as defaultConfirmBody, evidenceLine, badgeText, voiceLabel, type NamesData } from "@/lib/names";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { NamePopover } from "./NamePopover";
@@ -59,7 +59,7 @@ export function SpeakerName({
         range={range}
         ranges={ranges}
         rangeOnly={rangeOnly}
-        confirmBody={confirmBody}
+        confirmBody={confirmBody ?? defaultConfirmBody({ speakerId, resolution: res }) ?? undefined}
         trigger={
           <button
             type="button"

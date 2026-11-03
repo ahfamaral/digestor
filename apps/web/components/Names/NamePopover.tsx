@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Popover } from "@base-ui/react/popover";
 import { closeMatches, type Person, type Range } from "@digestor/core";
 import { errorMessage } from "@/lib/http";
-import { rangeFields, type NamesData, type VoiceLabel } from "@/lib/names";
+import { scopeFields, type NamesData, type VoiceLabel } from "@/lib/names";
 import { t } from "@/lib/i18n";
 
 const BTN =
@@ -133,7 +133,8 @@ export function NamePopover({
   }
 
   const scoped = onlyThis || rangeOnly;
-  const part = scoped && ranges && ranges.length > 1 ? rangeFields(ranges) : scoped && range ? { startMs: range.startMs, endMs: range.endMs } : {};
+  // A row's own ranges always apply (even a single one, with no `range`); a range picked by "Only this part" applies when checked.
+  const part = scoped ? scopeFields(ranges, range) : {};
   const pick = (o: Option) =>
     send(o.kind === "person" ? { action: "assign", speakerId, personId: o.person.id, ...part } : { action: "create", speakerId, displayName: o.name, ...part });
 

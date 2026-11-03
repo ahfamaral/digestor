@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, type NamesData } from "./names";
+import { personAt, exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -271,5 +271,48 @@ describe("the unnamed part of a voice named part by part from the record", () =>
     const v = unconfirmedVoices(names, words, { startMs: 12_000, endMs: 18_000 }, false).find((x) => x.speakerId === "A")!;
     expect(v.ranges).toEqual([{ startMs: 10_000, endMs: 20_000 }]);
     expect(v.range).toEqual({ startMs: 10_000, endMs: 20_000 });
+  });
+});
+
+describe("final review: one-span remainder, mixed confirmed/proposed rows, default Confirm", () => {
+  const run = (speaker: string, from: number, to: number): Word[] =>
+    Array.from({ length: (to - from) / 1000 }, (_, i) => word(speaker, from + i * 1000, from + (i + 1) * 1000));
+  it("a remainder with a single span still sends its range (Change… and No name)", () => {
+    const words = run("A", 0, 20_000);
+    const names: NamesData = { persons, attributions: [att({ id: "1", speakerId: "A", personId: "p1", source: "record", status: "proposed", startMs: 0, endMs: 10_000 })] };
+    const rest = whosWhoRows(names, words).find((r) => r.resolution.kind === "unnamed")!;
+    expect(rest.ranges).toEqual([{ startMs: 10_000, endMs: 20_000 }]);
+    expect(rowRange(rest)).toBeNull();
+    expect(scopeFields(rest.ranges, rowRange(rest) ?? undefined)).toEqual({ startMs: 10_000, endMs: 20_000 });
+    expect(anonymousBody(rest)).toEqual({ action: "anonymous", speakerId: "A", startMs: 10_000, endMs: 20_000 });
+    expect(scopeFields([], undefined)).toEqual({});
+  });
+  it("a person with one confirmed and two proposed turns is one unconfirmed row; Confirm writes the proposed ranges only", () => {
+    const words = run("A", 0, 30_000);
+    const a = (id: string, s: number, e: number, status: Attribution["status"]) =>
+      att({ id, speakerId: "A", personId: "p1", source: "record", status, startMs: s, endMs: e });
+    const names: NamesData = { persons, attributions: [a("1", 0, 10_000, "confirmed"), a("2", 10_000, 20_000, "proposed"), a("3", 20_000, 30_000, "proposed")] };
+    const rows = whosWhoRows(names, words);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.resolution).toMatchObject({ kind: "named", confirmed: false });
+    expect(confirmBody(rows[0]!)).toEqual({
+      action: "assign", speakerId: "A", personId: "p1", ranges: [{ startMs: 10_000, endMs: 20_000 }, { startMs: 20_000, endMs: 30_000 }],
+    });
+  });
+  it("the export check lists all of a person's proposed turns that touch the clip", () => {
+    const words = run("A", 0, 30_000);
+    const a = (id: string, s: number, e: number) => att({ id, speakerId: "A", personId: "p1", source: "record", status: "proposed", startMs: s, endMs: e });
+    const names: NamesData = { persons, attributions: [a("1", 0, 10_000), a("2", 10_000, 20_000), a("3", 20_000, 30_000)] };
+    const v = unconfirmedVoices(names, words, { startMs: 5_000, endMs: 25_000 }, false);
+    expect(v).toHaveLength(1);
+    expect(v[0]!.ranges).toEqual([{ startMs: 0, endMs: 10_000 }, { startMs: 10_000, endMs: 20_000 }, { startMs: 20_000, endMs: 30_000 }]);
+    expect(v[0]!.confirm).toMatchObject({ action: "assign", ranges: v[0]!.ranges });
+  });
+});
+
+describe("Confirm from a moment row (SpeakerName's default body)", () => {
+  it("a record-proposed ranged name confirms as a ranged assignment, never a whole-voice confirm", () => {
+    const a = att({ id: "1", speakerId: "A", personId: "p1", source: "record", status: "proposed", startMs: 0, endMs: 10_000 });
+    expect(confirmBody({ speakerId: "A", resolution: personAt([a], "A", 5_000) })).toEqual({ action: "assign", speakerId: "A", personId: "p1", startMs: 0, endMs: 10_000 });
   });
 });
