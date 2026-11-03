@@ -44,10 +44,23 @@ export const CaptionOutput: z.ZodType<{ captionText: string; personName: string;
 const CAPTION_SYSTEM = [
   "You read the on-screen caption (lower third, name strap) in one video frame.",
   "Read only text visible in the image; never guess.",
-  "captionText: the caption text as written. personName: the name of the person as written in the caption (the full name when shown). partyOrRole: a party, role or title shown with the name.",
+  "captionText: the caption text as written. personName: the name of the person from the caption (the full name when shown), in normal capitalisation (not all capitals). partyOrRole: a party, role or title shown with the name.",
   "A caption names one person. If the frame shows several names (a debate timer, a scoreboard, a list of candidates), it does not say who is speaking: leave personName empty.",
   "Use an empty string for anything that is not visible, and for all three when the frame has no caption.",
 ].join("\n");
+
+const PARTICLES = new Set(["da", "das", "de", "del", "di", "do", "dos", "du", "e", "van", "von", "la", "le"]);
+
+/** A name written entirely in capitals gets normal capitalisation ("FLÁVIO DA SILVA" → "Flávio da Silva"); mixed case is left as it is. */
+export function titleCaseName(name: string): string {
+  const n = name.trim();
+  if (n !== n.toLocaleUpperCase() || n === n.toLocaleLowerCase()) return n;
+  return n
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .map((w, i) => (i > 0 && PARTICLES.has(w) ? w : w.replace(/(^|[-'’])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toLocaleUpperCase())))
+    .join(" ");
+}
 
 const orNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
 
@@ -87,7 +100,10 @@ export function captionVotes(reads: CaptionRead[]): CaptionVote[] {
       agreeing: named.length, total: rs.length,
     });
   }
-  return votes;
+  // A name that wins several voices (a timer or scoreboard showing both candidates) says nothing about who speaks.
+  const uses = new Map<string, number>();
+  for (const v of votes) uses.set(normaliseName(v.name), (uses.get(normaliseName(v.name)) ?? 0) + 1);
+  return votes.filter((v) => uses.get(normaliseName(v.name)) === 1);
 }
 
 export type CaptionDeps = {
@@ -103,6 +119,8 @@ export type CaptionDeps = {
 export async function readCaptions(deps: CaptionDeps, sessionId: string, videoKey: string, words: Word[]): Promise<CaptionRead[]> {
   const plan = captionFramePlan(words);
   const input = deps.storage.resolve(videoKey);
+  let failed = 0;
+  let firstError = "";
   const reads = await mapPool(plan, PASS_CONCURRENCY, async (p): Promise<CaptionRead | null> => {
     const frameKey = deps.storage.key(sessionId, `names/${p.speakerId.replace(/[^\w-]/g, "_")}-${p.atMs}.jpg`);
     const file = deps.storage.resolve(frameKey);
@@ -113,10 +131,14 @@ export async function readCaptions(deps: CaptionDeps, sessionId: string, videoKe
       return { speakerId: p.speakerId, atMs: p.atMs, frameKey, name: r.name, text: r.text };
     } catch (err) {
       if (err instanceof MissingApiKeyError) throw err;
-      console.error(`captions: skipped the frame at ${p.atMs} ms of voice ${p.speakerId} (session ${sessionId})`, err);
+      const msg = err instanceof Error ? err.message.split("\n")[0]! : String(err);
+      failed++;
+      if (failed === 1) firstError = msg;
+      console.error(`captions: frame at ${p.atMs} ms of voice ${p.speakerId} failed`);
       await rm(file, { force: true });
       return null;
     }
   });
+  if (failed > 0) console.error(`captions: ${failed} of ${plan.length} frames failed (first: ${firstError})`);
   return reads.filter((r): r is CaptionRead => r !== null);
 }

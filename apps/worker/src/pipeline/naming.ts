@@ -1,5 +1,6 @@
-import { access } from "node:fs/promises";
-import { PROFILES, closeMatches, personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person, type Resolution } from "@digestor/core";
+import { access, readdir, rm } from "node:fs/promises";
+import path from "node:path";
+import { PROFILES, closeMatches, normaliseName, personAt, type Attribution, type ContextCard, type Fact, type Participant, type Person, type Resolution } from "@digestor/core";
 import {
   backdateNamesToCard,
   createCustomPerson,
@@ -8,15 +9,17 @@ import {
   getPersons,
   getSession,
   getTranscript,
+  listAttributionHistory,
   listAttributions,
   replaceAiAttributions,
   sessionsWithoutNames,
   setStage,
   type Db,
+  type LocalStorage,
   type NewAiAttribution,
 } from "@digestor/core/server";
 
-import { readCaptions, captionVotes, type CaptionVote } from "../agents/captions.js";
+import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type CaptionVote } from "../agents/captions.js";
 import { MissingApiKeyError } from "../errors.js";
 import type { PipelineDeps } from "./graph.js";
 
@@ -39,6 +42,14 @@ const keepRows = (rows: Attribution[]): NewAiAttribution[] =>
     confidence: a.confidence, evidence: a.evidence,
   }));
 
+/** The one person among `persons` whose name is a short or full form of `name` (every token of one side is in the other). */
+const closeUnique = (name: string, persons: Person[]): Person | null => {
+  const close = closeMatches(name, persons);
+  return close.length === 1 ? close[0]! : null;
+};
+
+const tokenCount = (name: string) => normaliseName(name).split(" ").filter(Boolean).length;
+
 /**
  * The context card's grounded names become `proposed` attributions (transcript or metadata). Never a human row:
  * a human confirms a proposal in Who's who. Voices a human already named (or made anonymous) are left alone.
@@ -47,12 +58,18 @@ const keepRows = (rows: Attribution[]): NewAiAttribution[] =>
 export async function importContextNames(db: Db, sessionId: string, card: ContextCard): Promise<void> {
   const current = await listAttributions(db, sessionId);
   const bySource: Record<"transcript" | "metadata", NewAiAttribution[]> = { transcript: [], metadata: [] };
+  const repoint = new Map<string, string>(); // voice → person its caption row moves to
   for (const p of card.participants) {
     const name = p.name.value?.trim();
     if (!name || p.name.source === null) continue;
     const res = resolveWhole(current, p.speakerId);
     if (res.kind === "anonymous" || (res.kind === "named" && res.attribution.source === "human")) continue;
-    const person = (await findPersonByName(db, name)) ?? (await createCustomPerson(db, { displayName: name, createdBy: "transcript" }));
+    let person: Person | null = null;
+    const captionRow = current.find((a) => a.source === "caption" && a.status === "proposed" && wholeVoice(a) && a.speakerId === p.speakerId && a.personId);
+    const captionPerson = captionRow ? await closeUnique(name, await getPersons(db, [captionRow.personId!])) : null;
+    if (captionPerson && tokenCount(captionPerson.displayName) >= tokenCount(name)) person = captionPerson; // the fuller name wins; ties keep the caption's person
+    person ??= (await findPersonByName(db, name)) ?? (await createCustomPerson(db, { displayName: name, createdBy: "transcript" }));
+    if (captionPerson && person.id !== captionPerson.id) repoint.set(p.speakerId, person.id); // the context name is the fuller one
     const source = p.name.source === "metadata" ? "metadata" : "transcript"; // a human hint or answer is still only a proposal
     bySource[source].push({
       speakerId: p.speakerId, startMs: null, endMs: null, personId: person.id, status: "proposed",
@@ -65,6 +82,12 @@ export async function importContextNames(db: Db, sessionId: string, card: Contex
     const rows = [...bySource[source].filter((r) => !isRejected(rejected, r)), ...keepRows(rejected)];
     if (rows.length === 0 && !current.some((a) => a.source === source)) continue;
     await replaceAiAttributions(db, sessionId, source, rows);
+  }
+  if (repoint.size > 0) {
+    // One person for both sources: the caption rows of these voices follow the fuller context name (evidence unchanged).
+    const captionRows = current.filter((a) => a.source === "caption");
+    const moved = (a: Attribution) => a.status !== "rejected" && wholeVoice(a) && repoint.has(a.speakerId);
+    await replaceAiAttributions(db, sessionId, "caption", keepRows(captionRows).map((r, i) => (moved(captionRows[i]!) ? { ...r, personId: repoint.get(r.speakerId)! } : r)));
   }
 }
 
@@ -203,16 +226,17 @@ export async function importNamesForOldSessions(db: Db, ids?: string[]): Promise
  * Re-running finds the person it created before, by name.
  */
 async function personForVote(db: Db, vote: CaptionVote, current: Attribution[]): Promise<Person> {
-  const byName = await findPersonByName(db, vote.name);
+  const name = titleCaseName(vote.name);
+  const byName = await findPersonByName(db, name);
   if (byName) return byName;
   const ids = new Set(
     current
       .filter((a) => a.speakerId === vote.speakerId && wholeVoice(a) && (a.source === "transcript" || a.source === "metadata") && a.personId)
       .map((a) => a.personId!),
   );
-  const close = closeMatches(vote.name, await getPersons(db, [...ids]));
-  if (close.length === 1) return close[0]!;
-  return createCustomPerson(db, { displayName: vote.name, createdBy: "caption" });
+  const close = closeUnique(name, await getPersons(db, [...ids]));
+  if (close) return close;
+  return createCustomPerson(db, { displayName: name, createdBy: "caption" });
 }
 
 /**
@@ -233,25 +257,52 @@ export const nameSpeakersNode =
       if (!(await access(original).then(() => true, () => false))) return {};
       const transcript = await getTranscript(db, s.sessionId);
       if (!transcript) return {};
+      const planned = captionFramePlan(transcript.words).length;
       const reads = await readCaptions({ llm: deps.llm, storage, media: deps.media }, s.sessionId, session.originalKey, transcript.words);
-      const current = await listAttributions(db, s.sessionId);
-      const rejected = current.filter((a) => a.source === "caption" && a.status === "rejected");
-      const rows: NewAiAttribution[] = [];
-      for (const vote of captionVotes(reads)) {
-        const res = resolveWhole(current, vote.speakerId);
-        if (res.kind === "anonymous" || (res.kind === "named" && res.attribution.source === "human")) continue;
-        const person = await personForVote(db, vote, current);
-        if (isRejected(rejected, { speakerId: vote.speakerId, personId: person.id })) continue;
-        rows.push({
-          speakerId: vote.speakerId, startMs: null, endMs: null, personId: person.id, status: "proposed",
-          confidence: vote.agreeing / vote.total, evidence: { kind: "caption", frameKey: vote.frameKey, text: vote.text, atMs: vote.atMs },
-        });
+      try {
+        if (planned > 0 && reads.length === 0) return {}; // nothing could be read: keep what an earlier run proposed
+        await writeCaptionRows(deps, s.sessionId, reads);
+      } finally {
+        await pruneFrames(db, storage, s.sessionId);
       }
-      if (rows.length === 0 && !current.some((a) => a.source === "caption")) return {};
-      await replaceAiAttributions(db, s.sessionId, "caption", [...rows, ...keepRows(rejected)]);
     } catch (err) {
       if (err instanceof MissingApiKeyError) throw err; // deterministic: fail the session (Ruling R8)
       console.error(`name_speakers: could not read captions for session ${s.sessionId}; continuing without caption names`, err);
     }
     return {};
   };
+
+/** Votes → persons → `caption` rows (see `nameSpeakersNode`). */
+async function writeCaptionRows(deps: PipelineDeps, sessionId: string, reads: Awaited<ReturnType<typeof readCaptions>>): Promise<void> {
+  const { db } = deps;
+  const current = await listAttributions(db, sessionId);
+  const rejected = current.filter((a) => a.source === "caption" && a.status === "rejected");
+  const rows: NewAiAttribution[] = [];
+  for (const vote of captionVotes(reads)) {
+    const res = resolveWhole(current, vote.speakerId);
+    if (res.kind === "anonymous" || (res.kind === "named" && res.attribution.source === "human")) continue;
+    const person = await personForVote(db, vote, current);
+    if (isRejected(rejected, { speakerId: vote.speakerId, personId: person.id })) continue;
+    rows.push({
+      speakerId: vote.speakerId, startMs: null, endMs: null, personId: person.id, status: "proposed",
+      confidence: vote.agreeing / vote.total, evidence: { kind: "caption", frameKey: vote.frameKey, text: vote.text, atMs: vote.atMs },
+    });
+  }
+  if (rows.length === 0 && !current.some((a) => a.source === "caption")) return;
+  await replaceAiAttributions(db, sessionId, "caption", [...rows, ...keepRows(rejected)]);
+}
+
+/** Caption frames are evidence: keep those a caption row (current, rejected or superseded) points to, delete the rest. */
+async function pruneFrames(db: Db, storage: Pick<LocalStorage, "key" | "resolve">, sessionId: string): Promise<void> {
+  try {
+    const dir = path.dirname(storage.resolve(storage.key(sessionId, "names/x")));
+    const keep = new Set(
+      (await listAttributionHistory(db, sessionId)).flatMap((a) => (a.source === "caption" && a.evidence.kind === "caption" ? [a.evidence.frameKey] : [])),
+    );
+    for (const file of await readdir(dir).catch(() => [] as string[])) {
+      if (!keep.has(storage.key(sessionId, `names/${file}`))) await rm(path.join(dir, file), { force: true });
+    }
+  } catch (err) {
+    console.error(`name_speakers: could not clean up caption frames of session ${sessionId}`, err);
+  }
+}

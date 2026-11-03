@@ -1,11 +1,11 @@
-import { access, copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChromaClient } from "chromadb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Command, MemorySaver } from "@langchain/langgraph";
-import type { ContextCard, Fact, ResumePayload, Transcript, Word } from "@digestor/core";
+import { personAt, type ContextCard, type Fact, type ResumePayload, type Transcript, type Word } from "@digestor/core";
 import {
   LocalStorage,
   createDb,
@@ -707,6 +707,77 @@ describe("name_speakers", () => {
       const rows = await captionRows(sessionId);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ speakerId: "A", status: "proposed", confidence: 1 });
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  /** The speaker says "<first> Quimby" in sentence 1, so the context agent may ground a name in it. */
+  const saidName = (first: string): Transcript => ({
+    ...transcript,
+    words: mkWords(33).map((w, i) => (i === 4 ? { ...w, text: first } : i === 5 ? { ...w, text: "Quimby." } : w)),
+  });
+  const namedDraft = (first: string, name: string): ContextCard => ({
+    ...draft(),
+    participants: [{ speakerId: "A", name: fact(name, "video", `Sentence ${first} Quimby.`), role: none, affiliation: none }],
+  });
+  const resolveA = async (sessionId: string) => personAt((await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null), "A", 0);
+
+  it("real order: a short caption and the fuller context name end up on one person (no conflict)", async () => {
+    const first = unique();
+    const { graph, cfg, sessionId } = await setup({
+      transcript: saidName(first),
+      context: [namedDraft(first, `${first} Quimby`)],
+      analysis: withCaptions([captionOf(first.toUpperCase()), captionOf(first.toUpperCase())]),
+    });
+    await graph.invoke({ sessionId }, cfg);
+    const atts = (await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null);
+    const caption = atts.find((a) => a.source === "caption")!;
+    const context = atts.find((a) => a.source === "transcript")!;
+    expect(caption.personId).toBe(context.personId);
+    expect(await resolveA(sessionId)).toMatchObject({ kind: "named", personId: context.personId });
+    expect((await getPersons(db, [context.personId!]))[0]!.displayName).toBe(`${first} Quimby`);
+    expect(caption.evidence).toMatchObject({ kind: "caption", frameKey: `${sessionId}/names/A-1000.jpg` });
+  });
+
+  it("real order, mirrored: a full caption name is reused for a short context name", async () => {
+    const first = unique();
+    const { graph, cfg, sessionId } = await setup({
+      transcript: saidName(first),
+      context: [namedDraft(first, first)],
+      analysis: withCaptions([captionOf(`${first} Quimby`), captionOf(`${first} Quimby`)]),
+    });
+    await graph.invoke({ sessionId }, cfg);
+    const atts = (await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null);
+    const caption = atts.find((a) => a.source === "caption")!;
+    expect(atts.find((a) => a.source === "transcript")!.personId).toBe(caption.personId);
+    expect(await resolveA(sessionId)).toMatchObject({ kind: "named", personId: caption.personId });
+  });
+
+  it("keeps only the frames a caption row points to as evidence", async () => {
+    const first = unique();
+    const { sessionId, deps } = await setup({ analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await saveTranscript(db, sessionId, transcript);
+    await writeFile(storage.resolve(`${sessionId}/names/stray.jpg`), "x");
+    await nameSpeakersNode(deps)({ sessionId });
+    expect((await readdir(path.dirname(storage.resolve(`${sessionId}/names/x`)))).sort()).toEqual(["A-1000.jpg"]);
+  });
+
+  it("a re-run where no frame could be read keeps the earlier proposals", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const first = unique();
+      const boom = () => {
+        throw new Error("vision is down");
+      };
+      const { sessionId, deps } = await setup({ analysis: withCaptions([captionOf(first), captionOf(first), boom, boom]) });
+      await saveTranscript(db, sessionId, transcript);
+      await nameSpeakersNode(deps)({ sessionId });
+      const before = await captionRows(sessionId);
+      expect(before).toHaveLength(1);
+      await nameSpeakersNode(deps)({ sessionId });
+      expect((await captionRows(sessionId)).map((r) => r.id)).toEqual(before.map((r) => r.id));
+      expect(log).toHaveBeenCalledWith(expect.stringMatching(/^captions: 2 of 2 frames failed \(first: vision is down\)/));
     } finally {
       log.mockRestore();
     }

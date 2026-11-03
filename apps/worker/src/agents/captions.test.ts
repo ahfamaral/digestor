@@ -6,6 +6,7 @@ import {
   CAPTION_MIN_TURN_MS,
   captionFramePlan,
   captionVotes,
+  titleCaseName,
   readCaption,
 } from "./captions.js";
 
@@ -75,5 +76,34 @@ describe("readCaption", () => {
     expect(llm.calls[0]!.system).toContain("Read only text visible in the image; never guess.");
     expect(llm.calls[0]!.system).toContain("several names");
     expect(llm.calls[0]).toMatchObject({ name: "captions", model: "fast", images: 1 });
+  });
+});
+
+describe("titleCaseName", () => {
+  it("gives an all-capitals name normal capitalisation, keeps particles lower and leaves mixed case alone", () => {
+    expect(titleCaseName("FLÁVIO BOLSONARO")).toBe("Flávio Bolsonaro");
+    expect(titleCaseName("MARIA DA SILVA DOS SANTOS")).toBe("Maria da Silva dos Santos");
+    expect(titleCaseName("JEAN-LUC D'ÁVILA")).toBe("Jean-Luc D'Ávila");
+    expect(titleCaseName("Flávio Bolsonaro")).toBe("Flávio Bolsonaro");
+    expect(titleCaseName("Lula da Silva")).toBe("Lula da Silva");
+  });
+});
+
+describe("captionVotes across voices", () => {
+  it("drops a name that would win two or more voices (a timer showing both candidates)", () => {
+    const votes = captionVotes([
+      read("A", 1000, "Lula"), read("A", 4000, "Lula"),
+      read("B", 1000, "LULA"), read("B", 4000, "Lula"),
+      read("C", 1000, "Tralli"), read("C", 4000, "Tralli"),
+    ]);
+    expect(votes.map((v) => v.speakerId)).toEqual(["C"]);
+  });
+});
+
+describe("the prompt", () => {
+  it("asks for normal capitalisation", async () => {
+    const llm = new FakeLLM({ byName: { captions: [{ captionText: "", personName: "", partyOrRole: "" }] } });
+    await readCaption(llm, IMG);
+    expect(llm.calls[0]!.system).toContain("normal capitalisation");
   });
 });
