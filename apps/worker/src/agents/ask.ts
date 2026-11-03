@@ -162,27 +162,49 @@ const speechLength = (ms: number): string => {
   return [h ? `${h} h` : "", m ? `${m} min` : "", sec && !h ? `${sec} s` : ""].filter(Boolean).join(" ");
 };
 
-/** How well a typed name fits a person: shared words over all words of either (1 = the same words), 0 = not close. */
-function nameFit(typed: string, p: Person): number {
-  const q = new Set(normaliseName(typed).split(" ").filter(Boolean));
-  let best = 0;
+const words = (s: string) => new Set(normaliseName(s).split(" ").filter(Boolean));
+
+/**
+ * How a typed name fits a person's display or full name: "exact" (the same words), "covers" (every typed word is in
+ * the name: "Souza" in "Ana Souza"), "within" (every word of the name was typed: "Dra. Ana Souza") with the share of
+ * typed words it explains, or null when not close.
+ */
+function nameFit(typed: string, p: Person): { kind: "exact" | "covers" | "within"; share: number } | null {
+  const q = words(typed);
+  let best: { kind: "exact" | "covers" | "within"; share: number } | null = null;
+  const rank = { exact: 3, covers: 2, within: 1 } as const;
   for (const name of [p.displayName, p.fullName]) {
     if (!name) continue;
-    const c = new Set(normaliseName(name).split(" ").filter(Boolean));
+    const c = words(name);
     const shared = [...q].filter((t) => c.has(t)).length;
-    if (shared === 0 || !([...q].every((t) => c.has(t)) || [...c].every((t) => q.has(t)))) continue;
-    best = Math.max(best, shared / (q.size + c.size - shared));
+    if (shared === 0) continue;
+    const covers = shared === q.size;
+    const within = shared === c.size;
+    const fit = covers && within ? { kind: "exact" as const, share: 1 } : covers ? { kind: "covers" as const, share: 1 } : within ? { kind: "within" as const, share: shared / q.size } : null;
+    if (fit && (!best || rank[fit.kind] > rank[best.kind] || (fit.kind === best.kind && fit.share > best.share))) best = fit;
   }
   return best;
 }
 
-/** The people a typed name means among those who speak: the best fit (all of them when several fit equally well). */
+/**
+ * The people a typed name means among those who speak. An exact name wins. Otherwise every person whose name holds
+ * all the typed words is returned (two of them means asking which one: a surname never silently picks one person).
+ * Only when no name holds them all, the names whose words were all typed compete, and the one explaining most of
+ * what was typed wins (ties again ask).
+ */
 function findPerson(ctx: AskContext, typed: string): Person[] {
   const spoken = new Set(ctx.names.runs.map((r) => r.personId));
   const people = [...ctx.names.persons.values()].filter((p) => spoken.has(p.id));
-  const scored = people.map((p) => ({ p, fit: nameFit(typed, p) })).filter((x) => x.fit > 0);
-  const top = Math.max(0, ...scored.map((x) => x.fit));
-  return scored.filter((x) => x.fit === top).map((x) => x.p);
+  const fits = people.flatMap((p) => {
+    const fit = nameFit(typed, p);
+    return fit ? [{ p, ...fit }] : [];
+  });
+  for (const kind of ["exact", "covers"] as const) {
+    const of = fits.filter((x) => x.kind === kind);
+    if (of.length) return of.map((x) => x.p);
+  }
+  const top = Math.max(0, ...fits.map((x) => x.share));
+  return fits.filter((x) => x.share === top).map((x) => x.p);
 }
 
 /** Names for a question to the user; people who share a name get party, state or role to tell them apart. */

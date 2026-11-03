@@ -574,7 +574,7 @@ describe("ask knows names (T18)", () => {
     expect(out.match(/ · T+/g)!.length).toBeGreaterThan(5);
   });
 
-  it("list_speeches: closest name wins, a tie asks with party and state, 1 time / 2 times", async () => {
+  it("list_speeches: a name every word of which fits several people asks which one; an exact name wins; 1 time / 2 times", async () => {
     const { s } = await seed();
     const tag = Math.random().toString(36).slice(2, 8);
     const short = await createCustomPerson(db, { displayName: "Ana Souza", createdBy: "record" });
@@ -587,12 +587,24 @@ describe("ask knows names (T18)", () => {
     ]);
     const msg = await ask(s.id, "q");
     const llm = new FakeToolLLM([
-      toolStep(call("list_speeches", { person: "Souza" }), call("list_speeches", { person: "Maria Silva" }), call("list_speeches", { person: "Ana Maria Souza" })),
+      toolStep(
+        call("list_speeches", { person: "Souza" }),
+        call("list_speeches", { person: "Maria Silva" }),
+        call("list_speeches", { person: "Ana Maria Souza" }),
+        call("list_speeches", { person: "Ana Souza" }),
+        call("list_speeches", { person: "Dra. Ana Maria Souza" }),
+      ),
       answer("x"),
     ]);
     await runAsk(depsFor(llm), msg.id);
-    const [closest, tie, one] = toolResults(llm.calls[1]!);
-    expect(closest).toContain("Ana Souza (confirmed) speaks 2 times");
+    const [surname, tie, one, exact, longer] = toolResults(llm.calls[1]!);
+    // "Souza" fits both Souzas word for word: never pick one silently.
+    expect(surname).not.toMatch(/speaks/);
+    expect(surname).toMatch(/Ana Souza/);
+    expect(surname).toMatch(/Ana Maria Souza/);
+    expect(exact).toContain("Ana Souza (confirmed) speaks 2 times");
+    // Words beyond a name ("Dra.") still find the one whose words are all there.
+    expect(longer).toContain("Ana Maria Souza (confirmed) speaks 1 time:");
     expect(tie).toMatch(/Maria Silva \(PT, SP\)/);
     expect(tie).toMatch(/Maria Silva \(PL, RJ\)/);
     expect(one).toContain("Ana Maria Souza (confirmed) speaks 1 time:");
