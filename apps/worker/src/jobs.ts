@@ -39,7 +39,7 @@ import type { StructuredLLM } from "./llm/structured.js";
 import { checkMoment } from "./agents/checks.js";
 import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
-import { RECORD_FETCH_FAILED, RecordStepError, promptCard, runRecordStep } from "./pipeline/naming.js";
+import { recordFetchFailed, RecordStepError, promptCard, runRecordStep } from "./pipeline/naming.js";
 import type { BurnTrackJob, RenderClipJob } from "@digestor/core";
 import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
@@ -383,7 +383,7 @@ export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: 
 /**
  * Matches the session's linked official record (`session.names`: a record linked at the context pause or later; at
  * upload the graph's `match_record` node does it). `runRecordStep` fails the row itself for a deterministic result (no
- * speeches for the date, unsupported chamber) and returns. Any other error (5xx, network) is rethrown for pg-boss to
+ * speeches for the date or event) and returns. Any other error (5xx, network) is rethrown for pg-boss to
  * retry (the retry takes over its own `running` row), and only the final attempt marks the row failed.
  */
 export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: NamesJob, attempt: Attempt): Promise<void> {
@@ -391,7 +391,8 @@ export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: Nam
     await runRecordStep(ctx.deps, job.sessionId, { retrying: attempt.retryCount > 0 });
   } catch (err) {
     if (attempt.retryCount >= attempt.retryLimit) {
-      await failRecordFetch(ctx.db, job.sessionId, RECORD_FETCH_FAILED, err instanceof RecordStepError ? err.ref : undefined);
+      const ref = err instanceof RecordStepError ? err.ref : undefined;
+      await failRecordFetch(ctx.db, job.sessionId, recordFetchFailed(ref), ref);
       console.error(`[jobs] record of ${job.sessionId} failed:`, err);
     } else {
       console.error(`[jobs] record of ${job.sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { get as httpGet, getJson as httpGetJson, httpTiming, mapLimit } from "./http.js";
 
 /**
  * Senado open-data client (https://legis.senado.leg.br/dadosabertos). Shapes recorded 2026-11-03, see
@@ -74,30 +75,11 @@ const senadorSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
-/** Per-call limits; tests set `delayMs` to 0. */
-export const senadoTiming = { timeoutMs: 30_000, delayMs: 1000 };
+/** Per-call limits (shared with the Câmara client); tests set `delayMs` to 0. */
+export const senadoTiming = httpTiming;
 
-async function get(url: string, accept: string, f: typeof fetch): Promise<Response> {
-  // Network failures, timeouts and 5xx are transient: one retry after a short delay, then a plain error (the job rethrows
-  // and pg-boss retries it).
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const res = await f(url, { headers: { accept }, signal: AbortSignal.timeout(senadoTiming.timeoutMs) });
-      if (res.status >= 500) throw new Error(`Senado API answered ${res.status}.`);
-      return res;
-    } catch (err) {
-      if (attempt >= 1) throw err;
-      await new Promise((resolve) => setTimeout(resolve, senadoTiming.delayMs));
-    }
-  }
-}
-
-async function getJson(url: string, f: typeof fetch): Promise<{ status: number; body: unknown }> {
-  const res = await get(url, "application/json", f);
-  if (res.status === 404) return { status: 404, body: null };
-  if (!res.ok) throw new Error(`Senado API answered ${res.status}.`);
-  return { status: 200, body: await res.json() };
-}
+const get = (url: string, accept: string, f: typeof fetch) => httpGet(url, accept, f, "Senado");
+const getJson = (url: string, f: typeof fetch) => httpGetJson(url, f, "Senado");
 
 function compactText(raw: string): string {
   return raw.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -110,19 +92,6 @@ async function fetchText(p: z.infer<typeof pronouncementSchema>, id: string, f: 
   if (!res.ok) throw new Error(`Senado API answered ${res.status}.`);
   const text = compactText(await res.text());
   return text ? { text, textSource: "full" } : { text: p.Resumo ?? "", textSource: "summary" };
-}
-
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i] as T);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
 }
 
 /**

@@ -18,7 +18,7 @@ beforeEach(() => h.send.mockClear());
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const post = (id: string, ref: unknown) =>
   postRecord(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ ref }) }), ctx(id));
-const BAD = "Paste a Senado session link with its date, or just the date.";
+const BAD = "Paste a Senado session date, a Senado session link with its date, or a Câmara event link (https://www.camara.leg.br/evento-legislativo/<id>).";
 const CAMARA = "https://www.camara.leg.br/evento-legislativo/12345";
 
 describe("record route", () => {
@@ -51,13 +51,14 @@ describe("record route", () => {
     expect(h.send).not.toHaveBeenCalled();
   });
 
-  it("422 for a Câmara ref, nothing stored", async () => {
+  it("202 for a Câmara ref: stored as a pending Câmara record and the job is sent", async () => {
     const { sessionId } = await seedReadySession(h.db);
     const res = await post(sessionId, CAMARA);
-    expect(res.status).toBe(422);
-    expect(await res.json()).toEqual({ error: "Câmara records aren't supported yet." });
-    expect(await getSessionRecord(h.db, sessionId)).toBeNull();
-    expect(h.send).not.toHaveBeenCalled();
+    expect(res.status).toBe(202);
+    expect(await getSessionRecord(h.db, sessionId)).toMatchObject({ status: "pending", chamber: "camara", ref: { chamber: "camara", eventId: "12345", url: CAMARA } });
+    expect(h.send).toHaveBeenCalledTimes(1);
+    const got = await getRecord(new Request("http://localhost/x"), ctx(sessionId));
+    expect(await got.json()).toEqual({ status: "pending", error: null, chamber: "camara", date: null, url: CAMARA });
   });
 
   it("404 for an unknown session", async () => {
@@ -88,7 +89,7 @@ describe("record route", () => {
     await post(sessionId, "2026-10-21");
     const got = await getRecord(new Request("http://localhost/x"), ctx(sessionId));
     expect(await got.json()).toEqual({
-      status: "pending", error: null, date: "21/10/2026", url: "https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20261021/20261021",
+      status: "pending", error: null, chamber: "senado", date: "21/10/2026", url: "https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20261021/20261021",
     });
     expect((await getRecord(new Request("http://localhost/x"), ctx("nope"))).status).toBe(404);
   });
@@ -113,16 +114,24 @@ describe("record at upload", () => {
     expect(h.send).not.toHaveBeenCalled();
   });
 
-  it("youtube: a Câmara ref is 422", async () => {
+  it("youtube: a Câmara ref is accepted and stored", async () => {
     const res = await postYoutube(
       new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", record: CAMARA }) }),
     );
-    expect(res.status).toBe(422);
-    expect(h.send).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    const { sessionId } = await res.json();
+    expect(await getSessionRecord(h.db, sessionId)).toMatchObject({ status: "pending", ref: { chamber: "camara", eventId: "12345" } });
   });
 
   const put = (qs: string) =>
     putUpload(new Request(`http://localhost/api/sessions/upload?${qs}`, { method: "PUT", body: new Blob(["x"]), duplex: "half" } as RequestInit));
+
+  it("upload: stores a Câmara ref", async () => {
+    const res = await put(`filename=a.mp4&record=${encodeURIComponent(CAMARA)}`);
+    expect(res.status).toBe(200);
+    const { sessionId } = await res.json();
+    expect((await getSessionRecord(h.db, sessionId))?.ref).toMatchObject({ chamber: "camara", eventId: "12345" });
+  });
 
   it("upload: stores the ref", async () => {
     const res = await put(`filename=a.mp4&record=${encodeURIComponent("2026-10-21")}`);

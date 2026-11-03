@@ -176,7 +176,7 @@ These are the context agent's grounded `participants` names. They stay `proposed
 - **Cost:** about 60 Haiku image calls, roughly $0.05–0.15 per session **[builder: measure on the debate]**. The session's cost estimate (`packages/core/src/cost.ts`) includes it.
 - **Retention:** caption frames are evidence, and they are kept with the analysis. They are small, and the 14-day video rule doesn't apply to them. **[my call]**
 
-### 7.4 Official record (Senado first)
+### 7.4 Official record (Senado and Câmara)
 - **Linking:**
   - The upload form and the Who's who panel get an optional "Official record" field, shown for the `parliament` profile.
   - It accepts a Senado plenary session URL or a date, or a Câmara event URL or id.
@@ -186,9 +186,15 @@ These are the context agent's grounded `participants` names. They stay `proposed
   - `GET /dadosabertos/plenario/lista/discursos/{ini}/{fim}.json` (**verified live 2026-10-30**) gives each speech's speaker code, name, party, UF, summary, full text and interrupters (`Apartes`), with no per-speech time.
   - Filter to the linked session when the payload carries a session id **[unverified]**, otherwise to the date.
   - Fetch the matched senators from `/senador/{codigo}` and upsert them as official persons.
-- **Câmara:**
-  - The concept spec found speeches per deputy (`/deputados/{id}/discursos`), which needs the deputy ids first, and stenographic notes with an "Orador" table. Both are **[unverified]**, and the API host returned 504 during research.
-  - The builder first looks for an endpoint that lists one session's speeches or speakers. If there is none that works, Câmara record naming moves to Plan 4, and Plan 3 says so in the panel ("Câmara records aren't supported yet"). **[my call]**
+- **Câmara (built in Task 17; API probed live 2026-11-03 on event 82635, the plenary of 2026-06-30):**
+  - Base `https://dadosabertos.camara.leg.br/api/v2`, `Accept: application/json`, no key; every answer is `{ dados, links }`.
+  - `GET /eventos/{id}` gives `dataHoraInicio` / `dataHoraFim` (`2026-06-30T13:55`, Brasília time without zone; the end can be null). An unknown id answers 404.
+  - `GET /eventos/{id}/deputados` lists the event's deputies (id, name, party, UF, photo): 494 on that plenary.
+  - `GET /eventos/{id}/discursos` answers 405: **there is no per-event speech list**.
+  - `GET /deputados/{id}/discursos?dataInicio&dataFim&itens=100` gives a deputy's speeches (`dataHoraInicio` to the minute, full `transcricao` starting "O SR. NAME (PL - DF. Pela ordem. Sem revisão do orador.) - ", `sumario`). Its `uriEvento` is empty: a speech doesn't say which event it belongs to.
+  - **Window rule:** the session's speech list is every event deputy's speeches of the event's date whose `dataHoraInicio` falls inside [`dataHoraInicio`, `dataHoraFim`, or the end of that day when there is none], both ends inclusive. Order: minute, then deputy id (the order inside one minute is unknown, a known limit; the aligner matches by content). A speech with neither `transcricao` nor `sumario` is dropped; with only `sumario` it is a `summary` speech (proposals only).
+  - Cost: 2 calls plus one per event deputy (~500 on a plenary), 4 at a time, under 3 minutes, no errors on the probe (133 speeches by 60 deputies). The person fields (name, party, UF, photo) come from the event's list, so there is no per-deputy fetch. A deputy call that keeps failing after one retry fails the run (the job retries) rather than naming from a partial list.
+  - A 404 on the event, or no speech in the window, is "The Câmara has no speeches for that session."
 - **Matching (deterministic, no LLM):**
   - Split the transcript into turns. Compare each turn's text with each record speech's text, using normalised Portuguese tokens and TF-IDF cosine similarity.
   - Align the turns and speeches in order with dynamic programming: speeches keep their order, a turn may match no speech (an aparte, the chair, noise), and a long speech may span consecutive turns.

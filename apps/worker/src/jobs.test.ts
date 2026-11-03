@@ -11,6 +11,7 @@ import {
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, type Db,
 } from "@digestor/core/server";
+import { FIXTURE_EVENT_ID, fakeCamaraFetch, transcriptOfDeputies } from "./records/fakeCamara.js";
 import { FIXTURE_DATE, fakeSenadoFetch, fixtureDiscursos, fixtureTexts, transcriptOfSpeeches } from "./records/fakeSenado.js";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
@@ -434,13 +435,67 @@ d("handleNames", () => {
     log.mockRestore();
   });
 
-  it("a Câmara record fails with the unsupported line, and a session with no record is left alone", async () => {
+  it("a session with no linked record is left alone", async () => {
     const { id, ctx } = await setup({ link: false });
-    await handleNames(ctx, { sessionId: id }, FIRST); // nothing linked: nothing happens
-    expect(await getSessionRecord(db, id)).toBeNull();
-    await linkRecord(db, id, { chamber: "camara", eventId: "76000", url: "https://www.camara.leg.br/evento-legislativo/76000" });
     await handleNames(ctx, { sessionId: id }, FIRST);
-    expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "Câmara records aren't supported yet." });
+    expect(await getSessionRecord(db, id)).toBeNull();
+  });
+
+  describe("a Câmara record", () => {
+    const camaraRef = { chamber: "camara" as const, eventId: FIXTURE_EVENT_ID, url: `https://www.camara.leg.br/evento-legislativo/${FIXTURE_EVENT_ID}` };
+    async function camaraSetup(o: Parameters<typeof fakeCamaraFetch>[0] = {}) {
+      const s = await createSession(db, { source: "upload", title: "Câmara" });
+      await saveTranscript(db, s.id, transcriptOfDeputies());
+      await linkRecord(db, s.id, camaraRef);
+      const { f, calls } = fakeCamaraFetch(o);
+      const deps = { db, storage: new LocalStorage(root), fetch: f } as unknown as JobContext["deps"];
+      return { id: s.id, ctx: { db, deps }, calls };
+    }
+
+    it("handleNames uses the Câmara client for a Câmara ref", async () => {
+      const { id, ctx, calls } = await camaraSetup();
+      await handleNames(ctx, { sessionId: id }, FIRST);
+      expect(calls.some((c) => c.includes("dadosabertos.camara.leg.br"))).toBe(true);
+      const rows = await recordRows(id);
+      expect(rows.map((r) => r.speakerId).sort()).toEqual(["A", "B", "C", "D", "E", "F"]);
+      expect(rows.every((r) => r.status === "confirmed" && r.startMs !== null)).toBe(true);
+      expect(rows[0]!.evidence).toMatchObject({ kind: "record", url: camaraRef.url });
+      // voice A is Glauber Braga, the first of SPEAKER_IDS
+      const a = rows.find((r) => r.speakerId === "A")!;
+      const person = (await getPersons(db, [a.personId!]))[0]!;
+      expect(person).toMatchObject({ kind: "official", displayName: "Glauber Braga", officialIds: { camara: "152605" }, party: expect.any(String), state: expect.any(String) });
+      expect(person.photoUrl).toMatch(/^https:\/\//);
+      expect(await getSessionRecord(db, id)).toMatchObject({ status: "matched", error: null, rawKey: `${id}/names/record.json` });
+      expect(JSON.parse(await readFile(path.join(root, id, "names/record.json"), "utf8")).speeches.length).toBeGreaterThan(20);
+    });
+
+    it("an unknown event: failed with the Câmara line, no rethrow", async () => {
+      const { id, ctx } = await camaraSetup();
+      await linkRecord(db, id, { ...camaraRef, eventId: "1", url: "https://www.camara.leg.br/evento-legislativo/1" });
+      await expect(handleNames(ctx, { sessionId: id }, FIRST)).resolves.toBeUndefined();
+      expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "The Câmara has no speeches for that session." });
+    });
+
+    it("no speech matches the video: failed with the event's date in the line", async () => {
+      const { id, ctx } = await camaraSetup();
+      const words = Array.from({ length: 30 }, (_, i) => ({ text: `zzqx${i}`, startMs: i * 400, endMs: i * 400 + 300, speaker: "A", confidence: 1 }));
+      await saveTranscript(db, id, { language: "pt", languageConfidence: 1, durationMs: 12_000, words });
+      await handleNames(ctx, { sessionId: id }, FIRST);
+      expect(await recordRows(id)).toEqual([]);
+      expect(await getSessionRecord(db, id)).toMatchObject({
+        status: "failed", error: "None of the speeches in the Câmara record of 30/06/2026 match this video. Check the link.",
+      });
+    });
+
+    it("a deputy call that keeps failing: rethrown, and failed with the Câmara line on the final attempt", async () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { id, ctx } = await camaraSetup({ discursos: () => new Response("boom", { status: 503 }) });
+      await expect(handleNames(ctx, { sessionId: id }, FIRST)).rejects.toThrow();
+      expect((await getSessionRecord(db, id))?.status).toBe("running");
+      await expect(handleNames(ctx, { sessionId: id }, LAST)).rejects.toThrow();
+      expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "The Câmara record couldn't be fetched. Please try again." });
+      log.mockRestore();
+    });
   });
 
   it("fetches a senator once even when they gave two speeches", async () => {

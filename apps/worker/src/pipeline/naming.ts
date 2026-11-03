@@ -30,6 +30,7 @@ import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type Capti
 import { MissingApiKeyError } from "../errors.js";
 import { RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix } from "../records/align.js";
 import { RecordNotFoundError, fetchSenadoSpeeches, fetchSenador } from "../records/senado.js";
+import { fetchCamaraSpeeches, type CamaraDeputy } from "../records/camara.js";
 import type { PipelineDeps } from "./graph.js";
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
@@ -383,7 +384,11 @@ async function pruneFrames(db: Db, storage: Pick<LocalStorage, "key" | "resolve"
 
 export const RECORD_NOT_FOUND = "The Senado has no speeches for that date.";
 export const RECORD_ALL_REJECTED = "No speech in the record was kept for this video.";
-export const recordNoMatch = (ref: RecordRef) => `None of the speeches in the Senado record of ${recordRefDate(ref)} match this video. Check the date.`;
+/** `date` is the Câmara event's day (`YYYY-MM-DD`; a Câmara link carries no date of its own). */
+export const recordNoMatch = (ref: RecordRef, date?: string) =>
+  ref.chamber === "camara"
+    ? `None of the speeches in the Câmara record of ${(date ?? "").split("-").reverse().join("/")} match this video. Check the link.`
+    : `None of the speeches in the Senado record of ${recordRefDate(ref)} match this video. Check the date.`;
 
 /** A transient failure of a claimed run, carrying the ref it claimed so the caller fails only that claim. */
 export class RecordStepError extends Error {
@@ -392,8 +397,8 @@ export class RecordStepError extends Error {
     this.name = "RecordStepError";
   }
 }
-export const RECORD_FETCH_FAILED = "The Senado record couldn't be fetched. Please try again.";
-export const RECORD_UNSUPPORTED = "Câmara records aren't supported yet.";
+export const recordFetchFailed = (ref?: RecordRef) =>
+  `The ${ref?.chamber === "camara" ? "Câmara" : "Senado"} record couldn't be fetched. Please try again.`;
 
 export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & { fetch?: typeof fetch };
 
@@ -401,9 +406,9 @@ export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & { fetch?: ty
  * Matches the session's linked official record against its transcript (the `record` source). One code path for the
  * graph node (`match_record`) and the `session.names` job. Claims the row (`pending` → `running`; with `retrying` a
  * `running` row is taken over, since a retry finds its own claim), fetches the speeches, aligns them to the voice turns,
- * upserts the senators and replaces only the `record` rows (human rows are never touched and always win). Stores the
+ * upserts the senators or deputies and replaces only the `record` rows (human rows are never touched and always win). Stores the
  * raw payload at `<sessionId>/names/record.json`, then marks the row `matched`.
- * - no speeches for the date, or an unsupported chamber: the row is `failed` with a friendly line and it returns (a retry can't help);
+ * - no speeches for the date or event: the row is `failed` with a friendly line and it returns (a retry can't help);
  * - any other error (5xx, network): thrown, the row stays `running` so the caller decides (the job retries, then fails it).
  * Without a linked record, with a row that isn't claimable, or before the transcript exists, it does nothing.
  */
@@ -431,18 +436,20 @@ async function runClaimedOrThrow(deps: RecordStepDeps, sessionId: string, ref: R
 
 async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRef, f: typeof fetch): Promise<void> {
   const { db, storage } = deps;
-  if (ref.chamber !== "senado") {
-    await failRecordFetch(db, sessionId, RECORD_UNSUPPORTED, ref);
-    return;
-  }
   const transcript = await getTranscript(db, sessionId);
   if (!transcript) {
     await linkRecord(db, sessionId, ref); // nothing to match yet: back to `pending` for the graph step
     return;
   }
   let speeches: RecordSpeech[];
+  let eventDate: string | undefined;
+  let deputies: Record<string, CamaraDeputy> = {};
   try {
-    speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
+    if (ref.chamber === "camara") {
+      ({ speeches, date: eventDate, deputies } = await fetchCamaraSpeeches(ref.eventId, f));
+    } else {
+      speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
+    }
   } catch (err) {
     if (err instanceof RecordNotFoundError) {
       await failRecordFetch(db, sessionId, err.message, ref);
@@ -455,26 +462,39 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   const matches = alignTurns(similarityMatrix(turns, speeches)).filter((m) => m.score >= RECORD_PROPOSE);
   const bySpeech = new Map(speeches.map((sp) => [sp.id, sp]));
 
-  // One person per matched senator, fetched once per run.
+  // One person per matched senator or deputy, fetched once per run (a Câmara deputy's fields come with the event's list).
   const personIds = new Map<string, string>();
   for (const m of matches) {
     const speech = speeches[m.speech]!;
     if (personIds.has(speech.officialId)) continue;
-    let senator: Awaited<ReturnType<typeof fetchSenador>> | null = null;
-    try {
-      senator = await fetchSenador(speech.officialId, f);
-    } catch (err) {
-      if (!(err instanceof RecordNotFoundError)) throw err;
+    let person;
+    if (ref.chamber === "camara") {
+      const dep = deputies[speech.officialId];
+      person = await upsertOfficialPerson(db, {
+        chamber: "camara",
+        officialId: speech.officialId,
+        displayName: dep?.name ?? titleCaseName(speech.name),
+        party: dep?.party ?? speech.party ?? undefined,
+        state: dep?.state ?? speech.state ?? undefined,
+        photoUrl: dep?.photoUrl ? httpsPhoto(dep.photoUrl) : undefined,
+      });
+    } else {
+      let senator: Awaited<ReturnType<typeof fetchSenador>> | null = null;
+      try {
+        senator = await fetchSenador(speech.officialId, f);
+      } catch (err) {
+        if (!(err instanceof RecordNotFoundError)) throw err;
+      }
+      person = await upsertOfficialPerson(db, {
+        chamber: "senado",
+        officialId: speech.officialId,
+        displayName: senator?.displayName ?? titleCaseName(speech.name),
+        fullName: senator?.fullName ?? undefined,
+        party: senator?.party ?? speech.party ?? undefined,
+        state: senator?.state ?? speech.state ?? undefined,
+        photoUrl: senator?.photoUrl ? httpsPhoto(senator.photoUrl) : undefined,
+      });
     }
-    const person = await upsertOfficialPerson(db, {
-      chamber: "senado",
-      officialId: speech.officialId,
-      displayName: senator?.displayName ?? titleCaseName(speech.name),
-      fullName: senator?.fullName ?? undefined,
-      party: senator?.party ?? speech.party ?? undefined,
-      state: senator?.state ?? speech.state ?? undefined,
-      photoUrl: senator?.photoUrl ? httpsPhoto(senator.photoUrl) : undefined,
-    });
     personIds.set(speech.officialId, person.id);
   }
 
@@ -491,7 +511,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   if (fresh.length === 0) {
     // Nothing matched: no names (an earlier run's rows go, rejections stay) and no "matched" status.
     if (current.some((a) => a.source === "record")) await replaceAiAttributions(db, sessionId, "record", keepRows(rejected));
-    await failRecordFetch(db, sessionId, matched.length > 0 ? RECORD_ALL_REJECTED : recordNoMatch(ref), ref);
+    await failRecordFetch(db, sessionId, matched.length > 0 ? RECORD_ALL_REJECTED : recordNoMatch(ref, eventDate), ref);
     return;
   }
   if (fresh.length > 0 && fresh.every((r) => bySpeech.get((r.evidence as { speechId: string }).speechId)?.textSource === "summary")) {
@@ -523,7 +543,7 @@ export const matchRecordNode =
     } catch (err) {
       console.error(`match_record: could not match the record of session ${s.sessionId}; continuing without it`, err);
       const ref = err instanceof RecordStepError ? err.ref : undefined;
-      await failRecordFetch(deps.db, s.sessionId, RECORD_FETCH_FAILED, ref).catch(() => {});
+      await failRecordFetch(deps.db, s.sessionId, recordFetchFailed(ref), ref).catch(() => {});
     }
     return {};
   };

@@ -209,6 +209,11 @@ export function labelText(label: VoiceLabel): string {
   return label.proposed && label.badge ? `${label.text} (${badgeText(label.badge)})` : label.text;
 }
 
+/** The "Names from the … record" line of a matched record (the Câmara link carries no date). */
+export function recordMatchedLine(record: { chamber?: "senado" | "camara"; date: string | null }): string {
+  return record.chamber === "camara" ? t("names.record.matchedCamara") : t("names.record.matched", { date: record.date ?? "" });
+}
+
 /** The date (`DD/MM/YYYY`) of the Senado day a record evidence's `url` points at (`.../discursos/20261021/20261021`); null when it has none. */
 function recordEvidenceDate(url: string): string | null {
   const m = /\/discursos\/(\d{4})(\d{2})(\d{2})\//.exec(url);
@@ -221,6 +226,7 @@ export function evidenceLine(a: Attribution): string {
   if (e.kind === "record") {
     const date = recordEvidenceDate(e.url);
     const vars = { speech: e.speechId, score: e.score.toFixed(2) };
+    if (/^https:\/\/(www\.)?camara\.leg\.br\//.test(e.url)) return t("names.evidenceRecordCamara", vars);
     return date ? t("names.evidenceRecordSenado", { ...vars, date }) : t("names.evidenceRecord", vars);
   }
   if (e.kind === "caption") return t("names.evidenceCaption", { text: e.text });

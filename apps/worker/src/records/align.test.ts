@@ -161,3 +161,20 @@ describe("recordAttributions", () => {
     expect(shared[0]!.endMs).toBeLessThanOrEqual(shared[1]!.startMs!);
   });
 });
+
+describe("speechText handles a Câmara text", () => {
+  // Header as the Câmara prints it (recorded 2026-06-30): ASCII hyphen, a long parenthesis with the phase and the revision note.
+  const camara =
+    "A SRA. ERIKA KOKAY (Bloco/PT - DF. Pela ordem. Sem revisão da oradora.) - Presidente, o Governo deixou um rombo de 795 bilhões de reais.\n" +
+    "O SR. PRESIDENTE (Hugo Motta. Bloco/REPUBLICANOS - PB) - Concluída a fala, tem a palavra o próximo orador.\n" +
+    "A SRA. ERIKA KOKAY (Bloco/PT - DF) - Obrigada, Presidente.";
+  it("drops the header, its note and the chair's turn, keeping the speaker's own parts", () => {
+    const t = speechText(camara);
+    expect(t).not.toMatch(/KOKAY|Sem revis|PRESIDENTE|Concluída/);
+    expect(t).toContain("Presidente, o Governo deixou um rombo");
+    expect(t).toContain("Obrigada, Presidente.");
+  });
+  it("strips the header of a single-paragraph text", () => {
+    expect(stripRecordMarkup("O SR. OTONI DE PAULA (PL - RJ. Pela ordem. Sem revisão do orador.) - Senhores, boa tarde.").trim()).toBe("Senhores, boa tarde.");
+  });
+});

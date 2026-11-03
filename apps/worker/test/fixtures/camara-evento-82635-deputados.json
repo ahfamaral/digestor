@@ -1,0 +1,98 @@
+{
+ "dados": [
+  {
+   "id": 62881,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/62881",
+   "nome": "Danilo Forte",
+   "siglaPartido": "PP",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/37903",
+   "siglaUf": "CE",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/62881.jpg",
+   "email": null
+  },
+  {
+   "id": 66385,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/66385",
+   "nome": "Julio Arcoverde",
+   "siglaPartido": "PP",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/37903",
+   "siglaUf": "PI",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/66385.jpg",
+   "email": null
+  },
+  {
+   "id": 74848,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/74848",
+   "nome": "Jandira Feghali",
+   "siglaPartido": "PCdoB",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36779",
+   "siglaUf": "RJ",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/74848.jpg",
+   "email": null
+  },
+  {
+   "id": 152605,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/152605",
+   "nome": "Glauber Braga",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RJ",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/152605.jpg",
+   "email": null
+  },
+  {
+   "id": 160575,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/160575",
+   "nome": "Erika Kokay",
+   "siglaPartido": "PT",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36844",
+   "siglaUf": "DF",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/160575.jpg",
+   "email": null
+  },
+  {
+   "id": 204441,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204441",
+   "nome": "Otoni de Paula",
+   "siglaPartido": "PSD",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36834",
+   "siglaUf": "RJ",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204441.jpg",
+   "email": null
+  },
+  {
+   "id": 204528,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204528",
+   "nome": "Adriana Ventura",
+   "siglaPartido": "Novo",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/37901",
+   "siglaUf": "SP",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204528.jpg",
+   "email": null
+  },
+  {
+   "id": 220574,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/220574",
+   "nome": "Cabo Gilberto Silva",
+   "siglaPartido": "PL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/37906",
+   "siglaUf": "PB",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/220574.jpg",
+   "email": null
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/eventos/82635/deputados"
+  }
+ ]
+}

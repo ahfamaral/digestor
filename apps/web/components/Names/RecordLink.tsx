@@ -5,26 +5,25 @@ import { useRouter } from "next/navigation";
 import { parseRecordRef, type RecordStatus } from "@digestor/core";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
+import { recordMatchedLine } from "@/lib/names";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const POLL_MS = 3000;
 
-type RecordState = { status: RecordStatus; error: string | null; date: string | null; url: string };
+type RecordState = { status: RecordStatus; error: string | null; chamber?: "senado" | "camara"; date: string | null; url: string };
 
 /** An HTTP failure whose message is the server's friendly sentence. */
 class HttpError extends Error {}
 
-/** The client-side check of the field: a friendly sentence, or null when the text is a Senado ref. */
+/** The client-side check of the field: a friendly sentence, or null when the text is a Senado or Câmara ref. */
 export function recordFieldError(text: string): string | null {
-  const ref = parseRecordRef(text);
-  if (!ref) return t("record.invalid");
-  return ref.chamber === "camara" ? t("record.camaraUnsupported") : null;
+  return parseRecordRef(text) ? null : t("record.invalid");
 }
 
 /**
- * The official-record line of Who's who: the status of the linked Senado record (matching, matched with its date, or the
+ * The official-record line of Who's who: the status of the linked Senado or Câmara record (matching, matched with its date, or the
  * friendly failure) and a field to link or re-link one. Shown for parliament sessions and whenever a record is linked.
  * Polls while the record is matched in the worker, then refreshes the names.
  */
@@ -103,7 +102,7 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
           {working ? (
             <p role="status" className="text-muted-foreground">{t("names.record.matching")}</p>
           ) : record.status === "matched" ? (
-            <p role="status" className="text-foreground">{t("names.record.matched", { date: record.date ?? "" })}</p>
+            <p role="status" className="text-foreground">{recordMatchedLine(record)}</p>
           ) : (
             <p role="status" dir="auto" className="text-red-700">{record.error ?? t("names.record.failed")}</p>
           )}

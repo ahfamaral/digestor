@@ -58,9 +58,9 @@ export const en = {
     hintPlaceholder: "e.g. 'Interview with the health minister on the evening news, about hospital waiting lists'",
     recordLabel: "Official record",
     recordOptional: "(optional)",
-    recordPlaceholder: "Senado session date, or its link with the date",
+    recordPlaceholder: "Senado date or link with date, or Câmara event link",
     recordHelp:
-      "To name speakers from the Senado record. Either the date (2026-10-21) or the session link followed by the date (https://www25.senado.leg.br/web/atividade/plenario/-/sessao/<code> 2026-10-21).",
+      "To name speakers from the official record. Senado: the date (2026-10-21), or the session link followed by the date (https://www25.senado.leg.br/web/atividade/plenario/-/sessao/<code> 2026-10-21). Câmara: the event link (https://www.camara.leg.br/evento-legislativo/<id>).",
     estimateCost: "Estimated cost",
     estimateTime: "time",
     estimateAfterStart: "We'll estimate cost and time once processing starts.",
@@ -151,15 +151,17 @@ export const en = {
     },
     evidenceRecord: "From the official record: speech {speech}, {score} match",
     evidenceRecordSenado: "From the Senado record of {date}: speech {speech}, {score} match",
+    evidenceRecordCamara: "From the Câmara record: speech {speech}, {score} match",
     record: {
       label: "Official record",
-      help: "Senado session date (2026-10-21), or its link followed by the date.",
-      placeholder: "Senado session date, or its link with the date",
+      help: "Senado session date (2026-10-21) or its link followed by the date, or a Câmara event link.",
+      placeholder: "Senado date or link with date, or Câmara event link",
       link: "Link record",
       relink: "Link another",
       linking: "Linking…",
       matching: "Matching the official record…",
       matched: "Names from the Senado record of {date}",
+      matchedCamara: "Names from the Câmara record",
       failed: "That record couldn't be linked. Try again.",
     },
     evidenceCaption: "From a caption on screen: “{text}”",
@@ -207,8 +209,8 @@ export const en = {
     conflictNote: "The sources disagree. Pick the right name.",
   },
   record: {
-    invalid: "Paste a Senado session link with its date, or just the date.",
-    camaraUnsupported: "Câmara records aren't supported yet.",
+    invalid:
+      "Paste a Senado session date, a Senado session link with its date, or a Câmara event link (https://www.camara.leg.br/evento-legislativo/<id>).",
   },
   login: {
     title: "Enter the password",
