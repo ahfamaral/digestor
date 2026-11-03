@@ -1,0 +1,171 @@
+import { z } from "zod";
+
+/**
+ * Senado open-data client (https://legis.senado.leg.br/dadosabertos). Shapes recorded 2026-11-03, see
+ * test/fixtures/senado-*.json. Three calls:
+ *  - GET plenario/lista/discursos/{yyyymmdd}/{yyyymmdd}.json (Accept: application/json): sessions of the day with
+ *    their speeches (speaker code, name, party, UF, a 200-char summary, NO full text, no per-speech time);
+ *  - GET discurso/texto-integral/{CodigoPronunciamento} (Accept: text/plain; JSON answers 406): the full text, 1 call per speech;
+ *  - GET senador/{codigo}.json: the senator; an unknown code answers 200 without `Parlamentar`.
+ * An empty day answers 200 with `Sessoes: null`. This API's JSON may give one object where a list is expected.
+ */
+const BASE = "https://legis.senado.leg.br/dadosabertos";
+const TEXT_CONCURRENCY = 4;
+
+export interface RecordSpeech {
+  id: string;
+  order: number;
+  officialId: string;
+  name: string;
+  party: string | null;
+  state: string | null;
+  text: string;
+}
+
+/** Deterministic: the record has nothing for this day, session or senator. */
+export class RecordNotFoundError extends Error {
+  constructor(message = "The Senado record has nothing for that day.") {
+    super(message);
+    this.name = "RecordNotFoundError";
+  }
+}
+
+const str = z.union([z.string(), z.number()]).transform(String).nullish().transform((v) => (v == null || v === "" ? null : v));
+const many = <T extends z.ZodTypeAny>(item: T) =>
+  z
+    .union([z.array(item), item])
+    .nullish()
+    .transform((v): z.output<T>[] => (v == null ? [] : ((Array.isArray(v) ? v : [v]) as z.output<T>[])));
+
+const pronouncementSchema = z.object({
+  CodigoPronunciamento: str,
+  id: str,
+  CodigoParlamentar: str,
+  NomeAutor: str,
+  Partido: str,
+  UF: str,
+  Resumo: str,
+  TextoIntegralTxt: str,
+}).passthrough();
+const sessionSchema = z.object({
+  CodigoSessao: str,
+  HoraInicio: str,
+  Pronunciamentos: z.object({ Pronunciamento: many(pronouncementSchema) }).passthrough().nullish(),
+}).passthrough();
+const discursosSchema = z.object({
+  DiscursosSessao: z.object({ Sessoes: z.object({ Sessao: many(sessionSchema) }).passthrough().nullish() }).passthrough(),
+}).passthrough();
+const senadorSchema = z.object({
+  DetalheParlamentar: z.object({
+    Parlamentar: z
+      .object({
+        IdentificacaoParlamentar: z.object({
+          CodigoParlamentar: str,
+          NomeParlamentar: str,
+          NomeCompletoParlamentar: str,
+          SiglaPartidoParlamentar: str,
+          UfParlamentar: str,
+          UrlFotoParlamentar: str,
+        }).passthrough(),
+      })
+      .passthrough()
+      .nullish(),
+  }).passthrough(),
+}).passthrough();
+
+async function get(url: string, accept: string, f: typeof fetch): Promise<Response> {
+  // Network failures and 5xx stay plain errors: transient, the job rethrows and pg-boss retries.
+  const res = await f(url, { headers: { accept } });
+  if (res.status >= 500) throw new Error(`Senado API answered ${res.status}.`);
+  return res;
+}
+
+async function getJson(url: string, f: typeof fetch): Promise<{ status: number; body: unknown }> {
+  const res = await get(url, "application/json", f);
+  if (res.status === 404) return { status: 404, body: null };
+  if (!res.ok) throw new Error(`Senado API answered ${res.status}.`);
+  return { status: 200, body: await res.json() };
+}
+
+function compactText(raw: string): string {
+  return raw.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function fetchText(p: z.infer<typeof pronouncementSchema>, id: string, f: typeof fetch): Promise<string> {
+  const url = p.TextoIntegralTxt ?? `${BASE}/discurso/texto-integral/${id}`;
+  const res = await get(url, "text/plain", f);
+  if (res.status === 404 || res.status === 406) return p.Resumo ?? "";
+  if (!res.ok) throw new Error(`Senado API answered ${res.status}.`);
+  const text = compactText(await res.text());
+  return text || (p.Resumo ?? "");
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/**
+ * The speeches of a plenary day in speaking order: sessions by start time, speeches by ascending id (the list
+ * comes newest-first). Speeches without a senator code (external guests) are dropped. With `sessionCode`
+ * only that session (`CodigoSessao`) is kept. Cost: 1 call for the list + 1 per speech for its text.
+ */
+export async function fetchSenadoSpeeches(date: string, sessionCode: string | null, f: typeof fetch = fetch): Promise<RecordSpeech[]> {
+  const day = date.replaceAll("-", "");
+  const { status, body } = await getJson(`${BASE}/plenario/lista/discursos/${day}/${day}.json`, f);
+  if (status === 404) throw new RecordNotFoundError();
+  const parsed = discursosSchema.safeParse(body);
+  if (!parsed.success) throw new Error("The Senado API answered with an unexpected shape.");
+  let sessions = parsed.data.DiscursosSessao.Sessoes?.Sessao ?? [];
+  if (sessionCode) sessions = sessions.filter((s) => s.CodigoSessao === sessionCode);
+  sessions = [...sessions].sort((a: (typeof sessions)[number], b: (typeof sessions)[number]) => (a.HoraInicio ?? "").localeCompare(b.HoraInicio ?? ""));
+
+  const picked: { p: z.infer<typeof pronouncementSchema>; id: string; code: string }[] = [];
+  for (const s of sessions) {
+    const list = (s.Pronunciamentos?.Pronunciamento ?? [])
+      .map((p) => ({ p, id: p.CodigoPronunciamento ?? p.id, code: p.CodigoParlamentar }))
+      .filter((x): x is { p: typeof x.p; id: string; code: string } => x.id != null && x.code != null)
+      .sort((a, b) => Number(a.id) - Number(b.id));
+    picked.push(...list);
+  }
+  if (picked.length === 0) throw new RecordNotFoundError();
+
+  const texts = await mapLimit(picked, TEXT_CONCURRENCY, (x) => fetchText(x.p, x.id, f));
+  return picked.map((x, i) => ({
+    id: x.id,
+    order: i + 1,
+    officialId: x.code,
+    name: x.p.NomeAutor ?? "",
+    party: x.p.Partido,
+    state: x.p.UF,
+    text: texts[i] ?? "",
+  }));
+}
+
+export async function fetchSenador(
+  codigo: string,
+  f: typeof fetch = fetch,
+): Promise<{ officialId: string; displayName: string; fullName: string | null; party: string | null; state: string | null; photoUrl: string | null }> {
+  const { status, body } = await getJson(`${BASE}/senador/${encodeURIComponent(codigo)}.json`, f);
+  if (status === 404) throw new RecordNotFoundError("The Senado record has no such senator.");
+  const parsed = senadorSchema.safeParse(body);
+  if (!parsed.success) throw new Error("The Senado API answered with an unexpected shape.");
+  const id = parsed.data.DetalheParlamentar.Parlamentar?.IdentificacaoParlamentar;
+  if (!id) throw new RecordNotFoundError("The Senado record has no such senator.");
+  return {
+    officialId: id.CodigoParlamentar ?? codigo,
+    displayName: id.NomeParlamentar ?? id.NomeCompletoParlamentar ?? codigo,
+    fullName: id.NomeCompletoParlamentar,
+    party: id.SiglaPartidoParlamentar,
+    state: id.UfParlamentar,
+    photoUrl: id.UrlFotoParlamentar,
+  };
+}

@@ -1,0 +1,262 @@
+{
+  "_meta": {
+    "recorded": "2026-11-03",
+    "url": "https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20260902/20260902.json",
+    "headers": "Accept: application/json",
+    "trimmed": "2 of the day's sessions kept (ESP 583371, DOR 587381), 3 speeches each; real field names and values (list is newest-first by id); Resumo/Indexacao are cut at 200 chars by the API itself"
+  },
+  "DiscursosSessao": {
+    "noNamespaceSchemaLocation": "https://legis.senado.leg.br/dadosabertos/dados/DiscursosSessaov4.xsd",
+    "Metadados": {
+      "Versao": "03/11/2026 06:49:35",
+      "VersaoServico": "4",
+      "DataVersaoServico": "2021-06-29",
+      "DescricaoDataSet": "Obtém a lista de Discursos das Sessões que ocorreram dentro do período informado."
+    },
+    "Sessoes": {
+      "Sessao": [
+        {
+          "CodigoSessao": "583371",
+          "CodigoSessaoLegislativa": "874",
+          "SiglaCasa": "SF",
+          "TipoSessao": "ESP",
+          "DescricaoSessao": "Sessão Especial",
+          "NumeroSessao": "121",
+          "DataSessao": "2026-09-02",
+          "HoraInicio": "10:00:00",
+          "Pronunciamentos": {
+            "Pronunciamento": [
+              {
+                "id": "524182",
+                "CodigoPronunciamento": "524182",
+                "TipoUsoPalavra": {
+                  "Codigo": "4838",
+                  "Sigla": "NID",
+                  "Descricao": "Não classificado",
+                  "IndicadorAtivo": "Sim"
+                },
+                "Casa": "Senado Federal",
+                "Data": "2026-09-02",
+                "Resumo": "Encerramento de sessão especial destinada a homenagear os 90 anos de atuação da Assembleia de Deus no Estado do Piauí.",
+                "Indexacao": "ENCERRAMENTO, SESSÃO ESPECIAL, HOMENAGEM, ANIVERSARIO DE FUNDAÇÃO, ATUAÇÃO, IGREJA EVANGELICA, ESTADO DO PIAUI (PI).",
+                "TextoIntegral": "https://www25.senado.leg.br/web/atividade/pronunciamentos/-/p/texto/524182",
+                "TextoIntegralTxt": "https://legis.senado.leg.br/dadosabertos/discurso/texto-integral/524182",
+                "UrlTextoBinario": "https://legis.senado.leg.br/dadosabertos/discurso/texto-binario/524182",
+                "TipoAutor": "Senador(a)",
+                "FuncaoAutor": "SENADOR",
+                "NomeAutor": "Ciro Nogueira",
+                "CodigoParlamentar": "739",
+                "Partido": "PP",
+                "UF": "PI",
+                "Publicacoes": {
+                  "Publicacao": [
+                    {
+                      "TipoPublicacao": "PUB",
+                      "DataPublicacao": "2026-09-03",
+                      "SiglaFonte": "DSF",
+                      "FontePublicacao": "Diário do Senado Federal",
+                      "PaginaInicial": "125",
+                      "PaginaFinal": "126",
+                      "UrlDiario": "http://legis.senado.leg.br/diarios/BuscaDiario?tipDiario=1&datDiario=03/09/2026&paginaDireta=125"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "524181",
+                "CodigoPronunciamento": "524181",
+                "TipoUsoPalavra": {
+                  "Codigo": "4819",
+                  "Sigla": "DIS",
+                  "Descricao": "Discurso",
+                  "IndicadorAtivo": "Sim"
+                },
+                "Casa": "Senado Federal",
+                "Data": "2026-09-02",
+                "Resumo": "Sessão especial destinada a homenagear os 90 anos de atuação da Assembleia de Deus no Estado do Piauí. Destaque para o papel da Convenção Estadual das Assembleias de Deus do Piauí (Ceadep) como pilar de unidade e fortalecimento da vocação ministerial no estado.",
+                "Indexacao": "SESSÃO ESPECIAL, HOMENAGEM, ANIVERSARIO DE FUNDAÇÃO, IGREJA EVANGELICA, ESTADO DO PIAUI (PI), DESTAQUE, ATUAÇÃO, CONVENÇÃO ESTADUAL.",
+                "TextoIntegral": "https://www25.senado.leg.br/web/atividade/pronunciamentos/-/p/texto/524181",
+                "TextoIntegralTxt": "https://legis.senado.leg.br/dadosabertos/discurso/texto-integral/524181",
+                "UrlTextoBinario": "https://legis.senado.leg.br/dadosabertos/discurso/texto-binario/524181",
+                "TipoAutor": "Autor Externo",
+                "FuncaoAutor": "EXTERNO",
+                "NomeAutor": "ORCIVAL PEREIRA XAVIER",
+                "CargoAutor": "Presidente",
+                "OrgaoAutor": "Igreja Assembleia de Deus de Brasília",
+                "Publicacoes": {
+                  "Publicacao": [
+                    {
+                      "TipoPublicacao": "PUB",
+                      "DataPublicacao": "2026-09-03",
+                      "SiglaFonte": "DSF",
+                      "FontePublicacao": "Diário do Senado Federal",
+                      "PaginaInicial": "123",
+                      "PaginaFinal": "125",
+                      "UrlDiario": "http://legis.senado.leg.br/diarios/BuscaDiario?tipDiario=1&datDiario=03/09/2026&paginaDireta=123"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "524179",
+                "CodigoPronunciamento": "524179",
+                "TipoUsoPalavra": {
+                  "Codigo": "4819",
+                  "Sigla": "DIS",
+                  "Descricao": "Discurso",
+                  "IndicadorAtivo": "Sim"
+                },
+                "Casa": "Senado Federal",
+                "Data": "2026-09-02",
+                "Resumo": "Sessão especial destinada a homenagear os 90 anos de atuação da Assembleia de Deus no Estado do Piauí. Detalhamento da atuação das congregações no interior e na capital do estado.",
+                "Indexacao": "SESSÃO ESPECIAL, HOMENAGEM, ANIVERSARIO DE FUNDAÇÃO, IGREJA EVANGELICA, ESTADO DO PIAUI (PI), DESTAQUE, ATUAÇÃO, INTERIOR.",
+                "TextoIntegral": "https://www25.senado.leg.br/web/atividade/pronunciamentos/-/p/texto/524179",
+                "TextoIntegralTxt": "https://legis.senado.leg.br/dadosabertos/discurso/texto-integral/524179",
+                "UrlTextoBinario": "https://legis.senado.leg.br/dadosabertos/discurso/texto-binario/524179",
+                "TipoAutor": "Senador(a)",
+                "FuncaoAutor": "SENADOR",
+                "NomeAutor": "Damares Alves",
+                "CodigoParlamentar": "6335",
+                "Partido": "REPUBLICANOS",
+                "UF": "DF",
+                "Publicacoes": {
+                  "Publicacao": [
+                    {
+                      "TipoPublicacao": "PUB",
+                      "DataPublicacao": "2026-09-03",
+                      "SiglaFonte": "DSF",
+                      "FontePublicacao": "Diário do Senado Federal",
+                      "PaginaInicial": "121",
+                      "PaginaFinal": "123",
+                      "UrlDiario": "http://legis.senado.leg.br/diarios/BuscaDiario?tipDiario=1&datDiario=03/09/2026&paginaDireta=121"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "CodigoSessao": "587381",
+          "CodigoSessaoLegislativa": "874",
+          "SiglaCasa": "SF",
+          "TipoSessao": "DOR",
+          "DescricaoSessao": "Sessão Deliberativa Ordinária",
+          "NumeroSessao": "120",
+          "DataSessao": "2026-09-02",
+          "HoraInicio": "14:00:00",
+          "Pronunciamentos": {
+            "Pronunciamento": [
+              {
+                "id": "524142",
+                "CodigoPronunciamento": "524142",
+                "TipoUsoPalavra": {
+                  "Codigo": "4819",
+                  "Sigla": "DIS",
+                  "Descricao": "Discurso",
+                  "IndicadorAtivo": "Sim"
+                },
+                "Casa": "Senado Federal",
+                "Data": "2026-09-02",
+                "Resumo": "Defesa da conscientização sobre o câncer infantojuvenil, com ênfase na importância do diagnóstico e tratamento precoces.",
+                "Indexacao": "DEFESA, CONSCIENTIZAÇÃO, CANCER, CRIANÇA, ADOLESCENTE, ENFASE, IMPORTANCIA, DIAGNOSTICO, TRATAMENTO.\nCRITICA, CARREIRA, POLITICA, SENADOR, RENAN CALHEIROS, DESTAQUE, DENUNCIA, DEFESA, INVESTIGAÇÃO, PARTICIPAÇÃO, CORRUPÇÃO, IRREGULARIDADE, ESTADO DE ALAGOAS (AL), COMENTARIO, REQUERIMENTO, COMISSÃO PARLAMENTAR DE INQUERITO (CPI), BANCO PRIVADO.\nDISCURSO, PROJETO DE LEI, ALTERAÇÃO, LEI FEDERAL, INCLUSÃO, TRATAMENTO MEDICO, CANCER, PROTOCOLO, DIRETRIZ.",
+                "TextoIntegral": "https://www25.senado.leg.br/web/atividade/pronunciamentos/-/p/texto/524142",
+                "TextoIntegralTxt": "https://legis.senado.leg.br/dadosabertos/discurso/texto-integral/524142",
+                "UrlTextoBinario": "https://legis.senado.leg.br/dadosabertos/discurso/texto-binario/524142",
+                "TipoAutor": "Senador(a)",
+                "FuncaoAutor": "SENADOR",
+                "NomeAutor": "Dra. Eudócia",
+                "CodigoParlamentar": "5906",
+                "Partido": "PSDB",
+                "UF": "AL",
+                "Publicacoes": {
+                  "Publicacao": [
+                    {
+                      "TipoPublicacao": "PUB",
+                      "DataPublicacao": "2026-09-03",
+                      "SiglaFonte": "DSF",
+                      "FontePublicacao": "Diário do Senado Federal",
+                      "PaginaInicial": "106",
+                      "PaginaFinal": "114",
+                      "UrlDiario": "http://legis.senado.leg.br/diarios/BuscaDiario?tipDiario=1&datDiario=03/09/2026&paginaDireta=106"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "524139",
+                "CodigoPronunciamento": "524139",
+                "TipoUsoPalavra": {
+                  "Codigo": "4823",
+                  "Sigla": "POR",
+                  "Descricao": "Pela ordem",
+                  "IndicadorAtivo": "Sim"
+                },
+                "Casa": "Senado Federal",
+                "Data": "2026-09-02",
+                "Resumo": "Pela ordem sobre o Projeto de Lei (PL) n° 1482, de 2019, que \"Altera o Decreto-Lei nº 2.848, de 7 de dezembro de 1940 (Código Penal), para dispor sobre os crimes de furto e de roubo de petróleo e derivados, gás natural e suas frações recuperáveis, álcool etílico hidratado carburante e demais combustíveis líquidos carburantes, biocombustíveis e óleos lubrificantes removidos dos estabelecimentos de produção, de quaisquer instalações de armazenamento e de transporte de combustíveis, incluídos dutos e unidades de transporte em qualquer modal; e altera a Lei nº 8.176, de 8 de fevereiro de 1991, para tipificar novos crimes contra a ordem econômica.\" Ênfase na punição dos receptadores e os prejuízos econômicos e tributários associados a esses crimes. Considerações sobre a adulteração de combustíveis como problema relacionado, mas objeto de outra discussão legislativa.",
+                "Indexacao": "PROJETO DE LEI, ALTERAÇÃO, CODIGO PENAL, CRIME, FURTO, ROUBO, ESTABELECIMENTO, PRODUÇÃO, INSTALAÇÕES, ARMAZENAGEM, TRANSPORTE, PETROLEO, DERIVADOS, GAS NATURAL, ALCOOL HIDRATADO, ALCOOL ANIDRO CARBURANTE, COMBUSTIVEL LIQUIDO, Biocombustível, OLEO LUBRIFICANTE, FIXAÇÃO, PENA, CAUSA DE AUMENTO DE PENA, LEI FEDERAL, TIPICIDADE, CRIME CONTRA A ORDEM ECONOMICA, RECEBIMENTO, CONTRATAÇÃO, SERVIÇO DE TRANSPORTE, DEPOSITO, VENDA, DISTRIBUIÇÃO, ORIGEM, ILEGALIDADE, PRODUTO, FATO CRIMINOSO, COMENTARIO, PUNIÇÃO, RECEPTAÇÃO, PREJUIZO, NATUREZA ECONOMICA, NATUREZA TRIBUTARIA, REGISTRO, ADULTERAÇÃO, COMBUSTIVEL.",
+                "TextoIntegral": "https://www25.senado.leg.br/web/atividade/pronunciamentos/-/p/texto/524139",
+                "TextoIntegralTxt": "https://legis.senado.leg.br/dadosabertos/discurso/texto-integral/524139",
+                "UrlTextoBinario": "https://legis.senado.leg.br/dadosabertos/discurso/texto-binario/524139",
+                "TipoAutor": "Senador(a)",
+                "FuncaoAutor": "SENADOR",
+                "NomeAutor": "Jaime Bagattoli",
+                "CodigoParlamentar": "6340",
+                "Partido": "PL",
+                "UF": "RO",
+                "Publicacoes": {
+                  "Publicacao": [
+                    {
+                      "TipoPublicacao": "PUB",
+                      "DataPublicacao": "2026-09-03",
+                      "SiglaFonte": "DSF",
+                      "FontePublicacao": "Diário do Senado Federal",
+                      "PaginaInicial": "105",
+                      "UrlDiario": "http://legis.senado.leg.br/diarios/BuscaDiario?tipDiario=1&datDiario=03/09/2026&paginaDireta=105"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "524138",
+                "CodigoPronunciamento": "524138",
+                "TipoUsoPalavra": {
+                  "Codigo": "4823",
+                  "Sigla": "POR",
+                  "Descricao": "Pela ordem",
+                  "IndicadorAtivo": "Sim"
+                },
+                "Casa": "Senado Federal",
+                "Data": "2026-09-02",
+                "Resumo": "Pela ordem sobre a Proposta de Emenda à Constituição (PEC) n° 18, de 2025, PEC da Segurança Pública, que \"Altera os arts. 5º, 15, 22, 23, 24, 40, 49, 84, 103-B, 130-A e 144 da Constituição Federal e o art.76 do Ato das Disposições Constitucionais Transitórias; acrescenta os arts. 144-A e 144-B à Constituição Federal e os arts. 139, 140 e 141 ao Ato das Disposições Constitucionais Transitórias; e dá outras providências.\" Destaque para a retirada do texto da previsão de que 30% de imposto cobrado das bets voltaria para a segurança pública.",
+                "Indexacao": "PROPOSTA DE EMENDA A CONSTITUIÇÃO (PEC), ALTERAÇÃO, DISPOSIÇÕES CONSTITUCIONAIS TRANSITORIAS, DESVINCULAÇÃO DE RECEITAS DA UNIÃO (DRU), PREVISÃO, FONTE, RECURSOS, Fundo Nacional de Segurança Pública (FNSP), FUNDO PENITENCIARIO NACIONAL (FUNPEN), DIRETRIZ, META FISCAL, GASTOS PUBLICOS, CONSTITUIÇÃO FEDERAL, FIXAÇÃO, RESERVA LEGAL, DEFINIÇÃO, ORGANIZAÇÃO CRIMINOSA, ORGANIZAÇÃO PARAMILITAR, MILICIA, SANÇÃO, REGIME JURIDICO, CRIME, OBRIGATORIEDADE, PRISÃO PROVISORIA, CARATER PERMANENTE, ESTABELECIMENTO PENAL, SEGURANÇA, RESTRIÇÃO, PROIBIÇÃO, PROGRESSÃO, REGIME, LIBERDADE PROVISORIA, AUDIENCIA DE CUSTODIA, ACORDO DE NÃO PERSECUÇÃO PENAL (ANPP), CONVERSÃO, PENA, CARATER RESTRITIVO, SUSPENSÃO CONDICIONAL DA PENA, LIVRAMENTO CONDICIONAL, REMIÇÃO, SAIDA TEMPORARIA, MEDIDA CAUTELAR, NATUREZA PATRIMONIAL, RESPONSABILIDADE CIVIL, RESPONSABILIDADE PENAL, RESPONSABILIDADE ADMINISTRATIVA, PESSOA JURIDICA, PROTEÇÃO, TESTEMUNHA, GARANTIA, DIREITOS, VITIMA, FUNÇÃO, HIPOTESE, SUSPENSÃO, DIREITOS POLITICOS, COMPETENCIA PRIVATIVA, UNIÃO FEDERAL, POLICIA FEDERAL, POLICIA RODOVIARIA FEDERAL, NORMAS GERAIS, ATIVIDADE, INTELIGENCIA, COMPETENCIA COMUM, MANUTENÇÃO, SEGURANÇA PUBLICA, DEFESA, CRIAÇÃO, CONSELHO DE SEGURANÇA, POLITICAS PUBLICAS, PLANO, COMPETENCIA CONCORRENTE, GRUPO TAREFA, COOPERAÇÃO, ORGANIZAÇÃO, INTEGRAÇÃO, ORGÃOS, SISTEMA, MEDIDA SOCIOEDUCATIVA, CONCESSÃO, PENSÃO PREVIDENCIARIA, APOSENTADORIA POR INVALIDEZ, LEGISLAÇÃO, ENTE FEDERADO, AGENTE PENITENCIARIO, POLICIAL, COMPETENCIA, CONGRESSO NACIONAL, SUSTAÇÃO, ATO NORMATIVO, CONSELHO NACIONAL DE JUSTIÇA (CNJ), CONSELHO NACIONAL DO MINISTERIO PUBLICO (CNMP), FISCALIZAÇÃO, CONTROLE, INCLUSÃO, ORGÃO PUBLICO, MUNICIPIOS, DIRETRIZES GERAIS, GUARDA MUNICIPAL, POLICIA PENAL, CRITERIOS, DISTRIBUIÇÃO, Sistema Único de Segurança Pública (SUSP), OBJETIVO, DESTAQUE, RETIRADA, CASA DE APOSTA ESPORTIVA, DESTINAÇÃO, SEGURANÇA.",
+                "TextoIntegral": "https://www25.senado.leg.br/web/atividade/pronunciamentos/-/p/texto/524138",
+                "TextoIntegralTxt": "https://legis.senado.leg.br/dadosabertos/discurso/texto-integral/524138",
+                "UrlTextoBinario": "https://legis.senado.leg.br/dadosabertos/discurso/texto-binario/524138",
+                "TipoAutor": "Senador(a)",
+                "FuncaoAutor": "SENADOR",
+                "NomeAutor": "Magno Malta",
+                "CodigoParlamentar": "631",
+                "Partido": "PL",
+                "UF": "ES",
+                "Publicacoes": {
+                  "Publicacao": [
+                    {
+                      "TipoPublicacao": "PUB",
+                      "DataPublicacao": "2026-09-03",
+                      "SiglaFonte": "DSF",
+                      "FontePublicacao": "Diário do Senado Federal",
+                      "PaginaInicial": "104",
+                      "UrlDiario": "http://legis.senado.leg.br/diarios/BuscaDiario?tipDiario=1&datDiario=03/09/2026&paginaDireta=104"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

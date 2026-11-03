@@ -1,0 +1,33 @@
+{
+  "_meta": {
+    "recorded": "2026-11-03",
+    "url": "https://legis.senado.leg.br/dadosabertos/senador/5906.json",
+    "headers": "Accept: application/json",
+    "trimmed": "Telefones, OutrasInformacoes and personal details dropped; unknown code answers 200 with no Parlamentar key"
+  },
+  "DetalheParlamentar": {
+    "noNamespaceSchemaLocation": "https://legis.senado.leg.br/dadosabertos/dados/DetalheParlamentarv6.xsd",
+    "Metadados": {
+      "Versao": "03/11/2026 06:19:45",
+      "VersaoServico": "6",
+      "DataVersaoServico": "2021-09-09",
+      "DescricaoDataSet": "Retorna os detalhes de um Senador informado no parâmetro."
+    },
+    "Parlamentar": {
+      "IdentificacaoParlamentar": {
+        "CodigoParlamentar": "5906",
+        "CodigoPublicoNaLegAtual": "907",
+        "NomeParlamentar": "Dra. Eudócia",
+        "NomeCompletoParlamentar": "Eudocia Maria Holanda de Araujo Caldas",
+        "SexoParlamentar": "Feminino",
+        "UrlFotoParlamentar": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5906.jpg",
+        "UrlPaginaParlamentar": "http://www25.senado.leg.br/web/senadores/senador/-/perfil/5906",
+        "SiglaPartidoParlamentar": "PSDB",
+        "UfParlamentar": "AL"
+      },
+      "DadosBasicosParlamentar": {
+        "UfNaturalidade": "AL"
+      }
+    }
+  }
+}
