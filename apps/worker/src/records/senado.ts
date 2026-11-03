@@ -4,7 +4,7 @@ import { z } from "zod";
  * Senado open-data client (https://legis.senado.leg.br/dadosabertos). Shapes recorded 2026-11-03, see
  * test/fixtures/senado-*.json. Three calls:
  *  - GET plenario/lista/discursos/{yyyymmdd}/{yyyymmdd}.json (Accept: application/json): sessions of the day with
- *    their speeches (speaker code, name, party, UF, a 200-char summary, NO full text, no per-speech time);
+ *    their speeches (speaker code, name, party, UF, a variable-length `Resumo` summary (~100-900 chars), NO full text, no per-speech time);
  *  - GET discurso/texto-integral/{CodigoPronunciamento} (Accept: text/plain; JSON answers 406): the full text, 1 call per speech;
  *  - GET senador/{codigo}.json: the senator; an unknown code answers 200 without `Parlamentar`.
  * An empty day answers 200 with `Sessoes: null`. This API's JSON may give one object where a list is expected.
@@ -20,6 +20,8 @@ export interface RecordSpeech {
   party: string | null;
   state: string | null;
   text: string;
+  /** "summary" when the full text was missing (404) and `text` is the API's short `Resumo`. */
+  textSource: "full" | "summary";
 }
 
 /** Deterministic: the record has nothing for this day, session or senator. */
@@ -45,7 +47,6 @@ const pronouncementSchema = z.object({
   Partido: str,
   UF: str,
   Resumo: str,
-  TextoIntegralTxt: str,
 }).passthrough();
 const sessionSchema = z.object({
   CodigoSessao: str,
@@ -91,13 +92,13 @@ function compactText(raw: string): string {
   return raw.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-async function fetchText(p: z.infer<typeof pronouncementSchema>, id: string, f: typeof fetch): Promise<string> {
-  const url = p.TextoIntegralTxt ?? `${BASE}/discurso/texto-integral/${id}`;
-  const res = await get(url, "text/plain", f);
-  if (res.status === 404 || res.status === 406) return p.Resumo ?? "";
+async function fetchText(p: z.infer<typeof pronouncementSchema>, id: string, f: typeof fetch): Promise<{ text: string; textSource: "full" | "summary" }> {
+  const res = await get(`${BASE}/discurso/texto-integral/${id}`, "text/plain", f);
+  // 406 means our own request is wrong (Accept), not that the record lacks the speech: fail loudly.
+  if (res.status === 404) return { text: p.Resumo ?? "", textSource: "summary" };
   if (!res.ok) throw new Error(`Senado API answered ${res.status}.`);
   const text = compactText(await res.text());
-  return text || (p.Resumo ?? "");
+  return text ? { text, textSource: "full" } : { text: p.Resumo ?? "", textSource: "summary" };
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -114,9 +115,12 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 }
 
 /**
- * The speeches of a plenary day in speaking order: sessions by start time, speeches by ascending id (the list
- * comes newest-first). Speeches without a senator code (external guests) are dropped. With `sessionCode`
- * only that session (`CodigoSessao`) is kept. Cost: 1 call for the list + 1 per speech for its text.
+ * The speeches of a plenary day. Order is INFERRED and unverified (the API has no per-speech time): ascending
+ * `CodigoPronunciamento` within a session (consistent with the Diario `PaginaInicial` in the fixture); ids are not
+ * chronological across sessions, hence sessions are sorted by `HoraInicio`. The list itself comes newest-first.
+ * Speeches without a senator code (external guests) are dropped and `order` is renumbered without gaps. Texts keep
+ * the speaker prefix ("O SR. ... –") and stage directions. With `sessionCode` only that session (`CodigoSessao`)
+ * is kept. Cost: 1 call for the list + 1 per speech for its text.
  */
 export async function fetchSenadoSpeeches(date: string, sessionCode: string | null, f: typeof fetch = fetch): Promise<RecordSpeech[]> {
   const day = date.replaceAll("-", "");
@@ -146,7 +150,8 @@ export async function fetchSenadoSpeeches(date: string, sessionCode: string | nu
     name: x.p.NomeAutor ?? "",
     party: x.p.Partido,
     state: x.p.UF,
-    text: texts[i] ?? "",
+    text: texts[i]?.text ?? "",
+    textSource: texts[i]?.textSource ?? "summary",
   }));
 }
 

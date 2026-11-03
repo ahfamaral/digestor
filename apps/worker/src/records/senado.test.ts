@@ -36,6 +36,7 @@ describe("fetchSenadoSpeeches", () => {
     expect(speeches[3]!.text).toContain("Obrigado, Presidente");
     expect(speeches[3]!.text).not.toMatch(/\n{3,}/);
     expect(speeches[0]!.text.length).toBeGreaterThan(100);
+    expect(speeches.every((s) => s.textSource === "full")).toBe(true);
     expect(calls[0]!.url).toBe("https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20260902/20260902.json");
     expect(calls.filter((c) => c.url.includes("texto-integral")).every((c) => c.accept === "text/plain")).toBe(true);
   });
@@ -69,7 +70,7 @@ describe("fetchSenadoSpeeches", () => {
     await expect(fetchSenadoSpeeches("2026-09-02", null, textDown.f)).rejects.not.toBeInstanceOf(RecordNotFoundError);
   });
 
-  it("accepts a single object where a list is expected, and falls back to the summary when the text is gone", async () => {
+  it("accepts a single object where a list is expected, and falls back to the summary when a speech text is 404", async () => {
     const one = structuredClone(discursos);
     const sessions = one.DiscursosSessao.Sessoes.Sessao;
     const dor = sessions.find((s: { CodigoSessao: string }) => s.CodigoSessao === "587381");
@@ -81,16 +82,34 @@ describe("fetchSenadoSpeeches", () => {
     expect(speeches[0]!.text.length).toBeGreaterThan(20);
   });
 
+  it("a 406 on the text (wrong Accept) throws a plain error instead of falling back", async () => {
+    const { f } = fakeSenado({ text: () => new Response("{}", { status: 406 }) });
+    const err = await fetchSenadoSpeeches("2026-09-02", null, f).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(RecordNotFoundError);
+  });
+
   it("fetches texts with bounded concurrency", async () => {
     let live = 0;
     let peak = 0;
     const { f } = fakeSenado({
       text: (id) => {
-        live++; peak = Math.max(peak, live); live--;
+        live++;
+        peak = Math.max(peak, live);
         return new Response(textos[id] ?? "", { status: 200 });
       },
     });
-    await fetchSenadoSpeeches("2026-09-02", null, f);
+    // the fake releases its slot after a delay, so overlapping calls are seen
+    const slow = (async (input: string | URL | Request, init?: RequestInit) => {
+      const res = await f(input, init);
+      if (String(input).includes("texto-integral")) {
+        await new Promise((r) => setTimeout(r, 15));
+        live--;
+      }
+      return res;
+    }) as typeof fetch;
+    await fetchSenadoSpeeches("2026-09-02", null, slow);
+    expect(peak).toBeGreaterThan(1);
     expect(peak).toBeLessThanOrEqual(4);
   });
 });

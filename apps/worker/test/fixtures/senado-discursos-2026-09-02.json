@@ -3,7 +3,7 @@
     "recorded": "2026-11-03",
     "url": "https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20260902/20260902.json",
     "headers": "Accept: application/json",
-    "trimmed": "2 of the day's sessions kept (ESP 583371, DOR 587381), 3 speeches each; real field names and values (list is newest-first by id); Resumo/Indexacao are cut at 200 chars by the API itself"
+    "trimmed": "2 of the day's sessions kept (ESP 583371, DOR 587381), 3 speeches each; real field names and values (list is newest-first by id); Resumo is variable length (118-873 chars here) and Indexacao is cut by the API"
   },
   "DiscursosSessao": {
     "noNamespaceSchemaLocation": "https://legis.senado.leg.br/dadosabertos/dados/DiscursosSessaov4.xsd",
