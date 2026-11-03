@@ -51,7 +51,6 @@ describe("alignTurns", () => {
     const m = alignTurns(sim);
     expect(m.map((x) => x.speech)).toEqual([0, 0, 0, 1, 2, 2, 3, 4, 4]);
     expect(m.map((x) => x.turn)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    console.log("true-pair scores", m.map((x) => x.score.toFixed(2)).join(" "));
   });
 
   it("skips turns that match nothing (apartes and chair lines)", () => {
@@ -69,7 +68,6 @@ describe("alignTurns", () => {
     expect(m.map((x) => [x.turn, x.speech])).toEqual([[0, 0], [1, 2], [2, 4]]);
     const truth = [0, 2, 4];
     const falsePairs = sim.flatMap((row, i) => row.filter((_, j) => j !== truth[i]));
-    console.log("false-pair max", Math.max(...falsePairs).toFixed(2));
     expect(Math.max(...falsePairs)).toBeLessThan(RECORD_PROPOSE);
   });
 
@@ -86,6 +84,19 @@ describe("alignTurns", () => {
     expect(mid.length).toBeGreaterThanOrEqual(1);
     for (const t of mid) expect(by.get(t)).toBe(t === 3 ? 1 : 2);
     expect(m.length).toBeGreaterThanOrEqual(3);
+    // monotonic: the two swapped speeches (indexes 1 and 2) cannot both align
+    const used = new Set(m.map((x) => x.speech));
+    expect(used.has(1) && used.has(2)).toBe(false);
+  });
+});
+
+describe("chair lines", () => {
+  it("a line naming the next speaker scores below RECORD_PROPOSE and is left unmatched", () => {
+    clock = 0;
+    const turns = [turn("Com a palavra o Senador Orcival Pereira Xavier."), ...turnsFor("524181", 1)];
+    const sim = similarityMatrix(turns, speeches);
+    expect(sim[0]![1]!).toBeLessThan(RECORD_PROPOSE);
+    expect(alignTurns(sim).map((x) => x.turn)).toEqual([1]);
   });
 });
 

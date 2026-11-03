@@ -38,7 +38,12 @@ function termCounts(toks: string[]): Map<string, number> {
   return m;
 }
 
-/** TF-IDF cosine between every turn (rows) and every speech (columns); idf is computed over turns and speeches together. */
+/**
+ * TF-IDF cosine between every turn (rows) and every speech (columns); idf is computed over turns and speeches together.
+ * Note: cosine against the whole speech dilutes (~1/sqrt(k)) when one speech spans k turns. Measured on synthetic data:
+ * whole speech 1.00, half 0.72-0.78, third 0.60-0.67, false pairs <= 0.30. Containment was tried and rejected (passages
+ * shared between speeches gave false pairs up to 1.00). Tuning with real data is Task 16.
+ */
 export function similarityMatrix(turns: Turn[], speeches: RecordSpeech[]): number[][] {
   const docs = [
     ...turns.map((t) => termCounts(tokens(t.text))),
