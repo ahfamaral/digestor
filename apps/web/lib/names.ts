@@ -82,15 +82,17 @@ function namedPartByPart(names: NamesData, speakerId: string): boolean {
  * The contiguous spans of a voice's words that resolve to one group (turns, split where the name changes): the ranges a
  * row for the part of a part-by-part voice that no ranged row names acts on. `within` keeps only the spans touching a range.
  */
-function remainderSpans(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], speakerId: string, key: string, within?: Range): Range[] {
+function remainderSpans(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], speakerId: string, key: string, within?: Range, unconfirmedOnly = false): Range[] {
+  return spansWhere(names, words, speakerId, (res) => resolutionKey(res, speakerId) === key && resolutionRanges(res).length === 0 && (!unconfirmedOnly || (res.kind === "named" && !res.confirmed)), within);
+}
+
+/** Contiguous spans of a voice's words whose resolution passes `test` (a turn ends where another voice speaks or `test` fails). */
+function spansWhere(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], speakerId: string, test: (res: Resolution) => boolean, within?: Range): Range[] {
   const spans: Range[] = [];
   let open: Range | null = null;
+  const atts = voiceAtts(names, speakerId);
   for (const w of words) {
-    if (w.speaker !== speakerId) {
-      open = null; // another voice speaks: the turn ends
-      continue;
-    }
-    if (resolutionKey(personAt(voiceAtts(names, speakerId), speakerId, w.startMs), speakerId) !== key) {
+    if (w.speaker !== speakerId || !test(personAt(atts, speakerId, w.startMs))) {
       open = null;
       continue;
     }
@@ -101,6 +103,24 @@ function remainderSpans(names: NamesData, words: Pick<Word, "startMs" | "endMs" 
     }
   }
   return within ? spans.filter((r) => r.endMs > within.startMs && r.startMs < within.endMs) : spans;
+}
+
+const mergeRanges = (...lists: Range[][]): Range[] => {
+  const m = new Map<string, Range>();
+  for (const l of lists) for (const r of l) m.set(`${r.startMs}-${r.endMs}`, r);
+  return [...m.values()].sort((x, y) => x.startMs - y.startMs);
+};
+
+/**
+ * Confirm's body for a name at one moment of a part-by-part voice that resolves through a whole-voice row (which a
+ * whole-voice confirm would 409 on): a ranged assignment for the given range (the moment or clip). Otherwise `confirmBody`.
+ */
+export function voiceConfirmBody(names: NamesData, speakerId: string, resolution: Resolution, range?: Range): Record<string, unknown> | null {
+  const body = confirmBody({ speakerId, resolution });
+  if (body && body.action === "confirm" && range && resolution.kind === "named" && namedPartByPart(names, speakerId)) {
+    return { action: "assign", speakerId, personId: resolution.personId, startMs: range.startMs, endMs: range.endMs };
+  }
+  return body;
 }
 
 /** A voice to confirm: `range` is set when its name comes from a ranged row (one part of a split voice), and `confirm` is what Confirm sends. */
@@ -116,7 +136,8 @@ export interface UnconfirmedVoice {
 
 /** All the ranges of this name's proposed turns that touch `r` (a senator the record names for several turns); the first range for a conflict or a human "no name". */
 function unconfirmedRangesIn(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], speakerId: string, resolution: Resolution, r: Range): Range[] {
-  const first = rowRange({ resolution })!;
+  const first = rowRange({ resolution });
+  if (!first) return remainderSpans(names, words, speakerId, resolutionKey(resolution, speakerId), r);
   if (resolution.kind !== "named") return [first];
   const found = new Map<string, Range>([[`${first.startMs}-${first.endMs}`, first]]);
   const atts = voiceAtts(names, speakerId);
@@ -256,6 +277,7 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
     total += ms;
   }
   const turns = turnsOf(words);
+  const partByPart = (voice: string) => namedPartByPart(names, voice);
   return [...groups.values()]
     .map((g) => {
       const long = turns.find(
@@ -270,11 +292,11 @@ export function whosWhoRows(names: NamesData, words: Word[]): WhosWhoRow[] {
         share: total > 0 ? g.ms / total : 0,
         sampleStartMs: long?.startMs ?? g.firstMs,
         main: total > 0 && (perVoice.get(g.speakerId) ?? 0) / total >= MIN_SPEAKER_SHARE,
-        ranges:
-          g.ranges.size === 0 && namedPartByPart(names, g.speakerId)
-            ? remainderSpans(names, words, g.speakerId, g.k)
-            : [...g.ranges.values()].sort((a, b) => a.startMs - b.startMs),
-        unconfirmedRanges: [...g.unconfirmed.values()].sort((a, b) => a.startMs - b.startMs),
+        // In a voice named part by part, the words a whole-voice row names are actionable spans too.
+        ranges: partByPart(g.speakerId) ? mergeRanges([...g.ranges.values()], remainderSpans(names, words, g.speakerId, g.k)) : mergeRanges([...g.ranges.values()]),
+        unconfirmedRanges: partByPart(g.speakerId)
+          ? mergeRanges([...g.unconfirmed.values()], remainderSpans(names, words, g.speakerId, g.k, undefined, true))
+          : mergeRanges([...g.unconfirmed.values()]),
       };
     })
     .sort((a, b) => b.ms - a.ms);

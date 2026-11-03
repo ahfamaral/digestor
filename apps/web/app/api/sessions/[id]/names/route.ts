@@ -116,14 +116,37 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
           if (hasRanged(voice)) {
             // "Confirm all" also confirms a part-by-part voice, turn by turn: one ranged human row per proposed turn, grouped by person.
             if (body.action !== "confirm_all") continue;
+            // Per span, not per row: a turn named by a ranged row confirms with that row's range; the words a whole-voice
+            // proposal names confirm as their contiguous span.
             const perPerson = new Map<string, Map<string, { startMs: number; endMs: number }>>();
-            for (const a of all) {
-              if (a.speakerId !== voice || a.supersededAt !== null || a.status === "rejected" || a.source === "human" || !isRanged(a)) continue;
-              const res = personAt(all, voice, a.startMs!);
-              if (res.kind !== "named" || res.confirmed || res.attribution.startMs === null || res.attribution.endMs === null) continue;
-              const m = perPerson.get(res.personId) ?? new Map();
-              m.set(`${res.attribution.startMs}-${res.attribution.endMs}`, { startMs: res.attribution.startMs, endMs: res.attribution.endMs });
-              perPerson.set(res.personId, m);
+            const found: { personId: string; range: { startMs: number; endMs: number } }[] = [];
+            const add = (personId: string, range: { startMs: number; endMs: number }) => found.push({ personId, range });
+            let open: { personId: string; range: { startMs: number; endMs: number } } | null = null;
+            for (const w of transcript.words) {
+              if (w.speaker !== voice) {
+                open = null;
+                continue;
+              }
+              const res = personAt(all, voice, w.startMs);
+              if (res.kind !== "named" || res.confirmed) {
+                open = null;
+                continue;
+              }
+              const a = res.attribution;
+              if (a.startMs !== null && a.endMs !== null) {
+                add(res.personId, { startMs: a.startMs, endMs: a.endMs });
+                open = null;
+              } else if (open && open.personId === res.personId) {
+                open.range.endMs = w.endMs;
+              } else {
+                open = { personId: res.personId, range: { startMs: w.startMs, endMs: w.endMs } };
+                add(res.personId, open.range);
+              }
+            }
+            for (const f of found) {
+              const m = perPerson.get(f.personId) ?? new Map();
+              m.set(`${f.range.startMs}-${f.range.endMs}`, f.range);
+              perPerson.set(f.personId, m);
             }
             for (const [personId, m] of perPerson) {
               await setHumanAttributions(t, { sessionId: id, speakerId: voice, ownerId: OWNER_ID, ranges: [...m.values()], person: { id: personId } });

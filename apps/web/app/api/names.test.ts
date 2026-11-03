@@ -192,6 +192,18 @@ describe("names", () => {
       expect(humans.map((a) => [a.speakerId, a.personId, a.startMs, a.endMs]).sort()).toEqual([["A", p1.id, 0, 900], ["B", p2.id, 1000, 1900]]);
     });
 
+    it("confirm_all confirms the words a whole-voice proposal names, as ranged rows per contiguous span", async () => {
+      const sid = await twoVoiceSession(); // words: A 0-900, B 1000-1900, C 2000-2900
+      const p1 = await createCustomPerson(h.db, { displayName: "Pia Registro", createdBy: OWNER_ID });
+      const q = await createCustomPerson(h.db, { displayName: "Quim Transcrito", createdBy: OWNER_ID });
+      await replaceAiAttributions(h.db, sid, "record", [rec("A", p1.id, 5000, 6000)]);
+      await replaceAiAttributions(h.db, sid, "transcript", [proposed("A", q.id)]);
+      const res = await post(sid, { action: "confirm_all" });
+      expect(res.status).toBe(200);
+      const humans = (await listAttributions(h.db, sid)).filter((a) => a.source === "human" && a.speakerId === "A");
+      expect(humans.map((a) => [a.personId, a.startMs, a.endMs])).toEqual([[q.id, 0, 900]]);
+    });
+
     it("a part can't end after the video", async () => {
       const { sid, p2 } = await recordVoice();
       const res = await post(sid, { action: "assign", speakerId: "A", personId: p2.id, startMs: 9000, endMs: 10_001 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { personAt, exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -314,5 +314,47 @@ describe("Confirm from a moment row (SpeakerName's default body)", () => {
   it("a record-proposed ranged name confirms as a ranged assignment, never a whole-voice confirm", () => {
     const a = att({ id: "1", speakerId: "A", personId: "p1", source: "record", status: "proposed", startMs: 0, endMs: 10_000 });
     expect(confirmBody({ speakerId: "A", resolution: personAt([a], "A", 5_000) })).toEqual({ action: "assign", speakerId: "A", personId: "p1", startMs: 0, endMs: 10_000 });
+  });
+});
+
+describe("residual: turns named by a whole-voice proposal on a record voice", () => {
+  const run = (speaker: string, from: number, to: number): Word[] =>
+    Array.from({ length: (to - from) / 1000 }, (_, i) => word(speaker, from + i * 1000, from + (i + 1) * 1000));
+  // Voice A: record turn for p1 0-10 s; the rest (10-20 s, B 20-25 s, 25-35 s) is named p2 by a whole-voice transcript proposal.
+  const words = [...run("A", 0, 20_000), ...run("B", 20_000, 25_000), ...run("A", 25_000, 35_000)];
+  const names: NamesData = {
+    persons,
+    attributions: [
+      att({ id: "1", speakerId: "A", personId: "p1", source: "record", status: "proposed", startMs: 0, endMs: 10_000 }),
+      att({ id: "2", speakerId: "A", personId: "p2", source: "transcript", status: "proposed" }),
+    ],
+  };
+  const q = whosWhoRows(names, words).find((r) => r.speakerId === "A" && r.resolution.kind === "named" && r.resolution.personId === "p2")!;
+  const spans = [{ startMs: 10_000, endMs: 20_000 }, { startMs: 25_000, endMs: 35_000 }];
+  it("Q's row has Q's spans as ranges and unconfirmed ranges", () => {
+    expect(q.ranges).toEqual(spans);
+    expect(q.unconfirmedRanges).toEqual(spans);
+  });
+  it("Confirm, Change… and No name send ranges", () => {
+    expect(confirmBody(q)).toEqual({ action: "assign", speakerId: "A", personId: "p2", ranges: spans });
+    expect(anonymousBody(q)).toEqual({ action: "anonymous", speakerId: "A", ranges: spans });
+    expect(scopeFields(q.ranges, rowRange(q) ?? undefined)).toEqual({ ranges: spans });
+  });
+  it("a moment popover Confirm on a Q turn is a ranged assign, not a whole-voice confirm", () => {
+    const res = personAt(names.attributions, "A", 12_000);
+    expect(voiceConfirmBody(names, "A", res, { startMs: 10_000, endMs: 15_000 })).toEqual({ action: "assign", speakerId: "A", personId: "p2", startMs: 10_000, endMs: 15_000 });
+    expect(voiceConfirmBody(names, "A", res)).toEqual({ action: "confirm", speakerId: "A" });
+  });
+  it("unconfirmedRangesIn for a conflict whose first attribution is whole-voice falls back to spans (no null)", () => {
+    const n2: NamesData = {
+      persons,
+      attributions: [
+        att({ id: "1", speakerId: "A", personId: "p1", source: "record", status: "proposed", startMs: 0, endMs: 5_000 }),
+        att({ id: "2", speakerId: "A", personId: "p2", source: "caption", status: "proposed" }),
+        att({ id: "3", speakerId: "A", personId: "p1", source: "transcript", status: "proposed" }),
+      ],
+    };
+    const v = unconfirmedVoices(n2, run("A", 0, 20_000), { startMs: 6_000, endMs: 20_000 }, false);
+    for (const x of v) expect(x.ranges.every((r) => r && typeof r.startMs === "number")).toBe(true);
   });
 });
