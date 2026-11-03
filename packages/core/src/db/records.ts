@@ -62,6 +62,16 @@ export async function finishRecordFetch(db: Db, sessionId: string, a: { rawKey: 
   return rows.length > 0;
 }
 
+/** `running` → `pending` (a transient failure handing the row to a retry); false when it isn't running or was re-linked to another record meanwhile. */
+export async function releaseRecordFetch(db: Db, sessionId: string, ref?: RecordRef): Promise<boolean> {
+  const rows = await db
+    .update(sessionRecords)
+    .set({ status: "pending" })
+    .where(and(eq(sessionRecords.sessionId, sessionId), eq(sessionRecords.status, "running"), sameRef(ref)))
+    .returning({ id: sessionRecords.sessionId });
+  return rows.length > 0;
+}
+
 /** Marks the row `failed` with a friendly sentence, unless it was re-linked meanwhile (no longer `running`, or, with `ref`, another record). */
 export async function failRecordFetch(db: Db, sessionId: string, message: string, ref?: RecordRef): Promise<void> {
   await db

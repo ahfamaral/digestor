@@ -47,6 +47,8 @@ export type PipelineDeps = {
   search: { chroma: ChromaClient; embedder: Embedder };
   /** Injected in tests (record fetches); the real `fetch` otherwise. */
   fetch?: typeof fetch;
+  /** Sends `session.names` for a session (set by the worker's main; the job claims the row first, so a double send is harmless). */
+  enqueueNames?: (sessionId: string) => Promise<void>;
 };
 
 const keep = <T>(_old: T, next: T): T => next;

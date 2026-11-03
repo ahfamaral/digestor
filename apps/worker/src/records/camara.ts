@@ -9,12 +9,16 @@ import { RecordNotFoundError, type RecordSpeech } from "./senado.js";
  *  - GET eventos/{id}: `dataHoraInicio` / `dataHoraFim` ("2026-06-30T13:55", Brasília time without zone; the end can be
  *    null). An unknown id answers 404;
  *  - GET eventos/{id}/deputados: the event's deputies (id, nome, siglaPartido, siglaUf, urlFoto); 494 on that plenary;
- *  - GET deputados/{id}/discursos?dataInicio&dataFim&itens=100: the deputy's speeches in those days (`dataHoraInicio` to
+ *  - GET deputados/{id}/discursos?dataInicio&dataFim&itens=100: the deputy's speeches in those days (`dataHoraInicio`, a 4-minute block, to
  *    the minute, `transcricao` full text starting "O SR. NAME (PL - DF. Pela ordem. ...) - ", `sumario`, `uriEvento`
  *    EMPTY: a speech doesn't say which event it belongs to). GET eventos/{id}/discursos answers 405: there is no per-event list.
  * So the session's list is built: the event's window on its date, plus every event deputy's speeches of that day whose
- * start falls inside it (~500 calls, 4 at a time, under 3 min on the plenary). Order is by minute, then deputy id:
- * speeches of the same minute have no known order (a known limit; the aligner matches by content, not by position).
+ * start falls inside it (~500 calls, 4 at a time, under 3 min on the plenary). Order is by stamp, then deputy id:
+ * A stamp is a 4-minute stenography block (every spoken speech of the probe sits on a minute divisible by 4; only
+ * texts handed to the Mesa use the session's exact start minute), so the start is floored to its block and several
+ * speeches often share a stamp. Their true order is unknown: this list orders them by deputy id, and the pipeline
+ * reorders each run of equal stamps by best-matching turn before the monotonic alignment (`tieOrder` in align.ts).
+ * Only plenary events (`orgaos` has PLEN) that have ended (`situacao` "Encerrada...") are accepted.
  * Lists follow the `links` entry `rel: "next"` when the API gives one (not seen live: the probe never needed it at
  * `itens=100`). A deputy's `/discursos` answering 404 (not seen live either) is logged and skipped, not a failure.
  */
@@ -23,10 +27,25 @@ const CONCURRENCY = 4;
 const LABEL = "Câmara";
 
 export const CAMARA_NOT_FOUND = "The Câmara has no speeches for that session.";
+export const CAMARA_NOT_PLENARY = "Only Câmara plenary sessions are supported.";
+export const CAMARA_NOT_COMPLETE = "The Câmara record of this session isn't complete yet. Try again later.";
+
+/** The 4-minute stenography block a stamp belongs to: `2026-06-30T13:55` → `2026-06-30T13:52`. */
+function blockStart(stamp: string): string {
+  const minute = Number(stamp.slice(14, 16));
+  return `${stamp.slice(0, 14)}${String(minute - (minute % 4)).padStart(2, "0")}`;
+}
 
 const str = z.union([z.string(), z.number()]).transform(String).nullish().transform((v) => (v == null || v === "" ? null : v));
 const linksSchema = z.object({ links: z.array(z.object({ rel: str, href: str }).passthrough()).nullish() }).passthrough();
-const eventSchema = z.object({ dados: z.object({ dataHoraInicio: z.string().min(10), dataHoraFim: str }).passthrough() }).passthrough();
+const eventSchema = z.object({
+  dados: z.object({
+    dataHoraInicio: z.string().min(10),
+    dataHoraFim: str,
+    situacao: str,
+    orgaos: z.array(z.object({ sigla: str }).passthrough()).nullish(),
+  }).passthrough(),
+}).passthrough();
 const deputiesSchema = z.object({
   dados: z.array(z.object({ id: str, nome: str, siglaPartido: str, siglaUf: str, urlFoto: str }).passthrough()),
 }).passthrough();
@@ -74,8 +93,12 @@ export async function fetchCamaraSpeeches(
   if (ev.status === 404) throw new RecordNotFoundError(CAMARA_NOT_FOUND);
   const event = eventSchema.safeParse(ev.body);
   if (!event.success) throw unexpected();
-  const start = event.data.dados.dataHoraInicio.slice(0, 16);
-  const date = start.slice(0, 10);
+  const { orgaos, situacao } = event.data.dados;
+  if (!orgaos?.some((o) => o.sigla === "PLEN")) throw new RecordNotFoundError(CAMARA_NOT_PLENARY);
+  if (!situacao?.startsWith("Encerrada")) throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
+  const eventStart = event.data.dados.dataHoraInicio.slice(0, 16);
+  const start = blockStart(eventStart); // stamps are 4-minute blocks: the block holding the start belongs to the event
+  const date = eventStart.slice(0, 10);
   const end = event.data.dados.dataHoraFim?.slice(0, 16) ?? `${date}T23:59`;
   const endDate = end.slice(0, 10);
 
@@ -122,6 +145,7 @@ export async function fetchCamaraSpeeches(
   if (picked.length === 0) throw new RecordNotFoundError(CAMARA_NOT_FOUND);
   const speeches = picked.map((p, i): RecordSpeech => ({
     id: `${p.id}-${p.at}-${p.n}`,
+    at: p.at,
     order: i + 1,
     officialId: p.id,
     name: deputies[p.id]!.name,

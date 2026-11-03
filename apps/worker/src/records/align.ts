@@ -97,6 +97,40 @@ export function similarityMatrix(turns: Turn[], speeches: RecordSpeech[]): numbe
 }
 
 /**
+ * The order in which to hand speeches to `alignTurns`: a permutation of speech indexes. Speeches that share an `at`
+ * stamp (the Câmara's 4-minute blocks; their real order is unknown) are reordered within each run of equal stamps by the
+ * index of their best-matching turn (argmax of their similarity column; ties keep the current order). Speeches without
+ * `at` (Senado) and runs of one are untouched.
+ */
+export function tieOrder(sim: number[][], speeches: RecordSpeech[]): number[] {
+  const best = (j: number) => {
+    let at = 0;
+    let top = -1;
+    sim.forEach((row, i) => {
+      if ((row[j] ?? 0) > top) { top = row[j] ?? 0; at = i; }
+    });
+    return top > 0 ? at : -1;
+  };
+  const out: number[] = [];
+  let j = 0;
+  while (j < speeches.length) {
+    let k = j + 1;
+    const at = speeches[j]!.at;
+    while (at !== undefined && k < speeches.length && speeches[k]!.at === at) k++;
+    const run = Array.from({ length: k - j }, (_, x) => j + x);
+    if (run.length > 1) {
+      // only speeches matching some turn move, within the slots the matching ones occupy (stable: ties keep their order)
+      const slots = run.map((x, pos) => (best(x) >= 0 ? pos : -1)).filter((pos) => pos >= 0);
+      const sorted = slots.map((pos) => run[pos]!).sort((x, y) => best(x) - best(y));
+      slots.forEach((pos, n) => (run[pos] = sorted[n]!));
+    }
+    out.push(...run);
+    j = k;
+  }
+  return out;
+}
+
+/**
  * Monotonic alignment: each turn is skipped or assigned to a speech, assigned speeches never go backwards, a speech
  * can take many turns (with skipped turns between them) and a speech can have no turn. Only sim >= RECORD_PROPOSE
  * counts. g[i][j] = best total over turns 0..i-1 using speeches 0..j-1.

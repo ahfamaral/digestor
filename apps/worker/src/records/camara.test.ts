@@ -3,6 +3,7 @@ import { mapLimit } from "./http.js";
 import { RecordNotFoundError } from "./senado.js";
 import { fetchCamaraSpeeches } from "./camara.js";
 import { fixtureDeputados } from "./fakeCamara.js";
+import { fixtureEventoComissao } from "./fakeCamara.js";
 import { FIXTURE_DATE, FIXTURE_EVENT_ID, SILENT_IDS, SPEAKER_IDS, fakeCamaraFetch, fixtureDiscursos, fixtureEvento } from "./fakeCamara.js";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -33,7 +34,7 @@ describe("fetchCamaraSpeeches", () => {
 
   it("drops speeches outside the event's window", async () => {
     const moved = structuredClone(fixtureDiscursos["152605"]!);
-    moved.dados[0]!.dataHoraInicio = "2026-06-30T13:54"; // a minute before the session starts
+    moved.dados[0]!.dataHoraInicio = "2026-06-30T13:48"; // the block before the one holding the start (13:52)
     moved.dados[1]!.dataHoraInicio = "2026-06-30T20:12"; // a minute after it ends (20:11)
     const { f } = fakeCamaraFetch({ discursos: (id) => (id === "152605" ? json(moved) : json(fixtureDiscursos[id] ?? { dados: [] })) });
     const { speeches } = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, f);
@@ -132,6 +133,52 @@ describe("fetchCamaraSpeeches", () => {
     expect(Object.keys(deputies)).toHaveLength(8);
     expect(speeches.filter((x) => x.officialId === "152605")).toHaveLength(one.dados.length);
     expect(calls).toContain("https://dadosabertos.camara.leg.br/api/v2/deputados/152605/discursos?pagina=2");
+  });
+});
+
+describe("fetchCamaraSpeeches: block stamps, plenary and completeness", () => {
+  const only = (over: object) => (id: string) => json(id === "152605" ? over : fixtureDiscursos[id] ?? { dados: [] });
+
+  it("keeps a speech stamped in the 4-minute block that contains the event's start", async () => {
+    const early = structuredClone(fixtureDiscursos["152605"]!);
+    early.dados[0]!.dataHoraInicio = "2026-06-30T13:52"; // the event starts 13:55, inside the 13:52 block
+    early.dados[1]!.dataHoraInicio = "2026-06-30T13:48"; // the block before: out
+    const { speeches } = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch({ discursos: only(early) }).f);
+    const mine = speeches.filter((x) => x.officialId === "152605");
+    expect(mine.map((x) => x.id)).toContain("152605-2026-06-30T13:52-0");
+    expect(mine).toHaveLength(3);
+  });
+
+  it("carries the speech's stamp as `at`", async () => {
+    const { speeches } = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch().f);
+    expect(speeches[0]!.at).toBe("2026-06-30T15:48");
+  });
+
+  it("refuses an event that isn't a plenary session, without sweeping the deputies", async () => {
+    const { f, calls } = fakeCamaraFetch({ evento: () => json(fixtureEventoComissao) });
+    await expect(fetchCamaraSpeeches("82332", f)).rejects.toThrow(new RecordNotFoundError("Only Câmara plenary sessions are supported."));
+    expect(calls.filter((c) => c.includes("/deputados"))).toEqual([]);
+  });
+
+  it("refuses an event that hasn't ended, without sweeping the deputies", async () => {
+    const open = structuredClone(fixtureEvento);
+    open.dados.situacao = "Em Andamento";
+    const { f, calls } = fakeCamaraFetch({ evento: () => json(open) });
+    await expect(fetchCamaraSpeeches(FIXTURE_EVENT_ID, f)).rejects.toThrow(new RecordNotFoundError("The Câmara record of this session isn't complete yet. Try again later."));
+    expect(calls.filter((c) => c.includes("/deputados"))).toEqual([]);
+  });
+});
+
+describe("get", () => {
+  it("retries a 429 once like a 5xx", async () => {
+    let n = 0;
+    const f = (async () => (++n === 1 ? new Response("slow down", { status: 429 }) : json({ ok: 1 }))) as typeof fetch;
+    const { getJson } = await import("./http.js");
+    await expect(getJson("https://x", f, "Câmara")).resolves.toEqual({ status: 200, body: { ok: 1 } });
+    expect(n).toBe(2);
+    n = -5;
+    await expect(getJson("https://x", (async () => { n++; return new Response("", { status: 429 }); }) as typeof fetch, "Câmara")).rejects.toThrow("429");
+    expect(n).toBe(-3);
   });
 });
 

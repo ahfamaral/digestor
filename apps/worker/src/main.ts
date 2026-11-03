@@ -95,6 +95,7 @@ async function main() {
 
   const deps: PipelineDeps = { db, storage, transcriber, llm, media, youtube: { downloadYouTube }, search: { chroma, embedder } };
 
+  // `enqueueNames` is wired once the queue exists (below).
   const saver = PostgresSaver.fromConnString(databaseUrl);
   await saver.setup();
   const graph = buildPipeline(deps, saver);
@@ -108,6 +109,9 @@ async function main() {
     await boss.createQueue(name, JOB_OPTIONS); // no-op when the queue already exists...
     await boss.updateQueue(name, JOB_OPTIONS); // ...so existing queues get the current options too
   }
+  deps.enqueueNames = async (sessionId) => {
+    await boss.send(QUEUES.names, { sessionId }, JOB_OPTIONS);
+  };
   await boss.schedule(CLEANUP_QUEUE, CLEANUP_CRON, {}, { tz: "UTC" });
   await boss.schedule(SWEEP_QUEUE, SWEEP_CRON, {}, { tz: "UTC" });
 

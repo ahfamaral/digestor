@@ -21,6 +21,8 @@ export interface RecordSpeech {
   party: string | null;
   state: string | null;
   text: string;
+  /** The Câmara's stamp (`YYYY-MM-DDTHH:MM`, a 4-minute stenography block): speeches sharing it have no known order. Senado leaves it unset. */
+  at?: string;
   /** "summary" when the full text was missing (404) and `text` is the API's short `Resumo`. */
   textSource: "full" | "summary";
 }

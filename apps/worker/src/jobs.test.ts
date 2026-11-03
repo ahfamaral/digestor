@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { personAt } from "@digestor/core";
+import { personAt, type Word } from "@digestor/core";
+import { stripRecordMarkup } from "./records/align.js";
 import { Command } from "@langchain/langgraph";
 import {
   LocalStorage, claimRecordFetch, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
@@ -11,7 +12,7 @@ import {
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, type Db,
 } from "@digestor/core/server";
-import { FIXTURE_EVENT_ID, fakeCamaraFetch, transcriptOfDeputies } from "./records/fakeCamara.js";
+import { FIXTURE_EVENT_ID, fakeCamaraFetch, fixtureDiscursos as camaraDiscursos, transcriptOfDeputies } from "./records/fakeCamara.js";
 import { FIXTURE_DATE, fakeSenadoFetch, fixtureDiscursos, fixtureTexts, transcriptOfSpeeches } from "./records/fakeSenado.js";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
@@ -467,6 +468,30 @@ d("handleNames", () => {
       expect(person.photoUrl).toMatch(/^https:\/\//);
       expect(await getSessionRecord(db, id)).toMatchObject({ status: "matched", error: null, rawKey: `${id}/names/record.json` });
       expect(JSON.parse(await readFile(path.join(root, id, "names/record.json"), "utf8")).speeches.length).toBeGreaterThan(20);
+    });
+
+    it("two speeches sharing a block stamp, in the reverse of the transcript order, are both named", async () => {
+      const first = camaraDiscursos["204441"]!.dados[0]!; // Otoni de Paula speaks first in this video...
+      const second = camaraDiscursos["152605"]!.dados[0]!; // ...then Glauber Braga, whose deputy id sorts lower
+      const stamped = (d: { dados: object[] }) => ({ ...d, dados: [{ ...d.dados[0]!, dataHoraInicio: "2026-06-30T17:52" }] });
+      const words: Word[] = [];
+      let t = 0;
+      [[first, "A"], [second, "B"]].forEach(([sp, voice]) => {
+        for (const text of stripRecordMarkup((sp as typeof first).transcricao).split(/\s+/).filter(Boolean)) {
+          words.push({ text, startMs: t, endMs: t + 300, speaker: voice as string, confidence: 0.99 });
+          t += 400;
+        }
+        t += 1000;
+      });
+      const { id, ctx } = await camaraSetup({
+        discursos: (dep) => new Response(JSON.stringify(dep === "204441" ? stamped({ dados: [first] }) : dep === "152605" ? stamped({ dados: [second] }) : { dados: [], links: [] }), { status: 200 }),
+      });
+      await saveTranscript(db, id, { language: "pt", languageConfidence: 1, durationMs: t, words });
+      await handleNames(ctx, { sessionId: id }, FIRST);
+      const rows = await recordRows(id);
+      expect(rows.map((r) => r.speakerId).sort()).toEqual(["A", "B"]);
+      const names = await Promise.all(["A", "B"].map(async (v) => (await getPersons(db, [rows.find((r) => r.speakerId === v)!.personId!]))[0]!.displayName));
+      expect(names).toEqual(["Otoni de Paula", "Glauber Braga"]);
     });
 
     it("an unknown event: failed with the Câmara line, no rethrow", async () => {

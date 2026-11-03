@@ -12,6 +12,8 @@ httpTiming.delayMs = 0; // tests never wait for the retry
  */
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../../test/fixtures/${name}`, import.meta.url), "utf8"));
 export const fixtureEvento = fx("camara-evento-82635.json");
+/** A real committee event (CFT audiência pública, 2026-06-30): its `orgaos` has no PLEN. */
+export const fixtureEventoComissao = fx("camara-evento-82332-comissao.json");
 export const fixtureDeputados = fx("camara-evento-82635-deputados.json");
 export const fixtureDiscursos = fx("camara-discursos-2026-06-30.json") as Record<string, { dados: { dataHoraInicio: string; transcricao: string }[]; links: unknown[] }>;
 

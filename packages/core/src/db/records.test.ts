@@ -4,7 +4,7 @@ import type { RecordRef } from "../recordRef.ts";
 import { createDb, type Db } from "./client.ts";
 import { createCustomPerson, listAttributions, replaceAiAttributions } from "./names.ts";
 import { createSession, type Session } from "./repo.ts";
-import { claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord } from "./records.ts";
+import { claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch } from "./records.ts";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -54,6 +54,19 @@ describe("session records", () => {
     expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The Senado has no speeches for that date." });
     await linkRecord(db, s.id, senado("2026-09-03"));
     expect(await claimRecordFetch(db, s.id)).toMatchObject({ status: "running", error: null });
+  });
+});
+
+describe("releaseRecordFetch", () => {
+  it("returns a running row to pending (clearing nothing else), only for the same ref", async () => {
+    await linkRecord(db, s.id, senado());
+    expect(await releaseRecordFetch(db, s.id, senado())).toBe(false); // pending: nothing to release
+    await claimRecordFetch(db, s.id);
+    expect(await releaseRecordFetch(db, s.id, senado("2026-09-03"))).toBe(false); // re-linked meanwhile
+    expect((await getSessionRecord(db, s.id))?.status).toBe("running");
+    expect(await releaseRecordFetch(db, s.id, senado())).toBe(true);
+    expect((await getSessionRecord(db, s.id))?.status).toBe("pending");
+    expect(await claimRecordFetch(db, s.id)).toMatchObject({ status: "running" });
   });
 });
 

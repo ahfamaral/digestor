@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Turn } from "@digestor/core";
-import { RECORD_CONFIRM, RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix, speechText, stripRecordMarkup } from "./align.js";
+import { RECORD_CONFIRM, RECORD_PROPOSE, alignTurns, tieOrder, recordAttributions, similarityMatrix, speechText, stripRecordMarkup } from "./align.js";
 import type { RecordSpeech } from "./senado.js";
 
 const textos = JSON.parse(readFileSync(new URL("../../test/fixtures/senado-textos-2026-09-02.json", import.meta.url), "utf8")).texts as Record<string, string>;
@@ -176,5 +176,34 @@ describe("speechText handles a Câmara text", () => {
   });
   it("strips the header of a single-paragraph text", () => {
     expect(stripRecordMarkup("O SR. OTONI DE PAULA (PL - RJ. Pela ordem. Sem revisão do orador.) - Senhores, boa tarde.").trim()).toBe("Senhores, boa tarde.");
+  });
+});
+
+describe("tieOrder (speeches sharing a Câmara block stamp)", () => {
+  const sp = (id: string, text: string, at?: string): RecordSpeech => ({ id, order: 0, officialId: id, name: id, party: null, state: null, text, textSource: "full", ...(at ? { at } : {}) });
+  const turn = (text: string, i: number): Turn => ({ speakerId: String.fromCharCode(65 + i), startMs: i * 10_000, endMs: i * 10_000 + 9_000, text });
+  const alpha = "orçamento federal saúde hospitais municípios repasses financiamento ".repeat(4);
+  const beta = "reforma tributária consumo impostos empresas indústria arrecadação ".repeat(4);
+  const turns = [turn(alpha, 0), turn(beta, 1)];
+  // deputy-id order puts beta's speaker first, the transcript says alpha first
+  const speeches = [sp("1-beta", beta, "T10:00"), sp("2-alpha", alpha, "T10:00")];
+
+  it("without the reorder the monotonic alignment names only one of the two", () => {
+    expect(alignTurns(similarityMatrix(turns, speeches))).toHaveLength(1);
+  });
+  it("orders speeches inside a stamp by their best-matching turn, so both are named", () => {
+    const m = similarityMatrix(turns, speeches);
+    const perm = tieOrder(m, speeches);
+    expect(perm).toEqual([1, 0]);
+    const aligned = alignTurns(m.map((row) => perm.map((j) => row[j]!)));
+    expect(aligned.map((a) => [a.turn, speeches[perm[a.speech]!]!.id])).toEqual([[0, "2-alpha"], [1, "1-beta"]]);
+  });
+  it("leaves a list without stamps (Senado), different stamps and ties in their order", () => {
+    const plain = speeches.map(({ at: _at, ...s }) => s);
+    expect(tieOrder(similarityMatrix(turns, plain), plain)).toEqual([0, 1]);
+    const apart = [sp("1-beta", beta, "T10:00"), sp("2-alpha", alpha, "T10:04")];
+    expect(tieOrder(similarityMatrix(turns, apart), apart)).toEqual([0, 1]);
+    const noMatch = [sp("x", "zzqx yyqx", "T10:00"), sp("y", "wwqx vvqx", "T10:00")];
+    expect(tieOrder(similarityMatrix(turns, noMatch), noMatch)).toEqual([0, 1]);
   });
 });

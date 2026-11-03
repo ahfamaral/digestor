@@ -8,6 +8,7 @@ import {
   failRecordFetch,
   finishRecordFetch,
   linkRecord,
+  releaseRecordFetch,
   upsertOfficialPerson,
   findPersonByName,
   getContextCard,
@@ -28,7 +29,7 @@ import {
 import type { RecordSpeech } from "../records/senado.js";
 import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type CaptionVote } from "../agents/captions.js";
 import { MissingApiKeyError } from "../errors.js";
-import { RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix } from "../records/align.js";
+import { RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix, tieOrder } from "../records/align.js";
 import { RecordNotFoundError, fetchSenadoSpeeches, fetchSenador } from "../records/senado.js";
 import { fetchCamaraSpeeches, type CamaraDeputy } from "../records/camara.js";
 import type { PipelineDeps } from "./graph.js";
@@ -460,7 +461,11 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   }
   const fetchedAt = new Date().toISOString();
   const turns = turnsOf(transcript.words);
-  const matches = alignTurns(similarityMatrix(turns, speeches)).filter((m) => m.score >= RECORD_PROPOSE);
+  // Speeches sharing a stamp (the Câmara's 4-minute blocks) have no known order: order each run by best-matching turn.
+  const sim = similarityMatrix(turns, speeches);
+  const perm = tieOrder(sim, speeches);
+  speeches = perm.map((j) => speeches[j]!);
+  const matches = alignTurns(sim.map((row) => perm.map((j) => row[j]!))).filter((m) => m.score >= RECORD_PROPOSE);
   const bySpeech = new Map(speeches.map((sp) => [sp.id, sp]));
 
   // One person per matched senator or deputy, fetched once per run (a Câmara deputy's fields come with the event's list).
@@ -535,7 +540,9 @@ const httpsPhoto = (url: string) => url.replace(/^http:\/\//i, "https://");
 
 /**
  * The graph's record step (before the context check, so the pause already shows official names): a no-op unless a record
- * is linked. It never fails the session: any error is logged and the record row is marked failed.
+ * is linked. It never fails the session: any error is logged. A transient one (5xx, network) hands the row back to
+ * `pending` and sends `session.names` (the job retries it with backoff and fails the row on its last attempt); when
+ * that send is impossible or fails, the row is marked failed.
  */
 export const matchRecordNode =
   (deps: PipelineDeps) =>
@@ -545,7 +552,21 @@ export const matchRecordNode =
     } catch (err) {
       console.error(`match_record: could not match the record of session ${s.sessionId}; continuing without it`, err);
       const ref = err instanceof RecordStepError ? err.ref : undefined;
-      await failRecordFetch(deps.db, s.sessionId, recordFetchFailed(ref), ref).catch(() => {});
+      const failed = () => failRecordFetch(deps.db, s.sessionId, recordFetchFailed(ref), ref).catch(() => {});
+      if (!deps.enqueueNames || !ref) {
+        await failed();
+      } else {
+        // Release first, then send: a job that ran before the release would find a running row and do nothing.
+        const released = await releaseRecordFetch(deps.db, s.sessionId, ref).catch(() => false);
+        if (released) {
+          try {
+            await deps.enqueueNames(s.sessionId);
+          } catch (sendErr) {
+            console.error(`match_record: could not queue session.names for ${s.sessionId}`, sendErr);
+            if (await claimRecordFetch(deps.db, s.sessionId).catch(() => null)) await failed(); // take it back, then fail it
+          }
+        }
+      }
     }
     return {};
   };

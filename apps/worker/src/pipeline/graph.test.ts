@@ -108,6 +108,8 @@ type Setup = {
   youtube?: typeof downloadYouTube;
   media?: PipelineDeps["media"];
   search?: PipelineDeps["search"];
+  /** The graph's way to send `session.names` (a transient record failure hands the row back to the job). */
+  enqueueNames?: PipelineDeps["enqueueNames"];
   /** A record linked at upload (its fetches go through `fetch`). */
   record?: RecordRef;
   fetch?: typeof fetch;
@@ -140,6 +142,7 @@ async function setup(o: Setup = {}) {
     youtube: { downloadYouTube: o.youtube ?? notCalled },
     search: o.search ?? { chroma: testChroma, embedder: new FakeEmbedder() },
     ...(o.fetch ? { fetch: o.fetch } : {}),
+    ...(o.enqueueNames ? { enqueueNames: o.enqueueNames } : {}),
   };
   const graph = buildPipeline(deps, new MemorySaver());
   const cfg = { configurable: { thread_id: session.id } };
@@ -609,6 +612,29 @@ describe("match_record", () => {
     const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
     await graph.invoke({ sessionId }, cfg);
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" }); // went on to the context check
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
+    log.mockRestore();
+  });
+
+  it("a transient record failure hands the row back to session.names and the graph goes on", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const enqueueNames = vi.fn(async (_id: string) => {});
+    const { f } = fakeSenadoFetch({ list: () => new Response("boom", { status: 503 }) });
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f, enqueueNames });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "pending", error: null });
+    expect(enqueueNames).toHaveBeenCalledExactlyOnceWith(sessionId);
+    log.mockRestore();
+  });
+
+  it("a transient record failure whose job can't be queued fails the row as before", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const enqueueNames = vi.fn(async () => { throw new Error("queue down"); });
+    const { f } = fakeSenadoFetch({ list: () => new Response("boom", { status: 503 }) });
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f, enqueueNames });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
     log.mockRestore();
   });
