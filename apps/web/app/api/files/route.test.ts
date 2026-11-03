@@ -24,6 +24,7 @@ let h: Harness;
 let sessionId: string;
 let clipId: string;
 const proxy = Uint8Array.from({ length: 1000 }, (_, i) => i % 251);
+const audio = Uint8Array.from({ length: 500 }, (_, i) => (i * 7) % 253);
 
 beforeAll(async () => {
   h = createHarness();
@@ -35,6 +36,7 @@ beforeAll(async () => {
   mkdirSync(path.join(dir, "clips"), { recursive: true });
   writeFileSync(path.join(dir, "proxy.mp4"), proxy);
   writeFileSync(path.join(dir, "original.mp4"), "secret");
+  writeFileSync(path.join(dir, "audio.mp3"), audio);
   writeFileSync(path.join(dir, "thumbs", `${clipId}.jpg`), "jpg");
   writeFileSync(path.join(dir, "clips", `${clipId}.mp4`), "mp4");
   writeFileSync(path.join(dir, "clips", `${clipId}.pt.burned.mp4`), "burned");
@@ -62,6 +64,20 @@ describe("GET /api/files/[id]/[...file]", () => {
     expect(res.headers.get("Accept-Ranges")).toBe("bytes");
     expect(res.headers.get("Content-Length")).toBe("1000");
     expect(await body(res)).toEqual(proxy);
+  });
+
+  it("serves audio.mp3 as audio/mpeg with Range support (the context check's voice samples before the copy exists)", async () => {
+    const whole = await get("audio.mp3");
+    expect(whole.status).toBe(200);
+    expect(whole.headers.get("Content-Type")).toBe("audio/mpeg");
+    expect(whole.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(await body(whole)).toEqual(audio);
+    const part = await get("audio.mp3", { range: "bytes=100-199" });
+    expect(part.status).toBe(206);
+    expect(part.headers.get("Content-Range")).toBe("bytes 100-199/500");
+    expect(await body(part)).toEqual(audio.slice(100, 200));
+    expect((await get("audio.mp3", { id: "11111111-1111-4111-8111-111111111112" })).status).toBe(404);
+    expect((await get("audio.wav")).status).toBe(404);
   });
 
   it("serves partial content for Range requests", async () => {

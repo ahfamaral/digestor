@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AskJobSchema, BurnTrackJobSchema, CheckMomentJobSchema, JOB_OPTIONS, PrepareTrackJobSchema, QUEUES, ReanalyzeJobSchema,
+  AskJobSchema, BurnTrackJobSchema, CheckMomentJobSchema, JOB_OPTIONS, PrepareTrackJobSchema, ProxyJobSchema, QUEUES, ReanalyzeJobSchema,
   RenderClipJobSchema, TranslateBriefingJobSchema,
 } from "./queue.ts";
 
@@ -33,7 +33,13 @@ describe("QUEUES", () => {
       ask: "ask.run",
       findMore: "moment.find_more",
       names: "session.names",
+      proxy: "session.proxy",
     });
+  });
+
+  it("the preview copy job takes a session id", () => {
+    expect(ProxyJobSchema.parse({ sessionId: ID })).toEqual({ sessionId: ID });
+    expect(ProxyJobSchema.safeParse({ sessionId: "x" }).success).toBe(false);
   });
 
   it("validates each new payload", () => {

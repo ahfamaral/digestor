@@ -12,6 +12,7 @@ import {
   JOB_OPTIONS,
   NamesJobSchema,
   PrepareTrackJobSchema,
+  ProxyJobSchema,
   QUEUES,
   ReanalyzeJobSchema,
   RenderClipJobSchema,
@@ -26,6 +27,7 @@ import {
   handleCheckMoment,
   handleFindMore,
   handleNames,
+  handleProxy,
   handlePrepareTrack,
   handleReanalyze,
   handleResume,
@@ -95,7 +97,7 @@ async function main() {
 
   const deps: PipelineDeps = { db, storage, transcriber, llm, media, youtube: { downloadYouTube }, search: { chroma, embedder } };
 
-  // `enqueueNames` is wired once the queue exists (below).
+  // `enqueueNames` and `enqueueProxy` are wired once the queue exists (below).
   const saver = PostgresSaver.fromConnString(databaseUrl);
   await saver.setup();
   const graph = buildPipeline(deps, saver);
@@ -111,6 +113,9 @@ async function main() {
   }
   deps.enqueueNames = async (sessionId) => {
     await boss.send(QUEUES.names, { sessionId }, JOB_OPTIONS);
+  };
+  deps.enqueueProxy = async (sessionId) => {
+    await boss.send(QUEUES.proxy, { sessionId }, JOB_OPTIONS);
   };
   await boss.schedule(CLEANUP_QUEUE, CLEANUP_CRON, {}, { tz: "UTC" });
   await boss.schedule(SWEEP_QUEUE, SWEEP_CRON, {}, { tz: "UTC" });
@@ -131,6 +136,7 @@ async function main() {
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, (j, attempt) => handleTranslateBriefing({ db, llm }, j, attempt));
   await register(QUEUES.findMore, FindMoreJobSchema, (j, attempt) => handleFindMore({ db, llm }, j, attempt));
   await register(QUEUES.names, NamesJobSchema, (j, attempt) => handleNames(ctx, j, attempt));
+  await register(QUEUES.proxy, ProxyJobSchema, (j, attempt) => handleProxy({ db, storage, media }, j, attempt));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     const days = videoRetentionDays();
     const { removed } = await runVideoRetention({ db, storage, checkpointer: saver, chroma }, days);

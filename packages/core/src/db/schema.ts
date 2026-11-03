@@ -10,7 +10,7 @@ import type {
 } from "../personalTypes.ts";
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
-import type { ContextCard, Stage, Word } from "../schemas.ts";
+import type { ContextCard, ProxyStatus, Stage, Word } from "../schemas.ts";
 
 export type { Stage };
 
@@ -23,6 +23,7 @@ export const sessions = pgTable("sessions", {
   originalKey: text("original_key"),
   audioKey: text("audio_key"),
   proxyKey: text("proxy_key"),
+  proxyStatus: text("proxy_status").$type<ProxyStatus>(),
   durationMs: integer("duration_ms"),
   language: text("language"),
   profile: text("profile"),

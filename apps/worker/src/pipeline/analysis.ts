@@ -18,6 +18,7 @@ import {
   setMomentChecks,
   setMomentThumb,
   setStage,
+  settlePreview,
   startAnalysisVersion,
   updateSession,
   type Db,
@@ -107,7 +108,7 @@ async function prepareTopHighlights(
  * Runs one analysis version: topics → moments → briefing → checks and thumbnails of the top highlights → complete.
  *
  * - The first analysis (session not `ready` yet) walks the stages finding_topics 75 → finding_moments 82 →
- *   writing_briefing 92 → ready 100. A re-analysis of a `ready` session never touches the stage: the session stays
+ *   writing_briefing 92 → preparing_preview 96 → ready 100 (once the preview copy is done too, see `settlePreview`). A re-analysis of a `ready` session never touches the stage: the session stays
  *   readable on its current version and the new version's `running` status carries the progress.
  * - Safe to run again after a crash: `startAnalysisVersion` reuses the session's `running` version (same number) and
  *   clears what the crashed run had saved.
@@ -165,6 +166,8 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
   await completeAnalysisVersion(db, version.id);
   await updateSession(db, sessionId, {
     profile: opts.profile,
-    ...(initial ? { stage: "ready" as const, progress: 100, error: null } : {}),
+    ...(initial ? { stage: "preparing_preview" as const, progress: 96, error: null } : {}),
   });
+  // The first analysis waits for the preview copy (its own job): whichever of the two ends last makes the session ready.
+  if (initial) await settlePreview(db, sessionId);
 }

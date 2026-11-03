@@ -11,14 +11,16 @@ Long political and interview videos hide a few minutes that matter: a heated exc
 ```mermaid
 flowchart LR
   A[Upload / YouTube link] --> B[Download]
-  B --> C[Ingest: proxy + audio]
+  B --> C[Ingest: audio]
   C --> D[Transcribe]
+  C -.-> PX[Preview copy: own job]
   D --> E[Context agent]
   E -->|needs answers| H1{{Human: context check}}
   H1 --> E
   E --> I[Index transcript in Chroma]
   I --> T[Topics] --> M[Moments + highlights] --> W[Briefing]
   W --> P[Preview]
+  PX -.-> P
   P --> FB{{Human: Full briefing}}
   FB --> PR{{Human: Prepare clips}}
   PR --> X[Export MP4 + SRT + VTT]
@@ -27,7 +29,7 @@ flowchart LR
 The stepper reads Upload › Processing › Context › Preview › Briefing › Prepare › Export.
 
 1. **Intake:** an uploaded file (video or audio) or a YouTube link (downloaded with yt-dlp).
-2. **Ingest and transcribe:** ffmpeg makes a 480p proxy and extracts audio; AssemblyAI returns a word-timed transcript in the spoken language.
+2. **Ingest and transcribe:** ffmpeg extracts the audio and AssemblyAI returns a word-timed transcript in the spoken language. The 480p preview copy is made in a separate job meanwhile: the context check plays voice samples from the audio, and the session becomes ready once both the analysis and the copy are done.
 3. **Context agent:** Claude extracts the profile (Parliament, Supreme court, Electoral debate, Trial / hearing, Interview, UN session, Other), participants and topic, each fact tagged with its source ("from video", "from metadata", "from you", "suggested by AI", or "missing"). If it is unsure it asks up to 3 questions. **Pause:** the human answers or skips.
 4. **Analysis:** the transcript is indexed in Chroma (local multilingual embeddings); Claude finds topics, then moments per granularity with profile-specific highlight types (AI-judged ones carry an "AI" badge and a "Why:" line; counted ones say "counted"), then writes a briefing whose quotes are checked against the transcript. Every boundary is snapped to a sentence edge. Each analysis is a version; "Something's off" re-runs it.
 5. **Preview:** a session timeline, top highlights and the briefing document.

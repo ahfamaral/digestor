@@ -147,7 +147,7 @@ Graph state is persisted with the Postgres checkpointer, keyed by `session_id` a
 | # | Node | What it does | LLM? |
 |---|---|---|---|
 | 0 | `download` | YouTube links only: yt-dlp download + metadata (title, description, channel, upload date) | no |
-| 1 | `ingest` | Validate the video (ffprobe), read container metadata, extract audio (mono 16 kHz), make 480p proxy | no |
+| 1 | `ingest` | Validate the video (ffprobe), read container metadata, extract audio (mono 16 kHz), then request the 480p proxy as its own job (`session.proxy`) | no |
 | 2 | `transcribe` | Transcription API with language detection; store words (text, start, end, speaker, confidence) | no |
 | 3 | `audio_signals` | Per-second loudness (ffmpeg `ebur128`) + speaker-turn rate and overlap from diarisation → **heat curve** (0–1 per second) | no |
 | 4 | `understand_context` | Context agent drafts the context card (language, event type, setting, date, participants) from transcript + metadata; decides sufficiency; writes open questions | yes (Sonnet) |
@@ -157,6 +157,8 @@ Graph state is persisted with the Postgres checkpointer, keyed by `session_id` a
 | 8 | `snap` | Snap start/end to the nearest sentence end using word timestamps; a pause ≥ 300 ms counts only inside a sentence with no sentence end within 10 s (`PAUSE_REACH_MS`; speakers pause mid-sentence, seen in the 2026-10-30 smoke run); enforce child ⊂ parent | no |
 | 9 | `review` | **`interrupt()` #2** — UI shows the inbox. Resumes when the user clicks "Render approved" | human |
 | 10 | `render` | For each approved clip: ASS subtitles from words, burn in with ffmpeg (re-encode, frame-accurate), optional speaker lower-third; write MP4 + `.srt` | no |
+
+**Order (decided 2026-11-03):** the audio is extracted first and transcription starts at once; the 480p proxy is encoded by its own job (`sessions.proxy_status`: `pending` → `running` → `done` | `failed`, `proxy_key` set when done), because on a five-hour video the encode took longer than the whole pipeline up to the transcript. The context check and Who's who play voice samples from `audio.mp3` until the copy exists. A first analysis ends in the stage `preparing_preview`; the session becomes `ready` only when the copy is done too (`settlePreview`, run by whichever side finishes last), and fails with a friendly line if the copy failed.
 
 Nodes 3 and 4 can run in parallel after 2; node 6 can run in parallel with 4–5. Re-cuts after the first render use a standalone `render_clip` job, not the whole graph. **[my call]**
 

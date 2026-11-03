@@ -4,7 +4,7 @@ import { PgBoss } from "pg-boss";
 import { QUEUES } from "@digestor/core";
 import {
   claimClipRender, createClip, createDb, createSession, createTrack, getAnalysisVersion, getClip, getSession, getTrack,
-  claimFindMore, claimRecordFetch, getSessionRecord, linkRecord, createCustomPerson, getFindMore, getTranslation, requestFindMore, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
+  claimFindMore, claimProxy, claimRecordFetch, requestProxy, getSessionRecord, linkRecord, createCustomPerson, getFindMore, getTranslation, requestFindMore, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
 } from "@digestor/core/server";
 import { STUCK_MESSAGE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 
@@ -21,7 +21,7 @@ d("sweepStaleSessions", () => {
     const boss = new PgBoss(url!);
     boss.on("error", () => {});
     await boss.start();
-    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore, QUEUES.names]) {
+    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore, QUEUES.names, QUEUES.proxy]) {
       await boss.createQueue(q);
     }
     await boss.stop({ graceful: false });
@@ -62,6 +62,16 @@ d("sweepStaleSessions", () => {
     const s = await getSession(db, dead);
     expect(s).toMatchObject({ stage: "failed", error: "Processing stopped unexpectedly. Please start over." });
     expect((await getSession(db, alive))?.stage).toBe("transcribing");
+  });
+
+  it("a live proxy job keeps a preparing_preview session alive; without one it is failed", async () => {
+    const dead = await seed("preparing_preview", 200);
+    const alive = await seed("preparing_preview", 200);
+    await job(QUEUES.proxy, alive, "active");
+    const ids = await sweepStaleSessions(db);
+    expect(ids).toContain(dead);
+    expect(ids).not.toContain(alive);
+    expect((await getSession(db, alive))?.stage).toBe("preparing_preview");
   });
 
   it("spares a recent in-progress session and ignores awaiting_context", async () => {
@@ -209,6 +219,35 @@ d("sweepStaleJobRows (R32)", () => {
     await linkRecord(db, ids[0]!, ref); // linking again after the failure: fresh, so the next sweep leaves it
     await sweepStaleJobRows(db);
     expect(await status(0)).toBe("pending");
+  });
+
+  it("a stuck proxy row with no live job is failed and the session settled", async () => {
+    const mk = async (patch: { stage: Stage; status: "pending" | "running"; ageMin: number }) => {
+      const s = await createSession(db, { source: "upload", title: "proxy" });
+      await requestProxy(db, s.id);
+      if (patch.status === "running") await claimProxy(db, s.id);
+      await updateSession(db, s.id, { stage: patch.stage });
+      await db.execute(sql`update sessions set updated_at = ${ago(patch.ageMin)}::timestamptz where id = ${s.id}`);
+      return s.id;
+    };
+    const waiting = await mk({ stage: "preparing_preview", status: "running", ageMin: 45 });
+    const early = await mk({ stage: "awaiting_context", status: "pending", ageMin: 45 });
+    const live = await mk({ stage: "preparing_preview", status: "running", ageMin: 45 });
+    const fresh = await mk({ stage: "preparing_preview", status: "running", ageMin: 5 });
+    await jobWith(QUEUES.proxy, { sessionId: live }, "active");
+    expect(await sweepStaleJobRows(db)).toMatchObject({ proxies: 2 });
+    expect(await getSession(db, waiting)).toMatchObject({ proxyStatus: "failed", stage: "failed", error: "The video preview couldn't be prepared. Please try again." });
+    expect(await getSession(db, early)).toMatchObject({ proxyStatus: "failed", stage: "awaiting_context" }); // the join fails it when the analysis ends
+    expect(await getSession(db, live)).toMatchObject({ proxyStatus: "running", stage: "preparing_preview" });
+    expect(await getSession(db, fresh)).toMatchObject({ proxyStatus: "running", stage: "preparing_preview" });
+  });
+
+  it("a stuck proxy row with a done copy is left alone", async () => {
+    const s = await createSession(db, { source: "upload", title: "proxy done" });
+    await updateSession(db, s.id, { proxyStatus: "done", proxyKey: "k", stage: "ready" });
+    await db.execute(sql`update sessions set updated_at = ${ago(500)}::timestamptz where id = ${s.id}`);
+    await sweepStaleJobRows(db);
+    expect(await getSession(db, s.id)).toMatchObject({ proxyStatus: "done", stage: "ready" });
   });
 
   it("a re-requested translation counts as fresh (its job is about to be sent)", async () => {

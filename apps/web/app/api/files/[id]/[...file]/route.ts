@@ -8,10 +8,11 @@ import { getClip, getMoment, listTracks } from "@digestor/core/server";
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const LANG = "[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*";
-type Kind = "proxy" | "frame" | "thumb" | "render" | "burned" | "subtitle";
+type Kind = "proxy" | "audio" | "frame" | "thumb" | "render" | "burned" | "subtitle";
 /** Allow-list of servable files. Groups, in order: clip id (if any), track language (if any), extension. */
 const ALLOWED: { re: RegExp; kind: Kind }[] = [
   { re: /^proxy\.(mp4)$/, kind: "proxy" },
+  { re: /^audio\.(mp3)$/, kind: "audio" },
   { re: /^names\/([A-Za-z0-9_-]{1,64})\.(jpg)$/, kind: "frame" },
   { re: new RegExp(`^thumbs/(${UUID})\\.(jpg)$`, "i"), kind: "thumb" },
   { re: new RegExp(`^clips/(${UUID})\\.(mp4)$`, "i"), kind: "render" },
@@ -20,6 +21,7 @@ const ALLOWED: { re: RegExp; kind: Kind }[] = [
 ];
 const CONTENT_TYPES: Record<string, string> = {
   mp4: "video/mp4",
+  mp3: "audio/mpeg",
   jpg: "image/jpeg",
   srt: "application/x-subrip; charset=utf-8",
   vtt: "text/vtt; charset=utf-8",
@@ -40,7 +42,7 @@ function matchFile(segments: string[]): Match | null {
     if (!m) continue;
     const groups = m.slice(1) as string[];
     const ext = groups.pop()!.toLowerCase();
-    const withClip = kind !== "proxy" && kind !== "frame";
+    const withClip = kind !== "proxy" && kind !== "audio" && kind !== "frame";
     return { file, kind, clipId: withClip ? groups[0]!.toLowerCase() : null, lang: kind === "burned" || kind === "subtitle" ? groups[1]! : null, ext };
   }
   return null;

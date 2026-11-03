@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "proxy_status" text;

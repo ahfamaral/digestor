@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { errorMessage } from "@/lib/http";
 import { anonymousBody, conflictText, confirmBody, evidenceLine, rowRange, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
+import { sampleSrc } from "@/lib/media";
 import { t } from "@/lib/i18n";
 import { NamePopover } from "./NamePopover";
 import { RecordLink } from "./RecordLink";
@@ -61,6 +62,7 @@ export function WhosWho({
   mode,
   profile,
   videoRemoved = false,
+  proxyReady = true,
 }: {
   sessionId: string;
   rows: WhosWhoRow[];
@@ -72,6 +74,8 @@ export function WhosWho({
   profile?: string;
   /** Retention removed the video (and its proxy): no ▶ samples. */
   videoRemoved?: boolean;
+  /** The 480p preview copy exists (always, once the session is `ready`); until then the samples play from the audio. */
+  proxyReady?: boolean;
 }) {
   const router = useRouter();
   const [showAll, setShowAll] = useState(false);
@@ -246,7 +250,7 @@ export function WhosWho({
           {error}
         </p>
       )}
-      {!videoRemoved && <video ref={player} src={`/api/files/${sessionId}/proxy.mp4`} preload="none" className="hidden" data-mode={mode} />}
+      {!videoRemoved && <video ref={player} src={sampleSrc(sessionId, proxyReady)} preload="none" className="hidden" data-mode={mode} />}
     </div>
   );
 }

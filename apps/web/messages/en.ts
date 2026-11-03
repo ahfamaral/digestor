@@ -89,6 +89,7 @@ export const en = {
     finding_topics: "Finding topics",
     finding_moments: "Finding moments",
     writing_briefing: "Writing briefing",
+    preparing_preview: "Preparing the video preview",
     ready: "Ready",
     language: "Language",
     profile: "Profile",

@@ -1,5 +1,5 @@
 import { Command } from "@langchain/langgraph";
-import { PROFILES, ProfileIdSchema, type AskJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { PROFILES, ProfileIdSchema, type AskJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ProxyJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   claimFindMore,
   failAnalysisVersion,
@@ -12,6 +12,8 @@ import {
   getAnalysisTopics,
   failTranslation,
   failRecordFetch,
+  failProxy,
+  settlePreview,
   getBriefing,
   getTranslation,
   saveTranslation,
@@ -31,6 +33,7 @@ import {
   setMomentChecks,
   setStage,
   type Db,
+  type LocalStorage,
 } from "@digestor/core/server";
 import { ASK_FAILED, AskRunError, runAsk, type AskDeps } from "./agents/ask.js";
 import { findMoreMoments, personConfirmed, personTurnRanges } from "./agents/findMore.js";
@@ -46,6 +49,7 @@ import { TranscriptionError } from "./transcribe/assemblyai.js";
 
 import { MissingApiKeyError, VideoRemovedError } from "./errors.js";
 import { burnTrack, renderClipJob, type RenderDeps } from "./pipeline/render.js";
+import { runProxy, type ProxyDeps } from "./pipeline/proxy.js";
 
 export { MissingApiKeyError };
 
@@ -398,6 +402,26 @@ export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: Nam
       console.error(`[jobs] record of ${job.sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
     }
     throw err instanceof RecordStepError ? err.original : err;
+  }
+}
+
+/**
+ * Encodes the preview copy (`session.proxy`). A video that is gone is failed inside `runProxy` and completes the job.
+ * An ffmpeg error is rethrown for pg-boss to retry (the retry takes over the `running` row); only the final attempt
+ * marks the copy failed and runs the join, which fails the session with a friendly line.
+ */
+export async function handleProxy(deps: ProxyDeps, job: ProxyJob, attempt: Attempt): Promise<void> {
+  try {
+    await runProxy(deps, job.sessionId, { retrying: attempt.retryCount > 0 });
+  } catch (err) {
+    if (attempt.retryCount >= attempt.retryLimit) {
+      await failProxy(deps.db, job.sessionId);
+      await settlePreview(deps.db, job.sessionId);
+      console.error(`[jobs] preview copy of ${job.sessionId} failed:`, err);
+    } else {
+      console.error(`[jobs] preview copy of ${job.sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    }
+    throw err;
   }
 }
 

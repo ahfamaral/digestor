@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { QUEUES } from "@digestor/core";
-import { failAnalysisVersion, getRunningAnalysis, type Db } from "@digestor/core/server";
+import { failAnalysisVersion, getRunningAnalysis, settlePreview, type Db } from "@digestor/core/server";
 
 /** pg-boss queue for the stale-session sweep (scheduled every 15 minutes in main.ts). */
 export const SWEEP_QUEUE = "session.sweep";
@@ -21,9 +21,11 @@ const IN_PROGRESS = [
   "finding_topics",
   "finding_moments",
   "writing_briefing",
+  "preparing_preview",
 ];
 
-const LIVE_JOB_QUEUES = [QUEUES.start, QUEUES.resume, QUEUES.reanalyze];
+/** `session.proxy` owns a `preparing_preview` session while the copy is encoded (up to ~1 h on a 5 h video; the heartbeat keeps the job live). */
+const LIVE_JOB_QUEUES = [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.proxy];
 
 /** SQL: a pg-boss job that may still run for the session whose id is `idCol`. */
 const hasLiveJob = (idCol: ReturnType<typeof sql.raw>) => sql`exists (
@@ -84,14 +86,16 @@ export async function sweepStaleSessions(db: Db, now: Date = new Date(), staleMi
  * - a `preparing` subtitle track → `failed` with STUCK_MESSAGE ("Try again" replaces it);
  * - a clip render or track burn `queued`/`rendering` → `failed` (exporting again re-claims it);
  * - a "Find more" request `pending`/`running` → `failed` with STUCK_MESSAGE (asking again resets it);
- * - a linked record's fetch `pending`/`running` → `failed` with STUCK_MESSAGE (linking again resets it).
+ * - a linked record's fetch `pending`/`running` → `failed` with STUCK_MESSAGE (linking again resets it);
+ * - a session's preview copy `pending`/`running` → `failed`, then the join runs: a session waiting in `preparing_preview`
+ *   fails with its friendly line (one still analysing fails when its analysis ends).
  * Returns how many rows of each kind were failed.
  */
 export async function sweepStaleJobRows(
   db: Db,
   now: Date = new Date(),
   staleMinutes = 30,
-): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number; records: number }> {
+): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number; records: number; proxies: number }> {
   const cutoff = sql`${new Date(now.getTime() - staleMinutes * 60_000).toISOString()}::timestamptz`;
 
   const translations = await db.execute(sql`
@@ -126,6 +130,13 @@ export async function sweepStaleJobRows(
       and not ${hasLiveJobFor(QUEUES.start, { sessionId: "r.session_id" })}
       and not ${hasLiveJobFor(QUEUES.resume, { sessionId: "r.session_id" })}
   `);
+  const stuckProxies = await db.execute<{ id: string }>(sql`
+    update sessions s set proxy_status = 'failed', updated_at = now()
+    where s.proxy_status in ('pending', 'running') and s.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.proxy, { sessionId: "s.id" })}
+    returning s.id
+  `);
+  for (const row of stuckProxies.rows) await settlePreview(db, row.id);
   return {
     translations: translations.rowCount ?? 0,
     tracks: tracks.rowCount ?? 0,
@@ -133,5 +144,6 @@ export async function sweepStaleJobRows(
     burns: burns.rowCount ?? 0,
     findMore: findMore.rowCount ?? 0,
     records: records.rowCount ?? 0,
+    proxies: stuckProxies.rows.length,
   };
 }

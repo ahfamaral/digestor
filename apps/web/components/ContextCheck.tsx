@@ -8,6 +8,7 @@ import type { NamesData, WhosWhoRow } from "@/lib/names";
 import { labelText, voiceLabel } from "@/lib/names";
 import { factBadge, profileBadge } from "@/lib/contextBadge";
 import { buildContextPayload, buildSkipPayload, type ContextFields } from "@/lib/contextPayload";
+import { sampleSrc } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
 
@@ -63,8 +64,8 @@ function Row({ label, badge, audio, children }: { label: string; badge: keyof ty
 
 /** Context check screen: review what the agent understood, answer its questions, then continue or skip. */
 export function ContextCheck({
-  sessionId, card, names, rows,
-}: { sessionId: string; card: ContextCard; names: NamesData; rows: WhosWhoRow[] }) {
+  sessionId, card, names, rows, proxyReady,
+}: { sessionId: string; card: ContextCard; names: NamesData; rows: WhosWhoRow[]; /** The 480p preview copy exists; until then the samples play from the audio. */ proxyReady: boolean }) {
   const router = useRouter();
   const [original] = useState(() => toFields(card));
   const [edited, setEdited] = useState<ContextFields>(original);
@@ -230,7 +231,7 @@ export function ContextCheck({
             </div>
           </div>
         ))}
-        <video ref={player} src={`/api/files/${sessionId}/proxy.mp4`} preload="none" className="hidden" />
+        <video ref={player} src={sampleSrc(sessionId, proxyReady)} preload="none" className="hidden" />
 
         {error && (
           <p role="alert" className="mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">
@@ -260,7 +261,7 @@ export function ContextCheck({
       <section aria-labelledby="whos-who-title" className="rounded-xl border border-border bg-white p-5">
         <h2 id="whos-who-title" className="mb-1 text-base font-bold">{t("names.whoTitle")}</h2>
         <p className="mb-2 text-xs text-muted-foreground">{t("names.whoHint")}</p>
-        <WhosWho sessionId={sessionId} rows={rows} names={names} sensitive={PROFILES[edited.profile].sensitive} language={edited.language || undefined} profile={edited.profile} mode="context" />
+        <WhosWho sessionId={sessionId} rows={rows} names={names} sensitive={PROFILES[edited.profile].sensitive} language={edited.language || undefined} profile={edited.profile} mode="context" proxyReady={proxyReady} />
       </section>
     </div>
   );

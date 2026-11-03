@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -10,13 +10,13 @@ import {
   LocalStorage, claimRecordFetch, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
   claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
-  setStage, startAnalysisVersion, type Db,
+  setStage, startAnalysisVersion, claimProxy, requestProxy, updateSession, type Db,
 } from "@digestor/core/server";
 import { FIXTURE_EVENT_ID, fakeCamaraFetch, fixtureDiscursos as camaraDiscursos, transcriptOfDeputies } from "./records/fakeCamara.js";
 import { FIXTURE_DATE, fakeSenadoFetch, fixtureDiscursos, fixtureTexts, transcriptOfSpeeches } from "./records/fakeSenado.js";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
-import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, handleNames, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, type JobContext } from "./jobs.js";
+import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, handleNames, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, handleProxy, type JobContext } from "./jobs.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -640,4 +640,100 @@ d("handleNames", () => {
     expect(await getSessionRecord(db, id)).toMatchObject({ status: "matched" });
   });
 
+});
+
+d("handleProxy (the preview copy job)", () => {
+  let db: Db;
+  let close: () => Promise<void>;
+  let root: string;
+  let storage: LocalStorage;
+  beforeAll(async () => {
+    ({ db, close } = createDb(url!));
+    root = await mkdtemp(path.join(os.tmpdir(), "digestor-proxy-"));
+    storage = new LocalStorage(root);
+  });
+  afterAll(async () => {
+    await close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const fakeMedia = (fail?: Error) => ({
+    makeProxy: vi.fn(async (_in: string, out: string, _o?: { hasVideo?: boolean }) => {
+      if (fail) throw fail;
+      await writeFile(out, "proxy");
+      return undefined;
+    }),
+  });
+  /** A session in preparing_preview whose copy is requested (the state after ingest and a finished analysis). */
+  async function seed(opts: { original?: boolean; stage?: "preparing_preview" | "awaiting_context" } = {}) {
+    const s = await createSession(db, { title: "P", source: "upload" });
+    const originalKey = storage.key(s.id, "original.mp4");
+    await mkdir(path.dirname(storage.resolve(originalKey)), { recursive: true });
+    if (opts.original !== false) await writeFile(storage.resolve(originalKey), "video");
+    await updateSession(db, s.id, { originalKey, hasVideo: true });
+    await setStage(db, s.id, opts.stage ?? "preparing_preview", 96);
+    await requestProxy(db, s.id);
+    return s.id;
+  }
+
+  it("handleProxy claims, encodes, finishes and settles", async () => {
+    const id = await seed();
+    const media = fakeMedia();
+    await handleProxy({ db, storage, media }, { sessionId: id }, FIRST);
+    expect(media.makeProxy).toHaveBeenCalledExactlyOnceWith(storage.resolve(`${id}/original.mp4`), storage.resolve(`${id}/proxy.mp4`), { hasVideo: true });
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", proxyKey: `${id}/proxy.mp4`, stage: "ready", progress: 100 });
+  });
+
+  it("finishing while the analysis is still running leaves the stage for the analysis end", async () => {
+    const id = await seed({ stage: "awaiting_context" });
+    await handleProxy({ db, storage, media: fakeMedia() }, { sessionId: id }, FIRST);
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", proxyKey: `${id}/proxy.mp4`, stage: "awaiting_context" });
+  });
+
+  it("a second job finds nothing to claim", async () => {
+    const id = await seed();
+    await handleProxy({ db, storage, media: fakeMedia() }, { sessionId: id }, FIRST);
+    const again = fakeMedia();
+    await handleProxy({ db, storage, media: again }, { sessionId: id }, FIRST);
+    expect(again.makeProxy).not.toHaveBeenCalled();
+    // ... and a first delivery against a row another job is running does nothing either
+    const other = await seed();
+    await claimProxy(db, other);
+    await handleProxy({ db, storage, media: again }, { sessionId: other }, FIRST);
+    expect(again.makeProxy).not.toHaveBeenCalled();
+  });
+
+  it("a transient ffmpeg error rethrows and keeps the claim; a retry takes it over", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = await seed();
+    await expect(handleProxy({ db, storage, media: fakeMedia(new Error("ffmpeg died")) }, { sessionId: id }, FIRST)).rejects.toThrow("ffmpeg died");
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "running", stage: "preparing_preview" });
+    await handleProxy({ db, storage, media: fakeMedia() }, { sessionId: id }, { retryCount: 1, retryLimit: 2 });
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", stage: "ready" });
+    log.mockRestore();
+  });
+
+  it("final-attempt failure marks failed and settles", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = await seed();
+    await expect(handleProxy({ db, storage, media: fakeMedia(new Error("ffmpeg died")) }, { sessionId: id }, LAST)).rejects.toThrow("ffmpeg died");
+    expect(await getSession(db, id)).toMatchObject({
+      proxyStatus: "failed", stage: "failed", error: "The video preview couldn't be prepared. Please try again.",
+    });
+    log.mockRestore();
+  });
+
+  it("deleted video → failed, no retry", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const removed = await seed();
+    await updateSession(db, removed, { videoDeletedAt: new Date() });
+    const media = fakeMedia();
+    await expect(handleProxy({ db, storage, media }, { sessionId: removed }, FIRST)).resolves.toBeUndefined();
+    expect(await getSession(db, removed)).toMatchObject({ proxyStatus: "failed", stage: "failed" });
+    const missing = await seed({ original: false });
+    await expect(handleProxy({ db, storage, media }, { sessionId: missing }, FIRST)).resolves.toBeUndefined();
+    expect(await getSession(db, missing)).toMatchObject({ proxyStatus: "failed", stage: "failed" });
+    expect(media.makeProxy).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
 });

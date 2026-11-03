@@ -18,6 +18,8 @@ import {
   getSession,
   getTranscript,
   listAttributions,
+  requestProxy,
+  settlePreview,
   saveContextCard,
   setHumanAttribution,
   saveTranscript,
@@ -49,6 +51,8 @@ export type PipelineDeps = {
   fetch?: typeof fetch;
   /** Sends `session.names` for a session (set by the worker's main; the job claims the row first, so a double send is harmless). */
   enqueueNames?: (sessionId: string) => Promise<void>;
+  /** Sends `session.proxy` (set by the worker's main; the job claims the row first, so a double send is harmless). */
+  enqueueProxy?: (sessionId: string) => Promise<void>;
 };
 
 const keep = <T>(_old: T, next: T): T => next;
@@ -226,17 +230,18 @@ export const ingestNode =
       return {};
     }
     const audioKey = storage.key(s.sessionId, "audio.mp3");
-    const proxyKey = storage.key(s.sessionId, "proxy.mp4");
     await media.extractAudio(original, storage.resolve(audioKey));
-    await media.makeProxy(original, storage.resolve(proxyKey), { hasVideo: info.hasVideo });
     await updateSession(db, s.sessionId, {
       // Container tags never override metadata we already have (e.g. from YouTube).
       metadata: { ...info.tags, ...session.metadata },
       audioKey,
-      proxyKey,
       durationMs: info.durationMs,
       hasVideo: info.hasVideo,
     });
+    // The 480p preview copy is its own job: transcription starts now, and the session is `ready` once both are done.
+    if (!deps.enqueueProxy) throw new Error("enqueueProxy is not wired: the preview copy would never be made");
+    await requestProxy(db, s.sessionId);
+    await deps.enqueueProxy(s.sessionId); // a failed send throws: the node is retried
     return {};
   };
 
@@ -360,7 +365,8 @@ export const analyzeNode =
     const { db } = deps;
     // Completed before a crash that kept this node from checkpointing: don't analyse (and pay) again.
     if (await getCurrentAnalysis(db, s.sessionId)) {
-      await setStage(db, s.sessionId, "ready", 100);
+      await setStage(db, s.sessionId, "preparing_preview", 96);
+      await settlePreview(db, s.sessionId);
       return {};
     }
     const stored = await getContextCard(db, s.sessionId);

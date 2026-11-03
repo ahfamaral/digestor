@@ -14,6 +14,7 @@ export const QUEUES = {
   ask: "ask.run",
   findMore: "moment.find_more",
   names: "session.names",
+  proxy: "session.proxy",
 } as const;
 
 export const StartJobSchema = z.object({ sessionId: z.string().uuid() });
@@ -59,6 +60,10 @@ export type FindMoreJob = z.infer<typeof FindMoreJobSchema>;
 /** Match a session's linked official record against its transcript (names from the Senado or Câmara record). */
 export const NamesJobSchema = z.object({ sessionId: z.string().uuid() });
 export type NamesJob = z.infer<typeof NamesJobSchema>;
+
+/** Encode the session's 480p preview copy (`proxy.mp4`) from its original; the pipeline does not wait for it. */
+export const ProxyJobSchema = z.object({ sessionId: z.string().uuid() });
+export type ProxyJob = z.infer<typeof ProxyJobSchema>;
 
 /**
  * The one source of pg-boss options: the worker applies them to every queue (create + update) and every sender

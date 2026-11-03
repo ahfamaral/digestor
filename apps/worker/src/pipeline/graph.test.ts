@@ -12,6 +12,7 @@ import {
   createSession,
   getContextCard,
   getCurrentAnalysis,
+  getTranscript,
   getPersons,
   getSession,
   claimRecordFetch,
@@ -38,6 +39,7 @@ import { nameSpeakersNode } from "./naming.js";
 import { FIXTURE_DATE, fakeSenadoFetch, transcriptOfSpeeches } from "../records/fakeSenado.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
 import { buildPipeline, type PipelineDeps } from "./graph.js";
+import { runProxy } from "./proxy.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
 const LONG = `${TMP}long.mp4`; // 100 s with audio
@@ -110,6 +112,8 @@ type Setup = {
   search?: PipelineDeps["search"];
   /** The graph's way to send `session.names` (a transient record failure hands the row back to the job). */
   enqueueNames?: PipelineDeps["enqueueNames"];
+  /** The graph's way to request the preview copy; default: the copy is made at once, as the job would. */
+  enqueueProxy?: PipelineDeps["enqueueProxy"];
   /** A record linked at upload (its fetches go through `fetch`). */
   record?: RecordRef;
   fetch?: typeof fetch;
@@ -144,6 +148,7 @@ async function setup(o: Setup = {}) {
     ...(o.fetch ? { fetch: o.fetch } : {}),
     ...(o.enqueueNames ? { enqueueNames: o.enqueueNames } : {}),
   };
+  deps.enqueueProxy = o.enqueueProxy ?? (async (id) => runProxy({ db: deps.db, storage, media: deps.media }, id));
   const graph = buildPipeline(deps, new MemorySaver());
   const cfg = { configurable: { thread_id: session.id } };
   const resume = (payload: ResumePayload) => graph.invoke(new Command({ resume: payload }), cfg);
@@ -160,7 +165,8 @@ const youtubeStub =
 
 describe("pipeline", () => {
   it("pauses for context when the date is missing", async () => {
-    const { graph, cfg, sessionId, llm, interruptValue } = await setup({ context: [draft()] });
+    const enqueueProxy = vi.fn(async (_id: string) => {});
+    const { graph, cfg, sessionId, llm, interruptValue } = await setup({ context: [draft()], enqueueProxy });
     await graph.invoke({ sessionId }, cfg);
     const st = await graph.getState(cfg);
     expect(st.tasks[0]!.interrupts[0]!.value).toEqual({ type: "context" });
@@ -169,10 +175,11 @@ describe("pipeline", () => {
     const s = (await getSession(db, sessionId))!;
     expect(s).toMatchObject({ stage: "awaiting_context", progress: 55, language: "en", profile: "interview" });
     expect(s.audioKey).toBe(`${sessionId}/audio.mp3`);
-    expect(s.proxyKey).toBe(`${sessionId}/proxy.mp4`);
+    expect(s.proxyKey).toBeNull(); // the copy is its own job: proxyKey is set when it is done
+    expect(s.proxyStatus).toBe("pending");
     expect(Math.abs(s.durationMs! - 100_000)).toBeLessThan(500);
     expect(await exists(storage.resolve(s.audioKey!))).toBe(true);
-    expect(await exists(storage.resolve(s.proxyKey!))).toBe(true);
+    expect(await exists(storage.resolve(`${sessionId}/proxy.mp4`))).toBe(false);
 
     const stored = (await getContextCard(db, sessionId))!;
     expect(stored.round).toBe(1);
@@ -180,6 +187,36 @@ describe("pipeline", () => {
     expect(stored.card.openQuestions.map((q) => q.id)).toEqual(["date"]);
     expect(stored.card.language).toMatchObject({ value: "en", source: "video" });
     expect(modelCalls(llm)).toHaveLength(1);
+  });
+
+  it("the transcript is saved before the preview copy exists", async () => {
+    const makeProxy = vi.fn(async (_i: string, _o: string) => undefined);
+    const enqueueProxy = vi.fn(async (_id: string) => {});
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], media: { ...media, makeProxy }, enqueueProxy });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getTranscript(db, sessionId)).not.toBeNull();
+    expect(makeProxy).not.toHaveBeenCalled();
+    expect(enqueueProxy).toHaveBeenCalledExactlyOnceWith(sessionId);
+    expect(await getSession(db, sessionId)).toMatchObject({ proxyStatus: "pending", proxyKey: null });
+  });
+
+  it("a failed send of the copy's job throws, so the node is retried", async () => {
+    const enqueueProxy = vi.fn(async () => { throw new Error("queue down"); });
+    const { graph, cfg, sessionId } = await setup({ context: [draft()], enqueueProxy });
+    await expect(graph.invoke({ sessionId }, cfg)).rejects.toThrow("queue down");
+    expect(await getTranscript(db, sessionId)).toBeNull();
+  });
+
+  it("the context check pauses with the copy still pending; the analysis then waits for it", async () => {
+    const enqueueProxy = vi.fn(async (_id: string) => {});
+    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], enqueueProxy });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", proxyStatus: "pending", proxyKey: null });
+    await resume({ action: "skip" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "preparing_preview", progress: 96, profile: "interview" });
+    expect(await getCurrentAnalysis(db, sessionId)).not.toBeNull();
+    await runProxy({ db, storage, media }, sessionId); // the job finishes last and closes it
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, proxyStatus: "done", proxyKey: `${sessionId}/proxy.mp4` });
   });
 
   it("skip goes on to the analysis and ready after the single context pause", async () => {
@@ -796,7 +833,7 @@ describe("name_speakers", () => {
 
   it("an old checkpoint at name_speakers (no context card yet) still gets the context check", async () => {
     const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], analysis: withCaptions([]) });
-    await updateSession(db, sessionId, { hasVideo: true });
+    await updateSession(db, sessionId, { hasVideo: true, proxyKey: `${sessionId}/proxy.mp4` }); // an old session: its copy was made at ingest
     await saveTranscript(db, sessionId, transcript);
     // The state the old graph left: name_speakers done, no context card.
     await graph.updateState(cfg, { sessionId }, "name_speakers");

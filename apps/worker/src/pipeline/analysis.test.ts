@@ -6,6 +6,11 @@ import type { ContextCard, Fact, Transcript, Word } from "@digestor/core";
 import {
   LocalStorage,
   claimAnalysisVersion,
+  claimProxy,
+  failProxy,
+  finishProxy,
+  requestProxy,
+  settlePreview,
   claimMomentCheck,
   createDb,
   failAnalysisVersion,
@@ -240,6 +245,54 @@ describe("runAnalysis", () => {
       expect(thumbs).toHaveLength(0);
       expect((await getCurrentAnalysis(db, id))!.moments.filter((m) => m.checks !== null)).toHaveLength(3);
     }
+  });
+});
+
+describe("the join with the preview copy", () => {
+  /** A seeded session whose copy is requested but not made yet (the state after ingest). */
+  async function seedWithCopyPending() {
+    const id = await seed();
+    await updateSession(db, id, { proxyKey: null, proxyStatus: null });
+    await requestProxy(db, id);
+    await claimProxy(db, id);
+    return id;
+  }
+  const analyse = async (id: string) => runAnalysis(mkDeps(new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) })).deps, id, { profile: "interview", reason: "initial" });
+
+  it("analysis done first → preparing_preview, then the copy finishes → ready", async () => {
+    const id = await seedWithCopyPending();
+    await analyse(id);
+    expect(await getSession(db, id)).toMatchObject({ stage: "preparing_preview", progress: 96, profile: "interview" });
+    expect(await getCurrentAnalysis(db, id)).not.toBeNull();
+    await finishProxy(db, id, `${id}/proxy.mp4`);
+    await settlePreview(db, id);
+    expect(await getSession(db, id)).toMatchObject({ stage: "ready", progress: 100, error: null });
+  });
+
+  it("copy done first → analysis end → ready", async () => {
+    const id = await seedWithCopyPending();
+    await finishProxy(db, id, `${id}/proxy.mp4`);
+    await settlePreview(db, id); // not preparing_preview yet: nothing
+    expect((await getSession(db, id))!.stage).toBe("indexing");
+    await analyse(id);
+    expect(await getSession(db, id)).toMatchObject({ stage: "ready", progress: 100 });
+  });
+
+  it("copy failed → the session is failed with the line once the analysis ends", async () => {
+    const id = await seedWithCopyPending();
+    await failProxy(db, id);
+    await analyse(id);
+    expect(await getSession(db, id)).toMatchObject({ stage: "failed", error: "The video preview couldn't be prepared. Please try again." });
+  });
+
+  it("a re-analysis never touches the stage", async () => {
+    const id = await seedWithCopyPending();
+    await analyse(id);
+    await finishProxy(db, id, `${id}/proxy.mp4`);
+    await settlePreview(db, id);
+    const deps = mkDeps(new FakeLLM({ byName: analysisResponses({ topics: TOPICS, runs: 1 }) })).deps;
+    await runAnalysis(deps, id, { profile: "parliament", reason: "r" });
+    expect(await getSession(db, id)).toMatchObject({ stage: "ready", progress: 100, profile: "parliament" });
   });
 });
 

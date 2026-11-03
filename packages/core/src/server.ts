@@ -7,6 +7,7 @@ export * from "./db/analysis.ts";
 export * from "./db/personal.ts";
 export * from "./db/names.ts";
 export * from "./db/records.ts";
+export * from "./db/preview.ts";
 export { runMigrations } from "./db/migrate.ts";
 export {
   sessions, transcripts, contextCards, analysisVersions, topics, moments, momentHighlights, briefings, translations,

@@ -134,5 +134,14 @@ export type Stage =
   | "finding_topics"
   | "finding_moments"
   | "writing_briefing"
+  | "preparing_preview"
   | "ready"
   | "failed";
+
+/** State of the session's preview copy (`proxy.mp4`); `null` = a session from before the copy got its own job. */
+export type ProxyStatus = "pending" | "running" | "done" | "failed";
+
+/** The preview copy exists: `done`, or (a session from before the change) a `proxyKey` with no status. */
+export function isProxyReady(s: { proxyStatus: ProxyStatus | null; proxyKey: string | null }): boolean {
+  return s.proxyStatus === "done" || (s.proxyStatus === null && s.proxyKey !== null);
+}
