@@ -284,9 +284,12 @@ export function NamePopover({
           onSent={() => setReportSent(true)}
         />
       )}
-      <span role="status" className="text-xs text-emerald-700">
-        {reportSent ? t("preview.reportSent") : null}
-      </span>
+      {/* Mounted once the dialog opens (empty), so the later "sent" text is announced; not on every name. */}
+      {(reportOpen || reportSent) && (
+        <span role="status" className="text-xs text-emerald-700">
+          {reportSent ? t("preview.reportSent") : null}
+        </span>
+      )}
     </>
   );
 }
