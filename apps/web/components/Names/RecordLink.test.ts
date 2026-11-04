@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { t } from "@/lib/i18n";
 import { recordMatchedLine } from "@/lib/names";
-import { RecordStatusLine, recordFieldError } from "./RecordLink";
+import { RecordStatusLine, RecordSuggestion, recordFieldError, suggestionShown } from "./RecordLink";
 import { RecordHouseSelect, recordHelpText, recordHouseGroups } from "./RecordHouseSelect";
 
 describe("the official record field and its status lines", () => {
@@ -72,5 +72,30 @@ describe("the house select's accessible name", () => {
     const html = renderToStaticMarkup(createElement(RecordHouseSelect, { id: "record-house-x", value: "", onChange: () => {} }));
     expect(html).toMatch(/<label[^>]*for="record-house-x"[^>]*>House<\/label>/);
     expect(html).toMatch(/<select[^>]*id="record-house-x"/);
+  });
+});
+
+describe("the suggestion", () => {
+  const bundestag = { chamber: "bundestag" as const, period: 21, sitting: 104, date: "2026-10-16", url: "x" };
+  const rec = { status: "suggested" as const, error: null, chamber: "bundestag" as const, date: "16/10/2026", url: "x", ref: bundestag };
+  const html = (record: Parameters<typeof RecordSuggestion>[0]["record"], props: { busy?: boolean } = {}) =>
+    renderToStaticMarkup(createElement(RecordSuggestion, { record, busy: props.busy ?? false, onAccept: () => {}, onDismiss: () => {} }));
+
+  it("reads the sitting with its date and offers both buttons", () => {
+    const out = html(rec);
+    expect(out).toContain("This looks like the Bundestag sitting of 16/10/2026.");
+    expect(out).toContain(">Use this record<");
+    expect(out).toContain(">Not this one<");
+  });
+  it("reads the sitting number when the date is unknown", () => {
+    const out = html({ ...rec, date: null, ref: { ...bundestag, date: null } });
+    expect(out).toContain("This looks like the Bundestag sitting 104.");
+  });
+  it("shows only for a parliament session and a suggested row with its ref", () => {
+    expect(suggestionShown(rec, "parliament")).toBe(true);
+    expect(suggestionShown(rec, "interview")).toBe(false);
+    expect(suggestionShown(rec, undefined)).toBe(false);
+    expect(suggestionShown({ ...rec, status: "pending" as never }, "parliament")).toBe(false);
+    expect(suggestionShown({ ...rec, ref: undefined }, "parliament")).toBe(false);
   });
 });

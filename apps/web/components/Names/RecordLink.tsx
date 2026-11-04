@@ -2,7 +2,7 @@
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CHAMBERS, parseRecordRef, recordInputError, type ChamberId, type RecordStatus } from "@digestor/core";
+import { CHAMBERS, parseRecordRef, type RecordRef, recordInputError, type ChamberId, type RecordStatus } from "@digestor/core";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { recordMatchedLine } from "@/lib/names";
@@ -13,7 +13,7 @@ const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const POLL_MS = 3000;
 
-type RecordState = { status: RecordStatus; error: string | null; chamber?: ChamberId; date: string | null; url: string; retryAt?: string | null };
+type RecordState = { status: RecordStatus; error: string | null; chamber?: ChamberId; date: string | null; url: string; retryAt?: string | null; /** Only for a `suggested` row: the ref the journalist is shown. */ ref?: RecordRef };
 
 /** An HTTP failure whose message is the server's friendly sentence. */
 class HttpError extends Error {}
@@ -21,6 +21,36 @@ class HttpError extends Error {}
 /** The client-side check of the field: a friendly sentence, or null when the text is a record of the picked house (or a link to one). */
 export function recordFieldError(text: string, chamber?: ChamberId): string | null {
   return recordInputError(text, chamber) ?? (parseRecordRef(text, chamber) ? null : t("record.invalid"));
+}
+
+/** "This looks like the Bundestag sitting of 16/10/2026." (a Bundestag ref with no date yet reads "…sitting 104."). */
+function suggestionLine(record: RecordState): string {
+  const house = CHAMBERS[record.chamber ?? "senado"].shortName;
+  const sitting = record.ref?.chamber === "bundestag" ? record.ref.sitting : null;
+  if (!record.date && sitting) return t("names.record.suggestedSitting", { house, sitting: String(sitting) });
+  return t("names.record.suggested", { house, date: record.date ?? "" });
+}
+
+/** A suggestion shows only while the session is a parliament one (the row stays, and comes back if the profile does). It needs its ref: that is what the buttons send. */
+export function suggestionShown(record: RecordState | null, profile?: string): boolean {
+  return record?.status === "suggested" && !!record.ref && profile === "parliament";
+}
+
+/** The suggested record of the YouTube details: its line and the two buttons. */
+export function RecordSuggestion({ record, busy, onAccept, onDismiss }: { record: RecordState; busy: boolean; onAccept: () => void; onDismiss: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <p role="status" className="text-foreground">{suggestionLine(record)}</p>
+      <div className="flex gap-1.5">
+        <button type="button" className={BTN} disabled={busy} onClick={onAccept}>
+          {t("names.record.useSuggestion")}
+        </button>
+        <button type="button" className={BTN} disabled={busy} onClick={onDismiss}>
+          {t("names.record.dismissSuggestion")}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** The status line of a linked record. A waiting row shows the line the worker stored; pending/running say it is matching. */
@@ -36,9 +66,7 @@ export function RecordStatusLine({ record }: { record: RecordState }) {
         {record.error ?? t("names.record.waiting", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
       </p>
     ) : record.status === "suggested" && record.chamber ? (
-      <p role="status" className="text-foreground">
-        {t("names.record.suggested", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
-      </p>
+      <p role="status" className="text-foreground">{suggestionLine(record)}</p>
     ) : (
       <p role="status" dir="auto" className="text-red-700">{record.error ?? t("names.record.failed")}</p>
     )}
@@ -119,11 +147,44 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
     }
   }
 
-  if (!loaded || (!record && profile !== "parliament")) return null;
+  /** "Use this record" (accept) or "Not this one" (dismiss) for the suggestion the journalist saw. */
+  async function answer(action: "accept" | "dismiss") {
+    if (busy || !record?.ref) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/record`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ref: record.ref }),
+      });
+      if (!res.ok) throw new HttpError(await errorMessage(res, t("names.record.failed")));
+      if (action === "dismiss") {
+        // The row is gone: the field to link a record opens in its place.
+        seen.current = null;
+        setRecord(null);
+        setEditing(false);
+      } else {
+        seen.current = "pending";
+        setRecord({ status: "pending", error: null, chamber: record.chamber, date: record.date, url: record.url, retryAt: null });
+      }
+    } catch (err) {
+      console.error("record: suggestion answer failed", err);
+      setError(err instanceof HttpError ? err.message : t("names.record.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // A suggestion for a session that is not a parliament one stays stored but unseen.
+  const hidden = record?.status === "suggested" && !suggestionShown(record, profile);
+  if (!loaded || hidden || (!record && profile !== "parliament")) return null;
+  const suggesting = suggestionShown(record, profile);
   const showField = !record || editing;
   return (
     <div className="mb-3 rounded-lg border border-border bg-stone-50 px-3 py-2 text-sm">
-      {record && (
+      {record && suggesting && <RecordSuggestion record={record} busy={busy} onAccept={() => void answer("accept")} onDismiss={() => void answer("dismiss")} />}
+      {record && !suggesting && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <RecordStatusLine record={record} />
           {!editing && (

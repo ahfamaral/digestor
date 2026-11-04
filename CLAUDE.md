@@ -3,7 +3,7 @@
 Long public-interest videos (interviews, parliament, UN, trials) → subtitled clips. Turing College capstone. All TypeScript (strict, ESM), pnpm monorepo:
 
 - `packages/core`: zod domain schemas, profiles and highlight types (`profiles.ts`), time/snap logic, subtitle text (`subtitleText.ts`), Drizzle tables + repo functions, LocalStorage, queue names and `JOB_OPTIONS`.
-- `apps/worker`: pg-boss consumer, LangGraph pipeline (`src/pipeline/graph.ts`, one human pause: the context check), analysis agents (topics, moments, briefing, checks), Ask, Chroma search index, AssemblyAI, Claude via LangChain, ffmpeg, yt-dlp, retention clean-up and stale-session sweep, evaluation (`src/eval`, `scripts/eval.ts`).
+- `apps/worker`: pg-boss consumer, LangGraph pipeline (`src/pipeline/graph.ts`, one human pause: the context check; `match_record` runs before it and `match_record_late` after it, so a suggestion accepted at the pause is matched on Continue), analysis agents (topics, moments, briefing, checks), Ask, Chroma search index, AssemblyAI, Claude via LangChain, ffmpeg, yt-dlp, retention clean-up and stale-session sweep, evaluation (`src/eval`, `scripts/eval.ts`).
 - `apps/web`: Next.js 16 (App Router, Cache Components, Turbopack): screens + API routes + SSE.
 
 ## The journalist flow

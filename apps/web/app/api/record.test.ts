@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { QUEUES } from "@digestor/core";
-import { createSession, getSessionRecord, sessions, updateSession } from "@digestor/core/server";
+import { createSession, getSessionRecord, sessions, suggestRecordRow, updateSession } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
 import { GET as getRecord, POST as postRecord } from "./sessions/[id]/record/route";
@@ -203,5 +203,72 @@ describe("record at upload", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: BAD });
     expect(h.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("accepting or dismissing a suggestion", () => {
+  const ref = { chamber: "bundestag" as const, period: 21, sitting: 104, date: "2026-10-16", url: "https://www.bundestag.de/services/opendata" };
+  const act = (id: string, action: string, r: unknown = ref) =>
+    postRecord(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ action, ref: r }) }), ctx(id));
+
+  it("GET gives the suggested ref (only for a suggested row)", async () => {
+    const { sessionId } = await seedReadySession(h.db, undefined, "parliament");
+    await suggestRecordRow(h.db, sessionId, ref);
+    const got = await (await getRecord(new Request("http://localhost/x"), ctx(sessionId))).json();
+    expect(got).toMatchObject({ status: "suggested", chamber: "bundestag", date: "16/10/2026", ref });
+    await post(sessionId, "2026-10-21");
+    expect(await (await getRecord(new Request("http://localhost/x"), ctx(sessionId))).json()).not.toHaveProperty("ref");
+  });
+
+  it("accept on a ready session: 202, the row is pending and one session.names is sent", async () => {
+    const { sessionId } = await seedReadySession(h.db, undefined, "parliament");
+    await suggestRecordRow(h.db, sessionId, ref);
+    const res = await act(sessionId, "accept");
+    expect(res.status).toBe(202);
+    expect((await getSessionRecord(h.db, sessionId))?.status).toBe("pending");
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.names, { sessionId }, expect.anything());
+  });
+
+  it("accept at the context check sends nothing (the second graph step matches it)", async () => {
+    const { sessionId } = await seedReadySession(h.db, undefined, "parliament");
+    await updateSession(h.db, sessionId, { stage: "awaiting_context" });
+    await suggestRecordRow(h.db, sessionId, ref);
+    expect((await act(sessionId, "accept")).status).toBe(202);
+    expect((await getSessionRecord(h.db, sessionId))?.status).toBe("pending");
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("accept before the transcript exists sends nothing", async () => {
+    const s = await createSession(h.db, { title: "T", source: "upload" });
+    await suggestRecordRow(h.db, s.id, ref);
+    expect((await act(s.id, "accept")).status).toBe(202);
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("a stale ref is 409 and the row is untouched, for accept and dismiss", async () => {
+    const { sessionId } = await seedReadySession(h.db, undefined, "parliament");
+    await suggestRecordRow(h.db, sessionId, ref);
+    const stale = { ...ref, sitting: 105 };
+    for (const action of ["accept", "dismiss"]) {
+      const res = await act(sessionId, action, stale);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "That suggestion changed. Reload the page." });
+    }
+    expect(await getSessionRecord(h.db, sessionId)).toMatchObject({ status: "suggested", ref });
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("dismiss deletes the row: 200", async () => {
+    const { sessionId } = await seedReadySession(h.db, undefined, "parliament");
+    await suggestRecordRow(h.db, sessionId, ref);
+    expect((await act(sessionId, "dismiss")).status).toBe(200);
+    expect(await getSessionRecord(h.db, sessionId)).toBeNull();
+  });
+
+  it("400 for an unknown action or a missing ref", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    expect((await act(sessionId, "nuke")).status).toBe(400);
+    expect((await act(sessionId, "accept", "x")).status).toBe(400);
   });
 });

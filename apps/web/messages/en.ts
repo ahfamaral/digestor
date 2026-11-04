@@ -187,6 +187,9 @@ export const en = {
       matchedHouseNoDate: "Names from the {house} record",
       waiting: "The {house} hasn't published the record of {date} yet. Digestor will check again. If there was no sitting that day, check the date.",
       suggested: "This looks like the {house} sitting of {date}.",
+      suggestedSitting: "This looks like the {house} sitting {sitting}.",
+      useSuggestion: "Use this record",
+      dismissSuggestion: "Not this one",
       matchedCamara: "Names from the Câmara record",
       failed: "That record couldn't be linked. Try again.",
     },
@@ -237,6 +240,7 @@ export const en = {
     conflictNote: "The sources disagree. Pick the right name.",
   },
   record: {
+    suggestionChanged: "That suggestion changed. Reload the page.",
     invalid: "Pick the house and paste the date, the sitting number or the official record link.",
   },
   login: {

@@ -18,6 +18,8 @@ import {
   claimRecordFetch,
   getSessionRecord,
   linkRecord,
+  acceptSuggestedRecord,
+  suggestRecordRow,
   listAnalysisVersions,
   listAttributions,
   replaceAiAttributions,
@@ -807,6 +809,51 @@ describe("match_record", () => {
     const rec = (await getSessionRecord(db, sessionId))!;
     expect(rec).toMatchObject({ status: "matched", rawKey: `${sessionId}/names/record.json` });
     expect(await exists(storage.resolve(rec.rawKey!))).toBe(true);
+  });
+
+  it("a suggestion accepted at the context check is matched by match_record_late on Continue, before the analysis", async () => {
+    const { f } = fakeSenadoFetch();
+    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), fetch: f });
+    await graph.invoke({ sessionId }, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect(await getSessionRecord(db, sessionId)).toBeNull();
+    expect(await suggestRecordRow(db, sessionId, record)).toBe(true);
+    expect(await acceptSuggestedRecord(db, sessionId, record)).toBe(true); // "Use this record": pending, no job at the context check
+    expect(await recordRows(sessionId)).toHaveLength(0);
+    await resume({ action: "skip" });
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "matched" });
+    expect((await recordRows(sessionId)).map((r) => r.speakerId).sort()).toEqual(["A", "B", "C", "D", "E"]);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
+  });
+
+  it("a suggestion nobody accepted stays suggested and the graph goes on", async () => {
+    const { f, calls } = fakeSenadoFetch();
+    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), fetch: f });
+    await graph.invoke({ sessionId }, cfg);
+    await suggestRecordRow(db, sessionId, record);
+    await resume({ action: "skip" });
+    expect(calls).toEqual([]);
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "suggested" });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
+  });
+
+  it("match_record_late with no record is a no-op", async () => {
+    const { f, calls } = fakeSenadoFetch();
+    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], fetch: f });
+    await graph.invoke({ sessionId }, cfg);
+    await resume({ action: "skip" });
+    expect(calls).toEqual([]);
+    expect(await getSessionRecord(db, sessionId)).toBeNull();
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
+  });
+
+  it("an old checkpoint whose next is name_speakers still resumes", async () => {
+    const { graph, cfg, sessionId } = await setup({ context: [draft()] });
+    await graph.invoke({ sessionId }, cfg);
+    await graph.updateState(cfg, { sessionId }, "match_record_late"); // the old graph's edge led straight to name_speakers
+    expect((await graph.getState(cfg)).next).toEqual(["name_speakers"]);
+    await graph.invoke(null, cfg);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
   });
 
   it("without a linked record the step does nothing", async () => {

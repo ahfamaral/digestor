@@ -6,7 +6,7 @@ import { createDb, type Db } from "./client.ts";
 import { createCustomPerson, listAttributions, replaceAiAttributions } from "./names.ts";
 import { sessionRecords } from "./schema.ts";
 import { createSession, type Session } from "./repo.ts";
-import { claimDueRecordRetries, requeueRecordRetry, waitRecordFetch, claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch, suggestRecordRow } from "./records.ts";
+import { claimDueRecordRetries, requeueRecordRetry, waitRecordFetch, claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch, suggestRecordRow, acceptSuggestedRecord, dismissSuggestedRecord } from "./records.ts";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -166,3 +166,31 @@ describe("suggestRecordRow", () => {
   });
 });
 
+
+describe("accepting or dismissing a suggestion", () => {
+  it("accept with the stored ref turns the row pending", async () => {
+    await suggestRecordRow(db, s.id, senado("2026-01-01"));
+    expect(await acceptSuggestedRecord(db, s.id, senado("2026-01-01"))).toBe(true);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "pending", ref: senado("2026-01-01") });
+    expect(await acceptSuggestedRecord(db, s.id, senado("2026-01-01"))).toBe(false); // no longer suggested
+  });
+
+  it("accept after a re-link to another ref changes nothing (the old ref is never resurrected)", async () => {
+    await suggestRecordRow(db, s.id, senado("2026-01-01"));
+    await linkRecord(db, s.id, senado("2026-03-03"));
+    await db.update(sessionRecords).set({ status: "suggested" }).where(eq(sessionRecords.sessionId, s.id));
+    expect(await acceptSuggestedRecord(db, s.id, senado("2026-01-01"))).toBe(false);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "suggested", ref: senado("2026-03-03") });
+  });
+
+  it("dismiss deletes only a suggested row with that ref", async () => {
+    await suggestRecordRow(db, s.id, senado("2026-01-01"));
+    expect(await dismissSuggestedRecord(db, s.id, senado("2026-02-02"))).toBe(false);
+    expect(await getSessionRecord(db, s.id)).not.toBeNull();
+    expect(await dismissSuggestedRecord(db, s.id, senado("2026-01-01"))).toBe(true);
+    expect(await getSessionRecord(db, s.id)).toBeNull();
+    await linkRecord(db, s.id, senado("2026-01-01"));
+    expect(await dismissSuggestedRecord(db, s.id, senado("2026-01-01"))).toBe(false);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "pending" });
+  });
+});

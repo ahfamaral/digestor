@@ -74,6 +74,25 @@ export async function claimRecordFetch(db: Db, sessionId: string): Promise<Sessi
 /** The row still holds this ref (jsonb equality, key order aside): a re-link to another record changes it. */
 const sameRef = (ref: RecordRef | undefined) => (ref ? sql`${sessionRecords.ref} = ${JSON.stringify(ref)}::jsonb` : undefined);
 
+/** `suggested` → `pending` only while the row still holds this ref (what the journalist saw). */
+export async function acceptSuggestedRecord(db: Db, sessionId: string, ref: RecordRef): Promise<boolean> {
+  const rows = await db
+    .update(sessionRecords)
+    .set({ status: "pending", error: null, updatedAt: new Date() })
+    .where(and(eq(sessionRecords.sessionId, sessionId), eq(sessionRecords.status, "suggested"), sameRef(ref)))
+    .returning({ id: sessionRecords.sessionId });
+  return rows.length > 0;
+}
+
+/** Deletes the row only when it is `suggested` with this ref. */
+export async function dismissSuggestedRecord(db: Db, sessionId: string, ref: RecordRef): Promise<boolean> {
+  const rows = await db
+    .delete(sessionRecords)
+    .where(and(eq(sessionRecords.sessionId, sessionId), eq(sessionRecords.status, "suggested"), sameRef(ref)))
+    .returning({ id: sessionRecords.sessionId });
+  return rows.length > 0;
+}
+
 /** `running` → `matched`; false when the row isn't running any more or (with `ref`) was re-linked to another record meanwhile. */
 export async function finishRecordFetch(db: Db, sessionId: string, a: { rawKey: string; ref?: RecordRef }): Promise<boolean> {
   const rows = await db

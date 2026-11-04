@@ -8,6 +8,8 @@
  * - `ready`: a finished interview with one complete analysis version (3 topics, 14 moments across the three
  *   granularities with highlights, a grounded briefing, checks and thumbnails on the top highlights).
  * - `awaiting_context`: parked at the context-check pause with two open questions.
+ *   `--suggest bundestag` (with `--stage awaiting_context`) makes it a parliament session carrying a suggested
+ *   Bundestag sitting ("This looks like the Bundestag sitting of 16/10/2026."), as the YouTube suggester leaves it.
  *
  * Transcript, card and analysis are synthetic. There is no LangGraph checkpoint, so Continue/Skip on a seeded
  * session are ignored by the worker (the stage stays where the web moved it).
@@ -27,6 +29,7 @@ import {
 } from "@digestor/core";
 import {
   LocalStorage,
+  suggestRecordRow,
   completeAnalysisVersion,
   createDb,
   createSession,
@@ -50,6 +53,11 @@ if (stageArg !== "awaiting_context" && stageArg !== "ready") {
   process.exit(1);
 }
 const stage: "awaiting_context" | "ready" = stageArg;
+const suggest = process.argv.includes("--suggest") ? process.argv[process.argv.indexOf("--suggest") + 1] : null;
+if (suggest !== null && (suggest !== "bundestag" || stage !== "awaiting_context")) {
+  console.error("Usage: --suggest bundestag works with --stage awaiting_context");
+  process.exit(1);
+}
 
 const WORD_MS = 400; // 350 ms word + 50 ms gap
 const SENTENCE_GAP_MS = 600;
@@ -168,7 +176,7 @@ const fact = (value: string | null, source: "video" | "metadata" | "human" | nul
 function buildCard(needsAnswers: boolean, sampleStartMs: number): ContextCard {
   return {
     language: fact("en", "video", "detected from audio"),
-    profile: { value: "interview", confidence: needsAnswers ? 0.5 : 0.9, evidence: "one host asks, one guest answers" },
+    profile: { value: suggest ? "parliament" : "interview", confidence: needsAnswers ? 0.5 : 0.9, evidence: "one host asks, one guest answers" },
     title: fact("Demo interview", "metadata", "seeded title"),
     summary: "A synthetic interview with the mayor about housing, transport and the city budget.",
     setting: fact(needsAnswers ? null : "City radio studio", needsAnswers ? null : "metadata", needsAnswers ? null : "seeded"),
@@ -265,10 +273,13 @@ try {
 
   const title = stage === "ready" ? "Mayor interview (seeded)" : "Demo interview (seeded)";
   await createSession(db, { id, title, source: "upload", originalKey: `${id}/original.mp4` });
-  await updateSession(db, id, { proxyKey: `${id}/proxy.mp4`, durationMs, language: "en", profile: "interview" });
+  await updateSession(db, id, { proxyKey: `${id}/proxy.mp4`, durationMs, language: "en", profile: suggest ? "parliament" : "interview" });
   await saveTranscript(db, id, transcript);
   await saveContextCard(db, id, buildCard(stage === "awaiting_context", sentences[2]!.startMs), 1);
 
+  if (suggest) {
+    await suggestRecordRow(db, id, { chamber: "bundestag", period: 21, sitting: 104, date: "2026-10-16", url: "https://www.bundestag.de/services/opendata" });
+  }
   if (stage === "awaiting_context") {
     await setStage(db, id, stage, 55);
   } else {
