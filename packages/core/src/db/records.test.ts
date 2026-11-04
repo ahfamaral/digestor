@@ -121,7 +121,7 @@ describe("linkRecord and the record's names", () => {
     expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "waiting", retryAt, error: "waiting line" });
     expect(await claimDueRecordRetries(db, new Date("2026-11-05T09:59:00Z"))).toEqual([]); // not due
     const both = await Promise.all([claimDueRecordRetries(db, retryAt), claimDueRecordRetries(db, retryAt)]);
-    expect(both.flat()).toEqual([s.id]); // exactly one caller got it
+    expect(both.flat()).toEqual([{ sessionId: s.id, ref: senado() }]); // exactly one caller got it
     expect((await getSessionRecord(db, s.id))!.status).toBe("pending");
   });
 

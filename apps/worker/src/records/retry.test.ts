@@ -37,4 +37,11 @@ describe("runRecordRetries", () => {
     await runRecordRetries({ db, send: async () => { throw new Error("boom"); } }, NOW);
     expect(await getSessionRecord(db, id)).toMatchObject({ status: "waiting", retryAt: new Date("2026-11-04T13:00:00Z") });
   });
+
+  it("a re-link between the claim and a failed send leaves the new row pending with the new ref", async () => {
+    const id = await waitingSession(new Date("2026-11-04T11:00:00Z"));
+    const other: RecordRef = { ...ref, date: "2026-11-02" };
+    await runRecordRetries({ db, send: async () => { await linkRecord(db, id, other); throw new Error("boom"); } }, NOW);
+    expect(await getSessionRecord(db, id)).toMatchObject({ status: "pending", ref: other, retryAt: null });
+  });
 });

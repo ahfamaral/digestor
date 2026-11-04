@@ -1,5 +1,5 @@
 import { JOB_OPTIONS, QUEUES } from "@digestor/core";
-import { claimDueRecordRetries, getSessionRecord, requeueRecordRetry, type Db } from "@digestor/core/server";
+import { claimDueRecordRetries, requeueRecordRetry, type Db } from "@digestor/core/server";
 
 export const RECORDS_RETRY_QUEUE = "records.retry";
 /** Hourly: a due row waits at most an hour past its time. */
@@ -18,17 +18,16 @@ export async function runRecordRetries(
   deps: { db: Db; send: (sessionId: string) => Promise<unknown> },
   now: Date = new Date(),
 ): Promise<number> {
-  const ids = await claimDueRecordRetries(deps.db, now);
-  for (const id of ids) {
-    const row = await getSessionRecord(deps.db, id);
+  const claimed = await claimDueRecordRetries(deps.db, now);
+  for (const { sessionId, ref } of claimed) {
     try {
-      await deps.send(id);
+      await deps.send(sessionId);
     } catch (err) {
-      console.error(`records.retry: could not queue session ${id}:`, err);
-      if (row) await requeueRecordRetry(deps.db, id, row.ref, new Date(now.getTime() + HOUR_MS));
+      console.error(`records.retry: could not queue session ${sessionId}:`, err);
+      await requeueRecordRetry(deps.db, sessionId, ref, new Date(now.getTime() + HOUR_MS)); // the claimed ref: a re-link meanwhile stays as it is
     }
   }
-  return ids.length;
+  return claimed.length;
 }
 
 /** The sender main.ts wires: `session.names` with the standard job options. */

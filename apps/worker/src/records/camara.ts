@@ -34,6 +34,14 @@ export const CAMARA_CANCELLED = "This Câmara session was cancelled or never con
 export const CAMARA_NOT_COMPLETE = "The Câmara record of this session isn't complete yet. Try again later.";
 export const CAMARA_DAY_NOT_COMPLETE = "The Câmara record of that date isn't complete yet. Try again later.";
 
+/** The event date (`YYYY-MM-DD`) of an event's "not complete yet" error, so the connector counts the publish window from it (kept off the error itself: it stays a plain `RecordNotFoundError`). */
+const eventDateOf = new WeakMap<Error, string>();
+function notComplete(eventDate: string): RecordNotFoundError {
+  const err = new RecordNotFoundError(CAMARA_NOT_COMPLETE);
+  eventDateOf.set(err, eventDate);
+  return err;
+}
+
 /** The Plenário is the only organ read. */
 const isPlenary = (orgaos: { sigla: string | null }[] | null | undefined) => !!orgaos?.some((o) => o.sigla === "PLEN");
 /** What an event's `situacao` says about its record: never happening, not over yet, or over. */
@@ -107,7 +115,7 @@ export async function fetchCamaraSpeeches(
   if (!isPlenary(orgaos)) throw new RecordNotFoundError(CAMARA_NOT_PLENARY);
   const verdict = situacaoVerdict(situacao);
   if (verdict === "cancelled") throw new RecordNotFoundError(CAMARA_CANCELLED);
-  if (verdict === "incomplete") throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
+  if (verdict === "incomplete") throw notComplete(event.data.dados.dataHoraInicio.slice(0, 10));
   const eventStart = event.data.dados.dataHoraInicio.slice(0, 16);
   const start = blockStart(eventStart); // stamps are 4-minute blocks: the block holding the start belongs to the event
   const date = eventStart.slice(0, 10);
@@ -242,12 +250,13 @@ export const camaraConnector: RecordConnector = {
       got = "eventId" in ref ? await fetchCamaraSpeeches(ref.eventId, f) : await fetchCamaraDay(ref.date, f);
     } catch (err) {
       if (!(err instanceof RecordNotFoundError)) throw err;
-      const date = "date" in ref ? ref.date : null; // an event link has no date: the window counts from the link
+      // An event link carries no date: its own date comes with the error (the window counts from it), else from the link.
+      const date = "date" in ref ? ref.date : eventDateOf.get(err) ?? null;
       // Recent: an unfinished record or a day with no plenary/speeches yet may still be published. A cancelled session is never.
       if (err.message === CAMARA_NOT_COMPLETE) {
-        throw notPublishedOrNotFound("camara", date, ctx.now, date ? CAMARA_DAY_NOT_COMPLETE : CAMARA_NOT_COMPLETE, ctx.linkedAt);
+        throw notPublishedOrNotFound("camara", date, ctx.now, "date" in ref ? CAMARA_DAY_NOT_COMPLETE : CAMARA_NOT_COMPLETE, ctx.linkedAt);
       }
-      if (date && (err.message === CAMARA_NO_PLENARY || err.message === CAMARA_NOT_FOUND)) throw notPublishedOrNotFound("camara", date, ctx.now, err.message, ctx.linkedAt);
+      if ("date" in ref && (err.message === CAMARA_NO_PLENARY || err.message === CAMARA_NOT_FOUND)) throw notPublishedOrNotFound("camara", date, ctx.now, err.message, ctx.linkedAt);
       throw err;
     }
     const { speeches, date, deputies } = got;

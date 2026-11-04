@@ -1,8 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { t } from "@/lib/i18n";
 import { recordMatchedLine } from "@/lib/names";
-import { recordFieldError } from "./RecordLink";
+import { RecordStatusLine, recordFieldError } from "./RecordLink";
 import { RecordHouseSelect, recordHelpText, recordHouseGroups } from "./RecordHouseSelect";
 
 describe("the official record field and its status lines", () => {
@@ -27,6 +28,19 @@ describe("the official record field and its status lines", () => {
     expect(recordMatchedLine({ chamber: "camara", date: null })).toBe("Names from the Câmara record");
     expect(recordMatchedLine({ chamber: "bundestag", date: "16/10/2026" })).toBe("Names from the Bundestag record of 16/10/2026");
     expect(recordMatchedLine({ chamber: "bundestag", date: null })).toBe("Names from the Bundestag record");
+  });
+});
+
+describe("the status line", () => {
+  const html = (record: Parameters<typeof RecordStatusLine>[0]["record"]) => renderToStaticMarkup(createElement(RecordStatusLine, { record }));
+  it("a waiting row shows the stored waiting line, not 'matching'", () => {
+    const line = "The Bundestag hasn't published the record of sitting 104 yet. Digestor will check again. If there was no sitting that day, check the date.";
+    const out = html({ status: "waiting", error: line, chamber: "bundestag", date: null, url: "x", retryAt: "2026-11-05T06:00:00.000Z" });
+    expect(out).toContain("sitting 104");
+    expect(out).not.toContain("Matching the official record");
+  });
+  it("a pending row says it is matching", () => {
+    expect(html({ status: "pending", error: null, chamber: "senado", date: null, url: "x" })).toContain(t("names.record.matching"));
   });
 });
 

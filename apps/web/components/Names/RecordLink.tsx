@@ -23,6 +23,29 @@ export function recordFieldError(text: string, chamber?: ChamberId): string | nu
   return recordInputError(text, chamber) ?? (parseRecordRef(text, chamber) ? null : t("record.invalid"));
 }
 
+/** The status line of a linked record. A waiting row shows the line the worker stored; pending/running say it is matching. */
+export function RecordStatusLine({ record }: { record: RecordState }) {
+  return (
+    <>
+    {record.status === "pending" || record.status === "running" ? (
+      <p role="status" className="text-muted-foreground">{t("names.record.matching")}</p>
+    ) : record.status === "matched" ? (
+      <p role="status" className="text-foreground">{recordMatchedLine(record)}</p>
+    ) : record.status === "waiting" && record.chamber ? (
+      <p role="status" className="text-muted-foreground">
+        {record.error ?? t("names.record.waiting", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
+      </p>
+    ) : record.status === "suggested" && record.chamber ? (
+      <p role="status" className="text-foreground">
+        {t("names.record.suggested", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
+      </p>
+    ) : (
+      <p role="status" dir="auto" className="text-red-700">{record.error ?? t("names.record.failed")}</p>
+    )}
+    </>
+  );
+}
+
 /**
  * The official-record line of Who's who: the status of the linked record (Câmara, Senado, Bundestag, House or Senate) (matching, matched with its date, or the
  * friendly failure) and a field to link or re-link one. Shown for parliament sessions and whenever a record is linked.
@@ -60,11 +83,12 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
     return () => clearTimeout(timer);
   }, [sessionId]);
 
-  const working = record?.status === "pending" || record?.status === "running" || record?.status === "waiting";
+  const working = record?.status === "pending" || record?.status === "running";
+  const polling = working || record?.status === "waiting"; // a waiting row turns pending when its retry is due
   useEffect(() => {
-    if (!working) return;
+    if (!polling) return;
     return startRefreshLoop(() => void load(), POLL_MS);
-  }, [working, sessionId]);
+  }, [polling, sessionId]);
 
   async function link() {
     if (busy) return;
@@ -101,21 +125,7 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
     <div className="mb-3 rounded-lg border border-border bg-stone-50 px-3 py-2 text-sm">
       {record && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {working ? (
-            <p role="status" className="text-muted-foreground">{t("names.record.matching")}</p>
-          ) : record.status === "matched" ? (
-            <p role="status" className="text-foreground">{recordMatchedLine(record)}</p>
-          ) : record.status === "waiting" && record.chamber ? (
-            <p role="status" className="text-muted-foreground">
-              {record.error ?? t("names.record.waiting", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
-            </p>
-          ) : record.status === "suggested" && record.chamber ? (
-            <p role="status" className="text-foreground">
-              {t("names.record.suggested", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
-            </p>
-          ) : (
-            <p role="status" dir="auto" className="text-red-700">{record.error ?? t("names.record.failed")}</p>
-          )}
+          <RecordStatusLine record={record} />
           {!editing && (
             <button type="button" className={BTN} onClick={() => setEditing(true)}>
               {t("names.record.relink")}

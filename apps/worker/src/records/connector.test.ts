@@ -48,16 +48,18 @@ describe("connectors convert an empty day by age", () => {
     await expect(camaraConnector.fetchRecord(ref(daysAgo(1)), empty, ctx)).rejects.toBeInstanceOf(RecordNotPublishedError);
     await expect(camaraConnector.fetchRecord(ref(daysAgo(3)), empty, ctx)).rejects.toThrow(new RecordNotFoundError("The Câmara has no plenary session on that date."));
   });
-  it("camara event that is not Encerrada: waits when just linked, says so when the link is old; cancelled never waits", async () => {
+  it("camara event that is not Encerrada: waits while the event is recent, says so at once when the event is old; cancelled never waits", async () => {
     const ref = { chamber: "camara" as const, eventId: FIXTURE_EVENT_ID, url: "x" };
     const withSituacao = (situacao: string) => {
       const ev = structuredClone(fixtureEvento);
       ev.dados.situacao = situacao;
       return fakeCamaraFetch({ evento: () => new Response(JSON.stringify(ev), { status: 200 }) }).f;
     };
-    await expect(camaraConnector.fetchRecord(ref, withSituacao("Em Andamento"), ctx)).rejects.toBeInstanceOf(RecordNotPublishedError);
-    const old = { now: NOW, linkedAt: new Date("2026-10-30T10:00:00Z") };
-    await expect(camaraConnector.fetchRecord(ref, withSituacao("Em Andamento"), old)).rejects.toThrow(
+    // the window counts from the event's own date (2026-06-30 in the fixture), not from the link
+    const evOld = { now: new Date("2026-07-05T10:00:00Z"), linkedAt: new Date("2026-07-05T09:00:00Z") };
+    const evRecent = { now: new Date("2026-07-01T10:00:00Z"), linkedAt: new Date("2026-06-20T09:00:00Z") };
+    await expect(camaraConnector.fetchRecord(ref, withSituacao("Em Andamento"), evRecent)).rejects.toBeInstanceOf(RecordNotPublishedError);
+    await expect(camaraConnector.fetchRecord(ref, withSituacao("Em Andamento"), evOld)).rejects.toThrow(
       new RecordNotFoundError("The Câmara record of this session isn't complete yet. Try again later."),
     );
     await expect(camaraConnector.fetchRecord(ref, withSituacao("Cancelada"), ctx)).rejects.toThrow(new RecordNotFoundError("This Câmara session was cancelled or never confirmed."));

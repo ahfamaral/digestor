@@ -113,12 +113,12 @@ async function setWaiting(db: Db, sessionId: string, from: "running" | "pending"
   return rows.length > 0;
 }
 
-/** Compare-and-set `waiting` → `pending` for every row due at `now`; the session ids it claimed (each exactly once, however many callers race). */
-export async function claimDueRecordRetries(db: Db, now: Date): Promise<string[]> {
+/** Compare-and-set `waiting` → `pending` for every row due at `now`; the session ids and refs it claimed (each exactly once, however many callers race; the ref is the one claimed, so a later re-link is never mistaken for it). */
+export async function claimDueRecordRetries(db: Db, now: Date): Promise<{ sessionId: string; ref: RecordRef }[]> {
   const rows = await db
     .update(sessionRecords)
     .set({ status: "pending", updatedAt: new Date() })
     .where(and(eq(sessionRecords.status, "waiting"), sql`${sessionRecords.retryAt} <= ${now.toISOString()}::timestamptz`))
-    .returning({ id: sessionRecords.sessionId });
-  return rows.map((r) => r.id);
+    .returning({ sessionId: sessionRecords.sessionId, ref: sessionRecords.ref });
+  return rows;
 }
