@@ -1,6 +1,6 @@
 import { access, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { CHAMBERS, PROFILES, closeMatches, normaliseName, personAt, recordRefDate, turnsOf, type Attribution, type ContextCard, type Fact, type Participant, type Person, type RecordRef, type Resolution, type Word } from "@digestor/core";
+import { CHAMBERS, PROFILES, chamberThresholds, closeMatches, normaliseName, personAt, turnsOf, type Attribution, type ChamberId, type ContextCard, type Fact, type Participant, type Person, type RecordRef, type Resolution, type Word } from "@digestor/core";
 import {
   backdateNamesToCard,
   claimRecordFetch,
@@ -26,12 +26,10 @@ import {
   type NewAiAttribution,
 } from "@digestor/core/server";
 
-import type { RecordSpeech } from "../records/senado.js";
+import { RecordNotFoundError, findConnector, type MemberInfo, type RecordConnector, type RecordSpeech } from "../records/connector.js";
 import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type CaptionVote } from "../agents/captions.js";
 import { MissingApiKeyError } from "../errors.js";
 import { RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix, tieOrder } from "../records/align.js";
-import { RecordNotFoundError, fetchSenadoSpeeches, fetchSenador } from "../records/senado.js";
-import { fetchCamaraSpeeches, type CamaraDeputy } from "../records/camara.js";
 import type { PipelineDeps } from "./graph.js";
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
@@ -387,11 +385,9 @@ async function pruneFrames(db: Db, storage: Pick<LocalStorage, "key" | "resolve"
 
 export const RECORD_NOT_FOUND = "The Senado has no speeches for that date.";
 export const RECORD_ALL_REJECTED = "No speech in the record was kept for this video.";
-/** `date` is the Câmara event's day (`YYYY-MM-DD`; a Câmara link carries no date of its own). */
-export const recordNoMatch = (ref: RecordRef, date?: string) =>
-  ref.chamber === "camara"
-    ? `None of the speeches in the Câmara record of ${(date ?? "").split("-").reverse().join("/")} match this video. Check the link.`
-    : `None of the speeches in the Senado record of ${recordRefDate(ref)} match this video. Check the date.`;
+/** `date` is the record's day as the connector returned it (`YYYY-MM-DD`; a Câmara link carries no date of its own). */
+export const recordNoMatch = (ref: RecordRef, date: string) =>
+  `None of the speeches in the ${CHAMBERS[ref.chamber].shortName} record of ${date.split("-").reverse().join("/")} match this video. ${ref.chamber === "camara" ? "Check the link." : "Check the date."}`;
 
 /** A transient failure of a claimed run, carrying the ref it claimed so the caller fails only that claim. */
 export class RecordStepError extends Error {
@@ -402,9 +398,13 @@ export class RecordStepError extends Error {
 }
 /** The failure line of a record fetch; neutral when the ref is unknown (an error that carries no claim). */
 export const recordFetchFailed = (ref?: RecordRef) =>
-  `The ${ref ? (ref.chamber === "camara" ? "Câmara" : "Senado") : "official"} record couldn't be fetched. Please try again.`;
+  `The ${ref ? CHAMBERS[ref.chamber].shortName : "official"} record couldn't be fetched. Please try again.`;
 
-export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & { fetch?: typeof fetch };
+export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & {
+  fetch?: typeof fetch;
+  /** Test injection: used before the registry. */
+  connectors?: Partial<Record<ChamberId, RecordConnector>>;
+};
 
 /**
  * Matches the session's linked official record against its transcript (the `record` source). One code path for the
@@ -424,38 +424,39 @@ export async function runRecordStep(deps: RecordStepDeps, sessionId: string, opt
     if (!opts.retrying) return;
     const current = await getSessionRecord(db, sessionId);
     if (current?.status !== "running") return;
-    return runClaimedOrThrow(deps, sessionId, current.ref, f);
+    return runClaimedOrThrow(deps, sessionId, current.ref, f, { linkedAt: current.linkedAt });
   }
-  return runClaimedOrThrow(deps, sessionId, record.ref, f);
+  return runClaimedOrThrow(deps, sessionId, record.ref, f, { linkedAt: record.linkedAt });
 }
 
 /** `runClaimed`, with an unexpected (transient) error wrapped so the caller knows which claim it belongs to. */
-async function runClaimedOrThrow(deps: RecordStepDeps, sessionId: string, ref: RecordRef, f: typeof fetch): Promise<void> {
+async function runClaimedOrThrow(deps: RecordStepDeps, sessionId: string, ref: RecordRef, f: typeof fetch, claimed: { linkedAt: Date }): Promise<void> {
   try {
-    await runClaimed(deps, sessionId, ref, f);
+    await runClaimed(deps, sessionId, ref, f, claimed);
   } catch (err) {
     throw new RecordStepError(err, ref);
   }
 }
 
-async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRef, f: typeof fetch): Promise<void> {
+async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRef, f: typeof fetch, claimed: { linkedAt: Date }): Promise<void> {
   const { db, storage } = deps;
   const transcript = await getTranscript(db, sessionId);
   if (!transcript) {
     await linkRecord(db, sessionId, ref); // nothing to match yet: back to `pending` for the graph step
     return;
   }
+  const connector = deps.connectors?.[ref.chamber] ?? findConnector(ref.chamber);
+  if (!connector) {
+    // A house without a connector yet: nothing a retry could change.
+    await failRecordFetch(db, sessionId, `The ${CHAMBERS[ref.chamber].shortName} record can't be read yet.`, ref);
+    return;
+  }
   let speeches: RecordSpeech[];
-  let eventDate: string | undefined;
-  let deputies: Record<string, CamaraDeputy> = {};
+  let eventDate: string;
+  let members: Record<string, MemberInfo>;
+  let recordUrl: string | undefined;
   try {
-    if ("eventId" in ref) {
-      ({ speeches, date: eventDate, deputies } = await fetchCamaraSpeeches(ref.eventId, f));
-    } else if (ref.chamber === "senado") {
-      speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
-    } else {
-      throw new Error(`No record connector for ${ref.chamber} yet.`); // Plan 4 connectors land in later tasks
-    }
+    ({ speeches, date: eventDate, members, url: recordUrl } = await connector.fetchRecord(ref, f, { now: new Date(), linkedAt: claimed.linkedAt }));
   } catch (err) {
     if (err instanceof RecordNotFoundError) {
       await failRecordFetch(db, sessionId, err.message, ref);
@@ -466,52 +467,34 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   const fetchedAt = new Date().toISOString();
   const turns = turnsOf(transcript.words);
   // Speeches sharing a stamp (the Câmara's 4-minute blocks) have no known order: order each run by best-matching turn.
-  const sim = similarityMatrix(turns, speeches);
+  const sim = similarityMatrix(turns, speeches, connector);
   const perm = tieOrder(sim, speeches);
   speeches = perm.map((j) => speeches[j]!);
+  const thresholds = chamberThresholds(ref.chamber);
   const matches = alignTurns(sim.map((row) => perm.map((j) => row[j]!))).filter((m) => m.score >= RECORD_PROPOSE);
   const bySpeech = new Map(speeches.map((sp) => [sp.id, sp]));
 
-  // One person per matched senator or deputy, fetched once per run (a Câmara deputy's fields come with the event's list).
+  // One person per matched member (the connector read their fields once per run); a speech with no official id names no one.
   const personIds = new Map<string, string>();
   for (const m of matches) {
     const speech = speeches[m.speech]!;
-    if (personIds.has(speech.officialId)) continue;
-    let fields: Parameters<typeof upsertOfficialPerson>[1];
-    if (ref.chamber === "camara") {
-      const dep = deputies[speech.officialId];
-      fields = {
-        idSystem: CHAMBERS[ref.chamber].idSystem,
-        officialId: speech.officialId,
-        displayName: dep?.name ?? titleCaseName(speech.name),
-        party: dep?.party ?? speech.party ?? undefined,
-        state: dep?.state ?? speech.state ?? undefined,
-        photoUrl: dep?.photoUrl ? httpsPhoto(dep.photoUrl) : undefined,
-      };
-    } else {
-      let senator: Awaited<ReturnType<typeof fetchSenador>> | null = null;
-      try {
-        senator = await fetchSenador(speech.officialId, f);
-      } catch (err) {
-        if (!(err instanceof RecordNotFoundError)) throw err;
-      }
-      fields = {
-        idSystem: CHAMBERS[ref.chamber].idSystem,
-        officialId: speech.officialId,
-        displayName: senator?.displayName ?? titleCaseName(speech.name),
-        fullName: senator?.fullName ?? undefined,
-        party: senator?.party ?? speech.party ?? undefined,
-        state: senator?.state ?? speech.state ?? undefined,
-        photoUrl: senator?.photoUrl ? httpsPhoto(senator.photoUrl) : undefined,
-      };
-    }
-    const person = await upsertOfficialPerson(db, fields);
+    if (speech.officialId === null || personIds.has(speech.officialId)) continue;
+    const member = members[speech.officialId];
+    const person = await upsertOfficialPerson(db, {
+      idSystem: CHAMBERS[ref.chamber].idSystem,
+      officialId: speech.officialId,
+      displayName: member?.displayName ?? titleCaseName(speech.name),
+      fullName: member?.fullName ?? undefined,
+      party: member?.party ?? speech.party ?? undefined,
+      state: member?.state ?? speech.state ?? undefined,
+      photoUrl: member?.photoUrl ? httpsPhoto(member.photoUrl) : undefined,
+    });
     personIds.set(speech.officialId, person.id);
   }
 
   const current = await listAttributions(db, sessionId);
   const rejected = current.filter((a) => a.source === "record" && a.status === "rejected");
-  const matched = recordAttributions(turns, speeches, matches, (officialId) => personIds.get(officialId)!, { url: ref.url, fetchedAt });
+  const matched = recordAttributions(turns, speeches, matches, (officialId) => personIds.get(officialId)!, { url: recordUrl ?? ref.url, fetchedAt, chamber: ref.chamber, date: eventDate }, thresholds);
   const fresh = matched.filter((r) => !isRejected(rejected, r));
   // A re-link to another record meanwhile makes this run stale: write nothing (the new run owns the rows).
   const now = await getSessionRecord(db, sessionId);

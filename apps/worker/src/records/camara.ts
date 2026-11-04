@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getJson, mapLimit } from "./http.js";
-import { RecordNotFoundError, type RecordSpeech } from "./senado.js";
+import { RecordNotFoundError, type MemberInfo, type RecordConnector, type RecordSpeech } from "./connector.js";
+import { speechText, STOP } from "./align.js";
 
 /**
  * Câmara dos Deputados open-data client (https://dadosabertos.camara.leg.br/api/v2). Shapes recorded 2026-11-03 on
@@ -158,3 +159,17 @@ export async function fetchCamaraSpeeches(
   }));
   return { speeches, date, deputies };
 }
+
+/** The Câmara behind the connector interface: an event's speeches, its deputies as `members`. A day ref (no event id) is not readable yet. */
+export const camaraConnector: RecordConnector = {
+  chamber: "camara",
+  async fetchRecord(ref, f) {
+    if (ref.chamber !== "camara" || !("eventId" in ref)) throw new RecordNotFoundError("The Câmara record can't be read yet.");
+    const { speeches, date, deputies } = await fetchCamaraSpeeches(ref.eventId, f);
+    const members: Record<string, MemberInfo> = {};
+    for (const [id, d] of Object.entries(deputies)) members[id] = { displayName: d.name, party: d.party, state: d.state, photoUrl: d.photoUrl };
+    return { speeches, date, members };
+  },
+  speechText: (s) => speechText(s.text),
+  stopWords: STOP,
+};

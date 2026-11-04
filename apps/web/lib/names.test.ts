@@ -245,6 +245,13 @@ describe("evidenceLine for the record", () => {
     const c = att({ source: "record", status: "proposed", evidence: { kind: "record", speechId: "74848-2026-06-30T19:32-0", score: 0.91, url: "https://www.camara.leg.br/evento-legislativo/82635", fetchedAt: "2026-11-03T10:00:00.000Z" } });
     expect(evidenceLine(c)).toBe("From the Câmara record: speech at 19:32, 0.91 match");
   });
+  it("names the house and day of a record evidence that carries them", () => {
+    const b = att({ source: "record", status: "proposed", evidence: { kind: "record", speechId: "12", score: 0.81, url: "https://www.bundestag.de/x", fetchedAt: "2026-11-03T10:00:00.000Z", chamber: "bundestag", date: "2026-10-16" } });
+    expect(evidenceLine(b)).toBe("From the Bundestag record of 16/10/2026: speech 12, 0.81 match");
+  });
+  it("keeps the Brazilian lines when the evidence also carries chamber and date", () => {
+    expect(evidenceLine({ ...a, evidence: { ...(a.evidence as object), chamber: "senado", date: "2026-10-21" } as Attribution["evidence"] })).toBe("From the Senado record of 21/10/2026: speech 77, 0.91 match");
+  });
   it("falls back when the url carries no date", () => {
     expect(evidenceLine({ ...a, evidence: { ...(a.evidence as object), url: "https://x" } as Attribution["evidence"] })).toBe("From the official record: speech 77, 0.91 match");
   });

@@ -162,6 +162,7 @@ export const en = {
     },
     evidenceRecord: "From the official record: speech {speech}, {score} match",
     evidenceRecordSenado: "From the Senado record of {date}: speech {speech}, {score} match",
+    evidenceRecordHouse: "From the {house} record of {date}: speech {speech}, {score} match",
     evidenceRecordCamara: "From the Câmara record: speech at {time}, {score} match",
     record: {
       label: "Official record",

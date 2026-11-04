@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { personAt, type Attribution, type ContextCard, type Fact, type Person, type Word } from "@digestor/core";
 import {
@@ -5,6 +8,9 @@ import {
   createCustomPerson,
   createDb,
   createSession,
+  LocalStorage,
+  getSessionRecord,
+  linkRecord,
   listAttributions,
   setHumanAttribution,
   getPersons,
@@ -19,7 +25,11 @@ import { namesChangedSince } from "@digestor/core";
 import { sql } from "drizzle-orm";
 import {
   CONFIRMED_NAME, PROBABLE_NAME, importContextNames, importNamesForOldSessions, lockedParticipants, namedVoices, participantsForPrompt, promptCard, recordProjection,
+  runRecordStep,
 } from "./naming.js";
+import type { RecordConnector, RecordSpeech } from "../records/connector.js";
+import { connectorFor } from "../records/connector.js";
+import { FIXTURE_SPEECHES, fixtureTexts, transcriptOfSpeeches } from "../records/fakeSenado.js";
 
 const none: Fact = { value: null, source: null, evidence: null };
 const fact = (value: string, source: Fact["source"], evidence: string): Fact => ({ value, source, evidence });
@@ -345,5 +355,56 @@ describe("record projection (a voice the record matched)", () => {
     expect(recordProjection(none, "A", ws)).toBeNull();
     // a whole-voice AI proposal is not the record's: no ranged row, no projection
     expect(recordProjection([att({ source: "caption", status: "proposed", personId: "x" })], "A", ws)).toBeNull();
+  });
+});
+
+describe("runRecordStep through a connector", () => {
+  let root: string;
+  beforeAll(async () => { root = await mkdtemp(path.join(os.tmpdir(), "digestor-conn-")); });
+  afterAll(() => rm(root, { recursive: true, force: true }));
+
+  const fakeBundestag = (): RecordConnector => {
+    const br = connectorFor("senado");
+    return {
+      chamber: "bundestag",
+      stopWords: br.stopWords,
+      speechText: br.speechText,
+      async fetchRecord() {
+        const speeches: RecordSpeech[] = FIXTURE_SPEECHES.map((sp, i) => ({
+          id: sp.id, order: i + 1, officialId: i === 1 ? null : `bt-${sp.id}`, name: `MdB ${i}`, party: "SPD", state: null, text: fixtureTexts[sp.id]!, textSource: "full" as const,
+        }));
+        return { speeches, date: "2026-10-16", url: "https://www.bundestag.de/protokoll.xml", members: { "bt-524179": { displayName: "Anna Muster", party: "SPD", state: "BY" } } };
+      },
+    };
+  };
+
+  it("a connector registered for the Bundestag drives the run: persons by idSystem, evidence with chamber and date", async () => {
+    const s = await createSession(db, { source: "upload", title: "Bundestag" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "bundestag", period: 21, sitting: 50, date: "2026-10-16", url: "https://www.bundestag.de/x" });
+    await runRecordStep({ db, storage: new LocalStorage(root), connectors: { bundestag: fakeBundestag() } }, s.id);
+    expect((await getSessionRecord(db, s.id))?.status).toBe("matched");
+    const rows = (await listAttributions(db, s.id)).filter((a) => a.source === "record");
+    expect(rows.map((r) => r.speakerId).sort()).toEqual(["A", "C", "D", "E"]); // B's speech has no official id: it names no one
+    expect(rows.every((r) => r.status === "proposed")).toBe(true); // the Bundestag isn't evaluated: proposals only
+    expect(rows[0]!.evidence).toMatchObject({ kind: "record", chamber: "bundestag", date: "2026-10-16", url: "https://www.bundestag.de/protokoll.xml" });
+    const a = rows.find((r) => r.speakerId === "A")!;
+    expect((await getPersons(db, [a.personId!]))[0]).toMatchObject({ displayName: "Anna Muster", party: "SPD", state: "BY", officialIds: { bundestag: "bt-524179" } });
+  });
+
+  it("a house without a connector fails its row with a friendly line and does not throw", async () => {
+    const s = await createSession(db, { source: "upload", title: "US" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "us_house", date: "2026-10-16", url: "https://www.congress.gov/x" });
+    await expect(runRecordStep({ db, storage: new LocalStorage(root) }, s.id)).resolves.toBeUndefined();
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The House record can't be read yet." });
+  });
+
+  it("a Câmara day ref (no event id) fails the same way until its connector reads days", async () => {
+    const s = await createSession(db, { source: "upload", title: "Câmara day" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "camara", date: "2026-10-16", url: "https://www.camara.leg.br/x" });
+    await runRecordStep({ db, storage: new LocalStorage(root) }, s.id);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The Câmara record can't be read yet." });
   });
 });

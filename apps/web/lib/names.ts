@@ -1,5 +1,5 @@
 import {
-  peopleInRange, personAt, speakerLabel, speakersInRange, turnsOf, unconfirmedSpeakers,
+  CHAMBERS, peopleInRange, personAt, speakerLabel, speakersInRange, turnsOf, unconfirmedSpeakers,
   type Attribution, type AttributionSource, type Person, type Range, type Resolution, type Word,
 } from "@digestor/core";
 import { t } from "./i18n";
@@ -235,6 +235,11 @@ export function evidenceLine(a: Attribution): string {
   if (e.kind === "record") {
     const date = recordEvidenceDate(e.url);
     const vars = { speech: e.speechId, score: e.score.toFixed(2) };
+    // Rows of the houses added in Plan 4 name their house and day; Brazilian rows keep their own lines below.
+    if (e.chamber && e.date && CHAMBERS[e.chamber].country !== "BR") {
+      const [y, mo, d] = e.date.split("-");
+      return t("names.evidenceRecordHouse", { ...vars, house: CHAMBERS[e.chamber].shortName, date: `${d}/${mo}/${y}` });
+    }
     if (/^https:\/\/(www\.)?camara\.leg\.br\//.test(e.url)) {
       // Câmara speech ids are `<deputy>-<YYYY-MM-DDTHH:MM>-<n>`: show the time, not the id.
       const time = /T(\d{2}:\d{2})/.exec(e.speechId)?.[1];

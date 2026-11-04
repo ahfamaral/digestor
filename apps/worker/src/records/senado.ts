@@ -1,4 +1,7 @@
 import { z } from "zod";
+import type { RecordConnector, RecordSpeech, MemberInfo } from "./connector.js";
+import { RecordNotFoundError } from "./connector.js";
+import { speechText, STOP } from "./align.js";
 import { get as httpGet, getJson as httpGetJson, httpTiming, mapLimit } from "./http.js";
 
 /**
@@ -13,27 +16,7 @@ import { get as httpGet, getJson as httpGetJson, httpTiming, mapLimit } from "./
 const BASE = "https://legis.senado.leg.br/dadosabertos";
 const TEXT_CONCURRENCY = 4;
 
-export interface RecordSpeech {
-  id: string;
-  order: number;
-  officialId: string;
-  name: string;
-  party: string | null;
-  state: string | null;
-  text: string;
-  /** The Câmara's stamp (`YYYY-MM-DDTHH:MM`, a 4-minute stenography block): speeches sharing it have no known order. Senado leaves it unset. */
-  at?: string;
-  /** "summary" when the full text was missing (404) and `text` is the API's short `Resumo`. */
-  textSource: "full" | "summary";
-}
-
-/** Deterministic: the record has nothing for this day, session or senator. */
-export class RecordNotFoundError extends Error {
-  constructor(message = "The Senado has no speeches for that date.") {
-    super(message);
-    this.name = "RecordNotFoundError";
-  }
-}
+export { RecordNotFoundError, type RecordSpeech };
 
 const str = z.union([z.string(), z.number()]).transform(String).nullish().transform((v) => (v == null || v === "" ? null : v));
 const many = <T extends z.ZodTypeAny>(item: T) =>
@@ -159,3 +142,25 @@ export async function fetchSenador(
     photoUrl: id.UrlFotoParlamentar,
   };
 }
+
+/** The Senado behind the connector interface: the day's speeches and, once per speaker, the senator's page (a 404 leaves the speech's own fields). */
+export const senadoConnector: RecordConnector = {
+  chamber: "senado",
+  async fetchRecord(ref, f) {
+    if (ref.chamber !== "senado") throw new Error("The Senado connector got a ref of another house.");
+    const speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
+    const members: Record<string, MemberInfo> = {};
+    const ids = [...new Set(speeches.flatMap((s) => (s.officialId ? [s.officialId] : [])))];
+    await mapLimit(ids, TEXT_CONCURRENCY, async (id) => {
+      try {
+        const sen = await fetchSenador(id, f);
+        members[id] = { displayName: sen.displayName, fullName: sen.fullName, party: sen.party, state: sen.state, photoUrl: sen.photoUrl };
+      } catch (err) {
+        if (!(err instanceof RecordNotFoundError)) throw err;
+      }
+    });
+    return { speeches, date: ref.date, members };
+  },
+  speechText: (s) => speechText(s.text),
+  stopWords: STOP,
+};

@@ -1,12 +1,12 @@
-import { normaliseName, type Turn } from "@digestor/core";
+import { normaliseName, type ChamberId, type Turn } from "@digestor/core";
 import type { NewAiAttribution } from "@digestor/core/server";
-import type { RecordSpeech } from "./senado.js";
+import type { RecordConnector, RecordSpeech } from "./connector.js";
 
 /** Starting values; Task 16 tunes them. At or above CONFIRM a match is `confirmed`; between PROPOSE and CONFIRM, `proposed`. */
 export const RECORD_CONFIRM = 0.6;
 export const RECORD_PROPOSE = 0.35;
 
-const STOP = new Set(
+export const STOP: ReadonlySet<string> = new Set(
   ("the que para com uma uns umas por mais mas como dos das nos nas nao sim foi ser sao tem ter seu sua seus suas ele ela eles elas " +
     "isso esta este esse essa estao entre sobre quando muito muita ate tambem ainda ja so aos era meu minha nosso nossa nos " +
     "senhor senhora senhores senhoras presidente").split(" "),
@@ -47,10 +47,10 @@ export function speechText(text: string): string {
   return kept.join("\n");
 }
 
-function tokens(text: string): string[] {
+function tokens(text: string, stop: ReadonlySet<string>): string[] {
   return normaliseName(text)
     .split(" ")
-    .filter((w) => w.length >= 3 && !STOP.has(w));
+    .filter((w) => w.length >= 3 && !stop.has(w));
 }
 
 function termCounts(toks: string[]): Map<string, number> {
@@ -65,10 +65,10 @@ function termCounts(toks: string[]): Map<string, number> {
  * whole speech 1.00, half 0.72-0.78, third 0.60-0.67, false pairs <= 0.30. Containment was tried and rejected (passages
  * shared between speeches gave false pairs up to 1.00). Tuning with real data is Task 16.
  */
-export function similarityMatrix(turns: Turn[], speeches: RecordSpeech[]): number[][] {
+export function similarityMatrix(turns: Turn[], speeches: RecordSpeech[], connector: Pick<RecordConnector, "speechText" | "stopWords">): number[][] {
   const docs = [
-    ...turns.map((t) => termCounts(tokens(t.text))),
-    ...speeches.map((s) => termCounts(tokens(speechText(s.text)))),
+    ...turns.map((t) => termCounts(tokens(t.text, connector.stopWords))),
+    ...speeches.map((s) => termCounts(tokens(connector.speechText(s), connector.stopWords))),
   ];
   const df = new Map<string, number>();
   for (const d of docs) for (const t of d.keys()) df.set(t, (df.get(t) ?? 0) + 1);
@@ -162,20 +162,21 @@ export function alignTurns(sim: number[][]): { turn: number; speech: number; sco
   return out.reverse();
 }
 
-/** Ranged rows on each matched turn's bounds. A summary-only speech is never `confirmed`. */
+/** Ranged rows on each matched turn's bounds. A summary-only speech is never `confirmed`; a speech with no official id names no one. */
 export function recordAttributions(
   turns: Turn[],
   speeches: RecordSpeech[],
   matches: ReturnType<typeof alignTurns>,
   personIdFor: (officialId: string) => string,
-  ref: { url: string; fetchedAt: string },
+  ref: { url: string; fetchedAt: string; chamber?: ChamberId; date?: string },
+  thresholds: { confirm: number; propose: number },
 ): NewAiAttribution[] {
   const rows: NewAiAttribution[] = [];
   for (const m of matches) {
     const turn = turns[m.turn];
     const speech = speeches[m.speech];
-    if (!turn || !speech || m.score < RECORD_PROPOSE) continue;
-    const confirmed = m.score >= RECORD_CONFIRM && speech.textSource === "full";
+    if (!turn || !speech || speech.officialId === null || m.score < thresholds.propose) continue;
+    const confirmed = m.score >= thresholds.confirm && speech.textSource === "full";
     rows.push({
       speakerId: turn.speakerId,
       startMs: turn.startMs,
@@ -183,7 +184,10 @@ export function recordAttributions(
       personId: personIdFor(speech.officialId),
       status: confirmed ? "confirmed" : "proposed",
       confidence: m.score,
-      evidence: { kind: "record", speechId: speech.id, score: m.score, url: ref.url, fetchedAt: ref.fetchedAt },
+      evidence: {
+        kind: "record", speechId: speech.id, score: m.score, url: ref.url, fetchedAt: ref.fetchedAt,
+        ...(ref.chamber ? { chamber: ref.chamber } : {}), ...(ref.date ? { date: ref.date } : {}),
+      },
     });
   }
   return rows;

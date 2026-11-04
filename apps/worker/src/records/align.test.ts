@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { Turn } from "@digestor/core";
-import { RECORD_CONFIRM, RECORD_PROPOSE, alignTurns, tieOrder, recordAttributions, similarityMatrix, speechText, stripRecordMarkup } from "./align.js";
-import type { RecordSpeech } from "./senado.js";
+import { chamberThresholds, type Turn } from "@digestor/core";
+import { RECORD_CONFIRM, RECORD_PROPOSE, alignTurns, tieOrder, recordAttributions, similarityMatrix as simMatrix, speechText, stripRecordMarkup } from "./align.js";
+import { connectorFor, type RecordSpeech } from "./connector.js";
+
+const similarityMatrix = (turns: Turn[], speeches: RecordSpeech[]) => simMatrix(turns, speeches, connectorFor("senado"));
+const BR = chamberThresholds("senado");
 
 const textos = JSON.parse(readFileSync(new URL("../../test/fixtures/senado-textos-2026-09-02.json", import.meta.url), "utf8")).texts as Record<string, string>;
 const people: Record<string, string> = { "524179": "A", "524181": "B", "524182": "C", "524138": "D", "524139": "E", "524142": "F" };
@@ -139,26 +142,41 @@ describe("recordAttributions", () => {
       { turn: 0, speech: 0, score: RECORD_CONFIRM + 0.1 },
       { turn: 1, speech: 0, score: (RECORD_CONFIRM + RECORD_PROPOSE) / 2 },
       { turn: 2, speech: 1, score: RECORD_PROPOSE - 0.01 },
-    ], personIdFor, ref);
+    ], personIdFor, ref, BR);
     expect(rows.map((r) => r.status)).toEqual(["confirmed", "proposed"]);
     expect(rows[0]).toMatchObject({ personId: "p-off524179", confidence: RECORD_CONFIRM + 0.1, evidence: { kind: "record", speechId: "524179", url: ref.url, fetchedAt: ref.fetchedAt } });
   });
 
   it("never confirms a summary-only speech", () => {
     const sp = [speech("524179", 1, { textSource: "summary" })];
-    const rows = recordAttributions(T, sp, [{ turn: 0, speech: 0, score: 0.9 }, { turn: 1, speech: 0, score: 0.2 }], personIdFor, ref);
+    const rows = recordAttributions(T, sp, [{ turn: 0, speech: 0, score: 0.9 }, { turn: 1, speech: 0, score: 0.2 }], personIdFor, ref, BR);
     expect(rows.map((r) => r.status)).toEqual(["proposed"]);
   });
 
   it("writes ranged rows on the turn's bounds, even when two senators share a voice id", () => {
-    const rows = recordAttributions(T, speeches, [{ turn: 2, speech: 0, score: 0.7 }, { turn: 3, speech: 1, score: 0.7 }], personIdFor, ref);
+    const rows = recordAttributions(T, speeches, [{ turn: 2, speech: 0, score: 0.7 }, { turn: 3, speech: 1, score: 0.7 }], personIdFor, ref, BR);
     expect(rows.map((r) => [r.speakerId, r.startMs, r.endMs, r.personId])).toEqual([
       ["S1", T[2]!.startMs, T[2]!.endMs, "p-off524179"],
       ["S2", T[3]!.startMs, T[3]!.endMs, "p-off524181"],
     ]);
-    const shared = recordAttributions([turn("x", "S1"), turn("y", "S1")], speeches, [{ turn: 0, speech: 0, score: 0.7 }, { turn: 1, speech: 1, score: 0.7 }], personIdFor, ref);
+    const shared = recordAttributions([turn("x", "S1"), turn("y", "S1")], speeches, [{ turn: 0, speech: 0, score: 0.7 }, { turn: 1, speech: 1, score: 0.7 }], personIdFor, ref, BR);
     expect(shared.map((r) => r.personId)).toEqual(["p-off524179", "p-off524181"]);
     expect(shared[0]!.endMs).toBeLessThanOrEqual(shared[1]!.startMs!);
+  });
+  it("a speech with no official id takes part in the alignment (it absorbs its turn) but yields no attribution", () => {
+    const anon = [speech("524179", 1, { officialId: null }), speech("524181", 2)];
+    const turns = [...turnsFor("524179", 1), ...turnsFor("524181", 1)];
+    const sim = similarityMatrix(turns, anon);
+    const matches = alignTurns(sim);
+    expect(matches.map((m) => [m.turn, m.speech])).toEqual([[0, 0], [1, 1]]);
+    const rows = recordAttributions(turns, anon, matches, personIdFor, ref, BR);
+    expect(rows.map((r) => r.personId)).toEqual(["p-off524181"]);
+  });
+
+  it("with the Bundestag's thresholds (not evaluated) even a 0.95 match is only proposed; evidence carries chamber and date", () => {
+    const rows = recordAttributions(T, speeches, [{ turn: 0, speech: 0, score: 0.95 }], personIdFor, { ...ref, chamber: "bundestag", date: "2026-10-16" }, chamberThresholds("bundestag"));
+    expect(rows.map((r) => r.status)).toEqual(["proposed"]);
+    expect(rows[0]!.evidence).toMatchObject({ kind: "record", chamber: "bundestag", date: "2026-10-16" });
   });
 });
 

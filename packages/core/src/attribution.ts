@@ -1,3 +1,4 @@
+import type { ChamberId } from "./chambers.ts";
 import type { Word } from "./schemas.ts";
 import type { Range } from "./snap.ts";
 
@@ -7,7 +8,7 @@ export const FOCUS_MIN_MS = 3_000;
 export type AttributionSource = "record" | "caption" | "transcript" | "metadata" | "human";
 export type AttributionStatus = "proposed" | "confirmed" | "anonymous" | "rejected";
 export type AttributionEvidence =
-  | { kind: "record"; speechId: string; score: number; url: string; fetchedAt: string }
+  | { kind: "record"; speechId: string; score: number; url: string; fetchedAt: string; chamber?: ChamberId; date?: string }
   | { kind: "caption"; frameKey: string; text: string; atMs: number }
   | { kind: "quote"; quote: string }
   | { kind: "none" };
