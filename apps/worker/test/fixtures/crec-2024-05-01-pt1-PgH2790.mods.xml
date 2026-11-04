@@ -1,0 +1,509 @@
+<?xml version="1.0" encoding="UTF-8"?><mods xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.loc.gov/mods/v3" version="3.3" xsi:schemaLocation="http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-3.xsd" ID="id-CREC-2024-05-01-pt1-PgH2790">
+    <name type="corporate">
+        <namePart>United States Government Publishing Office</namePart>
+        <role>
+            <roleTerm authority="marcrelator" type="text">publisher</roleTerm>
+            <roleTerm authority="marcrelator" type="code">pbl</roleTerm>
+        </role>
+        <role>
+            <roleTerm authority="marcrelator" type="text">distributor</roleTerm>
+            <roleTerm authority="marcrelator" type="code">dst</roleTerm>
+        </role>
+    </name>
+    <name type="corporate">
+        <namePart>United States</namePart>
+        <namePart>Congress</namePart>
+        <role>
+            <roleTerm authority="marcrelator" type="text">author</roleTerm>
+            <roleTerm authority="marcrelator" type="code">aut</roleTerm>
+        </role>
+        <description>Government Organization</description>
+    </name>
+    <typeOfResource>text</typeOfResource>
+    <genre authority="marcgt">government publication</genre>
+    <language>
+        <languageTerm type="code" authority="iso639-2b">eng</languageTerm>
+    </language>
+    <extension>
+        <collectionCode>CREC</collectionCode>
+        <category>Proceedings of Congress and General Congressional Publications</category>
+        <waisDatabaseName>2024_record</waisDatabaseName>
+        <branch>legislative</branch>
+        <dateIngested>2025-03-07</dateIngested>
+    </extension>
+    <titleInfo>
+        <title>ANTISEMITISM AWARENESS ACT OF 2023</title>
+        <partName>House</partName>
+    </titleInfo>
+    <relatedItem type="otherFormat" xlink:href="https://www.govinfo.gov/content/pkg/CREC-2024-05-01/html/CREC-2024-05-01-pt1-PgH2790.htm">
+        <identifier type="FDsys Unique ID">D09002ee1d87a905c</identifier>
+    </relatedItem>
+    <relatedItem type="otherFormat" xlink:href="https://www.govinfo.gov/content/pkg/CREC-2024-05-01/pdf/CREC-2024-05-01-pt1-PgH2790.pdf">
+        <identifier type="FDsys Unique ID">D09002ee1d87a91a1</identifier>
+    </relatedItem>
+    <identifier type="congressional record citation">170 Cong. Rec. H2790</identifier>
+    <identifier type="uri">https://www.govinfo.gov/app/details/CREC-2024-05-01/CREC-2024-05-01-pt1-PgH2790</identifier>
+    <identifier type="former granule identifier">CR01MY24-137</identifier>
+    <location>
+        <url displayLabel="Content Detail" access="object in context">https://www.govinfo.gov/app/details/CREC-2024-05-01/CREC-2024-05-01-pt1-PgH2790</url>
+        <url access="raw object" displayLabel="PDF rendition">https://www.govinfo.gov/content/pkg/CREC-2024-05-01/pdf/CREC-2024-05-01-pt1-PgH2790.pdf</url>
+        <url access="raw object" displayLabel="HTML rendition">https://www.govinfo.gov/content/pkg/CREC-2024-05-01/html/CREC-2024-05-01-pt1-PgH2790.htm</url>
+    </location>
+    <physicalDescription>
+        <extent>8 p.</extent>
+    </physicalDescription>
+    <part type="article">
+        <extent unit="pages">
+            <start>H2790</start>
+            <end>H2797</end>
+        </extent>
+    </part>
+    <name type="personal">
+        <namePart>Tom McClintock</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Jerrold Nadler</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Michael Lawler</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>David Kustoff</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Josh Gottheimer</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Marcus J. Molinaro</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Steve Cohen</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Christopher H. Smith</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Virginia Foxx</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Jim Jordan</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Earl L. "Buddy" Carter</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Tracey Mann</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Sheila Jackson Lee</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Betty McCollum</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="personal">
+        <namePart>Ruben Gallego</namePart>
+        <affiliation>United States House of Representatives</affiliation>
+        <role>
+            <roleTerm type="text">speaking</roleTerm>
+        </role>
+        <description>United States Congress Member</description>
+    </name>
+    <name type="corporate">
+        <namePart>United States</namePart>
+        <namePart>Congress</namePart>
+        <namePart>House of Representatives</namePart>
+        <namePart>Committee on the Judiciary</namePart>
+        <role>
+            <roleTerm authority="marcrelator" type="text">associated name</roleTerm>
+            <roleTerm authority="marcrelator" type="code">asn</roleTerm>
+        </role>
+        <description>Government Organization</description>
+    </name>
+    <identifier type="preferred citation">170 Cong. Rec. H2790</identifier>
+    <extension>
+        <searchTitle>ANTISEMITISM AWARENESS ACT OF 2023; Congressional Record Vol. 170, No. 75</searchTitle>
+        <associatedBills>H.R. 6090, 118th Congress
+        </associatedBills>
+        <granuleClass>HOUSE</granuleClass>
+        <accessId>CREC-2024-05-01-pt1-PgH2790</accessId>
+        <subGranuleClass>ALLOTHER</subGranuleClass>
+        <pagePrefix>H</pagePrefix>
+        <bookNumber>1</bookNumber>
+        <chamber>HOUSE</chamber>
+        <granuleDate>2024-05-01</granuleDate>
+        <time from="13:15:00" to="14:00:00"/>
+        <bill congress="118" context="FIRSTPARAGRAPH" number="1173" type="HRES"/>
+        <bill congress="118" context="OTHER" number="1173" type="HRES"/>
+        <bill congress="118" context="OTHER" number="5924" type="HR"/>
+        <bill congress="118" context="HEADERLINE" number="6090" type="HR"/>
+        <bill congress="118" context="FIRSTPARAGRAPH" number="6090" type="HR"/>
+        <bill congress="118" context="OTHER" number="6090" type="HR"/>
+        <bill congress="118" context="OTHER" number="7921" type="HR"/>
+        <congCommittee authorityId="hsju00" chamber="H" congress="118" type="S">
+                                    
+            <name type="authority-standard">Committee on the Judiciary</name>
+                                    
+            <name type="authority-short">Judiciary</name>
+                                
+        </congCommittee>
+        <congMember bioGuideId="M001177" chamber="H" congress="118" party="R" role="SPEAKING" state="CA">
+                                    
+            <name type="parsed">Mr. McCLINTOCK</name>
+                                    
+            <name type="authority-fnf">Tom McClintock</name>
+                                    
+            <name type="authority-lnf">McClintock, Tom</name>
+                                
+        </congMember>
+        <congMember bioGuideId="N000002" chamber="H" congress="118" party="D" role="SPEAKING" state="NY">
+                                    
+            <name type="parsed">Mr. NADLER</name>
+                                    
+            <name type="authority-fnf">Jerrold Nadler</name>
+                                    
+            <name type="authority-lnf">Nadler, Jerrold</name>
+                                
+        </congMember>
+        <congMember bioGuideId="L000599" chamber="H" congress="118" party="R" role="SPEAKING" state="NY">
+                                    
+            <name type="parsed">Mr. LAWLER</name>
+                                    
+            <name type="authority-fnf">Michael Lawler</name>
+                                    
+            <name type="authority-lnf">Lawler, Michael</name>
+                                
+        </congMember>
+        <congMember bioGuideId="K000392" chamber="H" congress="118" party="R" role="SPEAKING" state="TN">
+                                    
+            <name type="parsed">Mr. KUSTOFF</name>
+                                    
+            <name type="authority-fnf">David Kustoff</name>
+                                    
+            <name type="authority-lnf">Kustoff, David</name>
+                                
+        </congMember>
+        <congMember bioGuideId="G000583" chamber="H" congress="118" party="D" role="SPEAKING" state="NJ">
+                                    
+            <name type="parsed">Mr. GOTTHEIMER</name>
+                                    
+            <name type="authority-fnf">Josh Gottheimer</name>
+                                    
+            <name type="authority-lnf">Gottheimer, Josh</name>
+                                
+        </congMember>
+        <congMember bioGuideId="M001221" chamber="H" congress="118" party="R" role="SPEAKING" state="NY">
+                                    
+            <name type="parsed">Mr. MOLINARO</name>
+                                    
+            <name type="authority-fnf">Marcus J. Molinaro</name>
+                                    
+            <name type="authority-lnf">Molinaro, Marcus J.</name>
+                                    
+            <name type="authority-other">Marcus Molinaro</name>
+                                
+        </congMember>
+        <congMember bioGuideId="C001068" chamber="H" congress="118" party="D" role="SPEAKING" state="TN">
+                                    
+            <name type="parsed">Mr. COHEN</name>
+                                    
+            <name type="authority-fnf">Steve Cohen</name>
+                                    
+            <name type="authority-lnf">Cohen, Steve</name>
+                                
+        </congMember>
+        <congMember bioGuideId="S000522" chamber="H" congress="118" party="R" role="SPEAKING" state="NJ">
+                                    
+            <name type="parsed">Mr. SMITH of New Jersey</name>
+                                    
+            <name type="authority-fnf">Christopher H. Smith</name>
+                                    
+            <name type="authority-lnf">Smith, Christopher H.</name>
+                                    
+            <name type="authority-other">Christopher Smith</name>
+                                
+        </congMember>
+        <congMember bioGuideId="F000450" chamber="H" congress="118" party="R" role="SPEAKING" state="NC">
+                                    
+            <name type="parsed">Ms. FOXX</name>
+                                    
+            <name type="authority-fnf">Virginia Foxx</name>
+                                    
+            <name type="authority-lnf">Foxx, Virginia</name>
+                                
+        </congMember>
+        <congMember bioGuideId="J000289" chamber="H" congress="118" party="R" role="SPEAKING" state="OH">
+                                    
+            <name type="parsed">Mr. JORDAN</name>
+                                    
+            <name type="authority-fnf">Jim Jordan</name>
+                                    
+            <name type="authority-lnf">Jordan, Jim</name>
+                                
+        </congMember>
+        <congMember bioGuideId="C001103" chamber="H" congress="118" party="R" role="SPEAKING" state="GA">
+                                    
+            <name type="parsed">Mr. CARTER of Georgia</name>
+                                    
+            <name type="authority-fnf">Earl L. "Buddy" Carter</name>
+                                    
+            <name type="authority-lnf">Carter, Earl L. "Buddy"</name>
+                                    
+            <name type="authority-other">Earl Carter</name>
+                                
+        </congMember>
+        <congMember bioGuideId="M000871" chamber="H" congress="118" party="R" role="SPEAKING" state="KS">
+                                    
+            <name type="parsed">Mr. MANN</name>
+                                    
+            <name type="authority-fnf">Tracey Mann</name>
+                                    
+            <name type="authority-lnf">Mann, Tracey</name>
+                                
+        </congMember>
+        <congMember bioGuideId="J000032" chamber="H" congress="118" party="D" role="SPEAKING" state="TX">
+                                    
+            <name type="parsed">Ms. JACKSON LEE</name>
+                                    
+            <name type="authority-fnf">Sheila Jackson Lee</name>
+                                    
+            <name type="authority-lnf">Jackson Lee, Sheila</name>
+                                
+        </congMember>
+        <congMember bioGuideId="M001143" chamber="H" congress="118" party="D" role="SPEAKING" state="MN">
+                                    
+            <name type="parsed">Ms. McCOLLUM</name>
+                                    
+            <name type="authority-fnf">Betty McCollum</name>
+                                    
+            <name type="authority-lnf">McCollum, Betty</name>
+                                
+        </congMember>
+        <congMember bioGuideId="G000574" chamber="H" congress="118" party="D" role="SPEAKING" state="AZ">
+                                    
+            <name type="parsed">Mr. GALLEGO</name>
+                                    
+            <name type="authority-fnf">Ruben Gallego</name>
+                                    
+            <name type="authority-lnf">Gallego, Ruben</name>
+                                
+        </congMember>
+        <USCode title="42">
+                                    
+            <section detail="et seq." number="2000d"/>
+                                
+        </USCode>
+    </extension>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States House Resolution 1173 (118th Congress)</title>
+        </titleInfo>
+        <identifier type="Congressional Bill citation">H. Res. 1173</identifier>
+        <extension>
+            <congress>118</congress>
+            <context>FIRSTPARAGRAPH</context>
+        </extension>
+    </relatedItem>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States House Resolution 1173 (118th Congress)</title>
+        </titleInfo>
+        <identifier type="Congressional Bill citation">H. Res. 1173</identifier>
+        <extension>
+            <congress>118</congress>
+            <context>OTHER</context>
+        </extension>
+    </relatedItem>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States House Bill 5924 (118th Congress)</title>
+        </titleInfo>
+        <identifier type="Congressional Bill citation">H.R. 5924</identifier>
+        <extension>
+            <congress>118</congress>
+            <context>OTHER</context>
+        </extension>
+    </relatedItem>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States House Bill 6090 (118th Congress)</title>
+        </titleInfo>
+        <identifier type="Congressional Bill citation">H.R. 6090</identifier>
+        <extension>
+            <congress>118</congress>
+            <context>HEADERLINE</context>
+        </extension>
+    </relatedItem>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States House Bill 6090 (118th Congress)</title>
+        </titleInfo>
+        <identifier type="Congressional Bill citation">H.R. 6090</identifier>
+        <extension>
+            <congress>118</congress>
+            <context>FIRSTPARAGRAPH</context>
+        </extension>
+    </relatedItem>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States House Bill 6090 (118th Congress)</title>
+        </titleInfo>
+        <identifier type="Congressional Bill citation">H.R. 6090</identifier>
+        <extension>
+            <congress>118</congress>
+            <context>OTHER</context>
+        </extension>
+    </relatedItem>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States House Bill 7921 (118th Congress)</title>
+        </titleInfo>
+        <identifier type="Congressional Bill citation">H.R. 7921</identifier>
+        <extension>
+            <congress>118</congress>
+            <context>OTHER</context>
+        </extension>
+    </relatedItem>
+    <relatedItem type="isReferencedBy">
+        <titleInfo>
+            <title>United States Code</title>
+            <partNumber>Title 42 Section 2000det seq.</partNumber>
+        </titleInfo>
+        <identifier type="USC citation">42 U.S.C. 2000det seq.</identifier>
+    </relatedItem>
+    <relatedItem type="host" ID="P0b002ee1d0807bc0">
+        <titleInfo>
+            <title>Congressional Record</title>
+            <partNumber>Vol. 170, no. 75</partNumber>
+        </titleInfo>
+        <location>
+            <url displayLabel="Content Detail" access="object in context">https://www.govinfo.gov/app/details/CREC-2024-05-01</url>
+            <url displayLabel="PDF rendition" access="raw object">https://www.govinfo.gov/content/pkg/CREC-2024-05-01/pdf/CREC-2024-05-01.pdf</url>
+        </location>
+        <part type="issue">
+            <extent unit="pages">
+                <start>H2773</start>
+                <end>H2831</end>
+            </extent>
+            <extent unit="pages">
+                <start>S3097</start>
+                <end>S3294</end>
+            </extent>
+            <extent unit="pages">
+                <start>E419</start>
+                <end>E437</end>
+            </extent>
+            <extent unit="pages">
+                <start>D428</start>
+                <end>D436</end>
+            </extent>
+        </part>
+        <originInfo>
+            <publisher>U.S. Government Publishing Office</publisher>
+            <dateIssued encoding="w3cdtf">2024-05-01</dateIssued>
+            <issuance>continuing</issuance>
+            <frequency authority="marcfrequency">daily</frequency>
+        </originInfo>
+        <physicalDescription>
+            <note type="source content type">deposited</note>
+            <digitalOrigin>born digital</digitalOrigin>
+            <extent>285 digital object pages</extent>
+        </physicalDescription>
+        <classification authority="sudocs">X 1.1/A:</classification>
+        <classification authority="sudocs">X/A.</classification>
+        <identifier type="uri">https://www.govinfo.gov/app/details/CREC-2024-05-01</identifier>
+        <identifier type="local">P0b002ee1d0807bc0</identifier>
+        <identifier type="stock number">752-002-00000-2</identifier>
+        <identifier type="ILS system id">000568013</identifier>
+        <identifier type="former package identifier">CR01MY24</identifier>
+        <recordInfo>
+            <recordContentSource authority="marcorg">DGPO</recordContentSource>
+            <recordCreationDate encoding="w3cdtf">2025-03-07</recordCreationDate>
+            <recordChangeDate encoding="w3cdtf">2025-10-07</recordChangeDate>
+            <recordIdentifier source="DGPO">CREC-2024-05-01</recordIdentifier>
+            <recordOrigin>machine generated</recordOrigin>
+            <languageOfCataloging>
+                <languageTerm type="code" authority="iso639-2b">eng</languageTerm>
+            </languageOfCataloging>
+        </recordInfo>
+        <accessCondition type="GPO scope determination">fdlp</accessCondition>
+        <extension>
+            <docClass>CREC</docClass>
+            <accessId>CREC-2024-05-01</accessId>
+            <volume>170</volume>
+            <issue>75</issue>
+            <congress>118</congress>
+            <session>2</session>
+            <bookCount>1</bookCount>
+        </extension>
+    </relatedItem>
+</mods>

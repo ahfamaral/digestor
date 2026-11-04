@@ -156,6 +156,10 @@ To get past the bot check, give the worker the cookies of a logged-in YouTube se
 
 Each download uses its own temporary copy, so the file is never changed. When YouTube blocks a download despite cookies, the worker logs "blocked even with YTDLP_COOKIES_FILE: the cookies may have expired"; export fresh ones. A missing file is logged and the download goes ahead without cookies.
 
+## US House and Senate records (key required)
+
+Speaker names for US floor sittings come from the Congressional Record on GovInfo (`https://api.govinfo.gov`, one package `CREC-YYYY-MM-DD` per day). It needs a free api.data.gov key (sign up at `https://api.data.gov/signup/`, instant, about 1000 requests per hour) in `API_DATA_GOV_KEY`; apply it with `docker compose up -d worker`. Without it a linked US record fails with "API_DATA_GOV_KEY is not set on the server." and is not retried. The public `DEMO_KEY` works for a trial but allows only about 10 requests an hour. A sitting costs one request for the day's list plus one or two per House or Senate item, so a long day can take a few hundred requests. The daily edition appears the next morning (US time); a fresh sitting waits up to 3 days and is retried.
+
 ## Bundestag records (optional key)
 
 Speaker names for German sittings come from the Bundestag's open-data Plenarprotokoll XML. Digestor finds the file by reading the list on `https://www.bundestag.de/services/opendata`; if Bundestag changes that page and the list can't be read, the record shows an error that names the list URL. `BUNDESTAG_DIP_API_KEY` is an optional fallback: with a key (personal keys come from `parlamentsdokumentation@bundestag.de`; see the DIP API help page), a failed list falls back to the DIP API. Leave it blank to run without the fallback. The Bundestag publishes the finished protocol some days after a sitting, so a fresh sitting waits (up to 21 days) and is retried.

@@ -460,7 +460,8 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   try {
     ({ speeches, date: eventDate, members, url: recordUrl } = await connector.fetchRecord(ref, f, { now: new Date(), linkedAt: claimed.linkedAt }));
   } catch (err) {
-    if (err instanceof RecordNotFoundError) {
+    if (err instanceof RecordNotFoundError || err instanceof MissingApiKeyError) {
+      // Deterministic: the record has nothing for it, or the server lacks the house's key ("<VAR> is not set on the server."). No retry.
       await failRecordFetch(db, sessionId, err.message, ref);
       return;
     }

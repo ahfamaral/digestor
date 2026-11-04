@@ -30,6 +30,7 @@ import {
 import type { RecordConnector, RecordSpeech } from "../records/connector.js";
 import { RecordNotPublishedError } from "../records/connector.js";
 import { connectorFor } from "../records/connector.js";
+import { MissingApiKeyError } from "../errors.js";
 import { FIXTURE_SPEECHES, fixtureTexts, transcriptOfSpeeches } from "../records/fakeSenado.js";
 
 const none: Fact = { value: null, source: null, evidence: null };
@@ -393,12 +394,14 @@ describe("runRecordStep through a connector", () => {
     expect((await getPersons(db, [a.personId!]))[0]).toMatchObject({ displayName: "Anna Muster", party: "SPD", state: "BY", officialIds: { bundestag: "bt-524179" } });
   });
 
-  it("a house without a connector fails its row with a friendly line and does not throw", async () => {
-    const s = await createSession(db, { source: "upload", title: "US" });
+  it("a connector that needs a key the server lacks fails the row with the key's line and does not throw (no retry)", async () => {
+    const s = await createSession(db, { source: "upload", title: "No key" });
     await saveTranscript(db, s.id, transcriptOfSpeeches());
     await linkRecord(db, s.id, { chamber: "us_house", date: "2026-10-16", url: "https://www.congress.gov/x" });
-    await expect(runRecordStep({ db, storage: new LocalStorage(root) }, s.id)).resolves.toBeUndefined();
-    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The House record can't be read yet." });
+    const br = connectorFor("senado");
+    const noKey: RecordConnector = { chamber: "us_house", stopWords: br.stopWords, speechText: br.speechText, async fetchRecord() { throw new MissingApiKeyError("API_DATA_GOV_KEY"); } };
+    await expect(runRecordStep({ db, storage: new LocalStorage(root), connectors: { us_house: noKey } }, s.id)).resolves.toBeUndefined();
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "API_DATA_GOV_KEY is not set on the server." });
   });
 
   it("a connector that says the record isn't published leaves the row waiting for 6 h with the line, and no names change", async () => {

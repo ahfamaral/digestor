@@ -72,6 +72,7 @@ services:
       MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}
       YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
       BUNDESTAG_DIP_API_KEY: ${BUNDESTAG_DIP_API_KEY:-}
+      API_DATA_GOV_KEY: ${API_DATA_GOV_KEY:-}
     volumes:
       - .:/app
       - worker_node_modules:/app/node_modules
