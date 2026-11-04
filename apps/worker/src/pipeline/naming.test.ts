@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { personAt, type Attribution, type ContextCard, type Fact, type Person, type Word } from "@digestor/core";
+import { CHAMBERS, personAt, type Attribution, type ContextCard, type Fact, type Person, type Word } from "@digestor/core";
 import {
   backdateNamesToCard,
   createCustomPerson,
@@ -25,7 +25,7 @@ import { namesChangedSince } from "@digestor/core";
 import { sql } from "drizzle-orm";
 import {
   CONFIRMED_NAME, PROBABLE_NAME, importContextNames, importNamesForOldSessions, lockedParticipants, namedVoices, participantsForPrompt, promptCard, recordProjection,
-  runRecordStep,
+  recordNoMatch, runRecordStep,
 } from "./naming.js";
 import type { RecordConnector, RecordSpeech } from "../records/connector.js";
 import { connectorFor } from "../records/connector.js";
@@ -400,11 +400,35 @@ describe("runRecordStep through a connector", () => {
     expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The House record can't be read yet." });
   });
 
-  it("a Câmara day ref (no event id) fails the same way until its connector reads days", async () => {
+  it("a Câmara day ref is read by date: a day without a plenary fails its row with the house's line", async () => {
     const s = await createSession(db, { source: "upload", title: "Câmara day" });
     await saveTranscript(db, s.id, transcriptOfSpeeches());
     await linkRecord(db, s.id, { chamber: "camara", date: "2026-10-16", url: "https://www.camara.leg.br/x" });
-    await runRecordStep({ db, storage: new LocalStorage(root) }, s.id);
-    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The Câmara record can't be read yet." });
+    const empty = (async () => new Response(JSON.stringify({ dados: [], links: [] }), { status: 200 })) as typeof fetch;
+    await runRecordStep({ db, storage: new LocalStorage(root), fetch: empty }, s.id);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The Câmara has no plenary session on that date." });
+  });
+
+  it("filters matches with the house's own propose threshold, not a constant", async () => {
+    const s = await createSession(db, { source: "upload", title: "Tuned" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "bundestag", period: 21, sitting: 50, date: "2026-10-16", url: "https://www.bundestag.de/x" });
+    const before = CHAMBERS.bundestag.thresholds;
+    CHAMBERS.bundestag.thresholds = { confirm: 0.6, propose: 1.01 };
+    try {
+      await runRecordStep({ db, storage: new LocalStorage(root), connectors: { bundestag: fakeBundestag() } }, s.id);
+    } finally {
+      CHAMBERS.bundestag.thresholds = before;
+    }
+    // nothing reaches the house's threshold: the no-match line, not "no speech was kept"
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: recordNoMatch({ chamber: "bundestag", period: 21, sitting: 50, date: "2026-10-16", url: "x" }, "2026-10-16") });
+    expect((await listAttributions(db, s.id)).filter((a) => a.source === "record")).toHaveLength(0);
+  });
+
+  it("the no-match line keys on the ref's shape: an event link says 'Check the link.', a Câmara day says 'Check the date.'", () => {
+    const event = { chamber: "camara", eventId: "82635", url: "https://www.camara.leg.br/evento-legislativo/82635" } as const;
+    const day = { chamber: "camara", date: "2026-06-30", url: "https://www.camara.leg.br/agenda" } as const;
+    expect(recordNoMatch(event, "2026-06-30")).toBe("None of the speeches in the Câmara record of 30/06/2026 match this video. Check the link.");
+    expect(recordNoMatch(day, "2026-06-30")).toBe("None of the speeches in the Câmara record of 30/06/2026 match this video. Check the date.");
   });
 });

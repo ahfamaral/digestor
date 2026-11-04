@@ -29,7 +29,7 @@ import {
 import { RecordNotFoundError, findConnector, type MemberInfo, type RecordConnector, type RecordSpeech } from "../records/connector.js";
 import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type CaptionVote } from "../agents/captions.js";
 import { MissingApiKeyError } from "../errors.js";
-import { RECORD_PROPOSE, alignTurns, recordAttributions, similarityMatrix, tieOrder } from "../records/align.js";
+import { alignTurns, recordAttributions, similarityMatrix, tieOrder } from "../records/align.js";
 import type { PipelineDeps } from "./graph.js";
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
@@ -387,7 +387,7 @@ export const RECORD_NOT_FOUND = "The Senado has no speeches for that date.";
 export const RECORD_ALL_REJECTED = "No speech in the record was kept for this video.";
 /** `date` is the record's day as the connector returned it (`YYYY-MM-DD`; a Câmara link carries no date of its own). */
 export const recordNoMatch = (ref: RecordRef, date: string) =>
-  `None of the speeches in the ${CHAMBERS[ref.chamber].shortName} record of ${date.split("-").reverse().join("/")} match this video. ${ref.chamber === "camara" ? "Check the link." : "Check the date."}`;
+  `None of the speeches in the ${CHAMBERS[ref.chamber].shortName} record of ${date.split("-").reverse().join("/")} match this video. ${"eventId" in ref ? "Check the link." : "Check the date."}`;
 
 /** A transient failure of a claimed run, carrying the ref it claimed so the caller fails only that claim. */
 export class RecordStepError extends Error {
@@ -471,7 +471,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   const perm = tieOrder(sim, speeches);
   speeches = perm.map((j) => speeches[j]!);
   const thresholds = chamberThresholds(ref.chamber);
-  const matches = alignTurns(sim.map((row) => perm.map((j) => row[j]!))).filter((m) => m.score >= RECORD_PROPOSE);
+  const matches = alignTurns(sim.map((row) => perm.map((j) => row[j]!))).filter((m) => m.score >= thresholds.propose);
   const bySpeech = new Map(speeches.map((sp) => [sp.id, sp]));
 
   // One person per matched member (the connector read their fields once per run); a speech with no official id names no one.

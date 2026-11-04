@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { mapLimit } from "./http.js";
-import { RecordNotFoundError } from "./senado.js";
-import { fetchCamaraSpeeches } from "./camara.js";
+import { RecordNotFoundError } from "./types.js";
+import { CAMARA_CANCELLED, CAMARA_NOT_COMPLETE, camaraConnector, fetchCamaraDay, fetchCamaraSpeeches } from "./camara.js";
+import { senadoConnector } from "./senado.js";
 import { fixtureDeputados } from "./fakeCamara.js";
 import { fixtureEventoComissao } from "./fakeCamara.js";
+import { fixtureEventosDia } from "./fakeCamara.js";
 import { FIXTURE_DATE, FIXTURE_EVENT_ID, SILENT_IDS, SPEAKER_IDS, fakeCamaraFetch, fixtureDiscursos, fixtureEvento } from "./fakeCamara.js";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -220,5 +222,104 @@ describe("fetchCamaraSpeeches: cancelled sessions", () => {
         new RecordNotFoundError("The Câmara record of this session isn't complete yet. Try again later."),
       );
     }
+  });
+});
+
+describe("fetchCamaraDay", () => {
+  const DAY = "2026-06-30";
+  const listOf = (ids: number[], patch: (e: { id: number; situacao: string; [k: string]: unknown }) => void = () => {}) => {
+    const dados = structuredClone(fixtureEventosDia.dados).filter((e) => ids.includes(e.id));
+    dados.forEach(patch);
+    return () => json({ dados, links: [] });
+  };
+  /** The solemn session 81818 (12:23-13:26) with two of the fixture's deputies, one of whom (152605) also spoke in it at 12:40. */
+  const solemn = () => {
+    const entry = fixtureEventosDia.dados.find((e) => e.id === 81818)!;
+    const deputados = { dados: fixtureDeputados.dados.filter((d: { id: number }) => [152605, 62881].includes(d.id)), links: [] };
+    const discursos152605 = structuredClone(fixtureDiscursos["152605"]!);
+    discursos152605.dados.push({ ...discursos152605.dados[0]!, dataHoraInicio: "2026-06-30T12:40", transcricao: "O SR. GLAUBER BRAGA (PSOL - RJ. Sem revisão do orador.) - Homenagem solene." });
+    return { extraEvents: { "81818": { evento: { dados: entry, links: [] }, deputados } }, discursos: (id: string) => json(id === "152605" ? discursos152605 : fixtureDiscursos[id] ?? { dados: [], links: [] }) };
+  };
+
+  it("asks the Plenário's events of the day, and a day with one ended plenary gives the event-id path's speeches", async () => {
+    const byId = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch().f);
+    const { f, calls } = fakeCamaraFetch({ eventos: listOf([82635]) });
+    const day = await fetchCamaraDay(DAY, f);
+    expect(day.speeches).toEqual(byId.speeches);
+    expect(day.date).toBe(DAY);
+    expect(day.deputies).toEqual(byId.deputies);
+    expect(calls[0]).toBe("https://dadosabertos.camara.leg.br/api/v2/eventos?dataInicio=2026-06-30&dataFim=2026-06-30&itens=100&idOrgao=180");
+  });
+
+  it("two ended plenaries give both events' speeches in stamp order, with the deputies merged", async () => {
+    const o = solemn();
+    const { f } = fakeCamaraFetch({ eventos: listOf([82635, 81818]), ...o });
+    const day = await fetchCamaraDay(DAY, f);
+    const byId = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch().f);
+    expect(day.speeches).toHaveLength(byId.speeches.length + 1);
+    expect(day.speeches[0]).toMatchObject({ id: "152605-2026-06-30T12:40-0", at: "2026-06-30T12:40", order: 1, officialId: "152605" });
+    expect(day.speeches.slice(1).map((s) => s.id)).toEqual(byId.speeches.map((s) => s.id));
+    expect(day.speeches.map((s) => s.order)).toEqual(day.speeches.map((_, i) => i + 1));
+    expect(Object.keys(day.deputies).sort()).toEqual([...SPEAKER_IDS, ...SILENT_IDS].sort());
+  });
+
+  it("skips a cancelled plenary, a committee in the list and a plenary with no speeches", async () => {
+    const o = solemn();
+    const cancelled = fakeCamaraFetch({ eventos: listOf([82635, 81818], (e) => { if (e.id === 81818) e.situacao = "Cancelada"; }), ...o });
+    const day = await fetchCamaraDay(DAY, cancelled.f);
+    expect(day.speeches).toHaveLength((await fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch().f)).speeches.length);
+    expect(cancelled.calls.some((c) => c.includes("/eventos/81818"))).toBe(false);
+    // a non-PLEN event the server let through is filtered in code
+    const withCommittee = fakeCamaraFetch({ eventos: () => json({ dados: [...fixtureEventosDia.dados.filter((e) => e.id === 82635), { ...fixtureEventoComissao.dados, id: 82332 }], links: [] }) });
+    await fetchCamaraDay(DAY, withCommittee.f);
+    expect(withCommittee.calls.some((c) => c.includes("/eventos/82332"))).toBe(false);
+    // 81818 ended but nobody spoke in its window: the day still reads from 82635
+    const quiet = fakeCamaraFetch({ eventos: listOf([82635, 81818]), extraEvents: o.extraEvents });
+    expect((await fetchCamaraDay(DAY, quiet.f)).speeches.length).toBeGreaterThan(0);
+    // every plenary cancelled
+    await expect(fetchCamaraDay(DAY, fakeCamaraFetch({ eventos: listOf([82635], (e) => { e.situacao = "Não Confirmada"; }) }).f)).rejects.toThrow(new RecordNotFoundError(CAMARA_CANCELLED));
+  });
+
+  it("a day whose only plenary isn't Encerrada says the record isn't complete, without sweeping the deputies", async () => {
+    const { f, calls } = fakeCamaraFetch({ eventos: listOf([82635], (e) => { e.situacao = "Convocada"; }) });
+    await expect(fetchCamaraDay(DAY, f)).rejects.toThrow(new RecordNotFoundError(CAMARA_NOT_COMPLETE));
+    expect(calls.filter((c) => c.includes("/deputados"))).toEqual([]);
+    // one ended plenary does not make a day complete while another one is still open
+    const mixed = fakeCamaraFetch({ eventos: listOf([82635, 81818], (e) => { if (e.id === 81818) e.situacao = "Em Andamento"; }), ...solemn() });
+    await expect(fetchCamaraDay(DAY, mixed.f)).rejects.toThrow(new RecordNotFoundError(CAMARA_NOT_COMPLETE));
+  });
+
+  it("a day with no plenary says so", async () => {
+    await expect(fetchCamaraDay("2026-06-28", fakeCamaraFetch({ eventos: () => json({ dados: [], links: [] }) }).f)).rejects.toThrow(
+      new RecordNotFoundError("The Câmara has no plenary session on that date."),
+    );
+  });
+
+  it("reads every page of the day's list", async () => {
+    let n = 0;
+    const [a, b] = [fixtureEventosDia.dados.filter((e) => e.id === 81818), fixtureEventosDia.dados.filter((e) => e.id === 82635)];
+    const f = fakeCamaraFetch({ eventos: () => (++n === 1 ? json({ dados: a, links: [{ rel: "next", href: "https://dadosabertos.camara.leg.br/api/v2/eventos?pagina=2" }] }) : json({ dados: b, links: [] })), ...solemn() });
+    const day = await fetchCamaraDay(DAY, f.f);
+    expect(day.speeches[0]!.id).toBe("152605-2026-06-30T12:40-0");
+    expect(f.calls).toContain("https://dadosabertos.camara.leg.br/api/v2/eventos?pagina=2");
+  });
+});
+
+describe("camaraConnector", () => {
+  it("fetchRecord dispatches a day ref to the day and an event ref to the event", async () => {
+    const day = await camaraConnector.fetchRecord({ chamber: "camara", date: "2026-06-30", url: "u" }, fakeCamaraFetch({ eventos: () => json({ dados: fixtureEventosDia.dados.filter((e) => e.id === 82635), links: [] }) }).f, { now: new Date(), linkedAt: new Date() });
+    const ev = await camaraConnector.fetchRecord({ chamber: "camara", eventId: FIXTURE_EVENT_ID, url: "u" }, fakeCamaraFetch().f, { now: new Date(), linkedAt: new Date() });
+    expect(day.date).toBe("2026-06-30");
+    expect(day.speeches).toEqual(ev.speeches);
+    expect(day.members["152605"]).toMatchObject({ displayName: "Glauber Braga" });
+  });
+
+  it("a ref of another house is a deterministic RecordNotFoundError, in both Brazilian connectors", async () => {
+    const ctx = { now: new Date(), linkedAt: new Date() };
+    const f = (async () => { throw new Error("no network expected"); }) as typeof fetch;
+    const senadoRef = { chamber: "senado", date: "2026-06-30", sessionCode: null, url: "u" } as const;
+    const camaraRef = { chamber: "camara", eventId: "1", url: "u" } as const;
+    await expect(camaraConnector.fetchRecord(senadoRef, f, ctx)).rejects.toBeInstanceOf(RecordNotFoundError);
+    await expect(senadoConnector.fetchRecord(camaraRef, f, ctx)).rejects.toBeInstanceOf(RecordNotFoundError);
   });
 });

@@ -17,6 +17,15 @@ export const fixtureEventoComissao = fx("camara-evento-82332-comissao.json");
 export const fixtureDeputados = fx("camara-evento-82635-deputados.json");
 export const fixtureDiscursos = fx("camara-discursos-2026-06-30.json") as Record<string, { dados: { dataHoraInicio: string; transcricao: string }[]; links: unknown[] }>;
 
+/**
+ * `GET eventos?dataInicio=2026-06-30&dataFim=2026-06-30&itens=100&idOrgao=180` recorded live 2026-11-04 (free, no key,
+ * `Accept: application/json`), `descricao` trimmed to 80 characters. Without a filter the day lists 19 events; `idOrgao=180`
+ * (the Plenário) keeps the 4 PLEN ones (3 solemn sessions and the deliberative 82635); `codTipoEvento=110` keeps 1 and
+ * `siglaOrgao=PLEN` is ignored (0 rows). The list's `dataHoraInicio` of 82635 (14:24) differs from `eventos/82635` (13:55):
+ * the window always comes from the event itself.
+ */
+export const fixtureEventosDia = fx("camara-eventos-2026-06-30.json") as { dados: { id: number; situacao: string; dataHoraInicio: string; [k: string]: unknown }[]; links: unknown[] };
+
 export const FIXTURE_EVENT_ID = "82635";
 export const FIXTURE_DATE = "2026-06-30";
 /** The deputies of the fixture who gave speeches that day, in the order of their latest speech (the aligner is monotonic in time), and the two who gave none. */
@@ -26,6 +35,10 @@ export const SILENT_IDS = ["62881", "66385"];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export type FakeCamaraOptions = {
+  /** The day list (`GET /eventos?...`); default: the recorded one. */
+  eventos?: () => Response | Promise<Response>;
+  /** Other events by id: the `eventos/{id}` body and the event's deputies (default 404 for ids other than the fixture's). */
+  extraEvents?: Record<string, { evento: unknown; deputados: unknown }>;
   evento?: () => Response | Promise<Response>;
   deputados?: () => Response | Promise<Response>;
   discursos?: (deputyId: string) => Response | Promise<Response>;
@@ -38,8 +51,10 @@ export function fakeCamaraFetch(o: FakeCamaraOptions = {}) {
     const url = String(input);
     calls.push(url);
     const path = url.replace("https://dadosabertos.camara.leg.br/api/v2", "");
-    if (/^\/eventos\/\d+$/.test(path)) return (await o.evento?.()) ?? (path.endsWith(`/${FIXTURE_EVENT_ID}`) ? json(fixtureEvento) : json({ status: 404, title: "Not Found" }, 404));
-    if (/^\/eventos\/\d+\/deputados$/.test(path)) return (await o.deputados?.()) ?? json(fixtureDeputados);
+    if (path.startsWith("/eventos?")) return (await o.eventos?.()) ?? json(fixtureEventosDia);
+    const extra = o.extraEvents?.[path.match(/^\/eventos\/(\d+)/)?.[1] ?? ""];
+    if (/^\/eventos\/\d+$/.test(path)) return (await o.evento?.()) ?? (extra ? json(extra.evento) : path.endsWith(`/${FIXTURE_EVENT_ID}`) ? json(fixtureEvento) : json({ status: 404, title: "Not Found" }, 404));
+    if (/^\/eventos\/\d+\/deputados$/.test(path)) return (await o.deputados?.()) ?? json(extra ? extra.deputados : fixtureDeputados);
     if (/^\/eventos\/\d+\/discursos/.test(path)) return new Response("", { status: 405 });
     const m = path.match(/^\/deputados\/(\d+)\/discursos\?/);
     if (m) return (await o.discursos?.(m[1]!)) ?? json(fixtureDiscursos[m[1]!] ?? { dados: [], links: [] });

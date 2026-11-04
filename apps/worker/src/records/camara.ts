@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getJson, mapLimit } from "./http.js";
-import { RecordNotFoundError, type MemberInfo, type RecordConnector, type RecordSpeech } from "./connector.js";
+import { RecordNotFoundError, type MemberInfo, type RecordConnector, type RecordSpeech } from "./types.js";
 import { speechText, STOP } from "./align.js";
 
 /**
@@ -29,6 +29,7 @@ const LABEL = "Câmara";
 
 export const CAMARA_NOT_FOUND = "The Câmara has no speeches for that session.";
 export const CAMARA_NOT_PLENARY = "Only Câmara plenary sessions are supported.";
+export const CAMARA_NO_PLENARY = "The Câmara has no plenary session on that date.";
 export const CAMARA_CANCELLED = "This Câmara session was cancelled or never confirmed.";
 export const CAMARA_NOT_COMPLETE = "The Câmara record of this session isn't complete yet. Try again later.";
 
@@ -160,12 +161,60 @@ export async function fetchCamaraSpeeches(
   return { speeches, date, deputies };
 }
 
-/** The Câmara behind the connector interface: an event's speeches, its deputies as `members`. A day ref (no event id) is not readable yet. */
+const dayListSchema = z.object({
+  dados: z.array(z.object({ id: str, situacao: str, orgaos: z.array(z.object({ sigla: str }).passthrough()).nullish() }).passthrough()),
+}).passthrough();
+/** The Plenário's organ id: `eventos?idOrgao=180` keeps its events (`codTipoEvento`/`siglaOrgao` don't; recorded 2026-11-04). */
+const PLEN_ORGAO_ID = 180;
+
+/**
+ * The speeches of every plenary event of one day (`YYYY-MM-DD`): the day's Plenário events are listed (filtered by
+ * `idOrgao` on the server and by `orgaos[].sigla === "PLEN"` again here), cancelled ones are skipped, and if any other
+ * one hasn't ended the day isn't complete (nothing is swept). Each event is read by `fetchCamaraSpeeches` (the window,
+ * PLEN and situacao rules live there); a plenary with no speech of its own is skipped. Speeches are merged in stamp
+ * order and renumbered, the deputies of all events merged. No plenary: `RecordNotFoundError`.
+ */
+export async function fetchCamaraDay(
+  date: string,
+  f: typeof fetch = fetch,
+): Promise<{ speeches: RecordSpeech[]; date: string; deputies: Record<string, CamaraDeputy> }> {
+  const list = await getAllPages(`${BASE}/eventos?dataInicio=${date}&dataFim=${date}&itens=100&idOrgao=${PLEN_ORGAO_ID}`, f, (body) => {
+    const parsed = dayListSchema.safeParse(body);
+    if (!parsed.success) throw unexpected();
+    return parsed.data.dados;
+  });
+  const plenaries = (list ?? []).filter((e) => e.id != null && e.orgaos?.some((o) => o.sigla === "PLEN"));
+  if (plenaries.length === 0) throw new RecordNotFoundError(CAMARA_NO_PLENARY);
+  const live = plenaries.filter((e) => !(e.situacao?.startsWith("Cancelada") || e.situacao === "Não Confirmada"));
+  if (live.length === 0) throw new RecordNotFoundError(CAMARA_CANCELLED);
+  if (live.some((e) => !e.situacao?.startsWith("Encerrada"))) throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
+
+  const deputies: Record<string, CamaraDeputy> = {};
+  const byId = new Map<string, RecordSpeech>();
+  for (const e of live) {
+    let got: Awaited<ReturnType<typeof fetchCamaraSpeeches>>;
+    try {
+      got = await fetchCamaraSpeeches(e.id!, f);
+    } catch (err) {
+      if (err instanceof RecordNotFoundError && err.message === CAMARA_NOT_FOUND) continue; // ended, but nobody spoke in its window
+      throw err;
+    }
+    for (const [id, d] of Object.entries(got.deputies)) deputies[id] ??= d;
+    for (const sp of got.speeches) byId.set(sp.id, sp);
+  }
+  if (byId.size === 0) throw new RecordNotFoundError(CAMARA_NOT_FOUND);
+  const speeches = [...byId.values()]
+    .sort((a, b) => (a.at ?? "").localeCompare(b.at ?? "") || Number(a.officialId) - Number(b.officialId) || a.id.localeCompare(b.id))
+    .map((sp, i) => ({ ...sp, order: i + 1 }));
+  return { speeches, date, deputies };
+}
+
+/** The Câmara behind the connector interface: an event's speeches (or a day's), the deputies as `members`. */
 export const camaraConnector: RecordConnector = {
   chamber: "camara",
   async fetchRecord(ref, f) {
-    if (ref.chamber !== "camara" || !("eventId" in ref)) throw new RecordNotFoundError("The Câmara record can't be read yet.");
-    const { speeches, date, deputies } = await fetchCamaraSpeeches(ref.eventId, f);
+    if (ref.chamber !== "camara") throw new RecordNotFoundError("The Câmara connector got a ref of another house.");
+    const { speeches, date, deputies } = "eventId" in ref ? await fetchCamaraSpeeches(ref.eventId, f) : await fetchCamaraDay(ref.date, f);
     const members: Record<string, MemberInfo> = {};
     for (const [id, d] of Object.entries(deputies)) members[id] = { displayName: d.name, party: d.party, state: d.state, photoUrl: d.photoUrl };
     return { speeches, date, members };

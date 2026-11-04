@@ -1,0 +1,138 @@
+{
+ "dados": [
+  {
+   "id": 81818,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/eventos/81818",
+   "dataHoraInicio": "2026-06-30T12:23",
+   "dataHoraFim": "2026-06-30T13:26",
+   "situacao": "Encerrada",
+   "descricaoTipo": "Sessão Não Deliberativa Solene",
+   "descricao": "Homenagem à Organização TouchPeace\r\n Homenagem à Organização TouchPeace",
+   "localExterno": null,
+   "orgaos": [
+    {
+     "id": 180,
+     "uri": "https://dadosabertos.camara.leg.br/api/v2/orgaos/180",
+     "sigla": "PLEN",
+     "nome": "Plenário",
+     "apelido": "Plenário",
+     "codTipoOrgao": 26,
+     "tipoOrgao": "Plenário Virtual",
+     "nomePublicacao": "Plenário",
+     "nomeResumido": "Plenário"
+    }
+   ],
+   "localCamara": {
+    "nome": "Plenário da Câmara dos Deputados",
+    "predio": null,
+    "sala": null,
+    "andar": null
+   },
+   "urlRegistro": "https://www.youtube.com/watch?v=kfZUZVOfTj8"
+  },
+  {
+   "id": 81995,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/eventos/81995",
+   "dataHoraInicio": "2026-06-30T09:00",
+   "dataHoraFim": "2026-06-30T10:37",
+   "situacao": "Encerrada",
+   "descricaoTipo": "Sessão Não Deliberativa Solene",
+   "descricao": "Homenagem ao centenário da Universidade Federal de Viçosa - UFV\r\n Homenagem ao c",
+   "localExterno": null,
+   "orgaos": [
+    {
+     "id": 180,
+     "uri": "https://dadosabertos.camara.leg.br/api/v2/orgaos/180",
+     "sigla": "PLEN",
+     "nome": "Plenário",
+     "apelido": "Plenário",
+     "codTipoOrgao": 26,
+     "tipoOrgao": "Plenário Virtual",
+     "nomePublicacao": "Plenário",
+     "nomeResumido": "Plenário"
+    }
+   ],
+   "localCamara": {
+    "nome": "Plenário da Câmara dos Deputados",
+    "predio": null,
+    "sala": null,
+    "andar": null
+   },
+   "urlRegistro": null
+  },
+  {
+   "id": 82604,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/eventos/82604",
+   "dataHoraInicio": "2026-06-30T10:55",
+   "dataHoraFim": "2026-06-30T11:52",
+   "situacao": "Encerrada",
+   "descricaoTipo": "Sessão Não Deliberativa Solene",
+   "descricao": "Homenagem aos 35 anos da Associação Brasileira de Redes de Farmácias e Drogarias",
+   "localExterno": null,
+   "orgaos": [
+    {
+     "id": 180,
+     "uri": "https://dadosabertos.camara.leg.br/api/v2/orgaos/180",
+     "sigla": "PLEN",
+     "nome": "Plenário",
+     "apelido": "Plenário",
+     "codTipoOrgao": 26,
+     "tipoOrgao": "Plenário Virtual",
+     "nomePublicacao": "Plenário",
+     "nomeResumido": "Plenário"
+    }
+   ],
+   "localCamara": {
+    "nome": "Plenário da Câmara dos Deputados",
+    "predio": null,
+    "sala": null,
+    "andar": null
+   },
+   "urlRegistro": null
+  },
+  {
+   "id": 82635,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/eventos/82635",
+   "dataHoraInicio": "2026-06-30T14:24",
+   "dataHoraFim": "2026-06-30T20:11",
+   "situacao": "Encerrada",
+   "descricaoTipo": "Sessão Deliberativa",
+   "descricao": "Sessão Deliberativa Extraordinária Semipresencial (AM nº 123/2020)",
+   "localExterno": null,
+   "orgaos": [
+    {
+     "id": 180,
+     "uri": "https://dadosabertos.camara.leg.br/api/v2/orgaos/180",
+     "sigla": "PLEN",
+     "nome": "Plenário",
+     "apelido": "Plenário",
+     "codTipoOrgao": 26,
+     "tipoOrgao": "Plenário Virtual",
+     "nomePublicacao": "Plenário",
+     "nomeResumido": "Plenário"
+    }
+   ],
+   "localCamara": {
+    "nome": "Plenário da Câmara dos Deputados",
+    "predio": null,
+    "sala": null,
+    "andar": null
+   },
+   "urlRegistro": "https://www.youtube.com/watch?v=NmI46Y25mEU"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/eventos?dataInicio=2026-06-30&dataFim=2026-06-30&itens=100&idOrgao=180"
+  },
+  {
+   "rel": "first",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/eventos?dataInicio=2026-06-30&dataFim=2026-06-30&idOrgao=180&pagina=1&itens=100"
+  },
+  {
+   "rel": "last",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/eventos?dataInicio=2026-06-30&dataFim=2026-06-30&idOrgao=180&pagina=1&itens=100"
+  }
+ ]
+}

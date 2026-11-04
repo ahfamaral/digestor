@@ -1,6 +1,6 @@
 import { normaliseName, type ChamberId, type Turn } from "@digestor/core";
 import type { NewAiAttribution } from "@digestor/core/server";
-import type { RecordConnector, RecordSpeech } from "./connector.js";
+import type { RecordConnector, RecordSpeech } from "./types.js";
 
 /** Starting values; Task 16 tunes them. At or above CONFIRM a match is `confirmed`; between PROPOSE and CONFIRM, `proposed`. */
 export const RECORD_CONFIRM = 0.6;

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { RecordConnector, RecordSpeech, MemberInfo } from "./connector.js";
-import { RecordNotFoundError } from "./connector.js";
+import type { RecordConnector, RecordSpeech, MemberInfo } from "./types.js";
+import { RecordNotFoundError } from "./types.js";
 import { speechText, STOP } from "./align.js";
 import { get as httpGet, getJson as httpGetJson, httpTiming, mapLimit } from "./http.js";
 
@@ -147,7 +147,7 @@ export async function fetchSenador(
 export const senadoConnector: RecordConnector = {
   chamber: "senado",
   async fetchRecord(ref, f) {
-    if (ref.chamber !== "senado") throw new Error("The Senado connector got a ref of another house.");
+    if (ref.chamber !== "senado") throw new RecordNotFoundError("The Senado connector got a ref of another house.");
     const speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
     const members: Record<string, MemberInfo> = {};
     const ids = [...new Set(speeches.flatMap((s) => (s.officialId ? [s.officialId] : [])))];
