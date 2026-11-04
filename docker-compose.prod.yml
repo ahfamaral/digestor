@@ -46,6 +46,7 @@ services:
       VIDEO_RETENTION_DAYS: ${VIDEO_RETENTION_DAYS:-14}
       MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}
       YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
+      BUNDESTAG_DIP_API_KEY: ${BUNDESTAG_DIP_API_KEY:-}
     volumes: !override
       - appdata:/data
       - ./secrets:/secrets:ro

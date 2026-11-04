@@ -194,6 +194,7 @@ All facts below were verified live on 2026-11-04 unless marked.
   - No timestamps; order is document order.
 - **Members:** only what the protocol gives (name, fraktion). No state or constituency until Plan 5's registry reads `MdB-Stammdaten`. **[my call]**
 - **Lag:** unmeasured. The sitting of 16.10 was online by 04.11, and the final protocol is said to take days to about two weeks **[unverified]**. `publishWindowDays` is 21 **[my call]**. The builder measures the lag on a sitting held during the build and records it.
+  - *Note 2026-11-04 (Task 7):* not yet measurable. The newest sitting in the WP21 listing is no. 103 of 16.10.2026 (listed on 04.11, 19 days later); sittings 101 to 103 (14.-16.10) are all listed, so the lag is at most 19 days. The next sitting (no. 104) is today, 04.11.2026 at 14:00 CET, so its XML can't be timed yet. The listing and XML carry no publication time (the XML has no last-modified header); the builder re-checks the listing for no. 104 after the sitting. Until then 21 days stays.
 - **A sitting number with no date** (`21/104`) that isn't in the listing:
   - if it is newer than the last listed sitting of that period, it is "not published yet", and the window is counted from the day it was first linked;
   - otherwise it is not found. **[my call]**
