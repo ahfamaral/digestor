@@ -447,10 +447,12 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   let eventDate: string | undefined;
   let deputies: Record<string, CamaraDeputy> = {};
   try {
-    if (ref.chamber === "camara") {
+    if ("eventId" in ref) {
       ({ speeches, date: eventDate, deputies } = await fetchCamaraSpeeches(ref.eventId, f));
-    } else {
+    } else if (ref.chamber === "senado") {
       speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
+    } else {
+      throw new Error(`No record connector for ${ref.chamber} yet.`); // Plan 4 connectors land in later tasks
     }
   } catch (err) {
     if (err instanceof RecordNotFoundError) {

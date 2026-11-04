@@ -356,7 +356,7 @@ export const sessionRecords = pgTable("session_records", {
   sessionId: uuid("session_id")
     .primaryKey()
     .references(() => sessions.id, { onDelete: "cascade" }),
-  chamber: text("chamber", { enum: ["senado", "camara"] }).notNull(),
+  chamber: text("chamber", { enum: ["senado", "camara", "bundestag", "us_house", "us_senate"] }).notNull(),
   ref: jsonb("ref").$type<RecordRef>().notNull(),
   status: text("status").$type<RecordStatus>().notNull().default("pending"),
   /** A friendly sentence when `failed`. */

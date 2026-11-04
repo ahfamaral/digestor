@@ -1,11 +1,12 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
+import type { ChamberId } from "../chambers.ts";
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { Db } from "./client.ts";
 import { attributions, sessionRecords } from "./schema.ts";
 
 export type SessionRecord = {
   sessionId: string;
-  chamber: "senado" | "camara";
+  chamber: ChamberId;
   ref: RecordRef;
   status: RecordStatus;
   error: string | null;

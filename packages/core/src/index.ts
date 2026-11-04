@@ -16,4 +16,5 @@ export * from "./checklist.ts";
 export * from "./upload.ts";
 export * from "./briefingText.ts";
 export * from "./attribution.ts";
+export * from "./chambers.ts";
 export * from "./recordRef.ts";
