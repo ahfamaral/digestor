@@ -50,7 +50,7 @@ import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 
 import { MissingApiKeyError, VideoRemovedError } from "./errors.js";
-import { insidePublishWindow, waitingLine } from "./records/connector.js";
+import { fetchRetryLine, insidePublishWindow } from "./records/connector.js";
 import { RECORD_RETRY_HOURS } from "./records/retry.js";
 import { burnTrack, renderClipJob, type RenderDeps } from "./pipeline/render.js";
 import { runProxy, type ProxyDeps } from "./pipeline/proxy.js";
@@ -400,11 +400,19 @@ export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: Nam
   } catch (err) {
     if (attempt.retryCount >= attempt.retryLimit) {
       const ref = err instanceof RecordStepError ? err.ref : undefined;
-      const row = ref ? await getSessionRecord(ctx.db, job.sessionId) : null;
+      let row = null;
+      if (ref) {
+        try {
+          row = await getSessionRecord(ctx.db, job.sessionId);
+        } catch (lookupErr) {
+          // Never lose the original error: log both and fall back to the failed path.
+          console.error(`[jobs] record of ${job.sessionId}: original error on the last attempt:`, err, "; the record lookup then failed too:", lookupErr);
+        }
+      }
       // A run woken inside its publish window that keeps failing transiently (an outage, not a missing record) ends
       // the wait if it fails: keep it waiting and look again in a few hours, as for a record that is not out yet.
       if (ref && row && insidePublishWindow(ref, new Date(), row.linkedAt)
-        && (await waitRecordFetch(ctx.db, job.sessionId, ref, new Date(Date.now() + RECORD_RETRY_HOURS * 3_600_000), waitingLine(ref)))) {
+        && (await waitRecordFetch(ctx.db, job.sessionId, ref, new Date(Date.now() + RECORD_RETRY_HOURS * 3_600_000), fetchRetryLine(ref)))) {
         console.error(`[jobs] record of ${job.sessionId} failed on its last attempt but is inside its publish window; waiting ${RECORD_RETRY_HOURS} h to try again:`, err);
         return;
       }

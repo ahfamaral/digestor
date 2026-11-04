@@ -3,11 +3,12 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { personAt, type Word } from "@digestor/core";
 import { stripRecordMarkup } from "./records/align.js";
 import { Command } from "@langchain/langgraph";
 import {
-  LocalStorage, claimRecordFetch, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
+  LocalStorage, sessionRecords, claimRecordFetch, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
   claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
   setStage, startAnalysisVersion, claimProxy, requestProxy, updateSession, type Db,
@@ -434,7 +435,7 @@ d("handleNames", () => {
     await expect(handleNames(ctx, { sessionId: id }, LAST)).resolves.toBeUndefined();
     const row = (await getSessionRecord(db, id))!;
     expect(row.status).toBe("waiting");
-    expect(row.error).toContain("hasn't published the record");
+    expect(row.error).toBe("The Senado record couldn't be fetched just now. Digestor will try again.");
     expect(row.retryAt!.getTime() - Date.now()).toBeGreaterThan(5.9 * 3_600_000);
     expect(row.retryAt!.getTime() - Date.now()).toBeLessThan(6.1 * 3_600_000);
     expect(log.mock.calls.some((c) => String(c[0]).includes("inside its publish window"))).toBe(true);
@@ -534,7 +535,17 @@ d("handleNames", () => {
       await expect(handleNames(ctx, { sessionId: id }, FIRST)).rejects.toThrow();
       expect((await getSessionRecord(db, id))?.status).toBe("running");
       await expect(handleNames(ctx, { sessionId: id }, LAST)).resolves.toBeUndefined();
-      expect(await getSessionRecord(db, id)).toMatchObject({ status: "waiting" });
+      expect(await getSessionRecord(db, id)).toMatchObject({ status: "waiting", error: "The Câmara record couldn't be fetched just now. Digestor will try again." });
+      log.mockRestore();
+    });
+
+    it("a deputy call that keeps failing, linked longer ago than the window: the final attempt fails the row", async () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { id, ctx } = await camaraSetup({ discursos: () => new Response("boom", { status: 503 }) });
+      await expect(handleNames(ctx, { sessionId: id }, FIRST)).rejects.toThrow();
+      await db.update(sessionRecords).set({ linkedAt: new Date(Date.now() - 4 * 86_400_000) }).where(eq(sessionRecords.sessionId, id));
+      await expect(handleNames(ctx, { sessionId: id }, LAST)).rejects.toThrow();
+      expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "The Câmara record couldn't be fetched. Please try again." });
       log.mockRestore();
     });
   });

@@ -74,3 +74,8 @@ export function waitingLine(ref: RecordRef): string {
   const of = date ? `of ${date}` : "sitting" in ref && ref.sitting ? `of sitting ${ref.sitting}` : "of that sitting";
   return `The ${CHAMBERS[ref.chamber].shortName} hasn't published the record ${of} yet. Digestor will check again. If there was no sitting that day, check the date.`;
 }
+
+/** The line a row shows while it waits after a fetch that kept failing (an outage, not a missing record). */
+export function fetchRetryLine(ref: RecordRef): string {
+  return `The ${CHAMBERS[ref.chamber].shortName} record couldn't be fetched just now. Digestor will try again.`;
+}

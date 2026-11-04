@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RecordNotFoundError, RecordNotPublishedError, notPublishedOrNotFound, waitingLine } from "./connector.js";
+import { RecordNotFoundError, RecordNotPublishedError, notPublishedOrNotFound, waitingLine, fetchRetryLine } from "./connector.js";
 import { senadoConnector } from "./senado.js";
 import { camaraConnector } from "./camara.js";
 import { FIXTURE_EVENT_ID, fakeCamaraFetch, fixtureEvento } from "./fakeCamara.js";
@@ -29,6 +29,14 @@ describe("waitingLine", () => {
   it("names the house and the day, or the sitting", () => {
     expect(waitingLine({ chamber: "senado", date: "2026-11-03", sessionCode: null, url: "x" })).toBe(
       "The Senado hasn't published the record of 03/11/2026 yet. Digestor will check again. If there was no sitting that day, check the date.",
+    );
+  });
+});
+
+describe("fetchRetryLine", () => {
+  it("says the fetch failed, not that the record is missing", () => {
+    expect(fetchRetryLine({ chamber: "bundestag", date: "2026-11-03", sessionCode: null, url: "x" } as never)).toBe(
+      "The Bundestag record couldn't be fetched just now. Digestor will try again.",
     );
   });
 });
