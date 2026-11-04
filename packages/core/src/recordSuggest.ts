@@ -26,7 +26,7 @@ function datesIn(text: string, lang: keyof typeof MONTHS, us: boolean): string[]
     const date = m === null || y < 2000 ? null : validDate(y, m, d);
     if (date) found.push({ at, date });
   };
-  for (const x of text.matchAll(/(?<!\d)(\d{1,2})º?[/.](\d{1,2})[/.](\d{4}|\d{2})(?!\d)/g)) {
+  for (const x of text.matchAll(/(?<!\d)(\d{1,2})[º°]?[/.](\d{1,2})[/.](\d{4}|\d{2})(?!\d)/g)) {
     const [a, b] = [Number(x[1]), Number(x[2])];
     add(x.index, year(x[3]!), us ? a : b, us ? b : a);
   }
@@ -35,14 +35,14 @@ function datesIn(text: string, lang: keyof typeof MONTHS, us: boolean): string[]
   } else if (lang === "de") {
     for (const x of text.matchAll(/(?<!\d)(\d{1,2})\. ([a-z]+) (\d{4})\b/g)) add(x.index, Number(x[3]), monthNo("de", x[2]!), Number(x[1]));
   } else {
-    for (const x of text.matchAll(/(?<!\d)(\d{1,2})º? de ([a-z]+) de (\d{4})\b/g)) add(x.index, Number(x[3]), monthNo("pt", x[2]!), Number(x[1]));
+    for (const x of text.matchAll(/(?<!\d)(\d{1,2})[º°]? de ([a-z]+) de (\d{4})\b/g)) add(x.index, Number(x[3]), monthNo("pt", x[2]!), Number(x[1]));
   }
   return found.sort((p, q) => p.at - q.at).map((f) => f.date);
 }
 
 /** "103. Sitzung", "103. Plenarsitzung". */
 function sittingIn(text: string): number | null {
-  const x = /(?<!\d)(\d{1,3})\. (?:plenar)?sitzung\b/.exec(text);
+  const x = /(?<!\d)(\d{1,3})\. (?:plenar)?sitzung\b(?! des \w*ausschuss)/.exec(text);
   return x && Number(x[1]) > 0 ? Number(x[1]) : null;
 }
 
@@ -51,10 +51,10 @@ const LANG: Record<ChamberId, keyof typeof MONTHS> = { camara: "pt", senado: "pt
 /** The one house the channel and words point at; null when none, or when two are equally likely. */
 function houseOf(channel: string, text: string): ChamberId | null {
   const own = CHAMBER_IDS.filter((id) => CHAMBERS[id].suggest.ownChannels.some((p) => p.test(channel)));
-  if (own.length) return own.length === 1 ? own[0]! : null;
+  if (own.length) return own.length === 1 && !CHAMBERS[own[0]!].suggest.excludeOwn.some((p) => p.test(text)) ? own[0]! : null;
   const viaBroadcaster = CHAMBER_IDS.filter((id) => {
     const s = CHAMBERS[id].suggest;
-    return s.broadcasterChannels.some((p) => p.test(channel)) && s.sittingWords.some((p) => p.test(text));
+    return s.broadcasterChannels.some((p) => p.test(channel)) && s.sittingWords.some((p) => p.test(text)) && !s.excludeBroadcaster.some((p) => p.test(text));
   });
   return viaBroadcaster.length === 1 ? viaBroadcaster[0]! : null;
 }
@@ -94,17 +94,20 @@ export function suggestRecord(meta: VideoDetails): RecordRef | null {
   if (!chamber) return null;
   const own = CHAMBERS[chamber].suggest.ownChannels.some((p) => p.test(channel));
   const us = chamber === "us_house" || chamber === "us_senate";
-  for (const text of [title, description]) {
-    const date = datesIn(text, LANG[chamber], us)[0] ?? null;
-    const sitting = chamber === "bundestag" ? sittingIn(text) : null;
-    if (date === null && sitting === null) continue;
-    // A sitting number with no date never falls back to the upload date: it names a sitting the date may not fit.
-    if (date === null) return sittingOnly(chamber, sitting!, meta.uploadDate);
+  const upload = isoUpload(meta.uploadDate);
+  // Broadcasters upload after the sitting: a date later than the day after the upload is about something else.
+  const latest = upload && new Date(Date.parse(upload) + 86_400_000).toISOString().slice(0, 10);
+  const dateIn = (text: string) => datesIn(text, LANG[chamber], us).find((d) => !latest || d <= latest) ?? null;
+  const date = dateIn(title) ?? dateIn(description);
+  const sitting = chamber === "bundestag" ? (sittingIn(title) ?? sittingIn(description)) : null;
+  if (date !== null) {
     const ref = refFor(chamber, date, sitting);
     if (ref) return ref;
+  } else if (sitting !== null) {
+    // A sitting number with no date never falls back to the upload date: it names a sitting the date may not fit.
+    return sittingOnly(chamber, sitting, meta.uploadDate);
   }
   if (!own) return null;
-  const upload = isoUpload(meta.uploadDate);
   return upload ? refFor(chamber, upload, null) : null;
 }
 

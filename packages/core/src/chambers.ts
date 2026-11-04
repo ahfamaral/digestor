@@ -22,12 +22,20 @@ export type Chamber = {
    * (write them without accents): `ownChannels` the channel name of the parliament itself, `broadcasterChannels` a
    * broadcaster that also airs other things, so the title or description needs a `sittingWords` hit as well.
    */
-  suggest: { ownChannels: RegExp[]; broadcasterChannels: RegExp[]; sittingWords: RegExp[] };
+  suggest: {
+    ownChannels: RegExp[];
+    broadcasterChannels: RegExp[];
+    sittingWords: RegExp[];
+    /** Title or description hits that give no suggestion on a broadcaster channel (other bodies, interviews). */
+    excludeBroadcaster: RegExp[];
+    /** Title or description hits that give no suggestion on the own channel (committees: their sitting numbers aren't the plenary's). */
+    excludeOwn: RegExp[];
+  };
 };
 
 const BR_TITLES = ["senador", "senadora", "sen", "deputado", "deputada", "dep", "presidente", "ministro", "ministra", "doutor", "doutora", "dr", "dra", "sr", "sra", "o", "a"];
 const US_TITLES = ["Mr.", "Mrs.", "Ms.", "Miss", "Rep.", "Representative", "Sen.", "Senator", "Speaker"];
-const NO_BROADCASTER = { broadcasterChannels: [], sittingWords: [] };
+const NO_BROADCASTER = { broadcasterChannels: [], sittingWords: [], excludeBroadcaster: [], excludeOwn: [] };
 const CSPAN = [/^c-?span\d*$/];
 const THRESHOLDS = { confirm: 0.6, propose: 0.35 };
 
@@ -35,12 +43,12 @@ export const CHAMBERS: Record<ChamberId, Chamber> = {
   camara: {
     id: "camara", country: "BR", countryName: "Brazil", name: "Câmara dos Deputados", shortName: "Câmara",
     idSystem: "camara", defaultLanguage: "pt", publishWindowDays: 2, titles: BR_TITLES, evaluated: true, thresholds: THRESHOLDS,
-    suggest: { ownChannels: [/^tv camara\b/, /\bcamara dos deputados\b/], ...NO_BROADCASTER },
+    suggest: { ownChannels: [/^tv camara$/, /^camara dos deputados$/], ...NO_BROADCASTER },
   },
   senado: {
     id: "senado", country: "BR", countryName: "Brazil", name: "Senado Federal", shortName: "Senado",
     idSystem: "senado", defaultLanguage: "pt", publishWindowDays: 2, titles: BR_TITLES, evaluated: true, thresholds: THRESHOLDS,
-    suggest: { ownChannels: [/^tv senado\b/, /\bsenado federal\b/, /^agencia senado\b/], ...NO_BROADCASTER },
+    suggest: { ownChannels: [/^tv senado$/, /^senado federal$/, /^agencia senado$/], ...NO_BROADCASTER },
   },
   bundestag: {
     id: "bundestag", country: "DE", countryName: "Germany", name: "Deutscher Bundestag", shortName: "Bundestag",
@@ -49,7 +57,9 @@ export const CHAMBERS: Record<ChamberId, Chamber> = {
     evaluated: false, thresholds: THRESHOLDS,
     suggest: {
       ownChannels: [/^deutscher bundestag$/],
-      broadcasterChannels: [/^phoenix\b/],
+      broadcasterChannels: [/^phoenix$/],
+      excludeBroadcaster: [/bundesrat/, /landtag/, /ausschuss/, /anhorung/, /europaparlament/, /eu-parlament/, /interview/],
+      excludeOwn: [/ausschuss/, /anhorung/],
       sittingWords: [/\bsitzung\b/, /\bplenarsitzung\b/, /bundestag\b.*\b(debatte|rede)\b/, /\b(debatte|rede)\b.*bundestag/, /bundestags(debatte|rede)\b/],
     },
   },
@@ -57,8 +67,10 @@ export const CHAMBERS: Record<ChamberId, Chamber> = {
     id: "us_house", country: "US", countryName: "USA", name: "U.S. House of Representatives", shortName: "House",
     idSystem: "bioguide", defaultLanguage: "en", publishWindowDays: 3, titles: US_TITLES, evaluated: false, thresholds: THRESHOLDS,
     suggest: {
-      ownChannels: [/^(us|u\.s\.) house (clerk|of representatives)/],
+      ownChannels: [/^(us|u\.s\.) house (clerk|of representatives)$/],
       broadcasterChannels: CSPAN,
+      excludeBroadcaster: [],
+      excludeOwn: [],
       sittingWords: [/\bhouse floor\b/, /\bhouse session\b/],
     },
   },
@@ -66,8 +78,10 @@ export const CHAMBERS: Record<ChamberId, Chamber> = {
     id: "us_senate", country: "US", countryName: "USA", name: "U.S. Senate", shortName: "Senate",
     idSystem: "bioguide", defaultLanguage: "en", publishWindowDays: 3, titles: US_TITLES, evaluated: false, thresholds: THRESHOLDS,
     suggest: {
-      ownChannels: [/^(us|u\.s\.) senate\b/],
+      ownChannels: [/^(us|u\.s\.) senate$/],
       broadcasterChannels: CSPAN,
+      excludeBroadcaster: [],
+      excludeOwn: [],
       sittingWords: [/\bsenate floor\b/, /\bsenate session\b/],
     },
   },

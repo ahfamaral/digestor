@@ -109,3 +109,32 @@ describe("suggestRecord: no suggestion", () => {
     expect(suggestRecord(m("TV Senado", "Agenda", null))).toBeNull();
   });
 });
+
+describe("suggestRecord: review fixes", () => {
+  it("municipal chambers and committees are not the federal houses", () => {
+    expect(suggestRecord(m("TV Câmara São Paulo", "Sessão Plenária Ordinária - 04/11/2026", "2026-11-04"))).toBeNull();
+    expect(suggestRecord(m("TV Câmara Campinas", "Sessão", "2026-11-04"))).toBeNull();
+    expect(suggestRecord(m("Liderança do PT na Câmara dos Deputados", "Discurso - 04/11/2026", "2026-11-04"))).toBeNull();
+    expect(suggestRecord(m("U.S. Senate Committee on Armed Services", "Hearing November 4, 2026", "2026-11-04"))).toBeNull();
+  });
+  it("phoenix: other bodies and interviews are not the Bundestag", () => {
+    expect(suggestRecord(m("phoenix", "Bundesrat: 1058. Sitzung | 17.10.26", "2026-10-17"))).toBeNull();
+    expect(suggestRecord(m("phoenix", "Landtag NRW, 45. Sitzung | 12.10.26", "2026-10-12"))).toBeNull();
+    expect(suggestRecord(m("phoenix", "Merz im Gespräch | 12.10.26", "2026-10-12", "Zur Sitzung: die Rede von Merz im Bundestag, ein Interview."))).toBeNull();
+  });
+  it("Bundestag committees are not plenary sittings", () => {
+    expect(suggestRecord(m("Deutscher Bundestag", "Ausschuss für Gesundheit – 23. Sitzung – Öffentliche Anhörung", "2026-10-14"))).toBeNull();
+    expect(suggestRecord(m("Deutscher Bundestag", "23. Sitzung des Gesundheitsausschusses am 14.10.2026", "2026-10-14"))).toBeNull();
+  });
+  it("a text date after the upload date is skipped", () => {
+    expect(pick(suggestRecord(m("TV Senado", "Prazo termina em 31/12/2026", "2026-11-03")))).toEqual({ chamber: "senado", date: "2026-11-03" });
+  });
+  it("a sitting number in the title still looks for a date in the description", () => {
+    const r = suggestRecord(m("Deutscher Bundestag", "103. Sitzung des Bundestages – LIVE", "2026-10-16", "Sitzung am 16. Oktober 2026"));
+    expect(r).toMatchObject({ chamber: "bundestag", period: 21, sitting: 103, date: "2026-10-16" });
+  });
+  it("the degree sign works as an ordinal", () => {
+    expect(pick(suggestRecord(m("TV Senado", "Fala – 1°/9/26", "2026-09-01")))).toEqual({ chamber: "senado", date: "2026-09-01" });
+  });
+});
+
