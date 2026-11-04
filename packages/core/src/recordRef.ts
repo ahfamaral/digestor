@@ -77,13 +77,13 @@ export function parseRecordRef(input: string, chamber?: ChamberId): RecordRef | 
   }
   const tokens = input.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0 || tokens.length > 3) return null;
-  let date: string | null = null;
+  let dateToken: string | null = null;
   let link: URL | null = null;
   for (const token of tokens) {
-    const d = parseDate(token, us);
-    if (d) {
-      if (date) return null;
-      date = d;
+    // A date token is any token parseDate accepts in either order; its order is decided once the house is known.
+    if (parseDate(token) || parseDate(token, true)) {
+      if (dateToken) return null;
+      dateToken = token;
       continue;
     }
     if (link) return null;
@@ -94,6 +94,9 @@ export function parseRecordRef(input: string, chamber?: ChamberId): RecordRef | 
     }
     if (link.protocol !== "https:" && link.protocol !== "http:") return null;
   }
+  // A link decides its own house, and every linked house is Brazilian (DD/MM/YYYY); MM/DD only on the US path.
+  const date = dateToken ? parseDate(dateToken, !link && us) : null;
+  if (dateToken && !date) return null;
   if (!link) {
     if (!date) return null;
     if (chamber === "camara" || us) return dayRef(chamber, date);

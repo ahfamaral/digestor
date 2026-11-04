@@ -76,6 +76,12 @@ describe("parseRecordRef with a house", () => {
     });
     expect(parseRecordRef("2026-11-03")).toMatchObject({ chamber: "senado" });
   });
+  it("a slash date next to a Brazilian link is read DD/MM whatever house is selected", () => {
+    const link = "https://www25.senado.leg.br/web/atividade/plenario/-/sessao/123";
+    expect(parseRecordRef(`03/11/2026 ${link}`, "us_house")).toMatchObject({ chamber: "senado", date: "2026-11-03", sessionCode: "123" });
+    expect(parseRecordRef(`03/11/2026 ${link}`)).toEqual(parseRecordRef(`03/11/2026 ${link}`, "us_house"));
+    expect(parseRecordRef(`21/10/2025 ${link}`, "us_house")).toMatchObject({ chamber: "senado", date: "2025-10-21", sessionCode: "123" });
+  });
   it("recordRefDate for any ref with a date", () => {
     expect(recordRefDate(parseRecordRef("2026-11-03", "us_house")!)).toBe("03/11/2026");
     expect(recordRefDate(parseRecordRef("2026-11-03", "camara")!)).toBe("03/11/2026");

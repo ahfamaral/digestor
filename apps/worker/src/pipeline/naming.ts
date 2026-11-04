@@ -1,6 +1,6 @@
 import { access, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { PROFILES, closeMatches, normaliseName, personAt, recordRefDate, turnsOf, type Attribution, type ContextCard, type Fact, type Participant, type Person, type RecordRef, type Resolution, type Word } from "@digestor/core";
+import { CHAMBERS, PROFILES, closeMatches, normaliseName, personAt, recordRefDate, turnsOf, type Attribution, type ContextCard, type Fact, type Participant, type Person, type RecordRef, type Resolution, type Word } from "@digestor/core";
 import {
   backdateNamesToCard,
   claimRecordFetch,
@@ -110,7 +110,9 @@ const closeUnique = (name: string, persons: Person[]): Person | null => {
 };
 
 /** A leading title ("Senadora", "Deputado", "Dra.") is no part of the name an official is known by. */
-const stripTitle = (name: string) => name.replace(/^\s*(?:(?:senador|senadora|sen|deputado|deputada|dep|presidente|ministro|ministra|doutor|doutora|dr|dra|sr|sra|o|a)\b\.?\s+)+/i, "").trim() || name;
+const BR_TITLES = [...new Set([...CHAMBERS.senado.titles, ...CHAMBERS.camara.titles])].map((t) => t.replace(/\./g, "")).join("|");
+const STRIP_TITLE = new RegExp(`^\\s*(?:(?:${BR_TITLES})\\b\\.?\\s+)+`, "i");
+const stripTitle = (name: string) => name.replace(STRIP_TITLE, "").trim() || name;
 
 const tokenCount = (name: string) => normaliseName(name).split(" ").filter(Boolean).length;
 
