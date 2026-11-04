@@ -8,7 +8,7 @@ import {
   isGraphInterrupt,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
-import { OWNER_ID, type ContextCard, type Fact, type Participant, type ResumePayload, type Transcript } from "@digestor/core";
+import { OWNER_ID, suggestRecord, type ContextCard, type Fact, type Participant, type ResumePayload, type Transcript } from "@digestor/core";
 import {
   createCustomPerson,
   findPersonByName,
@@ -25,6 +25,7 @@ import {
   setHumanAttribution,
   saveTranscript,
   setStage,
+  suggestRecordRow,
   updateSession,
   type Db,
   type LocalStorage,
@@ -202,6 +203,13 @@ export const downloadNode =
       metadata: { ...session.metadata, ...result.metadata },
       title: result.metadata.title || session.title,
     });
+    // A suggestion only: the journalist confirms it at the context check. Idempotent (no row yet), never fatal.
+    try {
+      const ref = suggestRecord(result.metadata);
+      if (ref) await suggestRecordRow(db, s.sessionId, ref);
+    } catch (err) {
+      console.error(`[pipeline] record suggestion failed for session ${s.sessionId}:`, err);
+    }
     return {};
   };
 

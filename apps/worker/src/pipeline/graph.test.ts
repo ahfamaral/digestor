@@ -27,6 +27,7 @@ import {
   updateSession,
   claimProxy,
   failProxy,
+  sessionRecords,
   PREVIEW_FAILED,
   type Db,
 } from "@digestor/core/server";
@@ -157,6 +158,22 @@ async function setup(o: Setup = {}) {
   const resume = (payload: ResumePayload) => graph.invoke(new Command({ resume: payload }), cfg);
   const interruptValue = async () => (await graph.getState(cfg)).tasks[0]?.interrupts[0]?.value;
   return { sessionId: session.id, llm, contextCalls, deps, graph, cfg, resume, interruptValue };
+}
+
+/** A database whose inserts into `session_records` throw (the suggester's write). */
+function failingSuggestDb(): Db {
+  return new Proxy(db, {
+    get(obj, prop, receiver) {
+      if (prop === "insert") {
+        return (t: Parameters<Db["insert"]>[0]) => {
+          if (t === sessionRecords) throw new Error("suggest write failed");
+          return obj.insert(t);
+        };
+      }
+      const v: unknown = Reflect.get(obj, prop, receiver);
+      return typeof v === "function" ? v.bind(obj) : v;
+    },
+  });
 }
 
 const youtubeStub =
@@ -398,6 +415,57 @@ describe("pipeline", () => {
     expect(user).toContain("title: Minister interview");
     expect(user).not.toContain("durationS");
     expect((await getContextCard(db, sessionId))!.card.dateOrYear).toEqual(fact("2026-03-14", "metadata", "2026-03-14"));
+  });
+
+  describe("record suggestion from the YouTube details", () => {
+    const meta = (over: Partial<YouTubeMetadata> = {}): YouTubeMetadata => ({
+      title: "92. Sitzung vom 09.09.2026. TOP Epl 04: Bundeskanzler und Bundeskanzleramt",
+      description: "",
+      channel: "Deutscher Bundestag",
+      uploadDate: "2026-09-10",
+      webpageUrl: "https://www.youtube.com/watch?v=abc",
+      durationS: 100,
+      ...over,
+    });
+    const bundestag: RecordRef = { chamber: "bundestag", period: 21, sitting: 92, date: "2026-09-09", url: "https://www.bundestag.de/services/opendata" };
+
+    it("a Bundestag title gets a suggested row, and the analysis goes on", async () => {
+      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()] });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSessionRecord(db, sessionId)).toMatchObject({ chamber: "bundestag", status: "suggested", ref: bundestag });
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    });
+
+    it("a video that points to no sitting gets none", async () => {
+      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta({ channel: "phoenix", title: "US-Zwischenwahlen | 04.11.26" })), context: [draft()] });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSessionRecord(db, sessionId)).toBeNull();
+    });
+
+    it("a record linked at upload keeps its row untouched", async () => {
+      const linked: RecordRef = { chamber: "senado", date: FIXTURE_DATE, sessionCode: null, url: "https://example/record" };
+      const { f } = fakeSenadoFetch();
+      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()], transcript: transcriptOfSpeeches(), record: linked, fetch: f });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSessionRecord(db, sessionId)).toMatchObject({ chamber: "senado", status: "matched", ref: linked });
+    });
+
+    it("a failing suggester never fails the session", async () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()], db: failingSuggestDb() });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+      expect(await getSessionRecord(db, sessionId)).toBeNull();
+      expect(log).toHaveBeenCalled();
+      log.mockRestore();
+    });
+
+    it("an uploaded file gets none", async () => {
+      const { graph, cfg, sessionId } = await setup({ context: [draft()] });
+      await updateSession(db, sessionId, { title: "92. Sitzung vom 09.09.2026", metadata: { channel: "Deutscher Bundestag", title: "92. Sitzung vom 09.09.2026" } });
+      await graph.invoke({ sessionId }, cfg);
+      expect(await getSessionRecord(db, sessionId)).toBeNull();
+    });
   });
 
   it("youtube download failure ends with the friendly message", async () => {

@@ -48,6 +48,19 @@ export async function linkRecord(db: Db, sessionId: string, ref: RecordRef): Pro
   });
 }
 
+/**
+ * Stores a suggested record (from the YouTube details) only when the session has no record row at all: a record linked
+ * at upload, a fetched one, and a suggestion already there all stay. False when a row exists.
+ */
+export async function suggestRecordRow(db: Db, sessionId: string, ref: RecordRef): Promise<boolean> {
+  const rows = await db
+    .insert(sessionRecords)
+    .values({ sessionId, chamber: ref.chamber, ref, status: "suggested" })
+    .onConflictDoNothing({ target: sessionRecords.sessionId })
+    .returning({ id: sessionRecords.sessionId });
+  return rows.length > 0;
+}
+
 /** Compare-and-set `pending` → `running`: the row, or null when it isn't `pending` (another run has it, or it is done). */
 export async function claimRecordFetch(db: Db, sessionId: string): Promise<SessionRecord | null> {
   const [row] = await db

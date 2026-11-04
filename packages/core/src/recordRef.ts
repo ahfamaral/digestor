@@ -20,7 +20,7 @@ export type RecordRef =
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const SLASH_DATE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
 
-function validDate(y: number, m: number, d: number): string | null {
+export function validDate(y: number, m: number, d: number): string | null {
   const t = new Date(Date.UTC(y, m - 1, d));
   if (t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) return null;
   return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -39,7 +39,7 @@ const SENADO_HOSTS = new Set(["senado.leg.br", "www.senado.leg.br", "www25.senad
 const CAMARA_HOSTS = new Set(["camara.leg.br", "www.camara.leg.br"]);
 
 /** Until the connector resolves the protocol XML of a sitting. */
-const BUNDESTAG_URL = "https://www.bundestag.de/services/opendata";
+export const BUNDESTAG_URL = "https://www.bundestag.de/services/opendata";
 
 export function senadoDayUrl(date: string): string {
   const day = date.replaceAll("-", "");
@@ -53,13 +53,13 @@ const BUNDESTAG_PERIODS: { period: number; from: string }[] = [
   { period: 19, from: "2017-10-24" },
 ];
 
-function bundestagPeriod(date: string): number | null {
+export function bundestagPeriod(date: string): number | null {
   return BUNDESTAG_PERIODS.find((p) => date >= p.from)?.period ?? null;
 }
 
 const ddmmyyyy = (date: string) => date.split("-").reverse().join("/");
 
-function dayRef(chamber: "camara" | "us_house" | "us_senate", date: string): RecordRef {
+export function dayRef(chamber: "camara" | "us_house" | "us_senate", date: string): RecordRef {
   if (chamber === "camara") {
     const d = ddmmyyyy(date);
     return { chamber, date, url: `https://www.camara.leg.br/agenda?dataInicial=${d}&dataFinal=${d}` };

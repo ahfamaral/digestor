@@ -6,7 +6,7 @@ import { createDb, type Db } from "./client.ts";
 import { createCustomPerson, listAttributions, replaceAiAttributions } from "./names.ts";
 import { sessionRecords } from "./schema.ts";
 import { createSession, type Session } from "./repo.ts";
-import { claimDueRecordRetries, requeueRecordRetry, waitRecordFetch, claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch } from "./records.ts";
+import { claimDueRecordRetries, requeueRecordRetry, waitRecordFetch, claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch, suggestRecordRow } from "./records.ts";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -142,3 +142,27 @@ describe("linkRecord and the record's names", () => {
     expect(row!.recent).toBe(true);
   });
 });
+
+describe("suggestRecordRow", () => {
+  it("inserts a suggested row when the session has none", async () => {
+    expect(await suggestRecordRow(db, s.id, senado())).toBe(true);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ chamber: "senado", status: "suggested", ref: senado(), error: null });
+  });
+
+  it("never overwrites an existing row, whatever its status", async () => {
+    await linkRecord(db, s.id, senado("2026-01-01"));
+    expect(await suggestRecordRow(db, s.id, senado("2026-02-02"))).toBe(false);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "pending", ref: senado("2026-01-01") });
+    await claimRecordFetch(db, s.id);
+    await finishRecordFetch(db, s.id, { rawKey: "k" });
+    expect(await suggestRecordRow(db, s.id, senado("2026-02-02"))).toBe(false);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "matched", ref: senado("2026-01-01") });
+  });
+
+  it("a second suggestion for the same session does nothing", async () => {
+    expect(await suggestRecordRow(db, s.id, senado("2026-01-01"))).toBe(true);
+    expect(await suggestRecordRow(db, s.id, senado("2026-02-02"))).toBe(false);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ ref: senado("2026-01-01") });
+  });
+});
+

@@ -17,34 +17,59 @@ export type Chamber = {
   /** A house whose name matching has been measured against a golden set; others only propose names. */
   evaluated: boolean;
   thresholds: { confirm: number; propose: number };
+  /**
+   * How a YouTube video is tied to this house (`suggestRecord`, spec 6.3). Patterns match lower-case, accent-free text
+   * (write them without accents): `ownChannels` the channel name of the parliament itself, `broadcasterChannels` a
+   * broadcaster that also airs other things, so the title or description needs a `sittingWords` hit as well.
+   */
+  suggest: { ownChannels: RegExp[]; broadcasterChannels: RegExp[]; sittingWords: RegExp[] };
 };
 
 const BR_TITLES = ["senador", "senadora", "sen", "deputado", "deputada", "dep", "presidente", "ministro", "ministra", "doutor", "doutora", "dr", "dra", "sr", "sra", "o", "a"];
 const US_TITLES = ["Mr.", "Mrs.", "Ms.", "Miss", "Rep.", "Representative", "Sen.", "Senator", "Speaker"];
+const NO_BROADCASTER = { broadcasterChannels: [], sittingWords: [] };
+const CSPAN = [/^c-?span\d*$/];
 const THRESHOLDS = { confirm: 0.6, propose: 0.35 };
 
 export const CHAMBERS: Record<ChamberId, Chamber> = {
   camara: {
     id: "camara", country: "BR", countryName: "Brazil", name: "Câmara dos Deputados", shortName: "Câmara",
     idSystem: "camara", defaultLanguage: "pt", publishWindowDays: 2, titles: BR_TITLES, evaluated: true, thresholds: THRESHOLDS,
+    suggest: { ownChannels: [/^tv camara\b/, /\bcamara dos deputados\b/], ...NO_BROADCASTER },
   },
   senado: {
     id: "senado", country: "BR", countryName: "Brazil", name: "Senado Federal", shortName: "Senado",
     idSystem: "senado", defaultLanguage: "pt", publishWindowDays: 2, titles: BR_TITLES, evaluated: true, thresholds: THRESHOLDS,
+    suggest: { ownChannels: [/^tv senado\b/, /\bsenado federal\b/, /^agencia senado\b/], ...NO_BROADCASTER },
   },
   bundestag: {
     id: "bundestag", country: "DE", countryName: "Germany", name: "Deutscher Bundestag", shortName: "Bundestag",
     idSystem: "bundestag", defaultLanguage: "de", publishWindowDays: 21,
     titles: ["Abg.", "Präsident", "Präsidentin", "Vizepräsident", "Vizepräsidentin", "Bundesminister", "Bundesministerin", "Bundeskanzler", "Bundeskanzlerin", "Staatssekretär", "Staatssekretärin", "Dr."],
     evaluated: false, thresholds: THRESHOLDS,
+    suggest: {
+      ownChannels: [/^deutscher bundestag$/],
+      broadcasterChannels: [/^phoenix\b/],
+      sittingWords: [/\bsitzung\b/, /\bplenarsitzung\b/, /bundestag\b.*\b(debatte|rede)\b/, /\b(debatte|rede)\b.*bundestag/, /bundestags(debatte|rede)\b/],
+    },
   },
   us_house: {
     id: "us_house", country: "US", countryName: "USA", name: "U.S. House of Representatives", shortName: "House",
     idSystem: "bioguide", defaultLanguage: "en", publishWindowDays: 3, titles: US_TITLES, evaluated: false, thresholds: THRESHOLDS,
+    suggest: {
+      ownChannels: [/^(us|u\.s\.) house (clerk|of representatives)/],
+      broadcasterChannels: CSPAN,
+      sittingWords: [/\bhouse floor\b/, /\bhouse session\b/],
+    },
   },
   us_senate: {
     id: "us_senate", country: "US", countryName: "USA", name: "U.S. Senate", shortName: "Senate",
     idSystem: "bioguide", defaultLanguage: "en", publishWindowDays: 3, titles: US_TITLES, evaluated: false, thresholds: THRESHOLDS,
+    suggest: {
+      ownChannels: [/^(us|u\.s\.) senate\b/],
+      broadcasterChannels: CSPAN,
+      sittingWords: [/\bsenate floor\b/, /\bsenate session\b/],
+    },
   },
 };
 
