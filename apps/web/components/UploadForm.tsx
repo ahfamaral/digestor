@@ -14,6 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { recordFieldError } from "@/components/Names/RecordLink";
+import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "@/components/Names/RecordHouseSelect";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -123,12 +124,13 @@ export function UploadForm() {
   const [url, setUrl] = useState("");
   const [hint, setHint] = useState("");
   const [record, setRecord] = useState("");
+  const [house, pickHouse, showHouse] = useRecordHouse();
   const [language, setLanguage] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const urlError = youtubeError(url);
-  const recordError = record.trim() ? recordFieldError(record) : null;
+  const recordError = record.trim() ? recordFieldError(record, house || undefined) : null;
   const busy = submitting || upload.phase !== "idle";
   const audioOnly = file !== null && isAudioExtension(extOf(file.name));
   const canSubmit = !busy && recordError === null && (mode === "file" ? file !== null && (!audioOnly || audioAck) : url.trim() !== "" && urlError === null);
@@ -163,6 +165,7 @@ export function UploadForm() {
         const qs = new URLSearchParams({ filename: file.name });
         if (hint.trim()) qs.set("hint", hint.trim());
         if (record.trim()) qs.set("record", record.trim());
+        if (record.trim() && house) qs.set("chamber", house);
         if (language) qs.set("language", language);
         if (audioOnly) qs.set("audioOnlyAck", "1");
         sessionId = await putFile(`/api/sessions/upload?${qs}`, file, (pct) => setUpload({ phase: "uploading", pct }));
@@ -171,7 +174,7 @@ export function UploadForm() {
         const res = await fetch("/api/sessions/youtube", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, hint: hint.trim() || undefined, record: record.trim() || undefined, language: language || undefined }),
+          body: JSON.stringify({ url, hint: hint.trim() || undefined, record: record.trim() || undefined, chamber: record.trim() && house ? house : undefined, language: language || undefined }),
         });
         const text = await res.text();
         if (!res.ok) throw new Error(errorFrom(text, t("upload.errorGeneric")));
@@ -356,6 +359,21 @@ export function UploadForm() {
         <label htmlFor="record" className="mt-4 font-semibold">
           {t("upload.recordLabel")} <span className="font-normal text-muted-foreground">{t("upload.recordOptional")}</span>
         </label>
+        <label htmlFor="record-house" className="mt-2 block text-xs text-muted-foreground">
+          {t("upload.recordHouse")}
+        </label>
+        <div className="mt-1">
+          <RecordHouseSelect
+            id="record-house"
+            value={house}
+            disabled={busy}
+            describedBy="record-help"
+            onChange={(next) => {
+              pickHouse(next);
+              setSubmitError(null);
+            }}
+          />
+        </div>
         <Input
           id="record"
           className="mt-2"
@@ -366,12 +384,13 @@ export function UploadForm() {
           aria-describedby="record-help"
           onChange={(e) => {
             setRecord(e.target.value);
+            if (holdsLink(e.target.value)) showHouse("");
             setSubmitError(null);
           }}
           placeholder={t("upload.recordPlaceholder")}
         />
         <p id="record-help" className={cn("mt-1 text-xs break-words", recordError ? "text-destructive" : "text-muted-foreground")} role={recordError ? "alert" : undefined}>
-          {recordError ?? t("upload.recordHelp")}
+          {recordError ?? recordHelpText(house)}
         </p>
         <label htmlFor="language" className="mt-4 font-semibold">
           {t("upload.languageLabel")} <span className="font-normal text-muted-foreground">{t("upload.languageOptional")}</span>

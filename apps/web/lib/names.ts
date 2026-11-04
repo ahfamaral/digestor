@@ -1,6 +1,6 @@
 import {
-  CHAMBERS, peopleInRange, personAt, speakerLabel, speakersInRange, turnsOf, unconfirmedSpeakers,
-  type Attribution, type AttributionSource, type Person, type Range, type Resolution, type Word,
+  CHAMBERS, chamberLabel, peopleInRange, personAt, speakerLabel, speakersInRange, turnsOf, unconfirmedSpeakers,
+  type Attribution, type AttributionSource, type ChamberId, type Person, type Range, type Resolution, type Word,
 } from "@digestor/core";
 import { t } from "./i18n";
 
@@ -219,8 +219,37 @@ export function labelText(label: VoiceLabel): string {
 }
 
 /** The "Names from the … record" line of a matched record (the Câmara link carries no date). */
-export function recordMatchedLine(record: { chamber?: "senado" | "camara"; date: string | null }): string {
-  return record.chamber === "camara" ? t("names.record.matchedCamara") : t("names.record.matched", { date: record.date ?? "" });
+export function recordMatchedLine(record: { chamber?: ChamberId; date: string | null }): string {
+  if (record.chamber === "camara") return t("names.record.matchedCamara");
+  if (record.chamber && record.chamber !== "senado") {
+    const house = CHAMBERS[record.chamber].shortName;
+    return record.date ? t("names.record.matchedHouse", { house, date: record.date }) : t("names.record.matchedHouseNoDate", { house });
+  }
+  return t("names.record.matched", { date: record.date ?? "" });
+}
+
+/** The house of a record evidence: its own `chamber`, else the Brazilian house its url names (rows from before Plan 4 carry none). */
+function evidenceHouse(e: Extract<Attribution["evidence"], { kind: "record" }>): ChamberId | null {
+  if (e.chamber) return e.chamber;
+  if (/^https:\/\/([a-z0-9-]+\.)*camara\.leg\.br\//.test(e.url)) return "camara";
+  if (/^https:\/\/([a-z0-9-]+\.)*senado\.leg\.br\//.test(e.url)) return "senado";
+  return null;
+}
+
+/**
+ * The line under a name in Who's who: role, then party and state ("PL-ES"), and for a person named from this session's record
+ * (a live attribution with record evidence) the house: "SPD · Bundestag (Germany)", "PL-ES · Senado". Others keep role · party · state.
+ */
+export function personDetail(person: Person, attributions: Attribution[]): string {
+  let house: ChamberId | null = null;
+  for (const a of attributions) {
+    if (a.personId !== person.id || a.supersededAt || a.status === "rejected" || a.evidence.kind !== "record") continue;
+    house = evidenceHouse(a.evidence);
+    if (house) break;
+  }
+  if (!house) return [person.role, person.party, person.state].filter(Boolean).join(" · ");
+  const partyState = [person.party, person.state].filter(Boolean).join("-");
+  return [person.role, partyState, chamberLabel(house)].filter(Boolean).join(" · ");
 }
 
 /** The date (`DD/MM/YYYY`) of the Senado day a record evidence's `url` points at (`.../discursos/20261021/20261021`); null when it has none. */

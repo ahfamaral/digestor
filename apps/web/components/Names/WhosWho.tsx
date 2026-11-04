@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatTimestamp } from "@digestor/core";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
-import { anonymousBody, conflictText, confirmBody, evidenceLine, rowRange, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
+import { anonymousBody, conflictText, confirmBody, evidenceLine, personDetail, rowRange, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { sampleSrc } from "@/lib/media";
 import { t } from "@/lib/i18n";
@@ -157,7 +157,7 @@ export function WhosWho({
               const range = rowRange(row) ?? undefined;
               const confirm = confirmBody(row);
               const conflict = conflictText(row, names);
-              const detail = person ? [person.role, person.party, person.state].filter(Boolean).join(" · ") : "";
+              const detail = person ? personDetail(person, names.attributions) : "";
               return (
                 <li key={`${row.speakerId}-${res.kind === "named" ? res.personId : res.kind}`} className="py-3">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

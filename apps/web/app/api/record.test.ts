@@ -16,9 +16,9 @@ afterAll(() => h.cleanup());
 beforeEach(() => h.send.mockClear());
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
-const post = (id: string, ref: unknown) =>
-  postRecord(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ ref }) }), ctx(id));
-const BAD = "Paste a Senado session date, a Senado session link with its date, or a Câmara event link (https://www.camara.leg.br/evento-legislativo/<id>).";
+const post = (id: string, ref: unknown, chamber?: unknown) =>
+  postRecord(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ ref, chamber }) }), ctx(id));
+const BAD = "Pick the house and paste the date, the sitting number or the official record link.";
 const CAMARA = "https://www.camara.leg.br/evento-legislativo/12345";
 
 describe("record route", () => {
@@ -58,7 +58,7 @@ describe("record route", () => {
     expect(await getSessionRecord(h.db, sessionId)).toMatchObject({ status: "pending", chamber: "camara", ref: { chamber: "camara", eventId: "12345", url: CAMARA } });
     expect(h.send).toHaveBeenCalledTimes(1);
     const got = await getRecord(new Request("http://localhost/x"), ctx(sessionId));
-    expect(await got.json()).toEqual({ status: "pending", error: null, chamber: "camara", date: null, url: CAMARA });
+    expect(await got.json()).toEqual({ status: "pending", error: null, chamber: "camara", date: null, url: CAMARA, retryAt: null });
   });
 
   it("404 for an unknown session", async () => {
@@ -89,9 +89,63 @@ describe("record route", () => {
     await post(sessionId, "2026-10-21");
     const got = await getRecord(new Request("http://localhost/x"), ctx(sessionId));
     expect(await got.json()).toEqual({
-      status: "pending", error: null, chamber: "senado", date: "21/10/2026", url: "https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20261021/20261021",
+      status: "pending", error: null, chamber: "senado", date: "21/10/2026", url: "https://legis.senado.leg.br/dadosabertos/plenario/lista/discursos/20261021/20261021", retryAt: null,
     });
     expect((await getRecord(new Request("http://localhost/x"), ctx("nope"))).status).toBe(404);
+  });
+});
+
+describe("record by house", () => {
+  it("a sitting number with the Bundestag picked stores a Bundestag ref", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    expect((await post(sessionId, "21/103", "bundestag")).status).toBe(202);
+    expect(await getSessionRecord(h.db, sessionId)).toMatchObject({ status: "pending", chamber: "bundestag", ref: { chamber: "bundestag", period: 21, sitting: 103 } });
+    const got = await getRecord(new Request("http://localhost/x"), ctx(sessionId));
+    expect(await got.json()).toMatchObject({ chamber: "bundestag", date: null, retryAt: null });
+  });
+
+  it("a date with no house stores the Senado ref, as before", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    expect((await post(sessionId, "2026-10-21")).status).toBe(202);
+    expect((await getSessionRecord(h.db, sessionId))?.ref).toMatchObject({ chamber: "senado", date: "2026-10-21" });
+  });
+
+  it("a US date with the House picked is read as MM/DD/YYYY", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    expect((await post(sessionId, "10/21/2026", "us_house")).status).toBe(202);
+    expect((await getSessionRecord(h.db, sessionId))?.ref).toMatchObject({ chamber: "us_house", date: "2026-10-21" });
+  });
+
+  it("a YouTube link is 400 with its own line; an unknown house is 400", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    const yt = await post(sessionId, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(yt.status).toBe(400);
+    expect(await yt.json()).toEqual({ error: "Paste the date or the official record link." });
+    const xx = await post(sessionId, "2026-10-21", "xx");
+    expect(xx.status).toBe(400);
+    expect(await xx.json()).toEqual({ error: BAD });
+    expect(await getSessionRecord(h.db, sessionId)).toBeNull();
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("GET gives the retry time of a waiting row", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    await post(sessionId, "21/103", "bundestag");
+    const { sessionRecords } = await import("@digestor/core/server");
+    const retryAt = new Date("2026-11-05T06:00:00.000Z");
+    await h.db.update(sessionRecords).set({ status: "waiting", retryAt });
+    const got = await getRecord(new Request("http://localhost/x"), ctx(sessionId));
+    expect(await got.json()).toMatchObject({ status: "waiting", retryAt: "2026-11-05T06:00:00.000Z" });
+  });
+
+  it("upload and youtube take the house too", async () => {
+    const yt = await postYoutube(
+      new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", record: "21/103", chamber: "bundestag" }) }),
+    );
+    expect(yt.status).toBe(200);
+    expect((await getSessionRecord(h.db, (await yt.json()).sessionId))?.ref).toMatchObject({ chamber: "bundestag", sitting: 103 });
+    const bad = await putUpload(new Request("http://localhost/api/sessions/upload?filename=a.mp4&record=2026-10-21&chamber=xx", { method: "PUT", body: new Blob(["x"]), duplex: "half" } as RequestInit));
+    expect(bad.status).toBe(400);
   });
 });
 

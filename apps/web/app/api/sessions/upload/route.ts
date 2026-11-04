@@ -15,7 +15,7 @@ function maxUploadGb(): number {
 }
 
 /**
- * PUT /api/sessions/upload?filename=<name>&hint=<text>[&language=<pt|en|es|fr|de|it>][&record=<date or link>][&audioOnlyAck=1] — body is the raw file stream.
+ * PUT /api/sessions/upload?filename=<name>&hint=<text>[&language=<pt|en|es|fr|de|it>][&record=<date, sitting number or link>][&chamber=<house>][&audioOnlyAck=1] — body is the raw file stream.
  * Audio files (mp3, m4a, wav) need `audioOnlyAck=1`: clips from them show a waveform, and the user must accept that.
  */
 export async function PUT(req: Request): Promise<Response> {
@@ -30,7 +30,7 @@ export async function PUT(req: Request): Promise<Response> {
   const audioOnly = isAudioExtension(ext);
   const audioOnlyAck = params.get("audioOnlyAck") === "1";
   if (audioOnly && !audioOnlyAck) return errorResponse(400, AUDIO_ONLY_WARNING);
-  const record = readRecordInput(params.get("record"));
+  const record = readRecordInput(params.get("record"), params.get("chamber"));
   if ("error" in record) return record.error;
   const language = readLanguageInput(params.get("language"));
   if ("error" in language) return language.error;

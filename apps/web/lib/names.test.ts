@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { personAt, exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, personDetail, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -393,5 +393,30 @@ describe("reportTargetId", () => {
     expect(reportTargetId(names, "E", { ranges: [{ startMs: 60_000, endMs: 90_000 }] })).toBe("damares");
     expect(reportTargetId(names, "E", {})).toBe("davi");
     expect(reportTargetId(names, "Z", { atMs: 0 })).toBeNull();
+  });
+});
+
+describe("personDetail: the line under a name in Who's who", () => {
+  const rec = (chamber: "senado" | "camara" | "bundestag" | "us_house" | undefined, url = "https://x", o: Partial<Attribution> = {}) =>
+    att({ source: "record", status: "proposed", evidence: { kind: "record", speechId: "1", score: 0.9, url, fetchedAt: "2026-11-03", ...(chamber ? { chamber } : {}) }, ...o });
+  const who = (o: Partial<Person>): Person => ({ ...person("p1", "X"), ...o });
+  it("names the house of a person named from this session's record", () => {
+    expect(personDetail(who({ party: "SPD" }), [rec("bundestag")])).toBe("SPD · Bundestag (Germany)");
+    expect(personDetail(who({ party: "D", state: "NY" }), [rec("us_house")])).toBe("D-NY · House (USA)");
+    expect(personDetail(who({ party: "PL", state: "ES" }), [rec("senado")])).toBe("PL-ES · Senado");
+  });
+  it("keeps whichever of party and state exists, and the role first", () => {
+    expect(personDetail(who({ state: "SP" }), [rec("camara")])).toBe("SP · Câmara");
+    expect(personDetail(who({ role: "Senador", party: "PL", state: "ES" }), [rec("senado")])).toBe("Senador · PL-ES · Senado");
+    expect(personDetail(who({}), [rec("camara")])).toBe("Câmara");
+  });
+  it("infers the Brazilian house from the evidence url when the evidence has no chamber", () => {
+    expect(personDetail(who({ party: "PL" }), [rec(undefined, "https://www.camara.leg.br/evento-legislativo/1")])).toBe("PL · Câmara");
+    expect(personDetail(who({ party: "PL" }), [rec(undefined, "https://legis.senado.leg.br/dadosabertos/x")])).toBe("PL · Senado");
+  });
+  it("keeps today's line for a person not named from a record, or only by a superseded one", () => {
+    expect(personDetail(who({ role: "Senador", party: "PL", state: "ES" }), [att({ source: "human" })])).toBe("Senador · PL · ES");
+    expect(personDetail(who({ party: "SPD" }), [rec("bundestag", "https://x", { supersededAt: new Date(1) })])).toBe("SPD");
+    expect(personDetail(who({ party: "SPD" }), [rec("bundestag", "https://x", { personId: "other" })])).toBe("SPD");
   });
 });

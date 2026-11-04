@@ -7,9 +7,9 @@ import { readRecordInput } from "@/lib/recordInput";
 import { sendStart } from "@/lib/jobs";
 import { getServer } from "@/lib/server";
 
-const BodySchema = z.object({ url: z.string(), hint: z.string().optional(), record: z.string().optional(), language: z.unknown().optional() });
+const BodySchema = z.object({ url: z.string(), hint: z.string().optional(), record: z.string().optional(), chamber: z.unknown().optional(), language: z.unknown().optional() });
 
-/** POST /api/sessions/youtube { url, hint?, record?, language? } — the worker downloads the video. */
+/** POST /api/sessions/youtube { url, hint?, record?, chamber?, language? } — the worker downloads the video. */
 export async function POST(req: Request): Promise<Response> {
   const parsed = BodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return errorResponse(400, "Paste a YouTube link.");
@@ -22,7 +22,7 @@ export async function POST(req: Request): Promise<Response> {
     throw err;
   }
 
-  const record = readRecordInput(parsed.data.record);
+  const record = readRecordInput(parsed.data.record, parsed.data.chamber);
   if ("error" in record) return record.error;
 
   const language = readLanguageInput(parsed.data.language);
