@@ -359,10 +359,7 @@ export function UploadForm() {
         <label htmlFor="record" className="mt-4 font-semibold">
           {t("upload.recordLabel")} <span className="font-normal text-muted-foreground">{t("upload.recordOptional")}</span>
         </label>
-        <label htmlFor="record-house" className="mt-2 block text-xs text-muted-foreground">
-          {t("upload.recordHouse")}
-        </label>
-        <div className="mt-1">
+        <div className="mt-2">
           <RecordHouseSelect
             id="record-house"
             value={house}

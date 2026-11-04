@@ -1,7 +1,9 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { recordMatchedLine } from "@/lib/names";
 import { recordFieldError } from "./RecordLink";
-import { recordHelpText, recordHouseGroups } from "./RecordHouseSelect";
+import { RecordHouseSelect, recordHelpText, recordHouseGroups } from "./RecordHouseSelect";
 
 describe("the official record field and its status lines", () => {
   it("accepts a Senado date, a Senado link with its date and a Câmara event link", () => {
@@ -48,5 +50,13 @@ describe("the house select", () => {
     expect(recordHelpText("us_house")).toContain("10/21/2026");
     expect(recordHelpText("senado")).toContain("2026-10-21");
     expect(recordHelpText("camara")).toContain("evento-legislativo");
+  });
+});
+
+describe("the house select's accessible name", () => {
+  it("has a visible label \"House\" tied to the select", () => {
+    const html = renderToStaticMarkup(createElement(RecordHouseSelect, { id: "record-house-x", value: "", onChange: () => {} }));
+    expect(html).toMatch(/<label[^>]*for="record-house-x"[^>]*>House<\/label>/);
+    expect(html).toMatch(/<select[^>]*id="record-house-x"/);
   });
 });

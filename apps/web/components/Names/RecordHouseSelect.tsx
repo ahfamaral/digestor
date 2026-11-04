@@ -59,9 +59,13 @@ export function useRecordHouse(): [RecordHouse, (house: RecordHouse) => void, (h
 export function RecordHouseSelect({ id, value, disabled, describedBy, onChange }: { id: string; value: RecordHouse; disabled?: boolean; describedBy?: string; onChange: (house: RecordHouse) => void }) {
   const { detect, groups } = recordHouseGroups();
   return (
-    <select
+    <div className="w-full">
+      <label htmlFor={id} className="block text-xs text-muted-foreground">
+        {t("upload.recordHouse")}
+      </label>
+      <select
       id={id}
-      className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+      className="mt-1 h-8 w-full rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
       value={value}
       disabled={disabled}
       aria-describedby={describedBy}
@@ -78,5 +82,6 @@ export function RecordHouseSelect({ id, value, disabled, describedBy, onChange }
         </optgroup>
       ))}
     </select>
+    </div>
   );
 }
