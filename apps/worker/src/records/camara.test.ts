@@ -253,8 +253,12 @@ describe("fetchCamaraDay", () => {
 
   it("two ended plenaries give both events' speeches in stamp order, with the deputies merged", async () => {
     const o = solemn();
-    const { f } = fakeCamaraFetch({ eventos: listOf([82635, 81818]), ...o });
+    const { f, calls } = fakeCamaraFetch({ eventos: listOf([82635, 81818]), ...o });
     const day = await fetchCamaraDay(DAY, f);
+    // a deputy of two plenaries is swept once: every discursos URL appears exactly once
+    const sweeps = calls.filter((c) => /\/deputados\/\d+\/discursos/.test(c));
+    expect(sweeps.length).toBeGreaterThan(0);
+    expect(new Set(sweeps).size).toBe(sweeps.length);
     const byId = await fetchCamaraSpeeches(FIXTURE_EVENT_ID, fakeCamaraFetch().f);
     expect(day.speeches).toHaveLength(byId.speeches.length + 1);
     expect(day.speeches[0]).toMatchObject({ id: "152605-2026-06-30T12:40-0", at: "2026-06-30T12:40", order: 1, officialId: "152605" });

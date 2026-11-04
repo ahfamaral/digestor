@@ -189,12 +189,27 @@ export async function fetchCamaraDay(
   if (live.length === 0) throw new RecordNotFoundError(CAMARA_CANCELLED);
   if (live.some((e) => !e.situacao?.startsWith("Encerrada"))) throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
 
+  // Events of one day share their deputies' day: each `deputados/{id}/discursos` page is fetched once (successful answers only; events run one after the other).
+  const memo = new Map<string, { status: number; headers: [string, string][]; text: string }>();
+  const memoFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (!/\/deputados\/[^/]+\/discursos/.test(url)) return f(input, init);
+    let hit = memo.get(url);
+    if (!hit) {
+      const res = await f(input, init);
+      if (res.status !== 200) return res;
+      hit = { status: res.status, headers: [...res.headers.entries()], text: await res.text() };
+      memo.set(url, hit);
+    }
+    return new Response(hit.text, { status: hit.status, headers: hit.headers });
+  }) as typeof fetch;
+
   const deputies: Record<string, CamaraDeputy> = {};
   const byId = new Map<string, RecordSpeech>();
   for (const e of live) {
     let got: Awaited<ReturnType<typeof fetchCamaraSpeeches>>;
     try {
-      got = await fetchCamaraSpeeches(e.id!, f);
+      got = await fetchCamaraSpeeches(e.id!, memoFetch);
     } catch (err) {
       if (err instanceof RecordNotFoundError && err.message === CAMARA_NOT_FOUND) continue; // ended, but nobody spoke in its window
       throw err;
