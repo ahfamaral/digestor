@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LANGUAGES, PROFILES, type ContextCard, type ProfileId, type Fact } from "@digestor/core";
+import { RecordLink } from "@/components/Names/RecordLink";
 import { WhosWho } from "@/components/Names/WhosWho";
 import type { NamesData, WhosWhoRow } from "@/lib/names";
 import { labelText, voiceLabel } from "@/lib/names";
@@ -136,6 +137,7 @@ export function ContextCheck({
 
   return (
     <div className="flex flex-col gap-4">
+    <RecordLink sessionId={sessionId} profile={edited.profile} suggestionOnly />
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <section className="rounded-xl border border-border bg-white p-5">
         <h2 className="mb-2 text-base font-bold">{t("context.understood")}</h2>

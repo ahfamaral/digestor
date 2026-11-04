@@ -78,8 +78,18 @@ const sameRef = (ref: RecordRef | undefined) => (ref ? sql`${sessionRecords.ref}
 export async function acceptSuggestedRecord(db: Db, sessionId: string, ref: RecordRef): Promise<boolean> {
   const rows = await db
     .update(sessionRecords)
-    .set({ status: "pending", error: null, updatedAt: new Date() })
+    .set({ status: "pending", error: null, updatedAt: new Date(), linkedAt: sql`now()` }) // accepting is the link: windows count from here
     .where(and(eq(sessionRecords.sessionId, sessionId), eq(sessionRecords.status, "suggested"), sameRef(ref)))
+    .returning({ id: sessionRecords.sessionId });
+  return rows.length > 0;
+}
+
+/** `pending` → `suggested` for this ref: undoes an accept whose job could not be queued. False when the row moved on. */
+export async function revertAcceptedRecord(db: Db, sessionId: string, ref: RecordRef): Promise<boolean> {
+  const rows = await db
+    .update(sessionRecords)
+    .set({ status: "suggested", updatedAt: new Date() })
+    .where(and(eq(sessionRecords.sessionId, sessionId), eq(sessionRecords.status, "pending"), sameRef(ref)))
     .returning({ id: sessionRecords.sessionId });
   return rows.length > 0;
 }

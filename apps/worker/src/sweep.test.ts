@@ -234,6 +234,22 @@ d("sweepStaleJobRows (R32)", () => {
     expect([(await getSessionRecord(db, ids[0]!))?.status, (await getSessionRecord(db, ids[1]!))?.status]).toEqual(["waiting", "suggested"]);
   });
 
+  it("an accepted suggestion waiting at the context check stays pending; the same row on a ready session with no job fails", async () => {
+    const ref = { chamber: "senado" as const, date: "2026-09-02", sessionCode: null, url: "https://x" };
+    const mk = async (stage: "awaiting_context" | "ready") => {
+      const s = await createSession(db, { source: "upload", title: stage });
+      await updateSession(db, s.id, { stage });
+      await linkRecord(db, s.id, ref);
+      await db.execute(sql`update session_records set updated_at = ${ago(45)}::timestamptz where session_id = ${s.id}`);
+      return s.id;
+    };
+    const waiting = await mk("awaiting_context");
+    const ready = await mk("ready");
+    expect(await sweepStaleJobRows(db)).toMatchObject({ records: 1 });
+    expect((await getSessionRecord(db, waiting))?.status).toBe("pending");
+    expect(await getSessionRecord(db, ready)).toMatchObject({ status: "failed", error: STUCK_MESSAGE });
+  });
+
   it("a stuck proxy row with no live job is failed and the session settled", async () => {
     const mk = async (patch: { stage: Stage; status: "pending" | "running"; ageMin: number }) => {
       const s = await createSession(db, { source: "upload", title: "proxy" });

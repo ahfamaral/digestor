@@ -230,6 +230,15 @@ describe("accepting or dismissing a suggestion", () => {
     expect(h.send).toHaveBeenCalledWith(QUEUES.names, { sessionId }, expect.anything());
   });
 
+  it("a failed send on accept answers 503 and puts the row back to suggested", async () => {
+    const { sessionId } = await seedReadySession(h.db, undefined, "parliament");
+    await suggestRecordRow(h.db, sessionId, ref);
+    h.send.mockRejectedValueOnce(new Error("boom"));
+    expect((await act(sessionId, "accept")).status).toBe(503);
+    expect(await getSessionRecord(h.db, sessionId)).toMatchObject({ status: "suggested", ref });
+    expect((await act(sessionId, "accept")).status).toBe(202);
+  });
+
   it("accept at the context check sends nothing (the second graph step matches it)", async () => {
     const { sessionId } = await seedReadySession(h.db, undefined, "parliament");
     await updateSession(h.db, sessionId, { stage: "awaiting_context" });

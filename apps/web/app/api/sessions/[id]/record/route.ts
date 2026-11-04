@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JOB_OPTIONS, QUEUES, recordRefDate, type RecordRef } from "@digestor/core";
-import { acceptSuggestedRecord, dismissSuggestedRecord, getSession, getSessionRecord, getTranscript, linkRecord } from "@digestor/core/server";
+import { acceptSuggestedRecord, dismissSuggestedRecord, getSession, revertAcceptedRecord, getSessionRecord, getTranscript, linkRecord } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { t } from "@/lib/i18n";
@@ -73,11 +73,14 @@ async function suggestion(id: string, action: "accept" | "dismiss", ref: RecordR
   const changed = errorResponse(409, t("record.suggestionChanged"));
   if (action === "dismiss") return (await dismissSuggestedRecord(db, id, ref)) ? Response.json({ status: "dismissed" }) : changed;
   if (!(await acceptSuggestedRecord(db, id, ref))) return changed;
-  if (session.stage !== "awaiting_context" && (await getTranscript(db, id))) {
+  // Accept first, then look at the stage: a Continue that lands in between is seen by the graph's late step or by this check.
+  const stage = (await getSession(db, id))?.stage;
+  if (stage !== "awaiting_context" && (await getTranscript(db, id))) {
     try {
       await boss.send(QUEUES.names, { sessionId: id }, JOB_OPTIONS);
     } catch (err) {
       console.error("record: enqueue failed", err);
+      await revertAcceptedRecord(db, id, ref).catch(() => false); // back to suggested, so the journalist can click again
       return errorResponse(503, QUEUE_FAILED);
     }
   }

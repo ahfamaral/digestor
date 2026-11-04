@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CHAMBERS, parseRecordRef, type RecordRef, recordInputError, type ChamberId, type RecordStatus } from "@digestor/core";
 import { errorMessage } from "@/lib/http";
@@ -12,6 +12,9 @@ import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "./
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const POLL_MS = 3000;
+/** Every RecordLink of the page (the context check's and Who's who's) re-reads the row when one of them changed it. */
+const CHANGED = "digestor:record-changed";
+type Focus = "input" | "status";
 
 type RecordState = { status: RecordStatus; error: string | null; chamber?: ChamberId; date: string | null; url: string; retryAt?: string | null; /** Only for a `suggested` row: the ref the journalist is shown. */ ref?: RecordRef };
 
@@ -79,7 +82,7 @@ export function RecordStatusLine({ record }: { record: RecordState }) {
  * friendly failure) and a field to link or re-link one. Shown for parliament sessions and whenever a record is linked.
  * Polls while the record is matched in the worker, then refreshes the names.
  */
-export function RecordLink({ sessionId, profile }: { sessionId: string; profile?: string }) {
+export function RecordLink({ sessionId, profile, suggestionOnly = false }: { sessionId: string; profile?: string; /** The context check's copy: only the open suggestion, nothing else. */ suggestionOnly?: boolean }) {
   const router = useRouter();
   const [record, setRecord] = useState<RecordState | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -88,7 +91,11 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [house, pickHouse, showHouse] = useRecordHouse();
+  const id = useId();
   const seen = useRef<RecordStatus | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const [wantFocus, setWantFocus] = useState<Focus | null>(null);
 
   const load = useEffectEvent(async () => {
     try {
@@ -110,6 +117,25 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
   }, [sessionId]);
+
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      if (e instanceof CustomEvent && (e as CustomEvent<{ from: string }>).detail?.from === id) return;
+      const focus = (e as CustomEvent<{ focus?: Focus }>).detail?.focus;
+      if (focus && !suggestionOnly) setWantFocus(focus);
+      void load();
+    };
+    window.addEventListener(CHANGED, onChanged);
+    return () => window.removeEventListener(CHANGED, onChanged);
+  }, [sessionId, suggestionOnly]);
+  // Focus follows the answer: the opened field after "Not this one", the status line after "Use this record".
+  useEffect(() => {
+    if (!wantFocus) return;
+    const el = wantFocus === "input" ? inputRef.current : statusRef.current;
+    if (!el) return;
+    el.focus();
+    setWantFocus(null);
+  }, [wantFocus, record]);
 
   const working = record?.status === "pending" || record?.status === "running";
   const polling = working || record?.status === "waiting"; // a waiting row turns pending when its retry is due
@@ -147,6 +173,11 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
     }
   }
 
+  const notify = (focus: Focus) => {
+    if (!suggestionOnly) setWantFocus(focus);
+    window.dispatchEvent(new CustomEvent(CHANGED, { detail: { from: id, focus } }));
+  };
+
   /** "Use this record" (accept) or "Not this one" (dismiss) for the suggestion the journalist saw. */
   async function answer(action: "accept" | "dismiss") {
     if (busy || !record?.ref) return;
@@ -164,9 +195,11 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
         seen.current = null;
         setRecord(null);
         setEditing(false);
+        notify("input");
       } else {
         seen.current = "pending";
         setRecord({ status: "pending", error: null, chamber: record.chamber, date: record.date, url: record.url, retryAt: null });
+        notify("status");
       }
     } catch (err) {
       console.error("record: suggestion answer failed", err);
@@ -180,9 +213,17 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
   const hidden = record?.status === "suggested" && !suggestionShown(record, profile);
   if (!loaded || hidden || (!record && profile !== "parliament")) return null;
   const suggesting = suggestionShown(record, profile);
+  if (suggestionOnly) {
+    return suggesting && record ? (
+      <div className="rounded-lg border border-border bg-stone-50 px-3 py-2 text-sm">
+        <RecordSuggestion record={record} busy={busy} onAccept={() => void answer("accept")} onDismiss={() => void answer("dismiss")} />
+        {error && <p role="alert" className="mt-1 text-xs text-red-700">{error}</p>}
+      </div>
+    ) : null;
+  }
   const showField = !record || editing;
   return (
-    <div className="mb-3 rounded-lg border border-border bg-stone-50 px-3 py-2 text-sm">
+    <div ref={statusRef} tabIndex={-1} className="mb-3 rounded-lg border border-border bg-stone-50 px-3 py-2 text-sm outline-none">
       {record && suggesting && <RecordSuggestion record={record} busy={busy} onAccept={() => void answer("accept")} onDismiss={() => void answer("dismiss")} />}
       {record && !suggesting && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -218,6 +259,7 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
             />
             <input
               id={`record-${sessionId}`}
+              ref={inputRef}
               value={text}
               disabled={busy}
               placeholder={t("names.record.placeholder")}
