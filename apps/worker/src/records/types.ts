@@ -1,5 +1,5 @@
 /** Leaf module: the record connector types and errors. Imports no connector, so the connectors and the registry can all import it. */
-import type { ChamberId, RecordRef } from "@digestor/core";
+import { CHAMBERS, recordRefDate, type ChamberId, type RecordRef } from "@digestor/core";
 
 /** One speech of an official record, whatever the house. `officialId` is null when the record doesn't say who spoke (it still takes part in the alignment, but names no one). */
 export interface RecordSpeech {
@@ -40,7 +40,7 @@ export class RecordNotFoundError extends Error {
   }
 }
 
-/** Deterministic: the house hasn't published this record yet (used from Task 6). */
+/** Deterministic: the house hasn't published this record yet; the run waits and tries again later. */
 export class RecordNotPublishedError extends Error {
   constructor(message = "The record has not been published yet.") {
     super(message);
@@ -48,3 +48,24 @@ export class RecordNotPublishedError extends Error {
   }
 }
 
+
+const DAY_MS = 86_400_000;
+const utcDay = (d: Date) => Math.floor(d.getTime() / DAY_MS);
+
+/**
+ * "The record isn't there": `RecordNotPublishedError` while the sitting is still inside the house's publish window
+ * (whole UTC days since `date`, or since `linkedAt` for a ref without a date, at most `publishWindowDays`), else
+ * `RecordNotFoundError(notFoundMessage)`.
+ */
+export function notPublishedOrNotFound(chamber: ChamberId, date: string | null, now: Date, notFoundMessage: string, linkedAt?: Date): RecordNotPublishedError | RecordNotFoundError {
+  const from = date ? new Date(`${date}T00:00:00Z`) : linkedAt;
+  if (!from || Number.isNaN(from.getTime())) return new RecordNotFoundError(notFoundMessage);
+  return utcDay(now) - utcDay(from) <= CHAMBERS[chamber].publishWindowDays ? new RecordNotPublishedError() : new RecordNotFoundError(notFoundMessage);
+}
+
+/** The line a waiting row shows (stored in `session_records.error`). */
+export function waitingLine(ref: RecordRef): string {
+  const date = recordRefDate(ref);
+  const of = date ? `of ${date}` : "sitting" in ref && ref.sitting ? `of sitting ${ref.sitting}` : "of that sitting";
+  return `The ${CHAMBERS[ref.chamber].shortName} hasn't published the record ${of} yet. Digestor will check again. If there was no sitting that day, check the date.`;
+}

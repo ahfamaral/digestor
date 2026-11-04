@@ -49,6 +49,7 @@ import { createOpenRouterLLM, createOpenRouterToolLLM } from "./llm/openrouter.j
 import { llmConfigFromEnv } from "./llm/provider.js";
 import { createE5Embedder } from "./search/embed.js";
 import { searchTranscript } from "./search/index.js";
+import { RECORDS_RETRY_CRON, RECORDS_RETRY_QUEUE, namesJob, runRecordRetries } from "./records/retry.js";
 import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 import { downloadYouTube } from "./youtube/ytdlp.js";
 
@@ -106,7 +107,7 @@ async function main() {
   const boss = new PgBoss(databaseUrl);
   boss.on("error", console.error);
   await boss.start();
-  for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE]) {
+  for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE, RECORDS_RETRY_QUEUE]) {
     // Same options as every sender passes (JOB_OPTIONS): retries, 12 h expiry, 60 s heartbeat.
     await boss.createQueue(name, JOB_OPTIONS); // no-op when the queue already exists...
     await boss.updateQueue(name, JOB_OPTIONS); // ...so existing queues get the current options too
@@ -119,6 +120,7 @@ async function main() {
   };
   await boss.schedule(CLEANUP_QUEUE, CLEANUP_CRON, {}, { tz: "UTC" });
   await boss.schedule(SWEEP_QUEUE, SWEEP_CRON, {}, { tz: "UTC" });
+  await boss.schedule(RECORDS_RETRY_QUEUE, RECORDS_RETRY_CRON, {}, { tz: "UTC" });
 
   // includeMetadata: handlers need retryCount/retryLimit to fail the session only on the final attempt.
   const workOptions = { batchSize: 1, includeMetadata: true } as const;
@@ -149,6 +151,11 @@ async function main() {
     if (Object.values(rows).some((n) => n > 0)) console.log("sweep: marked stuck job rows failed", rows);
   });
 
+  await boss.work(RECORDS_RETRY_QUEUE, { batchSize: 1 }, async () => {
+    const n = await runRecordRetries({ db, send: namesJob(boss) });
+    if (n > 0) console.log(`records.retry: re-checking the official record of ${n} session(s)`);
+  });
+
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
@@ -164,7 +171,7 @@ async function main() {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
-  console.log(`worker ready (queues: ${[...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE].join(", ")})`);
+  console.log(`worker ready (queues: ${[...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE, RECORDS_RETRY_QUEUE].join(", ")})`);
 }
 
 main().catch((err) => {

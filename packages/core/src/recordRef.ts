@@ -121,10 +121,16 @@ export function parseRecordRef(input: string, chamber?: ChamberId): RecordRef | 
   return null;
 }
 
-/** The ref's date as the journalist reads it (`DD/MM/YYYY`) for the status line; null for a ref without one. */
+/** A `YYYY-MM-DD` date as the house's country reads it: `MM/DD/YYYY` for the USA, `DD/MM/YYYY` elsewhere. */
+export function formatRecordDate(chamber: ChamberId, date: string): string {
+  const [y, m, d] = date.split("-");
+  return chamber === "us_house" || chamber === "us_senate" ? `${m}/${d}/${y}` : `${d}/${m}/${y}`;
+}
+
+/** The ref's date as the journalist reads it (`MM/DD/YYYY` for US houses, else `DD/MM/YYYY`); null for a ref without one. */
 export function recordRefDate(ref: RecordRef): string | null {
   if (!("date" in ref) || !ref.date) return null;
-  return ddmmyyyy(ref.date);
+  return formatRecordDate(ref.chamber, ref.date);
 }
 
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"]);

@@ -48,7 +48,7 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
       seen.current = next?.status ?? null;
       setRecord(next);
       // A match that just finished wrote names: re-read the page's data.
-      if ((was === "pending" || was === "running") && next?.status === "matched") router.refresh();
+      if ((was === "pending" || was === "running" || was === "waiting") && next?.status === "matched") router.refresh();
     } catch {
       // a dropped poll: the next one retries
     } finally {
@@ -60,7 +60,7 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
     return () => clearTimeout(timer);
   }, [sessionId]);
 
-  const working = record?.status === "pending" || record?.status === "running";
+  const working = record?.status === "pending" || record?.status === "running" || record?.status === "waiting";
   useEffect(() => {
     if (!working) return;
     return startRefreshLoop(() => void load(), POLL_MS);
@@ -107,7 +107,7 @@ export function RecordLink({ sessionId, profile }: { sessionId: string; profile?
             <p role="status" className="text-foreground">{recordMatchedLine(record)}</p>
           ) : record.status === "waiting" && record.chamber ? (
             <p role="status" className="text-muted-foreground">
-              {t("names.record.waiting", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
+              {record.error ?? t("names.record.waiting", { house: CHAMBERS[record.chamber].shortName, date: record.date ?? "" })}
             </p>
           ) : record.status === "suggested" && record.chamber ? (
             <p role="status" className="text-foreground">

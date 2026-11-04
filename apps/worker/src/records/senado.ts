@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { RecordConnector, RecordSpeech, MemberInfo } from "./types.js";
-import { RecordNotFoundError } from "./types.js";
+import { RecordNotFoundError, notPublishedOrNotFound } from "./types.js";
 import { speechText, STOP } from "./align.js";
 import { get as httpGet, getJson as httpGetJson, httpTiming, mapLimit } from "./http.js";
 
@@ -17,6 +17,9 @@ const BASE = "https://legis.senado.leg.br/dadosabertos";
 const TEXT_CONCURRENCY = 4;
 
 export { RecordNotFoundError, type RecordSpeech };
+
+/** What `RecordNotFoundError` says by default: the day has no speeches (a 404 or an empty list). */
+const SENADO_NO_SPEECHES = new RecordNotFoundError().message;
 
 const str = z.union([z.string(), z.number()]).transform(String).nullish().transform((v) => (v == null || v === "" ? null : v));
 const many = <T extends z.ZodTypeAny>(item: T) =>
@@ -146,9 +149,16 @@ export async function fetchSenador(
 /** The Senado behind the connector interface: the day's speeches and, once per speaker, the senator's page (a 404 leaves the speech's own fields). */
 export const senadoConnector: RecordConnector = {
   chamber: "senado",
-  async fetchRecord(ref, f) {
+  async fetchRecord(ref, f, ctx) {
     if (ref.chamber !== "senado") throw new RecordNotFoundError("The Senado connector got a ref of another house.");
-    const speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
+    let speeches: RecordSpeech[];
+    try {
+      speeches = await fetchSenadoSpeeches(ref.date, ref.sessionCode, f);
+    } catch (err) {
+      // An empty day: recent → the record may not be published yet, old → not found. Other not-found lines (no such session) stay.
+      if (err instanceof RecordNotFoundError && err.message === SENADO_NO_SPEECHES) throw notPublishedOrNotFound("senado", ref.date, ctx.now, err.message, ctx.linkedAt);
+      throw err;
+    }
     const members: Record<string, MemberInfo> = {};
     const ids = [...new Set(speeches.flatMap((s) => (s.officialId ? [s.officialId] : [])))];
     await mapLimit(ids, TEXT_CONCURRENCY, async (id) => {

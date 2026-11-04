@@ -3,7 +3,7 @@ import { camaraConnector } from "./camara.js";
 import { senadoConnector } from "./senado.js";
 import type { RecordConnector } from "./types.js";
 
-export { RecordNotFoundError, RecordNotPublishedError, type MemberInfo, type RecordConnector, type RecordSpeech } from "./types.js";
+export { RecordNotFoundError, RecordNotPublishedError, notPublishedOrNotFound, waitingLine, type MemberInfo, type RecordConnector, type RecordSpeech } from "./types.js";
 
 /** The connector of a house, or null while the house has none. Looked up per call (the Brazilian modules import this one). */
 export function findConnector(chamber: ChamberId): RecordConnector | null {

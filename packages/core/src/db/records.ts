@@ -36,7 +36,8 @@ export async function linkRecord(db: Db, sessionId: string, ref: RecordRef): Pro
     // A new row gets linked_at from its default; a re-link keeps it unless the ref changed.
     await tx.insert(sessionRecords).values({ sessionId, ...fresh }).onConflictDoUpdate({
       target: sessionRecords.sessionId,
-      set: changed ? { ...fresh, linkedAt: new Date() } : fresh,
+      // linked_at is the database clock, so window math in SQL and in the worker agrees.
+      set: changed ? { ...fresh, linkedAt: sql`now()` } : fresh,
     });
     if (existing && changed) {
       await tx
@@ -91,4 +92,33 @@ export async function failRecordFetch(db: Db, sessionId: string, message: string
 export async function getSessionRecord(db: Db, sessionId: string): Promise<SessionRecord | null> {
   const [row] = await db.select().from(sessionRecords).where(eq(sessionRecords.sessionId, sessionId));
   return row ? toRecord(row) : null;
+}
+
+/** `running` → `waiting` for this ref (the house hasn't published it yet): the row is picked up again at `retryAt`. False when it isn't running or was re-linked meanwhile. */
+export async function waitRecordFetch(db: Db, sessionId: string, ref: RecordRef, retryAt: Date, message?: string): Promise<boolean> {
+  return setWaiting(db, sessionId, "running", ref, retryAt, message);
+}
+
+/** `pending` → `waiting` (a retry job that could not be sent): same ref only. */
+export async function requeueRecordRetry(db: Db, sessionId: string, ref: RecordRef, retryAt: Date): Promise<boolean> {
+  return setWaiting(db, sessionId, "pending", ref, retryAt);
+}
+
+async function setWaiting(db: Db, sessionId: string, from: "running" | "pending", ref: RecordRef, retryAt: Date, message?: string): Promise<boolean> {
+  const rows = await db
+    .update(sessionRecords)
+    .set({ status: "waiting", retryAt, updatedAt: new Date(), ...(message === undefined ? {} : { error: message }) })
+    .where(and(eq(sessionRecords.sessionId, sessionId), eq(sessionRecords.status, from), sameRef(ref)))
+    .returning({ id: sessionRecords.sessionId });
+  return rows.length > 0;
+}
+
+/** Compare-and-set `waiting` → `pending` for every row due at `now`; the session ids it claimed (each exactly once, however many callers race). */
+export async function claimDueRecordRetries(db: Db, now: Date): Promise<string[]> {
+  const rows = await db
+    .update(sessionRecords)
+    .set({ status: "pending", updatedAt: new Date() })
+    .where(and(eq(sessionRecords.status, "waiting"), sql`${sessionRecords.retryAt} <= ${now.toISOString()}::timestamptz`))
+    .returning({ id: sessionRecords.sessionId });
+  return rows.map((r) => r.id);
 }

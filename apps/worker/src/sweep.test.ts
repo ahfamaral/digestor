@@ -221,6 +221,19 @@ d("sweepStaleJobRows (R32)", () => {
     expect(await status(0)).toBe("pending");
   });
 
+  it("a waiting or suggested record is not job-owned: the sweep leaves it alone however old", async () => {
+    const ref = { chamber: "senado" as const, date: "2026-09-02", sessionCode: null, url: "https://x" };
+    const ids: string[] = [];
+    for (const status of ["waiting", "suggested"]) {
+      const s = await createSession(db, { source: "upload", title: status });
+      await linkRecord(db, s.id, ref);
+      await db.execute(sql`update session_records set status = ${status}, updated_at = ${ago(600)}::timestamptz where session_id = ${s.id}`);
+      ids.push(s.id);
+    }
+    expect(await sweepStaleJobRows(db)).toMatchObject({ records: 0 });
+    expect([(await getSessionRecord(db, ids[0]!))?.status, (await getSessionRecord(db, ids[1]!))?.status]).toEqual(["waiting", "suggested"]);
+  });
+
   it("a stuck proxy row with no live job is failed and the session settled", async () => {
     const mk = async (patch: { stage: Stage; status: "pending" | "running"; ageMin: number }) => {
       const s = await createSession(db, { source: "upload", title: "proxy" });

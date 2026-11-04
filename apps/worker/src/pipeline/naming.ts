@@ -1,6 +1,6 @@
 import { access, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { CHAMBERS, PROFILES, chamberThresholds, closeMatches, normaliseName, personAt, turnsOf, type Attribution, type ChamberId, type ContextCard, type Fact, type Participant, type Person, type RecordRef, type Resolution, type Word } from "@digestor/core";
+import { CHAMBERS, PROFILES, formatRecordDate, chamberThresholds, closeMatches, normaliseName, personAt, turnsOf, type Attribution, type ChamberId, type ContextCard, type Fact, type Participant, type Person, type RecordRef, type Resolution, type Word } from "@digestor/core";
 import {
   backdateNamesToCard,
   claimRecordFetch,
@@ -9,6 +9,7 @@ import {
   finishRecordFetch,
   linkRecord,
   releaseRecordFetch,
+  waitRecordFetch,
   upsertOfficialPerson,
   findPersonByName,
   getContextCard,
@@ -26,9 +27,10 @@ import {
   type NewAiAttribution,
 } from "@digestor/core/server";
 
-import { RecordNotFoundError, findConnector, type MemberInfo, type RecordConnector, type RecordSpeech } from "../records/connector.js";
+import { RecordNotFoundError, RecordNotPublishedError, findConnector, waitingLine, type MemberInfo, type RecordConnector, type RecordSpeech } from "../records/connector.js";
 import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type CaptionVote } from "../agents/captions.js";
 import { MissingApiKeyError } from "../errors.js";
+import { RECORD_RETRY_HOURS } from "../records/retry.js";
 import { alignTurns, recordAttributions, similarityMatrix, tieOrder } from "../records/align.js";
 import type { PipelineDeps } from "./graph.js";
 
@@ -387,7 +389,7 @@ export const RECORD_NOT_FOUND = "The Senado has no speeches for that date.";
 export const RECORD_ALL_REJECTED = "No speech in the record was kept for this video.";
 /** `date` is the record's day as the connector returned it (`YYYY-MM-DD`; a Câmara link carries no date of its own). */
 export const recordNoMatch = (ref: RecordRef, date: string) =>
-  `None of the speeches in the ${CHAMBERS[ref.chamber].shortName} record of ${date.split("-").reverse().join("/")} match this video. ${"eventId" in ref ? "Check the link." : "Check the date."}`;
+  `None of the speeches in the ${CHAMBERS[ref.chamber].shortName} record of ${formatRecordDate(ref.chamber, date)} match this video. ${"eventId" in ref ? "Check the link." : "Check the date."}`;
 
 /** A transient failure of a claimed run, carrying the ref it claimed so the caller fails only that claim. */
 export class RecordStepError extends Error {
@@ -460,6 +462,11 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   } catch (err) {
     if (err instanceof RecordNotFoundError) {
       await failRecordFetch(db, sessionId, err.message, ref);
+      return;
+    }
+    if (err instanceof RecordNotPublishedError) {
+      // Not out yet: wait and look again (records.retry); a re-link meanwhile keeps its own row.
+      await waitRecordFetch(db, sessionId, ref, new Date(Date.now() + RECORD_RETRY_HOURS * 3_600_000), waitingLine(ref));
       return;
     }
     throw err;

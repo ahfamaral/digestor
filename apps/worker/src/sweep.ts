@@ -86,7 +86,9 @@ export async function sweepStaleSessions(db: Db, now: Date = new Date(), staleMi
  * - a `preparing` subtitle track → `failed` with STUCK_MESSAGE ("Try again" replaces it);
  * - a clip render or track burn `queued`/`rendering` → `failed` (exporting again re-claims it);
  * - a "Find more" request `pending`/`running` → `failed` with STUCK_MESSAGE (asking again resets it);
- * - a linked record's fetch `pending`/`running` → `failed` with STUCK_MESSAGE (linking again resets it);
+ * - a linked record's fetch `pending`/`running` → `failed` with STUCK_MESSAGE (linking again resets it); `waiting`
+ *   (the house hasn't published yet; `records.retry` wakes it) and `suggested` (a suggestion awaiting the journalist)
+ *   are not job-owned and are never swept;
  * - a session's preview copy `pending`/`running` → `failed`, then the join runs: a session waiting in `preparing_preview`
  *   fails with its friendly line (one still analysing fails when its analysis ends).
  * Returns how many rows of each kind were failed.

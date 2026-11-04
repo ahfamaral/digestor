@@ -28,6 +28,7 @@ import {
   recordNoMatch, runRecordStep,
 } from "./naming.js";
 import type { RecordConnector, RecordSpeech } from "../records/connector.js";
+import { RecordNotPublishedError } from "../records/connector.js";
 import { connectorFor } from "../records/connector.js";
 import { FIXTURE_SPEECHES, fixtureTexts, transcriptOfSpeeches } from "../records/fakeSenado.js";
 
@@ -400,6 +401,31 @@ describe("runRecordStep through a connector", () => {
     expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The House record can't be read yet." });
   });
 
+  it("a connector that says the record isn't published leaves the row waiting for 6 h with the line, and no names change", async () => {
+    const s = await createSession(db, { source: "upload", title: "Waiting" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "bundestag", period: 21, sitting: 104, date: null, url: "https://www.bundestag.de/x" });
+    const br = connectorFor("senado");
+    const notYet: RecordConnector = { chamber: "bundestag", stopWords: br.stopWords, speechText: br.speechText, async fetchRecord() { throw new RecordNotPublishedError(); } };
+    const before = await listAttributions(db, s.id);
+    const t0 = Date.now();
+    await runRecordStep({ db, storage: new LocalStorage(root), connectors: { bundestag: notYet } }, s.id);
+    const row = (await getSessionRecord(db, s.id))!;
+    expect(row).toMatchObject({ status: "waiting", error: "The Bundestag hasn't published the record of sitting 104 yet. Digestor will check again. If there was no sitting that day, check the date." });
+    expect(Math.abs(row.retryAt!.getTime() - (t0 + 6 * 3_600_000))).toBeLessThan(60_000);
+    expect(await listAttributions(db, s.id)).toEqual(before);
+  });
+
+  it("the waiting line of a dated ref uses the house's date order", async () => {
+    const s = await createSession(db, { source: "upload", title: "Waiting US" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "us_house", date: "2026-11-03", url: "https://www.congress.gov/x" });
+    const br = connectorFor("senado");
+    const notYet: RecordConnector = { chamber: "us_house", stopWords: br.stopWords, speechText: br.speechText, async fetchRecord() { throw new RecordNotPublishedError(); } };
+    await runRecordStep({ db, storage: new LocalStorage(root), connectors: { us_house: notYet } }, s.id);
+    expect((await getSessionRecord(db, s.id))!.error).toBe("The House hasn't published the record of 11/03/2026 yet. Digestor will check again. If there was no sitting that day, check the date.");
+  });
+
   it("a Câmara day ref is read by date: a day without a plenary fails its row with the house's line", async () => {
     const s = await createSession(db, { source: "upload", title: "Câmara day" });
     await saveTranscript(db, s.id, transcriptOfSpeeches());
@@ -407,6 +433,10 @@ describe("runRecordStep through a connector", () => {
     const empty = (async () => new Response(JSON.stringify({ dados: [], links: [] }), { status: 200 })) as typeof fetch;
     await runRecordStep({ db, storage: new LocalStorage(root), fetch: empty }, s.id);
     expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The Câmara has no plenary session on that date." });
+  });
+
+  it("the no-match line shows a US day as MM/DD/YYYY", () => {
+    expect(recordNoMatch({ chamber: "us_house", date: "2026-11-03", url: "x" }, "2026-11-03")).toContain("record of 11/03/2026 match");
   });
 
   it("filters matches with the house's own propose threshold, not a constant", async () => {

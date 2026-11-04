@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getJson, mapLimit } from "./http.js";
-import { RecordNotFoundError, type MemberInfo, type RecordConnector, type RecordSpeech } from "./types.js";
+import { RecordNotFoundError, notPublishedOrNotFound, type MemberInfo, type RecordConnector, type RecordSpeech } from "./types.js";
 import { speechText, STOP } from "./align.js";
 
 /**
@@ -32,6 +32,13 @@ export const CAMARA_NOT_PLENARY = "Only Câmara plenary sessions are supported."
 export const CAMARA_NO_PLENARY = "The Câmara has no plenary session on that date.";
 export const CAMARA_CANCELLED = "This Câmara session was cancelled or never confirmed.";
 export const CAMARA_NOT_COMPLETE = "The Câmara record of this session isn't complete yet. Try again later.";
+export const CAMARA_DAY_NOT_COMPLETE = "The Câmara record of that date isn't complete yet. Try again later.";
+
+/** The Plenário is the only organ read. */
+const isPlenary = (orgaos: { sigla: string | null }[] | null | undefined) => !!orgaos?.some((o) => o.sigla === "PLEN");
+/** What an event's `situacao` says about its record: never happening, not over yet, or over. */
+const situacaoVerdict = (s: string | null | undefined): "cancelled" | "incomplete" | "ended" =>
+  s?.startsWith("Cancelada") || s === "Não Confirmada" ? "cancelled" : s?.startsWith("Encerrada") ? "ended" : "incomplete";
 
 /** The 4-minute stenography block a stamp belongs to: `2026-06-30T13:55` → `2026-06-30T13:52`. */
 function blockStart(stamp: string): string {
@@ -97,9 +104,10 @@ export async function fetchCamaraSpeeches(
   const event = eventSchema.safeParse(ev.body);
   if (!event.success) throw unexpected();
   const { orgaos, situacao } = event.data.dados;
-  if (!orgaos?.some((o) => o.sigla === "PLEN")) throw new RecordNotFoundError(CAMARA_NOT_PLENARY);
-  if (situacao?.startsWith("Cancelada") || situacao === "Não Confirmada") throw new RecordNotFoundError(CAMARA_CANCELLED);
-  if (!situacao?.startsWith("Encerrada")) throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
+  if (!isPlenary(orgaos)) throw new RecordNotFoundError(CAMARA_NOT_PLENARY);
+  const verdict = situacaoVerdict(situacao);
+  if (verdict === "cancelled") throw new RecordNotFoundError(CAMARA_CANCELLED);
+  if (verdict === "incomplete") throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
   const eventStart = event.data.dados.dataHoraInicio.slice(0, 16);
   const start = blockStart(eventStart); // stamps are 4-minute blocks: the block holding the start belongs to the event
   const date = eventStart.slice(0, 10);
@@ -183,11 +191,11 @@ export async function fetchCamaraDay(
     if (!parsed.success) throw unexpected();
     return parsed.data.dados;
   });
-  const plenaries = (list ?? []).filter((e) => e.id != null && e.orgaos?.some((o) => o.sigla === "PLEN"));
+  const plenaries = (list ?? []).filter((e) => e.id != null && isPlenary(e.orgaos));
   if (plenaries.length === 0) throw new RecordNotFoundError(CAMARA_NO_PLENARY);
-  const live = plenaries.filter((e) => !(e.situacao?.startsWith("Cancelada") || e.situacao === "Não Confirmada"));
+  const live = plenaries.filter((e) => situacaoVerdict(e.situacao) !== "cancelled");
   if (live.length === 0) throw new RecordNotFoundError(CAMARA_CANCELLED);
-  if (live.some((e) => !e.situacao?.startsWith("Encerrada"))) throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
+  if (live.some((e) => situacaoVerdict(e.situacao) !== "ended")) throw new RecordNotFoundError(CAMARA_NOT_COMPLETE);
 
   // Events of one day share their deputies' day: each `deputados/{id}/discursos` page is fetched once (successful answers only; events run one after the other).
   const memo = new Map<string, { status: number; headers: [string, string][]; text: string }>();
@@ -227,9 +235,22 @@ export async function fetchCamaraDay(
 /** The Câmara behind the connector interface: an event's speeches (or a day's), the deputies as `members`. */
 export const camaraConnector: RecordConnector = {
   chamber: "camara",
-  async fetchRecord(ref, f) {
+  async fetchRecord(ref, f, ctx) {
     if (ref.chamber !== "camara") throw new RecordNotFoundError("The Câmara connector got a ref of another house.");
-    const { speeches, date, deputies } = "eventId" in ref ? await fetchCamaraSpeeches(ref.eventId, f) : await fetchCamaraDay(ref.date, f);
+    let got: Awaited<ReturnType<typeof fetchCamaraSpeeches>>;
+    try {
+      got = "eventId" in ref ? await fetchCamaraSpeeches(ref.eventId, f) : await fetchCamaraDay(ref.date, f);
+    } catch (err) {
+      if (!(err instanceof RecordNotFoundError)) throw err;
+      const date = "date" in ref ? ref.date : null; // an event link has no date: the window counts from the link
+      // Recent: an unfinished record or a day with no plenary/speeches yet may still be published. A cancelled session is never.
+      if (err.message === CAMARA_NOT_COMPLETE) {
+        throw notPublishedOrNotFound("camara", date, ctx.now, date ? CAMARA_DAY_NOT_COMPLETE : CAMARA_NOT_COMPLETE, ctx.linkedAt);
+      }
+      if (date && (err.message === CAMARA_NO_PLENARY || err.message === CAMARA_NOT_FOUND)) throw notPublishedOrNotFound("camara", date, ctx.now, err.message, ctx.linkedAt);
+      throw err;
+    }
+    const { speeches, date, deputies } = got;
     const members: Record<string, MemberInfo> = {};
     for (const [id, d] of Object.entries(deputies)) members[id] = { displayName: d.name, party: d.party, state: d.state, photoUrl: d.photoUrl };
     return { speeches, date, members };

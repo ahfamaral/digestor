@@ -83,7 +83,8 @@ describe("parseRecordRef with a house", () => {
     expect(parseRecordRef(`21/10/2025 ${link}`, "us_house")).toMatchObject({ chamber: "senado", date: "2025-10-21", sessionCode: "123" });
   });
   it("recordRefDate for any ref with a date", () => {
-    expect(recordRefDate(parseRecordRef("2026-11-03", "us_house")!)).toBe("03/11/2026");
+    expect(recordRefDate(parseRecordRef("2026-11-03", "us_house")!)).toBe("11/03/2026");
+    expect(recordRefDate(parseRecordRef("2026-11-03", "us_senate")!)).toBe("11/03/2026");
     expect(recordRefDate(parseRecordRef("2026-11-03", "camara")!)).toBe("03/11/2026");
     expect(recordRefDate(parseRecordRef("16/10/2026", "bundestag")!)).toBe("16/10/2026");
     expect(recordRefDate(parseRecordRef("21/103", "bundestag")!)).toBeNull();

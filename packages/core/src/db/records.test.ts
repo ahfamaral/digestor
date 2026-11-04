@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import type { RecordRef } from "../recordRef.ts";
 import { createDb, type Db } from "./client.ts";
 import { createCustomPerson, listAttributions, replaceAiAttributions } from "./names.ts";
 import { sessionRecords } from "./schema.ts";
 import { createSession, type Session } from "./repo.ts";
-import { claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch } from "./records.ts";
+import { claimDueRecordRetries, requeueRecordRetry, waitRecordFetch, claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch } from "./records.ts";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -110,5 +110,35 @@ describe("linkRecord and the record's names", () => {
     expect(same.linkedAt).toEqual(first.linkedAt);
     await linkRecord(db, s.id, senado("2026-09-03"));
     expect((await getSessionRecord(db, s.id))!.linkedAt.getTime()).toBeGreaterThan(first.linkedAt.getTime());
+  });
+
+  it("waitRecordFetch: running → waiting for the same ref only; claimDueRecordRetries: due rows → pending, once", async () => {
+    await linkRecord(db, s.id, senado());
+    await claimRecordFetch(db, s.id);
+    expect(await waitRecordFetch(db, s.id, senado("2026-09-09"), new Date())).toBe(false); // another ref
+    const retryAt = new Date("2026-11-05T10:00:00Z");
+    expect(await waitRecordFetch(db, s.id, senado(), retryAt, "waiting line")).toBe(true);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "waiting", retryAt, error: "waiting line" });
+    expect(await claimDueRecordRetries(db, new Date("2026-11-05T09:59:00Z"))).toEqual([]); // not due
+    const both = await Promise.all([claimDueRecordRetries(db, retryAt), claimDueRecordRetries(db, retryAt)]);
+    expect(both.flat()).toEqual([s.id]); // exactly one caller got it
+    expect((await getSessionRecord(db, s.id))!.status).toBe("pending");
+  });
+
+  it("a row re-linked while waiting is pending with the new ref and no retry time; the old ref's requeue does nothing", async () => {
+    await linkRecord(db, s.id, senado());
+    await claimRecordFetch(db, s.id);
+    await waitRecordFetch(db, s.id, senado(), new Date("2026-11-05T10:00:00Z"));
+    await linkRecord(db, s.id, senado("2026-09-03"));
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "pending", retryAt: null, ref: senado("2026-09-03") });
+    expect(await requeueRecordRetry(db, s.id, senado(), new Date())).toBe(false);
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "pending", ref: senado("2026-09-03") });
+  });
+
+  it("linked_at follows the database clock", async () => {
+    await linkRecord(db, s.id, senado());
+    await linkRecord(db, s.id, senado("2026-09-03"));
+    const [row] = (await db.execute(sql`select (linked_at = (select now())) as same, abs(extract(epoch from (now() - linked_at))) < 5 as recent from session_records where session_id = ${s.id}`)).rows as { recent: boolean }[];
+    expect(row!.recent).toBe(true);
   });
 });
