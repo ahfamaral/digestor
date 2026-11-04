@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { RecordRef } from "@digestor/core";
 import { bundestagConnector, parseProtokoll } from "./bundestag.js";
 import { findConnector, RecordNotFoundError, RecordNotPublishedError } from "./connector.js";
-import { FILTERLIST_PAGE1, LISTING_URL_WP21, PROTOKOLL_21103, XML_URL_21103, fakeBundestagFetch } from "./fakeBundestag.js";
+import { FILTERLIST_EMPTY, FILTERLIST_PAGE1, LISTING_URL_WP21, PROTOKOLL_21103, XML_URL_21103, fakeBundestagFetch } from "./fakeBundestag.js";
 import { httpTiming } from "./http.js";
 
 httpTiming.delayMs = 0;
@@ -159,6 +159,44 @@ describe("bundestagConnector.findSitting", () => {
     expect(hit).toMatchObject({ sitting: 103, date: "2026-10-16" });
     expect(urls[0]!.searchParams.get("f.datum_start")).toBe("2026-10-16");
     expect(urls[0]!.searchParams.get("f.datum_end")).toBe("2026-10-16");
+  });
+});
+
+describe("fix round 1", () => {
+  it("a DIP answer whose documents miss fundstelle.xml_url is a plain error naming DIP", async () => {
+    process.env.BUNDESTAG_DIP_API_KEY = "k";
+    const { f } = fakeBundestagFetch({ listing: () => new Response("x", { status: 502 }), dip: () => new Response(JSON.stringify({ numFound: 1, documents: [{ dokumentnummer: "21/103", datum: "2026-10-16", fundstelle: {} }] })) });
+    const err = await bundestagConnector.findSitting(bySitting(103) as never, f).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(RecordNotFoundError);
+    expect(err.message).toMatch(/DIP.*xml_url/);
+  });
+
+  it("an empty first page of a known period is a listing error, not 'not found'", async () => {
+    const { f } = fakeBundestagFetch({ listing: () => new Response(FILTERLIST_EMPTY, { status: 200 }) });
+    const err = await bundestagConnector.findSitting(bySitting(103, 20) as never, f).catch((e) => e);
+    expect(err).not.toBeInstanceOf(RecordNotFoundError);
+    expect(err.message).toContain("/ajax/filterlist/");
+  });
+
+  it("an .xml link with an unparseable title fails loudly", async () => {
+    const bad = FILTERLIST_PAGE1.replace("Plenarprotokoll der 102. Sitzung von Donnerstag, dem 15. Oktober 2026", "Plenarprotokoll 102 (neu)");
+    const { f } = fakeBundestagFetch({ listing: () => new Response(bad, { status: 200 }) });
+    const err = await bundestagConnector.findSitting(bySitting(103) as never, f).catch((e) => e);
+    expect(err).not.toBeInstanceOf(RecordNotFoundError);
+    expect(err.message).toContain("Plenarprotokoll 102 (neu)");
+    expect(err.message).toContain(LISTING_URL_WP21);
+  });
+
+  it("decodes numeric entities and keeps all-numeric text as text", () => {
+    const xml = `<dbtplenarprotokoll wahlperiode="21" sitzung-nr="1" sitzung-datum="01.01.2026"><sitzungsverlauf><rede id="a"><p klasse="redner"><redner id="1"><name><vorname>A</vorname><nachname>A</nachname><fraktion>SPD</fraktion></name></redner>A A (SPD):</p><p klasse="J_1">Ja &#x2013; nein</p><p klasse="J">1.000</p></rede></sitzungsverlauf></dbtplenarprotokoll>`;
+    expect(parseProtokoll(xml).speeches[0]!.text).toBe("Ja \u2013 nein 1.000");
+  });
+
+  it("a Zwischenfrage inside a rede keeps every paragraph with its own speaker's id", () => {
+    const redner = (id: string, n: string) => `<p klasse="redner"><redner id="${id}"><name><vorname>${n}</vorname><nachname>X</nachname><fraktion>SPD</fraktion></name></redner>${n} X (SPD):</p>`;
+    const xml = `<dbtplenarprotokoll wahlperiode="21" sitzung-nr="1" sitzung-datum="01.01.2026"><sitzungsverlauf><rede id="a">${redner("1", "Anna")}<p klasse="J_1">vorher</p>${redner("2", "Boris")}<p klasse="J_1">frage</p>${redner("1", "Anna")}<p klasse="J_1">nachher</p></rede></sitzungsverlauf></dbtplenarprotokoll>`;
+    expect(parseProtokoll(xml).speeches.map((s) => [s.officialId, s.text])).toEqual([["1", "vorher"], ["2", "frage"], ["1", "nachher"]]);
   });
 });
 

@@ -54,11 +54,12 @@ function parseTitle(title: string): { sitting: number; date: string } | null {
 }
 
 /** The sittings a list page links (each appears twice in the page; deduplicated, page order kept) and whether it is the "no results" page. */
-function parseListing(html: string, period: number): { entries: Sitting[]; noResults: boolean } {
+function parseListing(html: string, period: number, url: string): { entries: Sitting[]; noResults: boolean } {
   const entries = new Map<string, Sitting>();
   for (const m of html.matchAll(/<a\s[^>]*href="(https:\/\/www\.bundestag\.de\/resource\/blob\/\d+\/[^"]+\.xml)"[^>]*>\s*<span>([^<]*)<\/span>/g)) {
     const t = parseTitle(m[2]!);
-    if (t && !entries.has(m[1]!)) entries.set(m[1]!, { xmlUrl: m[1]!, period, ...t });
+    if (!t) throw listingError(url, `the title "${m[2]!.trim()}" of ${m[1]} has an unknown shape (the page layout may have changed)`);
+    if ( !entries.has(m[1]!)) entries.set(m[1]!, { xmlUrl: m[1]!, period, ...t });
   }
   return { entries: [...entries.values()], noResults: html.includes("e-noResults") };
 }
@@ -76,7 +77,8 @@ async function fetchListing(period: number, offset: number, f: typeof fetch): Pr
   } catch (err) {
     throw listingError(url, err instanceof Error ? err.message : String(err));
   }
-  const page = parseListing(html, period);
+  const page = parseListing(html, period, url);
+  if (offset === 0 && page.entries.length === 0 && page.noResults) throw listingError(url, "the list of a known period is empty (the list id may have changed)");
   if (page.entries.length === 0 && !page.noResults) throw listingError(url, "the page has no Plenarprotokoll links (the page layout may have changed)");
   return page;
 }
@@ -113,7 +115,10 @@ async function locateInDip(ref: BundestagRef, key: string, f: typeof fetch): Pro
   if (res.status === 404) return { missing: "unknown" };
   if (!res.ok) throw new Error(`The Bundestag DIP API answered ${res.status}.`);
   const body = (await res.json()) as { documents?: unknown[] };
-  const hit = (body.documents ?? []).map(dipDoc).find((s) => s && s.period === ref.period && (ref.sitting != null ? s.sitting === ref.sitting : s.date === ref.date));
+  const docs = body.documents ?? [];
+  const parsedDocs = docs.map(dipDoc);
+  if (docs.length > 0 && parsedDocs.every((d) => d === null)) throw new Error("The Bundestag DIP API answered documents without dokumentnummer, datum or fundstelle.xml_url (the answer shape may have changed).");
+  const hit = parsedDocs.find((s) => s && s.period === ref.period && (ref.sitting != null ? s.sitting === ref.sitting : s.date === ref.date));
   return hit ? { found: hit } : { missing: "unknown" };
 }
 
@@ -123,6 +128,7 @@ async function locate(ref: BundestagRef, f: typeof fetch): Promise<Located> {
   } catch (err) {
     const key = process.env.BUNDESTAG_DIP_API_KEY;
     if (!key || err instanceof RecordNotFoundError) throw err;
+    console.warn(`[bundestag] ${(err as Error).message}; trying the DIP API`);
     try {
       return await locateInDip(ref, key, f);
     } catch (dipErr) {
@@ -134,7 +140,7 @@ async function locate(ref: BundestagRef, f: typeof fetch): Promise<Located> {
 // ---- the protocol XML ------------------------------------------------------
 
 type XNode = { [tag: string]: unknown } & { ":@"?: Record<string, string> };
-const parser = new XMLParser({ preserveOrder: true, ignoreAttributes: false, attributeNamePrefix: "@_", trimValues: false, processEntities: true });
+const parser = new XMLParser({ preserveOrder: true, ignoreAttributes: false, attributeNamePrefix: "@_", trimValues: false, processEntities: true, htmlEntities: true, parseTagValue: false });
 
 const tagOf = (n: XNode): string => Object.keys(n).find((k) => k !== ":@") ?? "";
 const childrenOf = (n: XNode): XNode[] => (n[tagOf(n)] as XNode[] | undefined) ?? [];
