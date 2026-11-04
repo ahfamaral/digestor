@@ -170,3 +170,17 @@ PUBLIC_HOSTNAME=localhost HTTP_PORT=8080 HTTPS_PORT=8443 APP_PASSWORD=<something
 ```
 
 Open `https://localhost:8443` (Caddy uses its own local certificate; accept the browser warning). Tear it down with the same variables and `down -v` (removes only the `digestor-prod` volumes).
+
+## Official parliament video links
+
+Checked 2026-11-04 with yt-dlp 2026.10.26 inside the worker container (`docker compose exec worker yt-dlp --simulate --print title --print "%(upload_date)s %(duration)s %(extractor)s" <url>`). A host counts as accepted only if it returns a title and a duration. None did, so the link tab still accepts YouTube only and no code changed.
+
+| URL tried | Outcome |
+|---|---|
+| `https://www.bundestag.de/mediathek/video?videoid=7666987` (current Mediathek page URL) | `Unsupported URL` (generic extractor; the Bundestag extractor does not match this path) |
+| `https://www.bundestag.de/mediathek?videoid=7666987` (the only form the Bundestag extractor matches) | extractor runs, page 404s; generic title `Bundestag video #7666987`, duration and date `NA` |
+| `https://live.house.gov`, `https://live.house.gov/?date=2026-11-03` | `Unsupported URL` (player is JS; no video URL in the HTML) |
+| `https://clerk.house.gov/Videos` | 404 |
+| `https://www.senate.gov/legislative/floor_activity_pages.htm`, `https://www.senate.gov/isvp/?type=live&comm=floor&filename=floor111126` | 403 (Akamai blocks the server, `senate.gov:isvp` extractor never gets the page) |
+
+Mediathek sitting: the video page `<title>` reads "104. Sitzung vom 04.11.2026, TOP 1: ..." and the Mediathek list fragment (`/ajax/filterlist/de/mediathek/...`) carries the date and "N. Sitzung". It is plain HTML, but parsing it needs a fetch, which `parseRecordRef` (pure) does not do, so a Mediathek link in the record field still gets "Paste the date or sitting number instead." Recheck when yt-dlp's Bundestag extractor is fixed for `/mediathek/video?videoid=`.
