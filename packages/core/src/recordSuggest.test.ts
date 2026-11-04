@@ -37,9 +37,10 @@ describe("suggestRecord: floor sittings", () => {
     const r = suggestRecord(m("phoenix", "Bundestag, 97. Sitzung: Debatte über die Stärkung des Solidarprinzips | 25.09.26", "2026-09-25", "Debatte im Deutschen Bundestag"));
     expect(r).toMatchObject({ chamber: "bundestag", period: 21, sitting: 97, date: "2026-09-25" });
   });
-  it("phoenix: the sitting number from the description", () => {
-    const r = suggestRecord(m("phoenix", "Regierungsbefragung mit Boris Pistorius und Carsten Linnemann | #Bundestag", "2026-09-23", "Die 95. Sitzung des Deutschen Bundestags beginnt am Mittwoch, 23. September 2026."));
-    expect(r).toMatchObject({ chamber: "bundestag", sitting: 95 });
+  it("phoenix: the sitting word must be in the title; the description only supplies numbers and dates", () => {
+    const desc = "Die 95. Sitzung des Deutschen Bundestags beginnt am Mittwoch, 23. September 2026.";
+    expect(suggestRecord(m("phoenix", "Regierungsbefragung mit Boris Pistorius und Carsten Linnemann | #Bundestag", "2026-09-23", desc))).toBeNull();
+    expect(suggestRecord(m("phoenix", "Bundestag: Debatte zur Regierungsbefragung", "2026-09-23", desc))).toMatchObject({ chamber: "bundestag", sitting: 95, date: "2026-09-23" });
   });
   it("phoenix: 'Bundestagsdebatte' with a date in the title", () => {
     const r = suggestRecord(m("phoenix", "Bundestagsdebatte zur Krankenkassenreform | 10.07.26", "2026-07-10", "Bundestagsdebatte zur Krankenkassenreform"));
@@ -135,6 +136,15 @@ describe("suggestRecord: review fixes", () => {
   });
   it("the degree sign works as an ordinal", () => {
     expect(pick(suggestRecord(m("TV Senado", "Fala – 1°/9/26", "2026-09-01")))).toEqual({ chamber: "senado", date: "2026-09-01" });
+  });
+});
+
+describe("suggestRecord: descriptions never exclude", () => {
+  it("a plenary description that mentions committees and hearings still suggests", () => {
+    expect(suggestRecord(m("Deutscher Bundestag", "103. Sitzung des Bundestages – LIVE", "2026-10-16", "Ausschussüberweisung der Vorlagen; Beschlussempfehlung des Ausschusses"))).toMatchObject({ chamber: "bundestag", sitting: 103 });
+    expect(suggestRecord(m("Deutscher Bundestag", "Plenarsitzung 103. Sitzung", "2026-10-16", "Überweisung an den Ausschuss für Inneres"))).toMatchObject({ chamber: "bundestag", sitting: 103 });
+    expect(suggestRecord(m("phoenix", "Bundestag: 103. Sitzung | 16.10.26", "2026-10-16", "Beschlussempfehlung des Ausschusses für Arbeit"))).toMatchObject({ chamber: "bundestag", sitting: 103, date: "2026-10-16" });
+    expect(suggestRecord(m("phoenix", "Bundestag live: Debatte | 16.10.26", "2026-10-16", "Anhörung im Ausschuss"))).toMatchObject({ chamber: "bundestag", date: "2026-10-16" });
   });
 });
 

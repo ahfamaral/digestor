@@ -48,7 +48,10 @@ function sittingIn(text: string): number | null {
 
 const LANG: Record<ChamberId, keyof typeof MONTHS> = { camara: "pt", senado: "pt", bundestag: "de", us_house: "en", us_senate: "en" };
 
-/** The one house the channel and words point at; null when none, or when two are equally likely. */
+/**
+ * The one house the channel and the title point at; null when none, or when two are equally likely. Only the title
+ * decides (exclusions and a broadcaster's sitting word): descriptions of real sittings mention committees, hearings and speeches.
+ */
 function houseOf(channel: string, text: string): ChamberId | null {
   const own = CHAMBER_IDS.filter((id) => CHAMBERS[id].suggest.ownChannels.some((p) => p.test(channel)));
   if (own.length) return own.length === 1 && !CHAMBERS[own[0]!].suggest.excludeOwn.some((p) => p.test(text)) ? own[0]! : null;
@@ -90,7 +93,7 @@ export function suggestRecord(meta: VideoDetails): RecordRef | null {
   const channel = norm(meta.channel);
   const title = norm(meta.title);
   const description = norm(meta.description);
-  const chamber = houseOf(channel, `${title}\n${description}`);
+  const chamber = houseOf(channel, title);
   if (!chamber) return null;
   const own = CHAMBERS[chamber].suggest.ownChannels.some((p) => p.test(channel));
   const us = chamber === "us_house" || chamber === "us_senate";
