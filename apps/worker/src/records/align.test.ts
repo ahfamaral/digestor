@@ -173,10 +173,10 @@ describe("recordAttributions", () => {
     expect(rows.map((r) => r.personId)).toEqual(["p-off524181"]);
   });
 
-  it("with the Bundestag's thresholds (not evaluated) even a 0.95 match is only proposed; evidence carries chamber and date", () => {
-    const rows = recordAttributions(T, speeches, [{ turn: 0, speech: 0, score: 0.95 }], personIdFor, { ...ref, chamber: "bundestag", date: "2026-10-16" }, chamberThresholds("bundestag"));
+  it("with the US Senate's thresholds (not evaluated) even a 0.95 match is only proposed; evidence carries chamber and date", () => {
+    const rows = recordAttributions(T, speeches, [{ turn: 0, speech: 0, score: 0.95 }], personIdFor, { ...ref, chamber: "us_senate", date: "2026-10-16" }, chamberThresholds("us_senate"));
     expect(rows.map((r) => r.status)).toEqual(["proposed"]);
-    expect(rows[0]!.evidence).toMatchObject({ kind: "record", chamber: "bundestag", date: "2026-10-16" });
+    expect(rows[0]!.evidence).toMatchObject({ kind: "record", chamber: "us_senate", date: "2026-10-16" });
   });
 });
 

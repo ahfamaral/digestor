@@ -1,0 +1,176 @@
+{
+  "sessionId": "a8037dcf-305e-4b94-bb6a-96e06906660d",
+  "videoPath": "https://www.youtube.com/watch?v=iaX2hzq_saA (first 65 min, uploaded as data/us-house-2026-09-03-first65.mp4)",
+  "profile": "parliament",
+  "labelledBy": "drafted by Claude; owner review pending (33 turns of the US House floor proceedings of 03/09/2026, first 65 min: one-minute speeches and the H.R. 4795 debate, labelled from the transcript and the Congressional Record: who the chair recognises, who yields to whom; the chair is the Speaker pro tempore Mr. Bost per the record; the reading clerk is not a member, so any name there is wrong; left out: the opening chair turns (\"The SPEAKER\", unnamed in the record), the pledge (led by Ms. Dean, group voices), and chair turns mixed with a speech by the diarizer)",
+  "topics": [],
+  "moments": [],
+  "speakers": [
+    {
+      "startMs": 321448,
+      "endMs": 377689,
+      "person": "Joel Gluck"
+    },
+    {
+      "startMs": 415539,
+      "endMs": 474395,
+      "person": "Seth Magaziner"
+    },
+    {
+      "startMs": 497145,
+      "endMs": 576640,
+      "person": "Glenn Thompson"
+    },
+    {
+      "startMs": 588940,
+      "endMs": 673554,
+      "person": "Madeleine Dean"
+    },
+    {
+      "startMs": 687950,
+      "endMs": 776465,
+      "person": "Mariannette Miller-Meeks"
+    },
+    {
+      "startMs": 789140,
+      "endMs": 845224,
+      "person": "Seth Magaziner"
+    },
+    {
+      "startMs": 864834,
+      "endMs": 925580,
+      "person": "James R. Baird"
+    },
+    {
+      "startMs": 938710,
+      "endMs": 1006150,
+      "person": "Gabe Vasquez"
+    },
+    {
+      "startMs": 1017390,
+      "endMs": 1057103,
+      "person": "George Whitesides"
+    },
+    {
+      "startMs": 1089445,
+      "endMs": 1152572,
+      "person": "Rashida Tlaib"
+    },
+    {
+      "startMs": 1166094,
+      "endMs": 1179002,
+      "person": "Tim Walberg"
+    },
+    {
+      "startMs": 1181860,
+      "endMs": 1208858,
+      "person": "Reading clerk"
+    },
+    {
+      "startMs": 1210258,
+      "endMs": 1255833,
+      "person": "Mike Bost"
+    },
+    {
+      "startMs": 1276780,
+      "endMs": 1480513,
+      "person": "Tim Walberg"
+    },
+    {
+      "startMs": 1483576,
+      "endMs": 1490969,
+      "person": "Mike Bost"
+    },
+    {
+      "startMs": 1497741,
+      "endMs": 1725755,
+      "person": "Robert C. \"Bobby\" Scott"
+    },
+    {
+      "startMs": 1730782,
+      "endMs": 1741472,
+      "person": "Tim Walberg"
+    },
+    {
+      "startMs": 1741857,
+      "endMs": 1744501,
+      "person": "Mike Bost"
+    },
+    {
+      "startMs": 1745222,
+      "endMs": 2054488,
+      "person": "Virginia Foxx"
+    },
+    {
+      "startMs": 2061703,
+      "endMs": 2118913,
+      "person": "Virginia Foxx"
+    },
+    {
+      "startMs": 2126610,
+      "endMs": 2131032,
+      "person": "Robert C. \"Bobby\" Scott"
+    },
+    {
+      "startMs": 2131497,
+      "endMs": 2133724,
+      "person": "Mike Bost"
+    },
+    {
+      "startMs": 2134381,
+      "endMs": 2294432,
+      "person": "Rashida Tlaib"
+    },
+    {
+      "startMs": 2302287,
+      "endMs": 2310593,
+      "person": "Tim Walberg"
+    },
+    {
+      "startMs": 2313903,
+      "endMs": 2393613,
+      "person": "Burgess Owens"
+    },
+    {
+      "startMs": 2400200,
+      "endMs": 2404463,
+      "person": "Robert C. \"Bobby\" Scott"
+    },
+    {
+      "startMs": 2404609,
+      "endMs": 2406464,
+      "person": "Mike Bost"
+    },
+    {
+      "startMs": 2407780,
+      "endMs": 2628955,
+      "person": "Joaquin Castro"
+    },
+    {
+      "startMs": 2633995,
+      "endMs": 2635648,
+      "person": "Tim Walberg"
+    },
+    {
+      "startMs": 2640687,
+      "endMs": 2641987,
+      "person": "Robert C. \"Bobby\" Scott"
+    },
+    {
+      "startMs": 2713705,
+      "endMs": 2826527,
+      "person": "Robert C. \"Bobby\" Scott"
+    },
+    {
+      "startMs": 2838772,
+      "endMs": 2972060,
+      "person": "Tim Walberg"
+    },
+    {
+      "startMs": 2989809,
+      "endMs": 3011787,
+      "person": "Reading clerk"
+    }
+  ],
+  "traps": []
+}

@@ -1,0 +1,111 @@
+{
+  "sessionId": "b3e26a69-9471-44ee-87d8-dee5d239e299",
+  "videoPath": "https://www.youtube.com/watch?v=lAEiehsUmjw",
+  "profile": "parliament",
+  "labelledBy": "drafted by Claude; owner review pending (20 turns: the whole Bundestag debate of 16/10/2026, sitting 21/103, TOP 34 Bürokratierückbau im Verkehrsbereich, labelled from the transcript and the Plenarprotokoll: who the chair gives the floor to, the record speech order; the chair is Vizepräsident Bodo Ramelow per the record; left out: a 1 s heckle \"Warum?\" and a 5 s \"Vielen Dank.\" whose speaker is unclear)",
+  "topics": [],
+  "moments": [],
+  "speakers": [
+    {
+      "startMs": 0,
+      "endMs": 19083,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 24936,
+      "endMs": 240342,
+      "person": "Steffen Bilger"
+    },
+    {
+      "startMs": 245256,
+      "endMs": 249315,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 261751,
+      "endMs": 363707,
+      "person": "Wolfgang Wiehle"
+    },
+    {
+      "startMs": 369076,
+      "endMs": 506093,
+      "person": "Wolfgang Wiehle"
+    },
+    {
+      "startMs": 512636,
+      "endMs": 515452,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 522900,
+      "endMs": 691294,
+      "person": "Anja Troff-Schaffarzyk"
+    },
+    {
+      "startMs": 693730,
+      "endMs": 698129,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 707570,
+      "endMs": 961881,
+      "person": "Matthias Gastel"
+    },
+    {
+      "startMs": 966266,
+      "endMs": 970329,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 982098,
+      "endMs": 1174150,
+      "person": "Sören Pellmann"
+    },
+    {
+      "startMs": 1175349,
+      "endMs": 1181151,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 1191047,
+      "endMs": 1350790,
+      "person": "Daniel Kölbl"
+    },
+    {
+      "startMs": 1353344,
+      "endMs": 1359220,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 1368751,
+      "endMs": 1537158,
+      "person": "Maximilian Kneller"
+    },
+    {
+      "startMs": 1543250,
+      "endMs": 1545825,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 1557753,
+      "endMs": 1712484,
+      "person": "Dirk Vöpel"
+    },
+    {
+      "startMs": 1720873,
+      "endMs": 1725852,
+      "person": "Bodo Ramelow"
+    },
+    {
+      "startMs": 1733390,
+      "endMs": 1925180,
+      "person": "Günter Baumgartner"
+    },
+    {
+      "startMs": 1930340,
+      "endMs": 1952070,
+      "person": "Bodo Ramelow"
+    }
+  ],
+  "traps": []
+}

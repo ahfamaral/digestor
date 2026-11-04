@@ -56,7 +56,7 @@ export const CHAMBERS: Record<ChamberId, Chamber> = {
     id: "bundestag", country: "DE", countryName: "Germany", name: "Deutscher Bundestag", shortName: "Bundestag",
     idSystem: "bundestag", defaultLanguage: "de", publishWindowDays: 21,
     titles: ["Abg.", "Präsident", "Präsidentin", "Vizepräsident", "Vizepräsidentin", "Bundesminister", "Bundesministerin", "Bundeskanzler", "Bundeskanzlerin", "Staatssekretär", "Staatssekretärin", "Dr."],
-    evaluated: false, thresholds: THRESHOLDS,
+    evaluated: true, thresholds: THRESHOLDS,
     suggest: {
       ownChannels: [/^deutscher bundestag$/],
       broadcasterChannels: [/^phoenix$/],
@@ -67,7 +67,7 @@ export const CHAMBERS: Record<ChamberId, Chamber> = {
   },
   us_house: {
     id: "us_house", country: "US", countryName: "USA", name: "U.S. House of Representatives", shortName: "House",
-    idSystem: "bioguide", defaultLanguage: "en", publishWindowDays: 3, titles: US_TITLES, evaluated: false, thresholds: THRESHOLDS,
+    idSystem: "bioguide", defaultLanguage: "en", publishWindowDays: 3, titles: US_TITLES, evaluated: true, thresholds: { confirm: 0.8, propose: 0.35 },
     suggest: {
       ownChannels: [/^(us|u\.s\.) house (clerk|of representatives)$/],
       broadcasterChannels: CSPAN,

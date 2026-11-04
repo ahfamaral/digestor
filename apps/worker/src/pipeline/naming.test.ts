@@ -401,7 +401,7 @@ describe("runRecordStep through a connector", () => {
     expect((await getSessionRecord(db, s.id))?.status).toBe("matched");
     const rows = (await listAttributions(db, s.id)).filter((a) => a.source === "record");
     expect(rows.map((r) => r.speakerId).sort()).toEqual(["A", "C", "D", "E"]); // B's speech has no official id: it names no one
-    expect(rows.every((r) => r.status === "proposed")).toBe(true); // the Bundestag isn't evaluated: proposals only
+    expect(rows.every((r) => r.status === (r.confidence >= 0.6 ? "confirmed" : "proposed"))).toBe(true); // the Bundestag's thresholds (evaluated 2026-11-04)
     expect(rows[0]!.evidence).toMatchObject({ kind: "record", chamber: "bundestag", date: "2026-10-16", url: "https://www.bundestag.de/protokoll.xml" });
     const a = rows.find((r) => r.speakerId === "A")!;
     expect((await getPersons(db, [a.personId!]))[0]).toMatchObject({ displayName: "Anna Muster", party: "SPD", state: "BY", officialIds: { bundestag: "bt-524179" } });

@@ -37,7 +37,7 @@ The stepper reads Upload › Processing › Context › Preview › Briefing ›
 7. **Prepare clips:** trim on a sentence-snapped strip, checks ("The argument continues", "Context:", "Quoting someone else", "Interpreter audio"), 16:9 or 9:16 with a crop offset, a credit line, and per-language subtitles (translated by Claude, editable, approved before burn-in).
 8. **Export:** ffmpeg cuts each ready clip from the original (H.264, optional burned-in subtitles in Noto Sans, a credit line drawn bottom-right) and offers MP4, SRT and VTT downloads.
 9. **Ask** (press `/` on Preview or Full briefing): a RAG copilot answering only from the video's stored data, with function calls that change your personal selections (undoable; bulk changes need confirmation). It knows the speakers' names (confirmed or proposed) and can list when a named person speaks.
-10. **Speaker names (Plan 3):** a registry of people, and a name for each voice with its source (the official Senado record, a caption on screen, the transcript, or you). Names from AI are proposals until you confirm them in Who's who; Prepare is blocked until the voices in a clip are confirmed or marked "No name"; sensitive profiles (a trial) never show an unconfirmed name. Results: the debate scores 0.99 and the Senado plenary 0.93 (see Evaluation). Câmara plenary links are matched the same way; see the "Câmara record names" paragraph under Evaluation (matching validated on recorded text only, not yet scored on a golden file). "Report a problem" on a name goes to the reports list.
+10. **Speaker names (Plan 3):** a registry of people, and a name for each voice with its source (the official Senado record, a caption on screen, the transcript, or you). Names from AI are proposals until you confirm them in Who's who; Prepare is blocked until the voices in a clip are confirmed or marked "No name"; sensitive profiles (a trial) never show an unconfirmed name. Results: the debate scores 0.99, the Senado plenary 0.93, a Bundestag debate 0.95 and a US House floor hour 0.85 (see Evaluation). Câmara plenary links are matched the same way; see the "Câmara record names" paragraph under Evaluation (matching validated on recorded text only, not yet scored on a golden file). "Report a problem" on a name goes to the reports list.
 
 Progress streams to the browser over SSE; the pipeline survives worker restarts because it resumes from a Postgres checkpoint.
 
@@ -219,6 +219,22 @@ The debate (no record; names from the transcript and context check) still scores
 
 Cost of the Senado run: AssemblyAI, about $1.22 for 5.32 hours (Universal-3.5 Pro $0.21 + speaker labels $0.02 an hour, the model the transcript reports); OpenRouter (Claude Haiku 5.5, context check plus full analysis), at most $0.21. The Senado API is free. The 8 GB download and the 480p preview took 92 minutes before transcription started, because the preview copy is made first. Transcription itself took 6 minutes.
 
+**Speaker names from the Bundestag and US House records (2026-11-04, Plan 4).** Two more houses, one video each, scored the same way. Golden files (drafted by Claude from the transcript and the record; owner review pending): `apps/worker/eval/bundestag-2026-10-16.golden.json` and `apps/worker/eval/us-house-2026-09-03.golden.json`.
+
+- **Bundestag:** sitting 21/103 of 16 October 2026, TOP 34 "Bürokratierückbau im Verkehrsbereich" (32 min, official channel, session `b3e26a69`). The YouTube link was pasted with no record: the suggester read "103. Sitzung vom 16.10.2026" and proposed the right sitting, accepted at the context check. The Plenarprotokoll named all 9 speeches correctly (confidence 0.71–0.98) and fixed one name the transcript misheard ("Anja Tropschow-Harzig" is Anja Troff-Schaffarzyk). 20 turns of 10 people (the whole debate).
+- **US House:** floor proceedings of 3 September 2026, first 65 minutes (one-minute speeches and the H.R. 4795 debate; session `a8037dcf`), uploaded as a file with the record linked by date. On the same video's YouTube details the suggester proposes the right day (US House Clerk channel). 33 turns of 16 people (the reading clerk counted as one).
+
+| Metric (AI only) | Bundestag | US House |
+| --- | --- | --- |
+| Speaking time named correctly | 1,374 s (95%) | 1,552 s (94%) |
+| Speaking time named wrongly | 0 s (0%) | 29 s (2%), of which 1.2 s confirmed |
+| Speaking time unnamed | 66 s (5%) | 70 s (4%) |
+| Attribution score | 0.95 | 0.85 |
+
+**Thresholds.** The Bundestag keeps 0.6 / 0.35: its weakest right match is 0.71 and nothing is wrong. The US House confirms at **0.8**: there the reading clerk reading a bill title matches the bill sponsor's speech (0.78), and the chair's "the gentlewoman is recognized for 5 minutes" matches the member who yielded (0.71, 0.75). At 0.6 those would be confirmed wrongly (1.6% of speaking time, above the 1% target); at 0.8 they stay proposals for a human, and the only confirmed wrong name is 1.2 s (0.07%): Scott's "Mr. Speaker, I'm prepared to close", which the record prints only under Walberg. Both houses are now `evaluated: true` in `packages/core/src/chambers.ts`; the US Senate stays proposals-only until a Senate video is scored. The unnamed time is the chair: the Bundestag record names the presiding officer without an MdB id, and the US House chair's short lines are not in the record.
+
+**Found on the way.** For a house that is not evaluated, the transcript's name ("Für die AfD-Fraktion erhält Wolfgang Wiehle das Wort") and the record's name for the same voice are two different person rows, so the voice shows a conflict instead of a name (before `evaluated: true` the Bundestag scored 0% named). Evaluated houses don't show it (a confirmed record name wins), but the US Senate still would: the record step should merge a transcript-proposed person with the official person of the same name. Cost of both runs: AssemblyAI about $0.37 for 1.6 hours; OpenRouter (Haiku 5.5) a few cents. Downloading only part of a YouTube video with yt-dlp (`--download-sections`) ran at about 3 MB a minute; the whole video at 480p took 3 minutes.
+
 The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only exercises the script.
 
 ## Backlog from Plan 1
@@ -234,7 +250,9 @@ Already handled in Plan 2: lenient LLM output schemas, a sweep for sessions stuc
 ## Roadmap
 
 - Plan 3 (done): the person registry, speaker names with sources, attribution from captions and official records.
-- Plan 4: Câmara and Senado connectors, the Tracker home, presence and participation tables.
+- Plan 4 (done): official records for five houses (Câmara, Senado, Bundestag, US House, US Senate) by link, date or YouTube suggestion; records not yet published wait and are fetched again; Bundestag and US House scored on real videos.
+- Plan 5: the Tracker for all three countries (everyone, with search; stable person records across elections and mandates).
+- Later: elections data per country, presence and participation stats, judgement metrics, a word heat map, committee hearings.
 
 ## Showcase
 
