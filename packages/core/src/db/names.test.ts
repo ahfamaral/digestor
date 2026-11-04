@@ -115,17 +115,28 @@ describe("attributions", () => {
 
 describe("persons", () => {
   it("upsertOfficialPerson updates by official id", async () => {
-    const base = { chamber: "senado" as const, officialId: "5894", displayName: "Fulano" };
+    const base = { idSystem: "senado" as const, officialId: "5894", displayName: "Fulano" };
     const a = await upsertOfficialPerson(db, { ...base, party: "AA" });
     const b = await upsertOfficialPerson(db, { ...base, party: "BB" });
     expect(b.id).toBe(a.id);
     expect(b).toMatchObject({ party: "BB", kind: "official", officialIds: { senado: "5894" } });
-    const c = await upsertOfficialPerson(db, { chamber: "camara", officialId: "5894", displayName: "Outro" });
+    const c = await upsertOfficialPerson(db, { idSystem: "camara", officialId: "5894", displayName: "Outro" });
     expect(c.id).not.toBe(a.id);
   });
 
+  it("upsertOfficialPerson by bioguide id: twice is one person; camara and senado digits stay apart", async () => {
+    const base = { idSystem: "bioguide" as const, officialId: "N000002", displayName: "Jerrold Nadler" };
+    const a = await upsertOfficialPerson(db, base);
+    const b = await upsertOfficialPerson(db, { ...base, party: "D" });
+    expect(b.id).toBe(a.id);
+    expect(b.officialIds).toEqual({ bioguide: "N000002" });
+    const c = await upsertOfficialPerson(db, { idSystem: "camara", officialId: "123", displayName: "X" });
+    const d = await upsertOfficialPerson(db, { idSystem: "senado", officialId: "123", displayName: "X" });
+    expect(c.id).not.toBe(d.id);
+  });
+
   it("upsertOfficialPerson keeps fields a later call leaves out (undefined), and sets or clears the ones it gives", async () => {
-    const base = { chamber: "senado" as const, officialId: "77", displayName: "Fulano" };
+    const base = { idSystem: "senado" as const, officialId: "77", displayName: "Fulano" };
     await upsertOfficialPerson(db, { ...base, fullName: "Fulano de Tal", party: "AA", state: "SP", role: "Senador", photoUrl: "https://x/1.jpg" });
     const kept = await upsertOfficialPerson(db, { ...base, party: "BB" });
     expect(kept).toMatchObject({ party: "BB", fullName: "Fulano de Tal", state: "SP", role: "Senador", photoUrl: "https://x/1.jpg" });
@@ -135,7 +146,7 @@ describe("persons", () => {
   });
 
   it("findPersonByName ignores accents and case; searchPersons finds by part of the name", async () => {
-    const p = await upsertOfficialPerson(db, { chamber: "camara", officialId: "1", displayName: "Tabata Amaral", fullName: "Tabata Claudia Amaral de Pontes" });
+    const p = await upsertOfficialPerson(db, { idSystem: "camara", officialId: "1", displayName: "Tabata Amaral", fullName: "Tabata Claudia Amaral de Pontes" });
     expect((await findPersonByName(db, "TÁBATA amaral"))?.id).toBe(p.id);
     expect((await findPersonByName(db, "tabata claudia amaral de pontes"))?.id).toBe(p.id);
     expect(await findPersonByName(db, "tabata")).toBeNull();

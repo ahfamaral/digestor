@@ -304,7 +304,7 @@ describe("record projection (a voice the record matched)", () => {
   it("importContextNames: a short context name reuses the record person (no custom person, no conflict)", async () => {
     const id = await newSession();
     const tag = `Q${Math.random().toString(36).slice(2, 8)}`;
-    const senator = await upsertOfficialPerson(db, { chamber: "senado", officialId: `t${Math.random()}`, displayName: `Zuleica ${tag}`, fullName: `Zuleica ${tag} Corrêa` });
+    const senator = await upsertOfficialPerson(db, { idSystem: "senado", officialId: `t${Math.random()}`, displayName: `Zuleica ${tag}`, fullName: `Zuleica ${tag} Corrêa` });
     await saveTranscript(db, id, { language: "pt", languageConfidence: 1, durationMs: 10_000, words: words("A") });
     await replaceAiAttributions(db, id, "record", [{ speakerId: "A", startMs: 0, endMs: 10_000, personId: senator.id, status: "confirmed", confidence: 0.9, evidence: { kind: "record", speechId: "1", score: 0.9, url: "u", fetchedAt: "t" } }]);
     await importContextNames(db, id, cardWith({ A: fact(`Senadora Zuleica`, "video", "a Senadora Tereza") }));
@@ -320,7 +320,7 @@ describe("record projection (a voice the record matched)", () => {
   it("importContextNames: a context name for a different person on a record-matched voice is still imported", async () => {
     const id = await newSession();
     const tag = `Q${Math.random().toString(36).slice(2, 8)}`;
-    const senator = await upsertOfficialPerson(db, { chamber: "senado", officialId: `t${Math.random()}`, displayName: `Zuleica ${tag}` });
+    const senator = await upsertOfficialPerson(db, { idSystem: "senado", officialId: `t${Math.random()}`, displayName: `Zuleica ${tag}` });
     await saveTranscript(db, id, { language: "pt", languageConfidence: 1, durationMs: 10_000, words: words("A") });
     await replaceAiAttributions(db, id, "record", [{ speakerId: "A", startMs: 0, endMs: 10_000, personId: senator.id, status: "confirmed", confidence: 0.9, evidence: { kind: "record", speechId: "1", score: 0.9, url: "u", fetchedAt: "t" } }]);
     await importContextNames(db, id, cardWith({ A: fact(`Outra Pessoa ${tag}`, "video", "x") }));

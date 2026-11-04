@@ -1,5 +1,6 @@
 import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { normaliseName, type Attribution, type AttributionSource, type Person } from "../attribution.ts";
+import type { IdSystem } from "../chambers.ts";
 import type { Db } from "./client.ts";
 import { attributions, contextCards, persons } from "./schema.ts";
 
@@ -26,7 +27,7 @@ export async function createCustomPerson(db: Db, a: { displayName: string; creat
 export async function upsertOfficialPerson(
   db: Db,
   p: {
-    chamber: "senado" | "camara"; officialId: string; displayName: string;
+    idSystem: IdSystem; officialId: string; displayName: string;
     fullName?: string | null; party?: string | null; state?: string | null; role?: string | null; photoUrl?: string | null;
   },
 ): Promise<Person> {
@@ -34,11 +35,11 @@ export async function upsertOfficialPerson(
     fullName: p.fullName, party: p.party, state: p.state, role: p.role, photoUrl: p.photoUrl,
   };
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`person:${p.chamber}:${p.officialId}`}))`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`person:${p.idSystem}:${p.officialId}`}))`);
     const [existing] = await tx
       .select()
       .from(persons)
-      .where(sql`${persons.officialIds}->>${p.chamber} = ${p.officialId}`);
+      .where(sql`${persons.officialIds}->>${p.idSystem} = ${p.officialId}`);
     if (existing) {
       // Only the fields this call gives (not `undefined`) change; `null` clears one.
       const set = {
@@ -55,7 +56,7 @@ export async function upsertOfficialPerson(
     };
     const [row] = await tx
       .insert(persons)
-      .values({ ...fields, kind: "official", officialIds: { [p.chamber]: p.officialId }, createdBy: "record" })
+      .values({ ...fields, kind: "official", officialIds: { [p.idSystem]: p.officialId }, createdBy: "record" })
       .returning();
     return toPerson(row!);
   });

@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import pg from "pg";
 import type { RecordRef } from "../recordRef.ts";
 import { createDb, type Db } from "./client.ts";
 import { createCustomPerson, listAttributions, replaceAiAttributions } from "./names.ts";
+import { sessionRecords } from "./schema.ts";
 import { createSession, type Session } from "./repo.ts";
 import { claimRecordFetch, failRecordFetch, finishRecordFetch, getSessionRecord, linkRecord, releaseRecordFetch } from "./records.ts";
 
@@ -84,5 +86,29 @@ describe("linkRecord and the record's names", () => {
     expect(await current()).toHaveLength(2);
     await linkRecord(db, s.id, senado("2026-09-03")); // another one
     expect((await current()).map((r) => r.status)).toEqual(["rejected"]);
+  });
+
+  it("a waiting row with retryAt round-trips; claimRecordFetch claims only pending", async () => {
+    await linkRecord(db, s.id, senado());
+    const retryAt = new Date("2026-11-05T10:00:00Z");
+    await db.update(sessionRecords).set({ status: "waiting", retryAt }).where(eq(sessionRecords.sessionId, s.id));
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "waiting", retryAt });
+    expect(await claimRecordFetch(db, s.id)).toBeNull();
+    await db.update(sessionRecords).set({ status: "suggested" }).where(eq(sessionRecords.sessionId, s.id));
+    expect(await claimRecordFetch(db, s.id)).toBeNull();
+  });
+
+  it("linkRecord resets retryAt; linkedAt changes only when the ref changes", async () => {
+    await linkRecord(db, s.id, senado("2026-09-02"));
+    const first = (await getSessionRecord(db, s.id))!;
+    expect(first.linkedAt).toBeInstanceOf(Date);
+    await new Promise((r) => setTimeout(r, 20));
+    await db.update(sessionRecords).set({ status: "waiting", retryAt: new Date() }).where(eq(sessionRecords.sessionId, s.id));
+    await linkRecord(db, s.id, senado("2026-09-02"));
+    const same = (await getSessionRecord(db, s.id))!;
+    expect(same).toMatchObject({ status: "pending", retryAt: null });
+    expect(same.linkedAt).toEqual(first.linkedAt);
+    await linkRecord(db, s.id, senado("2026-09-03"));
+    expect((await getSessionRecord(db, s.id))!.linkedAt.getTime()).toBeGreaterThan(first.linkedAt.getTime());
   });
 });

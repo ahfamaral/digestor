@@ -579,8 +579,8 @@ describe("ask knows names (T18)", () => {
     const tag = Math.random().toString(36).slice(2, 8);
     const short = await createCustomPerson(db, { displayName: "Ana Souza", createdBy: "record" });
     const long = await createCustomPerson(db, { displayName: "Ana Maria Souza", createdBy: "record" });
-    const m1 = await upsertOfficialPerson(db, { chamber: "senado", officialId: `m1-${tag}`, displayName: "Maria Silva", party: "PT", state: "SP" });
-    const m2 = await upsertOfficialPerson(db, { chamber: "senado", officialId: `m2-${tag}`, displayName: "Maria Silva", party: "PL", state: "RJ" });
+    const m1 = await upsertOfficialPerson(db, { idSystem: "senado", officialId: `m1-${tag}`, displayName: "Maria Silva", party: "PT", state: "SP" });
+    const m2 = await upsertOfficialPerson(db, { idSystem: "senado", officialId: `m2-${tag}`, displayName: "Maria Silva", party: "PL", state: "RJ" });
     await replaceAiAttributions(db, s.id, "record", [
       part("A", 0, 60_000, short.id, "confirmed"), part("A", 120_000, 180_000, short.id, "confirmed"),
       part("B", 60_000, 120_000, long.id, "confirmed"), part("A", 240_000, 300_000, m1.id, "confirmed"), part("B", 300_000, 360_000, m2.id, "confirmed"),

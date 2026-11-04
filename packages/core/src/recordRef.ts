@@ -148,4 +148,4 @@ export function recordInputError(input: string, _chamber?: ChamberId): string | 
 }
 
 /** Where a linked record stands: `pending` (linked, not fetched), `running`, `matched`, `failed` (with a friendly `error`). */
-export type RecordStatus = "pending" | "running" | "matched" | "failed";
+export type RecordStatus = "suggested" | "pending" | "running" | "matched" | "failed" | "waiting";

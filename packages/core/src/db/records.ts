@@ -12,6 +12,8 @@ export type SessionRecord = {
   error: string | null;
   rawKey: string | null;
   fetchedAt: Date | null;
+  retryAt: Date | null;
+  linkedAt: Date;
   updatedAt: Date;
 };
 
@@ -26,12 +28,17 @@ const sortedJson = (o: object) => JSON.stringify(Object.fromEntries(Object.entri
  * in-flight re-link never leaves the previous record's names visible.
  */
 export async function linkRecord(db: Db, sessionId: string, ref: RecordRef): Promise<void> {
-  const fresh = { chamber: ref.chamber, ref, status: "pending" as const, error: null, rawKey: null, fetchedAt: null, updatedAt: new Date() };
+  const fresh = { chamber: ref.chamber, ref, status: "pending" as const, error: null, rawKey: null, fetchedAt: null, retryAt: null, updatedAt: new Date() };
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sessionId}))`);
     const [existing] = await tx.select({ ref: sessionRecords.ref }).from(sessionRecords).where(eq(sessionRecords.sessionId, sessionId));
-    await tx.insert(sessionRecords).values({ sessionId, ...fresh }).onConflictDoUpdate({ target: sessionRecords.sessionId, set: fresh });
-    if (existing && sortedJson(existing.ref) !== sortedJson(ref)) {
+    const changed = !existing || sortedJson(existing.ref) !== sortedJson(ref);
+    // A new row gets linked_at from its default; a re-link keeps it unless the ref changed.
+    await tx.insert(sessionRecords).values({ sessionId, ...fresh }).onConflictDoUpdate({
+      target: sessionRecords.sessionId,
+      set: changed ? { ...fresh, linkedAt: new Date() } : fresh,
+    });
+    if (existing && changed) {
       await tx
         .update(attributions)
         .set({ supersededAt: sql`now()` })

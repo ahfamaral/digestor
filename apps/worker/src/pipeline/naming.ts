@@ -481,7 +481,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
     if (ref.chamber === "camara") {
       const dep = deputies[speech.officialId];
       fields = {
-        chamber: "camara",
+        idSystem: CHAMBERS[ref.chamber].idSystem,
         officialId: speech.officialId,
         displayName: dep?.name ?? titleCaseName(speech.name),
         party: dep?.party ?? speech.party ?? undefined,
@@ -496,7 +496,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
         if (!(err instanceof RecordNotFoundError)) throw err;
       }
       fields = {
-        chamber: "senado",
+        idSystem: CHAMBERS[ref.chamber].idSystem,
         officialId: speech.officialId,
         displayName: senator?.displayName ?? titleCaseName(speech.name),
         fullName: senator?.fullName ?? undefined,

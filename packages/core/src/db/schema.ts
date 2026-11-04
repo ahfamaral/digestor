@@ -303,6 +303,8 @@ export const persons = pgTable(
   (t) => [
     uniqueIndex("persons_official_senado").on(sql`(${t.officialIds}->>'senado')`),
     uniqueIndex("persons_official_camara").on(sql`(${t.officialIds}->>'camara')`),
+    uniqueIndex("persons_official_bundestag").on(sql`(${t.officialIds}->>'bundestag')`),
+    uniqueIndex("persons_official_bioguide").on(sql`(${t.officialIds}->>'bioguide')`),
     index("persons_name_norm").on(t.nameNorm),
   ],
 );
@@ -364,6 +366,10 @@ export const sessionRecords = pgTable("session_records", {
   /** Storage key of the raw payload (`<sessionId>/names/record.json`) once matched. */
   rawKey: text("raw_key"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+  /** When a `waiting` record is next fetched (the hourly `records.retry` job); null otherwise. */
+  retryAt: timestamp("retry_at", { withTimezone: true }),
+  /** When the current ref was linked: changes only when the ref changes (a re-link of the same ref keeps it). */
+  linkedAt: timestamp("linked_at", { withTimezone: true }).notNull().defaultNow(),
   /** Last change: the sweep fails a `pending`/`running` row untouched for 30 min with no live job. */
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
