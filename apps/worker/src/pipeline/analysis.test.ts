@@ -107,8 +107,11 @@ function stageRecorder(inner: StructuredLLM, sessionId: () => string) {
   const seen: [string, string, number][] = [];
   const llm: StructuredLLM = {
     async generate(a) {
+      // Reserve the slot before awaiting: parallel calls (punchline passes run 4 at a time) start in order but
+      // their DB reads finish in any order.
+      const i = seen.push([a.name, "", 0]) - 1;
       const s = (await getSession(db, sessionId()))!;
-      seen.push([a.name, s.stage, s.progress]);
+      seen[i] = [a.name, s.stage, s.progress];
       return inner.generate(a);
     },
   };

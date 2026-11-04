@@ -62,7 +62,7 @@ async function SessionScreen({ params, searchParams }: { params: Promise<{ id: s
       <Processing
         sessionId={session.id}
         source={session.source}
-        hasVideo={session.hasVideo}
+        hasVideo={session.hasVideo && !session.audioOnlyAck}
         initial={{ stage, progress: session.progress, language: session.language, profile: session.profile }}
       />
     );
