@@ -2,6 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { normaliseName, type RecordRef } from "@digestor/core";
 import type { MemberInfo, RecordConnector, RecordSpeech } from "./types.js";
 import { RecordNotFoundError, notPublishedOrNotFound } from "./types.js";
+import { ApiKeyRejectedError } from "../errors.js";
 import { get } from "./http.js";
 
 /**
@@ -111,7 +112,8 @@ async function locateInDip(ref: BundestagRef, key: string, f: typeof fetch): Pro
   const query = ref.sitting != null
     ? `f.dokumentnummer=${ref.period}/${ref.sitting}`
     : `f.datum_start=${ref.date}&f.datum_end=${ref.date}&f.wahlperiode=${ref.period}`;
-  const res = await get(`${DIP}?${query}&apikey=${encodeURIComponent(key)}`, "application/json", f, "Bundestag DIP");
+  const res = await get(`${DIP}?${query}`, "application/json", f, "Bundestag DIP", { Authorization: `ApiKey ${key}` });
+  if (res.status === 401 || res.status === 403) throw new ApiKeyRejectedError("BUNDESTAG_DIP_API_KEY");
   if (res.status === 404) return { missing: "unknown" };
   if (!res.ok) throw new Error(`The Bundestag DIP API answered ${res.status}.`);
   const body = (await res.json()) as { documents?: unknown[] };
@@ -132,6 +134,7 @@ async function locate(ref: BundestagRef, f: typeof fetch): Promise<Located> {
     try {
       return await locateInDip(ref, key, f);
     } catch (dipErr) {
+      if (dipErr instanceof ApiKeyRejectedError) throw dipErr;
       throw new Error(`${(err as Error).message} (the DIP fallback failed too: ${(dipErr as Error).message})`);
     }
   }

@@ -109,10 +109,17 @@ const closeUnique = (name: string, persons: Person[]): Person | null => {
   return close.length === 1 ? close[0]! : null;
 };
 
-/** A leading title ("Senadora", "Deputado", "Dra.") is no part of the name an official is known by. */
-const BR_TITLES = [...new Set([...CHAMBERS.senado.titles, ...CHAMBERS.camara.titles])].map((t) => t.replace(/\./g, "")).join("|");
-const STRIP_TITLE = new RegExp(`^\\s*(?:(?:${BR_TITLES})\\b\\.?\\s+)+`, "i");
-const stripTitle = (name: string) => name.replace(STRIP_TITLE, "").trim() || name;
+/** A leading title of the record's house ("Senadora", "Dra.", "Rep.") is no part of the name an official is known by. */
+const stripTitles = new Map<ChamberId, RegExp>();
+function stripTitle(name: string, chamber: ChamberId): string {
+  let re = stripTitles.get(chamber);
+  if (!re) {
+    const titles = CHAMBERS[chamber].titles.map((t) => t.replace(/\.$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    re = new RegExp(`^\\s*(?:(?:${titles.join("|")})\\b\\.?\\s+)+`, "i");
+    stripTitles.set(chamber, re);
+  }
+  return name.replace(re, "").trim() || name;
+}
 
 const tokenCount = (name: string) => normaliseName(name).split(" ").filter(Boolean).length;
 
@@ -124,6 +131,8 @@ const tokenCount = (name: string) => normaliseName(name).split(" ").filter(Boole
 export async function importContextNames(db: Db, sessionId: string, card: ContextCard): Promise<void> {
   const current = await listAttributions(db, sessionId);
   const words = (await getTranscript(db, sessionId))?.words;
+  // The record's house decides which titles are stripped (record rows without a link row are Brazilian ones from before Plan 4).
+  const recordChamber = (await getSessionRecord(db, sessionId))?.ref.chamber ?? "camara";
   const bySource: Record<"transcript" | "metadata", NewAiAttribution[]> = { transcript: [], metadata: [] };
   const repoint = new Map<string, string>(); // voice → person its caption row moves to
   for (const p of card.participants) {
@@ -134,7 +143,7 @@ export async function importContextNames(db: Db, sessionId: string, card: Contex
     let person: Person | null = null;
     // A voice the record matched: a short or full form of the context name is that official, not a new custom person.
     const proj = words ? recordProjection(current, p.speakerId, words) : null;
-    const recordPerson = proj ? closeUnique(stripTitle(name), await getPersons(db, [proj.personId])) : null;
+    const recordPerson = proj ? closeUnique(stripTitle(name, recordChamber), await getPersons(db, [proj.personId])) : null;
     // It came from the record already: no whole-voice proposal (that row would name the turns the record did not match).
     if (recordPerson) continue;
     const captionRow = current.find((a) => a.source === "caption" && a.status === "proposed" && wholeVoice(a) && a.speakerId === p.speakerId && a.personId);

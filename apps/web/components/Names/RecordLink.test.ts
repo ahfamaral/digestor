@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { t } from "@/lib/i18n";
 import { recordMatchedLine } from "@/lib/names";
-import { RecordStatusLine, RecordSuggestion, recordFieldError, suggestionShown } from "./RecordLink";
+import { RecordStatusLine, RecordSuggestion, recordFieldError, recordPollMs, suggestionShown } from "./RecordLink";
 import { RecordHouseSelect, recordHelpText, recordHouseGroups } from "./RecordHouseSelect";
 
 describe("the official record field and its status lines", () => {
@@ -26,6 +26,7 @@ describe("the official record field and its status lines", () => {
   it("shows the matched line of each chamber", () => {
     expect(recordMatchedLine({ chamber: "senado", date: "21/10/2026" })).toBe("Names from the Senado record of 21/10/2026");
     expect(recordMatchedLine({ chamber: "camara", date: null })).toBe("Names from the Câmara record");
+    expect(recordMatchedLine({ chamber: "camara", date: "30/06/2026" })).toBe("Names from the Câmara record of 30/06/2026");
     expect(recordMatchedLine({ chamber: "bundestag", date: "16/10/2026" })).toBe("Names from the Bundestag record of 16/10/2026");
     expect(recordMatchedLine({ chamber: "bundestag", date: null })).toBe("Names from the Bundestag record");
   });
@@ -97,5 +98,20 @@ describe("the suggestion", () => {
     expect(suggestionShown(rec, undefined)).toBe(false);
     expect(suggestionShown({ ...rec, status: "pending" as never }, "parliament")).toBe(false);
     expect(suggestionShown({ ...rec, ref: undefined }, "parliament")).toBe(false);
+  });
+});
+
+describe("polling", () => {
+  it("a waiting row is asked every 60 s, a working one every 3 s", () => {
+    expect(recordPollMs("waiting")).toBe(60_000);
+    expect(recordPollMs("pending")).toBe(3000);
+    expect(recordPollMs("running")).toBe(3000);
+  });
+});
+
+describe("a future date", () => {
+  it("is refused with its own line", () => {
+    const future = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10);
+    expect(recordFieldError(future)).toBe("That date is in the future. Check the date.");
   });
 });

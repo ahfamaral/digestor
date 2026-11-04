@@ -12,6 +12,9 @@ import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "./
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const POLL_MS = 3000;
+/** A waiting row only turns pending when its retry is due (hourly sweep): no need to ask every 3 s. */
+const WAITING_POLL_MS = 60_000;
+export const recordPollMs = (status: string | undefined) => (status === "waiting" ? WAITING_POLL_MS : POLL_MS);
 /** Every RecordLink of the page (the context check's and Who's who's) re-reads the row when one of them changed it. */
 const CHANGED = "digestor:record-changed";
 type Focus = "input" | "status";
@@ -141,8 +144,8 @@ export function RecordLink({ sessionId, profile, suggestionOnly = false }: { ses
   const polling = working || record?.status === "waiting"; // a waiting row turns pending when its retry is due
   useEffect(() => {
     if (!polling) return;
-    return startRefreshLoop(() => void load(), POLL_MS);
-  }, [polling, sessionId]);
+    return startRefreshLoop(() => void load(), recordPollMs(record?.status));
+  }, [polling, working, sessionId]);
 
   async function link() {
     if (busy) return;

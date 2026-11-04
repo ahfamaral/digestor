@@ -100,3 +100,18 @@ describe("recordInputError", () => {
     expect(recordInputError("https://www.camara.leg.br/evento-legislativo/1")).toBeNull();
   });
 });
+
+describe("recordInputError: future dates", () => {
+  const now = new Date("2026-11-04T12:00:00Z");
+  it("rejects a date more than a day ahead, in either order", () => {
+    expect(recordInputError("2026-11-06", undefined, now)).toBe("That date is in the future. Check the date.");
+    expect(recordInputError("11/06/2026", "us_house", now)).toBe("That date is in the future. Check the date.");
+    expect(recordInputError("06/11/2026", "camara", now)).toBe("That date is in the future. Check the date.");
+  });
+  it("accepts today, tomorrow and the past", () => {
+    expect(recordInputError("2026-11-04", undefined, now)).toBeNull();
+    expect(recordInputError("2026-11-05", undefined, now)).toBeNull();
+    expect(recordInputError("2025-10-21", undefined, now)).toBeNull();
+    expect(recordInputError("garbage", undefined, now)).toBeNull();
+  });
+});

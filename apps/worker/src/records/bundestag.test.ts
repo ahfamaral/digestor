@@ -3,6 +3,7 @@ import type { RecordRef } from "@digestor/core";
 import { bundestagConnector, parseProtokoll } from "./bundestag.js";
 import { findConnector, RecordNotFoundError, RecordNotPublishedError } from "./connector.js";
 import { FILTERLIST_EMPTY, FILTERLIST_PAGE1, LISTING_URL_WP21, PROTOKOLL_21103, XML_URL_21103, fakeBundestagFetch } from "./fakeBundestag.js";
+import { ApiKeyRejectedError } from "../errors.js";
 import { httpTiming } from "./http.js";
 
 httpTiming.delayMs = 0;
@@ -136,10 +137,12 @@ describe("bundestagConnector.findSitting", () => {
 
   it("falls back to the DIP API when the listing fails and a key is set", async () => {
     process.env.BUNDESTAG_DIP_API_KEY = "k-test";
-    const { f, calls } = fakeBundestagFetch({ listing: () => new Response("<html></html>", { status: 200 }) });
+    const { f, calls, dipHeaders } = fakeBundestagFetch({ listing: () => new Response("<html></html>", { status: 200 }) });
     const hit = await bundestagConnector.findSitting(bySitting(103) as never, f);
     expect(hit).toEqual({ xmlUrl: XML_URL_21103, period: 21, sitting: 103, date: "2026-10-16" });
-    expect(calls).toContain("https://search.dip.bundestag.de/api/v1/plenarprotokoll?f.dokumentnummer=21/103&apikey=k-test");
+    expect(calls).toContain("https://search.dip.bundestag.de/api/v1/plenarprotokoll?f.dokumentnummer=21/103");
+    expect(calls.some((c) => c.includes("apikey"))).toBe(false);
+    expect(dipHeaders[0]).toMatchObject({ Authorization: "ApiKey k-test" });
   });
 
   it("without a DIP key the listing error propagates", async () => {
@@ -159,6 +162,22 @@ describe("bundestagConnector.findSitting", () => {
     expect(hit).toMatchObject({ sitting: 103, date: "2026-10-16" });
     expect(urls[0]!.searchParams.get("f.datum_start")).toBe("2026-10-16");
     expect(urls[0]!.searchParams.get("f.datum_end")).toBe("2026-10-16");
+  });
+});
+
+describe("DIP key rejected", () => {
+  it.each([401, 403])("a DIP %i is a deterministic ApiKeyRejectedError naming the variable", async (status) => {
+    process.env.BUNDESTAG_DIP_API_KEY = "bad";
+    const { f } = fakeBundestagFetch({ listing: () => new Response("x", { status: 502 }), dip: () => new Response("no", { status }) });
+    const err = await bundestagConnector.findSitting(bySitting(103) as never, f).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiKeyRejectedError);
+    expect(err.message).toBe("The BUNDESTAG_DIP_API_KEY was rejected. Check the key on the server.");
+  });
+  it("a healthy listing never touches DIP, so a bad key is never noticed", async () => {
+    process.env.BUNDESTAG_DIP_API_KEY = "bad";
+    const { f, calls } = fakeBundestagFetch();
+    await bundestagConnector.findSitting(bySitting(103) as never, f);
+    expect(calls.some((c) => c.includes("dip.bundestag.de"))).toBe(false);
   });
 });
 

@@ -63,6 +63,11 @@ export function notPublishedOrNotFound(chamber: ChamberId, date: string | null, 
   return utcDay(now) - utcDay(from) <= CHAMBERS[chamber].publishWindowDays ? new RecordNotPublishedError() : new RecordNotFoundError(notFoundMessage);
 }
 
+/** Whether the ref's sitting is still inside its house's publish window (the same rule as `notPublishedOrNotFound`). */
+export function insidePublishWindow(ref: RecordRef, now: Date, linkedAt: Date): boolean {
+  return notPublishedOrNotFound(ref.chamber, "date" in ref ? ref.date : null, now, "", linkedAt) instanceof RecordNotPublishedError;
+}
+
 /** The line a waiting row shows (stored in `session_records.error`). */
 export function waitingLine(ref: RecordRef): string {
   const date = recordRefDate(ref);

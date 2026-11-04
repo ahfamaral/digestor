@@ -35,7 +35,8 @@ export type FakeBundestagOptions = {
 /** A `fetch` answering the three routes from the fixtures; `calls` records every URL. */
 export function fakeBundestagFetch(o: FakeBundestagOptions = {}) {
   const calls: string[] = [];
-  const f = (async (input: string | URL | Request) => {
+  const dipHeaders: Record<string, string>[] = [];
+  const f = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
     const u = new URL(url);
@@ -46,8 +47,10 @@ export function fakeBundestagFetch(o: FakeBundestagOptions = {}) {
       return html(offset === 0 ? FILTERLIST_PAGE1 : offset === 10 ? FILTERLIST_PAGE2 : FILTERLIST_EMPTY);
     }
     if (u.hostname === "search.dip.bundestag.de") {
+      dipHeaders.push((init?.headers ?? {}) as Record<string, string>);
       if (o.dip) return o.dip(u);
-      const ok = u.searchParams.get("f.dokumentnummer") === "21/103" && u.searchParams.get("apikey");
+      // DIP takes the key in the Authorization header ("ApiKey <key>"), never in the URL.
+      const ok = u.searchParams.get("f.dokumentnummer") === "21/103" && /^ApiKey \S+$/.test((init?.headers as Record<string, string> | undefined)?.Authorization ?? "");
       const body = ok
         ? { numFound: 1, documents: [{ id: "300001", typ: "Dokument", dokumentart: "Plenarprotokoll", dokumentnummer: "21/103", datum: "2026-10-16", fundstelle: { xml_url: XML_URL_21103, pdf_url: "https://dserver.bundestag.de/btp/21/21103.pdf" } }] }
         : { numFound: 0, documents: [] };
@@ -59,5 +62,5 @@ export function fakeBundestagFetch(o: FakeBundestagOptions = {}) {
     }
     return html("not found", 404);
   }) as typeof fetch;
-  return { f, calls };
+  return { f, calls, dipHeaders };
 }

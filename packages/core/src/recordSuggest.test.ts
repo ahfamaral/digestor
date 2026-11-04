@@ -148,3 +148,16 @@ describe("suggestRecord: descriptions never exclude", () => {
   });
 });
 
+
+describe("suggestRecord: committees on the own channel", () => {
+  it("TV Senado and Câmara committee hearings get no plenary suggestion", () => {
+    expect(suggestRecord(m("TV Senado", "CPI das Bets - 21/10/2026", "2026-10-21"))).toBeNull();
+    expect(suggestRecord(m("TV Senado", "Comissão de Assuntos Econômicos – 21/10/2026", "2026-10-21"))).toBeNull();
+    expect(suggestRecord(m("TV Senado", "Audiência Pública - Comissão Mista - 21/10/2026", "2026-10-21"))).toBeNull();
+    expect(suggestRecord(m("Câmara dos Deputados", "Comissão de Educação - Audiência pública - 21/10/2026", "2026-10-21"))).toBeNull();
+    expect(suggestRecord(m("TV Câmara", "CPMI do INSS - 21/10/2026", "2026-10-21"))).toBeNull();
+  });
+  it("plenary titles still suggest", () => {
+    expect(pick(suggestRecord(m("TV Senado", "Sessão Plenária Deliberativa do Senado – 30/6/26", "2026-06-30")))).toEqual({ chamber: "senado", date: "2026-06-30" });
+  });
+});

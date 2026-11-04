@@ -136,7 +136,7 @@ export function recordRefDate(ref: RecordRef): string | null {
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"]);
 
 /** A friendly line for a link that is a video, not a record; null for anything else (the caller then parses it). */
-export function recordInputError(input: string, _chamber?: ChamberId): string | null {
+export function recordInputError(input: string, chamber?: ChamberId, now: Date = new Date()): string | null {
   const token = input.trim().split(/\s+/)[0] ?? "";
   if (!token) return null;
   let url: URL;
@@ -150,6 +150,10 @@ export function recordInputError(input: string, _chamber?: ChamberId): string | 
   if ((host === "bundestag.de" || host === "www.bundestag.de") && url.pathname.startsWith("/mediathek")) {
     return "Paste the date or sitting number instead.";
   }
+  // A sitting more than a day ahead (UTC) has no record yet and never will on the day the journalist means.
+  const ref = parseRecordRef(input, chamber);
+  const date = ref && "date" in ref ? ref.date : null;
+  if (date && date > new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10)) return "That date is in the future. Check the date.";
   return null;
 }
 

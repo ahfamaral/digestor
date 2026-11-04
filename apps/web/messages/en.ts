@@ -190,7 +190,6 @@ export const en = {
       suggestedSitting: "This looks like the {house} sitting {sitting}.",
       useSuggestion: "Use this record",
       dismissSuggestion: "Not this one",
-      matchedCamara: "Names from the Câmara record",
       failed: "That record couldn't be linked. Try again.",
     },
     evidenceCaption: "From a caption on screen: “{text}”",

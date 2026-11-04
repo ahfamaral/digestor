@@ -425,6 +425,22 @@ d("handleNames", () => {
     log.mockRestore();
   });
 
+  it("a transient failure on the final attempt inside the publish window keeps waiting (6 h), outside it fails", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const today = new Date().toISOString().slice(0, 10);
+    const { id, ctx } = await setup({ link: false, fake: { list: () => new Response("boom", { status: 503 }) } });
+    const ref = { chamber: "senado" as const, date: today, sessionCode: null, url: "https://example/record" };
+    await linkRecord(db, id, ref);
+    await expect(handleNames(ctx, { sessionId: id }, LAST)).resolves.toBeUndefined();
+    const row = (await getSessionRecord(db, id))!;
+    expect(row.status).toBe("waiting");
+    expect(row.error).toContain("hasn't published the record");
+    expect(row.retryAt!.getTime() - Date.now()).toBeGreaterThan(5.9 * 3_600_000);
+    expect(row.retryAt!.getTime() - Date.now()).toBeLessThan(6.1 * 3_600_000);
+    expect(log.mock.calls.some((c) => String(c[0]).includes("inside its publish window"))).toBe(true);
+    log.mockRestore();
+  });
+
   it("a retry after a transient error takes over its own running row and matches", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     let down = true;
@@ -512,13 +528,13 @@ d("handleNames", () => {
       });
     });
 
-    it("a deputy call that keeps failing: rethrown, and failed with the Câmara line on the final attempt", async () => {
+    it("a deputy call that keeps failing: rethrown; on the final attempt a freshly linked event (inside its window since linkedAt) keeps waiting", async () => {
       const log = vi.spyOn(console, "error").mockImplementation(() => {});
       const { id, ctx } = await camaraSetup({ discursos: () => new Response("boom", { status: 503 }) });
       await expect(handleNames(ctx, { sessionId: id }, FIRST)).rejects.toThrow();
       expect((await getSessionRecord(db, id))?.status).toBe("running");
-      await expect(handleNames(ctx, { sessionId: id }, LAST)).rejects.toThrow();
-      expect(await getSessionRecord(db, id)).toMatchObject({ status: "failed", error: "The Câmara record couldn't be fetched. Please try again." });
+      await expect(handleNames(ctx, { sessionId: id }, LAST)).resolves.toBeUndefined();
+      expect(await getSessionRecord(db, id)).toMatchObject({ status: "waiting" });
       log.mockRestore();
     });
   });

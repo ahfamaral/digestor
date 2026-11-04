@@ -127,6 +127,19 @@ describe("fetchRecord", () => {
     expect(calls[0]).toContain("/packages/CREC-2026-01-05/granules?pageSize=1000&offsetMark=*");
   });
 
+  it("a chair-only granule makes no MODS request; a granule with a member does", async () => {
+    const ids = ["CREC-2026-01-05-pt1-PgH100", "CREC-2026-01-05-pt1-PgH200"];
+    const { f, calls } = fakeUsCongressFetch({
+      list: list(ids.map((id) => granule("HOUSE", id))),
+      granule: (id, kind) => (kind === "htm" ? new Response(htm(id.endsWith("100") ? "  The SPEAKER pro tempore. The House will be in order." : "  Mr. NADLER. Mr. Speaker, hello.")) : new Response(mods([{ id: "N1", parsed: "Mr. NADLER" }]))),
+    });
+    const r = await usHouseConnector.fetchRecord(ref("us_house", "2026-01-05"), f, ctx("2026-02-01T00:00:00Z"));
+    const modsCalls = calls.filter((c) => c.endsWith("/mods"));
+    expect(modsCalls).toHaveLength(1);
+    expect(modsCalls[0]).toContain("PgH200");
+    expect(r.speeches).toHaveLength(2);
+  });
+
   it("the Senate connector takes the Senate granules of the recorded day", async () => {
     const { f, calls } = fakeUsCongressFetch();
     const r = await usSenateConnector.fetchRecord(ref("us_senate", "2026-11-02"), f, ctx("2026-11-04T00:00:00Z"));

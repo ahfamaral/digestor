@@ -218,9 +218,8 @@ export function labelText(label: VoiceLabel): string {
   return label.proposed && label.badge ? `${label.text} (${badgeText(label.badge)})` : label.text;
 }
 
-/** The "Names from the … record" line of a matched record (the Câmara link carries no date). */
+/** The "Names from the … record" line of a matched record (a Câmara event link carries no date). */
 export function recordMatchedLine(record: { chamber?: ChamberId; date: string | null }): string {
-  if (record.chamber === "camara") return t("names.record.matchedCamara");
   if (record.chamber && record.chamber !== "senado") {
     const house = CHAMBERS[record.chamber].shortName;
     return record.date ? t("names.record.matchedHouse", { house, date: record.date }) : t("names.record.matchedHouseNoDate", { house });

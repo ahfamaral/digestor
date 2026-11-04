@@ -136,7 +136,8 @@ export const parseGranule = (htm: string, mods: string): RecordSpeech[] => parse
 
 // ---- the connector ---------------------------------------------------------
 
-const hasLabel = (htm: string) => labelledBlocks(htm).length > 0;
+/** Only a person's label (not the chair, the clerk) needs the MODS to be named: chair-only granules skip that request. */
+const hasPerson = (htm: string) => labelledBlocks(htm).some((b) => b.person);
 /** Page of `CREC-2026-01-05-pt1-PgH2790-2` (2790); front matter has none and comes first. */
 const pageOf = (id: string) => { const m = /Pg[HS](\d+)/.exec(id); return m ? Number(m[1]) : -1; };
 /** The `-N` suffix of a sub-granule on the same page (the page's own granule has none and is first). */
@@ -195,8 +196,7 @@ function connector(chamber: "us_house" | "us_senate", granuleClass: "HOUSE" | "S
       const parsed = await mapLimit(mine, 4, async (g) => {
         const base = `${BASE}/CREC-${date}/granules/${g.id}`;
         const htm = await text(`${base}/htm`, "text/html", key, f);
-        if (!hasLabel(htm)) return { id: g.id, speeches: [] as RecordSpeech[], members: {} as Record<string, MemberInfo> };
-        const mods = await text(`${base}/mods`, "application/xml", key, f);
+        const mods = hasPerson(htm) ? await text(`${base}/mods`, "application/xml", key, f) : "<mods/>";
         return { id: g.id, ...parseGranuleMembers(htm, mods) };
       });
       const speeches: RecordSpeech[] = [];

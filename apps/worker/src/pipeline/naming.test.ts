@@ -329,6 +329,19 @@ describe("record projection (a voice the record matched)", () => {
     expect(card.participants.find((p) => p.speakerId === "A")!.name).toMatchObject({ value: `Zuleica ${tag}`, evidence: CONFIRMED_NAME });
   });
 
+  it("importContextNames: 'Rep. Pelosi' reuses the US record person (house titles), no custom proposal", async () => {
+    const id = await newSession();
+    const tag = `Q${Math.random().toString(36).slice(2, 8)}`;
+    const pelosi = await upsertOfficialPerson(db, { idSystem: "bioguide", officialId: `P${Math.random()}`, displayName: `Nancy ${tag}`, fullName: `Nancy Patricia ${tag}` });
+    await saveTranscript(db, id, { language: "en", languageConfidence: 1, durationMs: 10_000, words: words("A") });
+    await linkRecord(db, id, { chamber: "us_house", date: "2026-11-02", url: "https://example/h" });
+    await replaceAiAttributions(db, id, "record", [{ speakerId: "A", startMs: 0, endMs: 10_000, personId: pelosi.id, status: "confirmed", confidence: 0.9, evidence: { kind: "record", speechId: "1", score: 0.9, url: "u", fetchedAt: "t" } }]);
+    await importContextNames(db, id, cardWith({ A: fact(`Rep. ${tag}`, "video", "Rep.") }));
+    const atts = await listAttributions(db, id);
+    expect(atts.find((a) => a.source === "transcript")).toBeUndefined();
+    expect(await findPersonByName(db, `Rep. ${tag}`)).toBeNull();
+  });
+
   it("importContextNames: a context name for a different person on a record-matched voice is still imported", async () => {
     const id = await newSession();
     const tag = `Q${Math.random().toString(36).slice(2, 8)}`;

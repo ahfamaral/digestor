@@ -9,7 +9,7 @@
  *   granularities with highlights, a grounded briefing, checks and thumbnails on the top highlights).
  * - `awaiting_context`: parked at the context-check pause with two open questions.
  *   `--suggest bundestag` (with `--stage awaiting_context`) makes it a parliament session carrying a suggested
- *   Bundestag sitting ("This looks like the Bundestag sitting of 16/10/2026."), as the YouTube suggester leaves it.
+ *   Bundestag sitting ("This looks like the Bundestag sitting of 04/11/2026."), as the YouTube suggester leaves it.
  *
  * Transcript, card and analysis are synthetic. There is no LangGraph checkpoint, so Continue/Skip on a seeded
  * session are ignored by the worker (the stage stays where the web moved it).
@@ -278,7 +278,7 @@ try {
   await saveContextCard(db, id, buildCard(stage === "awaiting_context", sentences[2]!.startMs), 1);
 
   if (suggest) {
-    await suggestRecordRow(db, id, { chamber: "bundestag", period: 21, sitting: 104, date: "2026-10-16", url: "https://www.bundestag.de/services/opendata" });
+    await suggestRecordRow(db, id, { chamber: "bundestag", period: 21, sitting: 104, date: "2026-11-04", url: "https://www.bundestag.de/services/opendata" });
   }
   if (stage === "awaiting_context") {
     await setStage(db, id, stage, 55);

@@ -14,7 +14,7 @@ const BodySchema = z.object({ ref: z.string(), chamber: z.unknown().optional() }
 /** Accept or dismiss a suggestion: `ref` is the suggested ref as GET returned it, so the compare-and-set checks what the journalist saw. */
 const ActionSchema = z.object({ action: z.enum(["accept", "dismiss"]), ref: z.object({ chamber: z.string() }).passthrough() }).strict();
 
-/** GET /api/sessions/[id]/record — `{ status, error, chamber, date, url, retryAt }` of the linked record (date as DD/MM/YYYY, null for a ref without one; retryAt ISO or null; a `suggested` row adds its `ref`), or null when none is linked. Who's who polls it. */
+/** GET /api/sessions/[id]/record — `{ status, error, chamber, date, url, retryAt }` of the linked record (date as the house's country writes it: MM/DD/YYYY for the US houses, DD/MM/YYYY elsewhere, null for a ref without one; retryAt ISO or null; a `suggested` row adds its `ref`), or null when none is linked. Who's who polls it. */
 export async function GET(_request: Request, ctx: Ctx): Promise<Response> {
   const { id } = await ctx.params;
   if (!isUuid(id)) return errorResponse(404, "Session not found.");

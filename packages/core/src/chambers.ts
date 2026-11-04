@@ -35,6 +35,8 @@ export type Chamber = {
 
 const BR_TITLES = ["senador", "senadora", "sen", "deputado", "deputada", "dep", "presidente", "ministro", "ministra", "doutor", "doutora", "dr", "dra", "sr", "sra", "o", "a"];
 const US_TITLES = ["Mr.", "Mrs.", "Ms.", "Miss", "Rep.", "Representative", "Sen.", "Senator", "Speaker"];
+/** Committee hearings on the parliament's own channel: their sitting numbers and dates are no plenary's. */
+const BR_COMMITTEES = [/\bcomissao\b/, /\bcomissoes\b/, /\bsubcomissao\b/, /\bcpm?i\b/, /audiencia publica/, /conselho de etica/];
 const NO_BROADCASTER = { broadcasterChannels: [], sittingWords: [], excludeBroadcaster: [], excludeOwn: [] };
 const CSPAN = [/^c-?span\d*$/];
 const THRESHOLDS = { confirm: 0.6, propose: 0.35 };
@@ -43,12 +45,12 @@ export const CHAMBERS: Record<ChamberId, Chamber> = {
   camara: {
     id: "camara", country: "BR", countryName: "Brazil", name: "Câmara dos Deputados", shortName: "Câmara",
     idSystem: "camara", defaultLanguage: "pt", publishWindowDays: 2, titles: BR_TITLES, evaluated: true, thresholds: THRESHOLDS,
-    suggest: { ownChannels: [/^tv camara$/, /^camara dos deputados$/], ...NO_BROADCASTER },
+    suggest: { ownChannels: [/^tv camara$/, /^camara dos deputados$/], ...NO_BROADCASTER, excludeOwn: BR_COMMITTEES },
   },
   senado: {
     id: "senado", country: "BR", countryName: "Brazil", name: "Senado Federal", shortName: "Senado",
     idSystem: "senado", defaultLanguage: "pt", publishWindowDays: 2, titles: BR_TITLES, evaluated: true, thresholds: THRESHOLDS,
-    suggest: { ownChannels: [/^tv senado$/, /^senado federal$/, /^agencia senado$/], ...NO_BROADCASTER },
+    suggest: { ownChannels: [/^tv senado$/, /^senado federal$/, /^agencia senado$/], ...NO_BROADCASTER, excludeOwn: BR_COMMITTEES },
   },
   bundestag: {
     id: "bundestag", country: "DE", countryName: "Germany", name: "Deutscher Bundestag", shortName: "Bundestag",
