@@ -29,7 +29,7 @@ import {
 
 import { RecordNotFoundError, RecordNotPublishedError, findConnector, waitingLine, type MemberInfo, type RecordConnector, type RecordSpeech } from "../records/connector.js";
 import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type CaptionVote } from "../agents/captions.js";
-import { MissingApiKeyError } from "../errors.js";
+import { ApiKeyRejectedError, MissingApiKeyError } from "../errors.js";
 import { RECORD_RETRY_HOURS } from "../records/retry.js";
 import { alignTurns, recordAttributions, similarityMatrix, tieOrder } from "../records/align.js";
 import type { PipelineDeps } from "./graph.js";
@@ -405,7 +405,7 @@ export const recordFetchFailed = (ref?: RecordRef) =>
 export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & {
   fetch?: typeof fetch;
   /** Test injection: used before the registry. */
-  connectors?: Partial<Record<ChamberId, RecordConnector>>;
+  connectors?: Partial<Record<ChamberId, RecordConnector | null>>;
 };
 
 /**
@@ -447,7 +447,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
     await linkRecord(db, sessionId, ref); // nothing to match yet: back to `pending` for the graph step
     return;
   }
-  const connector = deps.connectors?.[ref.chamber] ?? findConnector(ref.chamber);
+  const connector = deps.connectors && ref.chamber in deps.connectors ? deps.connectors[ref.chamber] : findConnector(ref.chamber);
   if (!connector) {
     // A house without a connector yet: nothing a retry could change.
     await failRecordFetch(db, sessionId, `The ${CHAMBERS[ref.chamber].shortName} record can't be read yet.`, ref);
@@ -460,7 +460,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   try {
     ({ speeches, date: eventDate, members, url: recordUrl } = await connector.fetchRecord(ref, f, { now: new Date(), linkedAt: claimed.linkedAt }));
   } catch (err) {
-    if (err instanceof RecordNotFoundError || err instanceof MissingApiKeyError) {
+    if (err instanceof RecordNotFoundError || err instanceof MissingApiKeyError || err instanceof ApiKeyRejectedError) {
       // Deterministic: the record has nothing for it, or the server lacks the house's key ("<VAR> is not set on the server."). No retry.
       await failRecordFetch(db, sessionId, err.message, ref);
       return;

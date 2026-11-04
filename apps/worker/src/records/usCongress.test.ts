@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RecordRef } from "@digestor/core";
-import { MissingApiKeyError } from "../errors.js";
+import { ApiKeyRejectedError, MissingApiKeyError } from "../errors.js";
 import { findConnector, RecordNotFoundError, RecordNotPublishedError } from "./connector.js";
 import { GRANULES_2026_11_02, HOUSE_GRANULE_2024, HOUSE_HTM, HOUSE_MODS, SENATE_GRANULE_2026, SENATE_HTM, SENATE_MODS, fakeUsCongressFetch, stubHtm } from "./fakeUsCongress.js";
 import { httpTiming } from "./http.js";
@@ -60,11 +60,11 @@ describe("parseGranule: same surname (Review Focus 3)", () => {
     const s = parseGranule(htm(body), realWithTexas);
     expect(s.map((x) => x.officialId)).toEqual(["S000522", "S999999", null, null, null]);
   });
-  it("a bare SMITH that matches two parsed names is null; a single bare match is that member", () => {
+  it("a bare SMITH that matches two parsed names is null; a bare SMITH never maps to the only SMITH of a state (exact match only)", () => {
     const m = mods([{ id: "A", parsed: "Mr. SMITH of Texas" }, { id: "B", parsed: "Mr. SMITH of New Jersey", state: "NJ" }, { id: "C", parsed: "Mr. JONES" }]);
     const s = parseGranule(htm("  Mr. SMITH. one\n  Mr. JONES. two\n  Mr. SMITH of Texas. three"), m);
     expect(s.map((x) => x.officialId)).toEqual([null, "C", "A"]);
-    expect(parseGranule(htm("  Mr. SMITH. one"), mods([{ id: "B", parsed: "Mr. SMITH of New Jersey" }]))[0]!.officialId).toBe("B");
+    expect(parseGranule(htm("  Mr. SMITH. one"), mods([{ id: "B", parsed: "Mr. SMITH of New Jersey" }]))[0]!.officialId).toBeNull();
   });
   it("a missing or unparsable MODS names no one", () => {
     expect(parseGranule(htm("  Mr. NADLER. Hi."), "<mods/>")[0]).toMatchObject({ officialId: null, name: "Mr. NADLER" });
@@ -73,6 +73,20 @@ describe("parseGranule: same surname (Review Focus 3)", () => {
   it("chair and clerk labels, with or without a presiding member in parentheses", () => {
     const s = parseGranule(htm("  The PRESIDING OFFICER (Mr. LEE). Without objection.\n  The CLERK. The clerk will report.\n  The ACTING PRESIDENT pro tempore. Ok.\n  Ms. McCOLLUM. Thanks."), mods([{ id: "M", parsed: "Mr. LEE" }, { id: "Q", parsed: "Ms. McCOLLUM" }]));
     expect(s.map((x) => [x.name, x.officialId])).toEqual([["The PRESIDING OFFICER", null], ["The CLERK", null], ["The ACTING PRESIDENT pro tempore", null], ["First Q", "Q"]]);
+  });
+  it("the Record's mixed-case chair shapes are their own null speeches", () => {
+    const m = mods([{ id: "B", parsed: "Mr. BOST" }]);
+    const s = parseGranule(htm("  Mr. BOST. I yield.\n  The Acting CHAIR (Mr. Bost). The gentleman is recognized.\n  The SPEAKER pro tempore (Mr. Womack). Without objection.\n  The ACTING PRESIDENT pro tempore. So ordered."), m);
+    expect(s.map((x) => [x.name, x.officialId, x.text])).toEqual([
+      ["First B", "B", "I yield."],
+      ["The Acting CHAIR", null, "The gentleman is recognized."],
+      ["The SPEAKER pro tempore", null, "Without objection."],
+      ["The ACTING PRESIDENT pro tempore", null, "So ordered."],
+    ]);
+  });
+  it("label matching is case-sensitive: a narrative 'Mr. McClintock.' resolves to no one", () => {
+    const m = mods([{ id: "M", parsed: "Mr. McCLINTOCK" }]);
+    expect(parseGranule(htm("  Mr. McClintock. narrative"), m)[0]).toMatchObject({ officialId: null, name: "Mr. McClintock" });
   });
   it("mixed-case surnames (DesJARLAIS, McCLINTOCK, JACKSON LEE)", () => {
     const m = mods([{ id: "D", parsed: "Mr. DesJARLAIS" }, { id: "J", parsed: "Ms. JACKSON LEE" }]);
@@ -97,7 +111,7 @@ describe("fetchRecord", () => {
   it("uses only the connector's class, in page order, and never EXTENSIONS or DAILYDIGEST", async () => {
     const ids = ["CREC-2026-01-05-pt1-PgH200", "CREC-2026-01-05-pt1-PgH100", "CREC-2026-01-05-pt1-PgH100-2", "CREC-2026-01-05-pt1-PgS150", "CREC-2026-01-05-pt1-PgE9", "CREC-2026-01-05-pt1-PgD9"];
     const classes = ["HOUSE", "HOUSE", "HOUSE", "SENATE", "EXTENSIONS", "DAILYDIGEST"];
-    const { f, calls } = fakeUsCongressFetch({
+    const { f, calls, keys } = fakeUsCongressFetch({
       list: list(ids.map((id, i) => granule(classes[i]!, id))),
       granule: (id, kind) => (kind === "htm" ? new Response(htm(`  Mr. NADLER. text of ${id}`)) : new Response(mods([{ id: "N1", parsed: "Mr. NADLER" }]))),
     });
@@ -108,7 +122,8 @@ describe("fetchRecord", () => {
     expect(r.date).toBe("2026-01-05");
     expect(r.members["N1"]).toMatchObject({ displayName: "First N1" });
     expect(calls.some((c) => /PgS150|PgE9|PgD9/.test(c))).toBe(false);
-    expect(calls.every((c) => c.includes("api_key=test-key"))).toBe(true);
+    expect(calls.some((c) => c.includes("api_key") || c.includes("test-key"))).toBe(false);
+    expect(keys.every((k) => k === "test-key")).toBe(true);
     expect(calls[0]).toContain("/packages/CREC-2026-01-05/granules?pageSize=1000&offsetMark=*");
   });
 
@@ -118,7 +133,7 @@ describe("fetchRecord", () => {
     expect(r.speeches).toEqual([]);
     const senateIds = GRANULES_2026_11_02.granules.filter((g) => g.granuleClass === "SENATE").map((g) => g.granuleId);
     expect(senateIds).toContain(SENATE_GRANULE_2026);
-    expect(calls.filter((c) => c.endsWith("/htm?api_key=test-key")).length).toBe(senateIds.length);
+    expect(calls.filter((c) => c.endsWith("/htm")).length).toBe(senateIds.length);
     expect(calls.some((c) => c.includes("PgH"))).toBe(false);
   });
 
@@ -184,7 +199,7 @@ describe("fetchRecord", () => {
     const r = await usHouseConnector.fetchRecord(ref("us_house", "2026-01-05"), f, ctx("2026-02-01T00:00:00Z"));
     expect(r.speeches).toHaveLength(2);
     expect(calls[1]).toContain("offsetMark=AoE2");
-    expect(calls[1]).toContain("api_key=test-key");
+    expect(calls[1]).not.toContain("api_key");
   });
 
   it("a missing key throws MissingApiKeyError before any request", async () => {
@@ -201,6 +216,32 @@ describe("fetchRecord", () => {
     const err = await usHouseConnector.fetchRecord(ref("us_house", "2026-11-02"), f, ctx("2026-11-04T00:00:00Z")).catch((e) => e);
     expect(err).toBeInstanceOf(Error);
     expect(String(err.message)).not.toContain("test-key");
+  });
+
+  it("a 403 (rejected key) is deterministic and names the variable, not the key", async () => {
+    const { f } = fakeUsCongressFetch({ list: () => new Response("{}", { status: 403 }) });
+    const err = await usHouseConnector.fetchRecord(ref("us_house", "2026-11-02"), f, ctx("2026-11-04T00:00:00Z")).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiKeyRejectedError);
+    expect(err.message).toBe("The API_DATA_GOV_KEY was rejected. Check the key on the server.");
+  });
+
+  it("same-page sub-granules sort by their numeric suffix, not list order", async () => {
+    const ids = ["PgH100-10", "PgH100-2", "PgH100", "PgH100-3"].map((s) => `CREC-2026-01-05-pt1-${s}`);
+    const { f } = fakeUsCongressFetch({
+      list: list(ids.map((id) => granule("HOUSE", id))),
+      granule: (id, kind) => (kind === "htm" ? new Response(htm(`  Mr. NADLER. ${id.replace("CREC-2026-01-05-pt1-", "")}`)) : new Response(mods([{ id: "N1", parsed: "Mr. NADLER" }]))),
+    });
+    const r = await usHouseConnector.fetchRecord(ref("us_house", "2026-01-05"), f, ctx("2026-02-01T00:00:00Z"));
+    expect(r.speeches.map((s) => s.text)).toEqual(["PgH100", "PgH100-2", "PgH100-3", "PgH100-10"]);
+  });
+
+  it("a granule list that never ends fails loudly instead of truncating", async () => {
+    let n = 0;
+    const { f } = fakeUsCongressFetch({ list: () => new Response(JSON.stringify({ nextPage: `https://api.govinfo.gov/packages/CREC-2026-01-05/granules?offsetMark=${++n}`, granules: [] })) });
+    const err = await usHouseConnector.fetchRecord(ref("us_house", "2026-01-05"), f, ctx("2026-02-01T00:00:00Z")).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/GovInfo.*more than 20 pages/);
+    expect(n).toBe(20);
   });
 
   it("a ref of another house is refused", async () => {

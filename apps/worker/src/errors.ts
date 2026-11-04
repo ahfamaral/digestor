@@ -13,3 +13,11 @@ export class VideoRemovedError extends Error {
     this.name = "VideoRemovedError";
   }
 }
+
+/** Deterministic: the server's key for an official-records API was refused (invalid or revoked); a retry can't help. */
+export class ApiKeyRejectedError extends Error {
+  constructor(public readonly varName: string) {
+    super(`The ${varName} was rejected. Check the key on the server.`);
+    this.name = "ApiKeyRejectedError";
+  }
+}

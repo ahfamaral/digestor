@@ -30,7 +30,7 @@ import {
 import type { RecordConnector, RecordSpeech } from "../records/connector.js";
 import { RecordNotPublishedError } from "../records/connector.js";
 import { connectorFor } from "../records/connector.js";
-import { MissingApiKeyError } from "../errors.js";
+import { ApiKeyRejectedError, MissingApiKeyError } from "../errors.js";
 import { FIXTURE_SPEECHES, fixtureTexts, transcriptOfSpeeches } from "../records/fakeSenado.js";
 
 const none: Fact = { value: null, source: null, evidence: null };
@@ -392,6 +392,24 @@ describe("runRecordStep through a connector", () => {
     expect(rows[0]!.evidence).toMatchObject({ kind: "record", chamber: "bundestag", date: "2026-10-16", url: "https://www.bundestag.de/protokoll.xml" });
     const a = rows.find((r) => r.speakerId === "A")!;
     expect((await getPersons(db, [a.personId!]))[0]).toMatchObject({ displayName: "Anna Muster", party: "SPD", state: "BY", officialIds: { bundestag: "bt-524179" } });
+  });
+
+  it("a house without a connector fails its row with a friendly line and does not throw", async () => {
+    const s = await createSession(db, { source: "upload", title: "No connector" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "us_house", date: "2026-10-16", url: "https://www.congress.gov/x" });
+    await expect(runRecordStep({ db, storage: new LocalStorage(root), connectors: { us_house: null } }, s.id)).resolves.toBeUndefined();
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The House record can't be read yet." });
+  });
+
+  it("a rejected key fails the row with its line and does not throw (no retry)", async () => {
+    const s = await createSession(db, { source: "upload", title: "Bad key" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "us_house", date: "2026-10-16", url: "https://www.congress.gov/x" });
+    const br = connectorFor("senado");
+    const bad: RecordConnector = { chamber: "us_house", stopWords: br.stopWords, speechText: br.speechText, async fetchRecord() { throw new ApiKeyRejectedError("API_DATA_GOV_KEY"); } };
+    await expect(runRecordStep({ db, storage: new LocalStorage(root), connectors: { us_house: bad } }, s.id)).resolves.toBeUndefined();
+    expect(await getSessionRecord(db, s.id)).toMatchObject({ status: "failed", error: "The API_DATA_GOV_KEY was rejected. Check the key on the server." });
   });
 
   it("a connector that needs a key the server lacks fails the row with the key's line and does not throw (no retry)", async () => {

@@ -7,10 +7,10 @@ export const httpTiming = { timeoutMs: 30_000, delayMs: 1000 };
  * GET with a 30 s timeout. Network failures, timeouts, 429 and 5xx are transient: one retry after a short delay, then a
  * plain error (the job rethrows and pg-boss retries it). `label` names the API in error messages ("Senado").
  */
-export async function get(url: string, accept: string, f: typeof fetch, label: string): Promise<Response> {
+export async function get(url: string, accept: string, f: typeof fetch, label: string, extraHeaders: Record<string, string> = {}): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await f(url, { headers: { accept }, signal: AbortSignal.timeout(httpTiming.timeoutMs) });
+      const res = await f(url, { headers: { accept, ...extraHeaders }, signal: AbortSignal.timeout(httpTiming.timeoutMs) });
       if (res.status >= 500 || res.status === 429) throw new Error(`${label} API answered ${res.status}.`);
       return res;
     } catch (err) {

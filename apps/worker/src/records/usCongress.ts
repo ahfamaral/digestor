@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { RecordRef } from "@digestor/core";
-import { MissingApiKeyError } from "../errors.js";
+import { ApiKeyRejectedError, MissingApiKeyError } from "../errors.js";
 import type { MemberInfo, RecordConnector, RecordSpeech } from "./types.js";
 import { RecordNotFoundError, notPublishedOrNotFound } from "./types.js";
 import { get, mapLimit } from "./http.js";
@@ -42,7 +42,7 @@ const decode = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: 
 const WORD = "(?:[A-Z][a-z]{0,3}[A-Z][A-Za-z'’-]*|[A-Z][A-Z'’-]+)";
 const PERSON = new RegExp(`^  ((?:Mr|Ms|Mrs|Miss|Dr)\\. ${WORD}(?: ${WORD})*(?: of [A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)*)?)\\.(?: |$)`);
 /** "The SPEAKER pro tempore.", "The PRESIDING OFFICER (Mr. LEE).", "The CLERK.", "The ACTING PRESIDENT pro tempore." */
-const CHAIR = /^  (The [A-Z]{2,}(?: [A-Z]{2,})*(?: pro tempore)?)(?: \([^)]*\))?\.(?: |$)/;
+const CHAIR = /^  (The (?:Acting )?[A-Z]{2,}(?: [A-Z]{2,})*(?: pro tempore)?)(?: \([^)]*\))?\.(?: |$)/;
 
 const isNoise = (line: string) =>
   /^\s*\[\[Page [A-Z]*\d+\]\]\s*$/.test(line) || /^\s*\{time\}\s*\d*\s*$/.test(line) || /^\s*_{5,}\s*$/.test(line) || /^ {20,}\S/.test(line);
@@ -108,10 +108,10 @@ function membersOf(mods: string): Member[] {
   return out;
 }
 
-/** The one member a label stands for: its `parsed` name equals the label, or (bare surname) is the label plus " of <State>". More than one member, or none: null. */
+/** The one member a label stands for: a `parsed` name equal to the label, verbatim (case-sensitive, so a narrative "Mr. McClintock." is no label). None or more than one: null, never a guess. */
 function resolve(label: string, members: Member[]): Member | null {
-  const l = squash(label).toLowerCase();
-  const hits = members.filter((m) => m.parsed.some((p) => { const q = p.toLowerCase(); return q === l || q.startsWith(`${l} of `); }));
+  const l = squash(label);
+  const hits = members.filter((m) => m.parsed.includes(l));
   return new Set(hits.map((h) => h.id)).size === 1 ? hits[0]! : null;
 }
 
@@ -139,25 +139,36 @@ export const parseGranule = (htm: string, mods: string): RecordSpeech[] => parse
 const hasLabel = (htm: string) => labelledBlocks(htm).length > 0;
 /** Page of `CREC-2026-01-05-pt1-PgH2790-2` (2790); front matter has none and comes first. */
 const pageOf = (id: string) => { const m = /Pg[HS](\d+)/.exec(id); return m ? Number(m[1]) : -1; };
+/** The `-N` suffix of a sub-granule on the same page (the page's own granule has none and is first). */
+const subOf = (id: string) => { const m = /-(\d+)$/.exec(id.replace(/^CREC-\d{4}-\d{2}-\d{2}-pt\d+-/, "")); return m ? Number(m[1]) : 1; };
 
-const withKey = (url: string, key: string) => `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(key)}`;
+const MAX_LIST_PAGES = 20;
+const keyHeader = (key: string) => ({ "x-api-key": key });
+
+/** GET with the key in `X-Api-Key`; 403/401 means the key was refused (deterministic). */
+async function govGet(url: string, accept: string, key: string, f: typeof fetch): Promise<Response> {
+  const res = await get(url, accept, f, "GovInfo", keyHeader(key));
+  if (res.status === 403 || res.status === 401) throw new ApiKeyRejectedError("API_DATA_GOV_KEY");
+  return res;
+}
 
 async function listGranules(date: string, key: string, f: typeof fetch): Promise<Granule[] | null> {
   const out: Granule[] = [];
   let url: string | null = `${BASE}/CREC-${date}/granules?pageSize=1000&offsetMark=*`;
-  for (let page = 0; url && page < 20; page++) {
-    const res = await get(withKey(url, key), "application/json", f, "GovInfo");
+  for (let page = 0; url && page < MAX_LIST_PAGES; page++) {
+    const res = await govGet(url, "application/json", key, f);
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`The GovInfo API answered ${res.status}.`);
     const body = (await res.json()) as { granules?: Granule[]; nextPage?: string | null };
     out.push(...(body.granules ?? []));
     url = body.nextPage || null;
   }
+  if (url) throw new Error(`The GovInfo granule list of ${date} has more than ${MAX_LIST_PAGES} pages; refusing to read a truncated record.`);
   return out;
 }
 
 async function text(url: string, accept: string, key: string, f: typeof fetch): Promise<string> {
-  const res = await get(withKey(url, key), accept, f, "GovInfo");
+  const res = await govGet(url, accept, key, f);
   if (!res.ok) throw new Error(`The GovInfo API answered ${res.status} for ${url}.`);
   return res.text();
 }
@@ -179,7 +190,7 @@ function connector(chamber: "us_house" | "us_senate", granuleClass: "HOUSE" | "S
       const mine = all
         .map((g, i) => ({ id: g.granuleId ?? "", cls: g.granuleClass, i }))
         .filter((g) => g.cls === granuleClass && g.id)
-        .sort((a, b) => pageOf(a.id) - pageOf(b.id) || a.i - b.i);
+        .sort((a, b) => pageOf(a.id) - pageOf(b.id) || subOf(a.id) - subOf(b.id) || a.i - b.i);
       if (mine.length === 0) throw new RecordNotFoundError(notFound);
       const parsed = await mapLimit(mine, 4, async (g) => {
         const base = `${BASE}/CREC-${date}/granules/${g.id}`;

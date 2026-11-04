@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 /**
- * Test fake of the GovInfo Congressional Record routes (https://api.govinfo.gov, key as `api_key`), recorded 2026-11-04
+ * Test fake of the GovInfo Congressional Record routes (https://api.govinfo.gov, key in the `X-Api-Key` header; the fake answers 403 without one, as api.data.gov does for an invalid key), recorded 2026-11-04
  * with the public DEMO_KEY (the key is stripped from everything stored; vendor-contract-check):
  *  - GET /packages/CREC-2026-11-02/granules?pageSize=1000&offsetMark=*  -> crec-2026-11-02-granules.json (68 granules:
  *    HOUSE 15, SENATE 4, EXTENSIONS 43, DAILYDIGEST 6; a pro forma day, so the speeches are thin; `nextPage` null)
@@ -39,15 +39,17 @@ export type FakeUsCongressOptions = {
 /** A minimal htm with no speaker label, for a granule the fixtures don't hold. SYNTHETIC. */
 export const stubHtm = (granuleId: string) => `<html>\n<head>\n<title>Congressional Record</title>\n</head>\n<body><pre>\n[Congressional Record]\n[House]\nFrom the Congressional Record Online through the Government Publishing Office [<a href="https://www.gpo.gov">www.gpo.gov</a>]\n\n  Stub text of ${granuleId}.\n</pre></body>\n</html>`;
 
-/** A `fetch` answering the GovInfo routes from the fixtures; `calls` records every URL (with the key). */
+/** A `fetch` answering the GovInfo routes from the fixtures; `calls` records every URL (never with the key) and `keys` each request's X-Api-Key. */
 export function fakeUsCongressFetch(o: FakeUsCongressOptions = {}) {
   const calls: string[] = [];
-  const f = (async (input: string | URL | Request) => {
+  const keys: (string | null)[] = [];
+  const f = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
+    keys.push(new Headers(init?.headers).get("x-api-key"));
     const u = new URL(url);
     const m = /^\/packages\/(CREC-\d{4}-\d{2}-\d{2})(?:\/granules(?:\/([^/]+)\/(htm|mods))?)?$/.exec(u.pathname);
-    if (u.hostname !== "api.govinfo.gov" || !m || !u.searchParams.get("api_key")) return json({ error: "API_KEY_MISSING" }, 403);
+    if (u.hostname !== "api.govinfo.gov" || !m || !new Headers(init?.headers).get("x-api-key") || u.searchParams.has("api_key")) return json({ error: "API_KEY_MISSING" }, 403);
     const [, pkg, gid, kind] = m as unknown as [string, string, string | undefined, "htm" | "mods" | undefined];
     if (!gid) {
       if (o.list) return o.list(pkg, u);
@@ -60,5 +62,5 @@ export function fakeUsCongressFetch(o: FakeUsCongressOptions = {}) {
     if (body === null) return kind === "htm" ? new Response(stubHtm(gid), { status: 200, headers: { "content-type": "text/html" } }) : new Response("<mods/>", { status: 200, headers: { "content-type": "application/xml" } });
     return new Response(body, { status: 200, headers: { "content-type": kind === "htm" ? "text/html" : "application/xml" } });
   }) as typeof fetch;
-  return { f, calls };
+  return { f, calls, keys };
 }
