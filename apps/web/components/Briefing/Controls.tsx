@@ -9,6 +9,12 @@ import { t, type MessageKey } from "@/lib/i18n";
 import { Dropdown } from "@/components/Dropdown";
 import { Busy } from "@/components/ui/spinner";
 
+/** Tick or untick a level (at least one stays ticked). Task 7 replaces this with checkboxes. */
+function toggleLevel(levels: Granularity[], g: Granularity): Granularity[] {
+  if (!levels.includes(g)) return LEVELS.filter((l) => l === g || levels.includes(l));
+  return levels.length > 1 ? levels.filter((l) => l !== g) : levels;
+}
+
 const LEVELS: Granularity[] = ["exchange", "passage", "punchline"];
 const SHOW_TEXT: Record<ShowFilter, MessageKey> = {
   open: "briefing.showOpen",
@@ -77,11 +83,11 @@ export function Controls({
               <button
                 key={g}
                 type="button"
-                aria-pressed={filters.granularity === g}
-                onClick={() => set({ granularity: g })}
+                aria-pressed={filters.levels.includes(g)}
+                onClick={() => set({ levels: toggleLevel(filters.levels, g) })}
                 className={cn(
                   "h-7 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                  filters.granularity === g && "bg-foreground text-white",
+                  filters.levels.includes(g) && "bg-foreground text-white",
                 )}
               >
                 {t(`granularity.${g}`)}

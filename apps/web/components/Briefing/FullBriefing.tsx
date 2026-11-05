@@ -203,9 +203,9 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
     }
   }
   // "Found N moments with X." plus how many are at the other levels (the list shows one level at a time).
-  const otherLevels = (["exchange", "passage", "punchline"] as const).filter((g) => g !== filters.granularity);
+  const otherLevels = (["exchange", "passage", "punchline"] as const).filter((g) => !filters.levels.includes(g));
   const hiddenFoundAll = fmState?.requestId
-    ? moments.filter((m) => m.origin === "find_more" && m.findMoreRequestId === fmState.requestId && m.granularity !== filters.granularity && statuses[m.id] !== "approved").length
+    ? moments.filter((m) => m.origin === "find_more" && m.findMoreRequestId === fmState.requestId && !filters.levels.includes(m.granularity) && statuses[m.id] !== "approved").length
     : 0;
   const hiddenFound = Math.min(hiddenFoundAll, fmState?.momentCount ?? 0); // kept earlier moments aren't new
   const findMoreSummary =
@@ -276,7 +276,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   const shown = order.length;
   // "Fewer than 5 moments at the selected granularity": finer moments nested under a row don't count.
   const atLevel = (function count(list: typeof views): number {
-    return list.reduce((n, v) => n + (v.moment.granularity === filters.granularity ? 1 : 0) + count(v.children), 0);
+    return list.reduce((n, v) => n + (filters.levels.includes(v.moment.granularity) ? 1 : 0) + count(v.children), 0);
   })(views);
   const confirmDisabled = approved.length === 0 || busy !== null || session.videoRemoved;
 

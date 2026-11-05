@@ -57,29 +57,74 @@ describe("filterMoments", () => {
     expect(shape(filterMoments(all, {}, f(), topics))).toEqual([
       ["ex1", [["pa1", []], ["pu1", []], ["pa2", []]]],
       ["ex2", [["pu2", []]]],
+      ["mine", []],
       ["cnt", []],
     ]);
   });
 
-  it("the selected level is the primary list; coarser levels are not shown", () => {
-    expect(shape(filterMoments(all, {}, f({ granularity: "punchline" }), topics))).toEqual([["pu1", []], ["pu2", []]]);
-    expect(shape(filterMoments(all, {}, f({ granularity: "passage" }), topics))).toEqual([["pa1", []], ["pa2", []], ["mine", []]]);
+  it("only ticked levels are listed; an unticked parent level is skipped when nesting", () => {
+    expect(shape(filterMoments(all, {}, f({ levels: ["punchline"] }), topics))).toEqual([["pu1", []], ["pu2", []]]);
+    expect(shape(filterMoments(all, {}, f({ levels: ["passage"] }), topics))).toEqual([["pa1", []], ["pa2", []], ["mine", []]]);
   });
 
-  it("a finer moment whose parent is filtered out shows at the top level only at its own granularity, else it is hidden", () => {
-    // Focus B: ex2 (A only) drops out, so pu2 (B) is hidden at Exchange…
-    expect(shape(filterMoments(all, {}, f({ speaker: "B" }), topics))).toEqual([["ex1", [["pu1", []]]]]);
-    // …and shown on its own at Punchline.
-    expect(shape(filterMoments(all, {}, f({ granularity: "punchline", speaker: "B" }), topics))).toEqual([["pu1", []], ["pu2", []]]);
+  it("a passage with no exchange above it is a root, not hidden", () => {
+    // Focus B: ex2 (A only) drops out, so pu2 (B) becomes a root of t2 instead of vanishing.
+    expect(shape(filterMoments(all, {}, f({ speaker: "B" }), topics))).toEqual([["ex1", [["pu1", []]]], ["pu2", []]]);
+    const lone = moment("lone", "passage", "t1", 10, 20, { inside: "gone" });
+    expect(shape(filterMoments([lone], {}, f(), topics))).toEqual([["lone", []]]);
+  });
+
+  it("a punchline whose passage level is unticked attaches to its exchange", () => {
+    const views = filterMoments(all, {}, f({ levels: ["exchange", "punchline"] }), topics);
+    expect(shape(views)).toEqual([["ex1", [["pu1", []]]], ["ex2", [["pu2", []]]], ["cnt", []]]);
+  });
+
+  it("a punchline with no shown ancestor is a topic root", () => {
+    expect(shape(filterMoments(all, {}, f({ levels: ["punchline"] }), topics))).toEqual([["pu1", []], ["pu2", []]]);
+    // a punchline inside a passage inside an exchange, only punchline ticked
+    const p = moment("p", "punchline", "t1", 12, 20, { inside: "pa1" });
+    expect(shape(filterMoments([ex1, pa1, p], {}, f({ levels: ["punchline"] }), topics))).toEqual([["p", []]]);
+  });
+
+  it("an approved moment at an unticked level stays listed and keeps its children", () => {
+    const sel: Record<string, SelectionStatus> = { pa1: "approved" };
+    const inner = moment("inner", "punchline", "t1", 12, 18, { inside: "pa1" });
+    expect(shape(filterMoments([...all, inner], sel, f({ levels: ["exchange", "punchline"] }), topics))).toEqual([
+      ["ex1", [["pa1", [["inner", []]]], ["pu1", []]]],
+      ["ex2", [["pu2", []]]],
+      ["cnt", []],
+    ]);
+  });
+
+  it("sticky ids stay listed under show=open after being skipped", () => {
+    const sel: Record<string, SelectionStatus> = { ex2: "rejected" };
+    expect(shape(filterMoments(all, sel, f(), topics)).map(([id]) => id)).not.toContain("ex2");
+    expect(shape(filterMoments(all, sel, f(), topics, undefined, new Set(["ex2"]))).map(([id]) => id)).toContain("ex2");
+    // sticky skips only the status filter: other filters still apply
+    expect(shape(filterMoments(all, sel, f({ speaker: "B" }), topics, undefined, new Set(["ex2"]))).map(([id]) => id)).not.toContain("ex2");
+  });
+
+  it("self, missing, finer-parent and cyclic insideMomentId never hide or duplicate a moment", () => {
+    const a = moment("a", "exchange", "t1", 0, 10, { inside: "a" });
+    const b = moment("b", "passage", "t1", 20, 30, { inside: "nope" });
+    const c = moment("c", "exchange", "t1", 40, 50, { inside: "d" });
+    const d = moment("d", "punchline", "t1", 42, 48);
+    const e = moment("e", "passage", "t1", 60, 70, { inside: "f" });
+    const g = moment("f", "passage", "t1", 62, 68, { inside: "e" });
+    const ms = [a, b, c, d, e, g];
+    const flatten = (vs: MomentView[]): MomentView[] => vs.flatMap((v) => [v, ...flatten(v.children)]);
+    const ids = flatten(filterMoments(ms, {}, DEFAULT_FILTERS, topics)).map((v) => v.moment.id).sort();
+    expect(ids).toEqual(ms.map((m) => m.id).sort());
   });
 
   it("focus keeps only moments with the speaker", () => {
-    const views = filterMoments(all, {}, f({ granularity: "passage", speaker: "B" }), topics);
+    const views = filterMoments(all, {}, f({ levels: ["passage"], speaker: "B" }), topics);
     expect(shape(views)).toEqual([]);
     const a = filterMoments(all, {}, f({ speaker: "A" }), topics);
     expect(shape(a)).toEqual([
       ["ex1", [["pa1", []], ["pa2", []]]],
       ["ex2", []],
+      ["mine", []],
       ["cnt", []],
     ]);
     expect(shape(filterMoments(all, {}, f({ speaker: "Z" }), topics))).toEqual([]);
@@ -88,16 +133,18 @@ describe("filterMoments", () => {
   it("counted moments ignore min relevance (personal moments too: they have no score)", () => {
     expect(shape(filterMoments(all, {}, f({ minRelevance: 75 }), topics))).toEqual([
       ["ex1", [["pa1", []]]],
+      ["pu2", []],
+      ["mine", []],
       ["cnt", []],
     ]);
-    expect(shape(filterMoments(all, {}, f({ granularity: "passage", minRelevance: 75 }), topics))).toEqual([["pa1", []], ["mine", []]]);
-    expect(shape(filterMoments(all, {}, f({ minRelevance: 100 }), topics))).toEqual([["cnt", []]]);
+    expect(shape(filterMoments(all, {}, f({ levels: ["passage"], minRelevance: 75 }), topics))).toEqual([["pa1", []], ["mine", []]]);
+    expect(shape(filterMoments(all, {}, f({ minRelevance: 100 }), topics))).toEqual([["mine", []], ["cnt", []]]);
   });
 
   it("type chips keep moments with any of the chosen types; none chosen means all types", () => {
     expect(shape(filterMoments(all, {}, f({ types: ["key_point", "heated"] }), topics))).toEqual([["ex1", []], ["ex2", []]]);
-    expect(shape(filterMoments(all, {}, f({ granularity: "punchline", types: ["light"] }), topics))).toEqual([["pu2", []]]);
-    expect(shape(filterMoments(all, {}, f({ types: [] }), topics))).toHaveLength(3);
+    expect(shape(filterMoments(all, {}, f({ levels: ["punchline"], types: ["light"] }), topics))).toEqual([["pu2", []]]);
+    expect(shape(filterMoments(all, {}, f({ types: [] }), topics))).toHaveLength(4);
   });
 
   it("show=open hides skipped moments", () => {
@@ -105,16 +152,19 @@ describe("filterMoments", () => {
     const open = filterMoments(all, sel, f(), topics);
     expect(shape(open)).toEqual([
       ["ex1", [["pa2", []]]],
+      ["pu2", []],
+      ["mine", []],
       ["cnt", []],
     ]);
     expect(open[0]!.status).toBe("approved");
     expect(open[0]!.children[0]!.status).toBeNull();
-    expect(shape(filterMoments(all, sel, f({ show: "skipped" }), topics))).toEqual([["ex2", []]]);
+    expect(shape(filterMoments(all, sel, f({ show: "skipped" }), topics))).toEqual([["pa1", []], ["pu1", []], ["ex2", []]]);
     expect(shape(filterMoments(all, sel, f({ show: "approved" }), topics))).toEqual([["ex1", []]]);
-    expect(shape(filterMoments(all, sel, f({ show: "skipped", granularity: "passage" }), topics))).toEqual([["pa1", []]]);
+    expect(shape(filterMoments(all, sel, f({ show: "skipped", levels: ["passage"] }), topics))).toEqual([["pa1", []]]);
     expect(shape(filterMoments(all, sel, f({ show: "all" }), topics))).toEqual([
       ["ex1", [["pa1", []], ["pu1", []], ["pa2", []]]],
       ["ex2", [["pu2", []]]],
+      ["mine", []],
       ["cnt", []],
     ]);
   });
@@ -123,7 +173,7 @@ describe("filterMoments", () => {
     const late = moment("late-t1", "passage", "t1", 290, 320);
     const early = moment("early-t2", "passage", "t2", 280, 310);
     const loose = moment("loose", "passage", null, 50, 80);
-    expect(shape(filterMoments([early, late, loose], {}, f({ granularity: "passage" }), topics))).toEqual([
+    expect(shape(filterMoments([early, late, loose], {}, f({ levels: ["passage"] }), topics))).toEqual([
       ["loose", []],
       ["late-t1", []],
       ["early-t2", []],
@@ -132,31 +182,33 @@ describe("filterMoments", () => {
 
   it("personal moments are never nested", () => {
     const ask = { ...moment("ask", "punchline", "t1", 22, 30, { origin: "ask" }), insideMomentId: "ex1" };
-    expect(shape(filterMoments([ex1, ask], {}, f(), topics))).toEqual([["ex1", []]]);
-    expect(shape(filterMoments([ex1, ask], {}, f({ granularity: "punchline" }), topics))).toEqual([["ask", []]]);
+    expect(shape(filterMoments([ex1, ask], {}, f(), topics))).toEqual([["ex1", []], ["ask", []]]);
+    expect(shape(filterMoments([ex1, ask], {}, f({ levels: ["punchline"] }), topics))).toEqual([["ask", []]]);
   });
 });
 
 describe("approved work is never invisible (Ruling R23)", () => {
-  it("an approved passage stays visible, flattened under its topic, when its exchange is rejected", () => {
+  it("an approved passage stays visible, flattened under its topic, when its exchange is skipped", () => {
     const sel: Record<string, SelectionStatus> = { pa1: "approved", ex1: "rejected" };
     expect(shape(filterMoments(all, sel, f(), topics))).toEqual([
       ["pa1", []],
+      ["pu1", []],
+      ["pa2", []],
       ["ex2", [["pu2", []]]],
+      ["mine", []],
       ["cnt", []],
     ]);
-    // proposed siblings of the rejected exchange stay hidden, as the nesting rule says
+    // its proposed siblings are never hidden because their parent is
     expect(groupByTopic(filterMoments(all, sel, f(), topics), topics).map((g) => [g.topic?.id, g.views.map((v) => v.moment.id)])).toEqual([
-      ["t1", ["pa1"]],
-      ["t2", ["ex2", "cnt"]],
+      ["t1", ["pa1", "pu1", "pa2"]],
+      ["t2", ["ex2", "mine", "cnt"]],
     ]);
   });
 
-  it("an approved coarser moment shows flat at a finer granularity, without taking the finer moments as children", () => {
+  it("an approved coarser moment stays listed at a finer level and holds its children", () => {
     const sel: Record<string, SelectionStatus> = { ex1: "approved" };
-    expect(shape(filterMoments(all, sel, f({ granularity: "punchline" }), topics))).toEqual([
-      ["ex1", []],
-      ["pu1", []],
+    expect(shape(filterMoments(all, sel, f({ levels: ["punchline"] }), topics))).toEqual([
+      ["ex1", [["pu1", []]]],
       ["pu2", []],
     ]);
   });
@@ -164,18 +216,17 @@ describe("approved work is never invisible (Ruling R23)", () => {
   it("other filters still apply to approved moments", () => {
     const sel: Record<string, SelectionStatus> = { pu1: "approved" };
     // pu1 is Speaker B only: Focus A hides it, and that is what the hidden count is for
-    expect(shape(filterMoments(all, sel, f({ granularity: "passage", speaker: "A" }), topics)).map(([id]) => id)).not.toContain("pu1");
+    expect(shape(filterMoments(all, sel, f({ levels: ["passage"], speaker: "A" }), topics)).map(([id]) => id)).not.toContain("pu1");
   });
 
-  it("show=approved lists every approved moment flat, ignoring granularity and nesting, by topic then start", () => {
+  it("show=approved lists the approved moments, nested under approved ancestors, by topic then start", () => {
     const sel: Record<string, SelectionStatus> = { ex1: "approved", pu1: "approved", pu2: "approved", mine: "approved", pa2: "rejected" };
     expect(shape(filterMoments(all, sel, f({ show: "approved" }), topics))).toEqual([
-      ["ex1", []],
-      ["pu1", []],
+      ["ex1", [["pu1", []]]],
       ["pu2", []],
       ["mine", []],
     ]);
-    expect(shape(filterMoments(all, sel, f({ show: "approved", granularity: "punchline" }), topics)).map(([id]) => id)).toEqual(["ex1", "pu1", "pu2", "mine"]);
+    expect(shape(filterMoments(all, sel, f({ show: "approved", levels: ["punchline"] }), topics)).map(([id]) => id)).toEqual(["ex1", "pu2", "mine"]);
   });
 
   it("hiddenApprovedCount counts approved moments the current filters don't show; Show hidden reveals them all", () => {
@@ -196,7 +247,7 @@ describe("groupByTopic", () => {
     const views = filterMoments([...all, outside], {}, f(), topics);
     expect(groupByTopic(views, topics).map((g) => [g.topic?.id ?? null, g.views.map((v) => v.moment.id)])).toEqual([
       ["t1", ["ex1"]],
-      ["t2", ["ex2", "cnt"]],
+      ["t2", ["ex2", "mine", "cnt"]],
       [null, ["outside"]],
     ]);
     expect(groupByTopic([], topics)).toEqual([]);
@@ -205,9 +256,9 @@ describe("groupByTopic", () => {
 
 describe("search params", () => {
   it("filter state round-trips through search params", () => {
-    const state: BriefingFilters = { granularity: "passage", speaker: "B", person: null, minRelevance: 40, types: ["heated", "laughter"], show: "all" };
+    const state: BriefingFilters = { levels: ["exchange", "punchline"], speaker: "B", person: null, minRelevance: 40, types: ["heated", "laughter"], show: "all" };
     const qs = toSearchParams(state);
-    expect(qs).toBe("g=passage&s=B&r=40&t=heated,laughter&show=all");
+    expect(qs).toBe("lv=exchange,punchline&s=B&r=40&t=heated,laughter&show=all");
     expect(fromSearchParams(new URLSearchParams(qs))).toEqual(state);
     // defaults are omitted
     expect(toSearchParams(DEFAULT_FILTERS)).toBe("");
@@ -216,7 +267,8 @@ describe("search params", () => {
   });
 
   it("unknown or invalid values fall back to the defaults", () => {
-    expect(fromSearchParams(new URLSearchParams("g=huge&r=140&show=weird&t=bogus"))).toEqual(DEFAULT_FILTERS);
+    expect(fromSearchParams(new URLSearchParams("lv=huge&r=140&show=weird&t=bogus"))).toEqual(DEFAULT_FILTERS);
+    expect(fromSearchParams(new URLSearchParams("lv="))).toEqual(DEFAULT_FILTERS);
     expect(fromSearchParams(new URLSearchParams("r=abc")).minRelevance).toBe(0);
     expect(fromSearchParams(new URLSearchParams("r=-5")).minRelevance).toBe(0);
     expect(fromSearchParams(new URLSearchParams("r=40.5")).minRelevance).toBe(0);
@@ -226,6 +278,18 @@ describe("search params", () => {
     // with the session's speakers known, an unknown one is dropped
     expect(fromSearchParams(new URLSearchParams("s=Z"), { speakers: ["A", "B"] }).speaker).toBeNull();
     expect(fromSearchParams(new URLSearchParams("s=B"), { speakers: ["A", "B"] }).speaker).toBe("B");
+  });
+
+  it("fromSearchParams: legacy g and show=neutral fall back to defaults", () => {
+    expect(fromSearchParams(new URLSearchParams("g=passage&show=neutral"))).toEqual(DEFAULT_FILTERS);
+    expect(fromSearchParams(new URLSearchParams("show=rejected"))).toEqual(DEFAULT_FILTERS);
+  });
+
+  it("levels round-trip through lv and default levels are omitted", () => {
+    const x = { ...DEFAULT_FILTERS, levels: ["exchange", "punchline"] as Granularity[] };
+    expect(toSearchParams(x)).toBe("lv=exchange,punchline");
+    expect(fromSearchParams(new URLSearchParams("lv=exchange,punchline"))).toEqual(x);
+    expect(toSearchParams(DEFAULT_FILTERS)).toBe("");
   });
 
   it("a speaker id with URL-special characters survives the round trip", () => {

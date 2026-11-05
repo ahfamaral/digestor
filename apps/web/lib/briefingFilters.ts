@@ -1,5 +1,5 @@
 import {
-  GranularitySchema, HighlightTypeIdSchema, type Granularity, type HighlightTypeId, type MomentWithHighlights, type SelectionStatus,
+  HighlightTypeIdSchema, type Granularity, type HighlightTypeId, type MomentWithHighlights, type SelectionStatus,
   type Topic,
 } from "@digestor/core";
 
@@ -8,7 +8,8 @@ export const SHOW_FILTERS = ["open", "all", "approved", "skipped"] as const;
 export type ShowFilter = (typeof SHOW_FILTERS)[number];
 
 export interface BriefingFilters {
-  granularity: Granularity;
+  /** The ticked levels: a moment at an unticked level is not listed (unless approved); its children nest under the nearest listed ancestor. */
+  levels: Granularity[];
   /** Diarized speaker id ("A", "B"…) that must speak in the moment, or null for everyone. */
   speaker: string | null;
   /** Person id who must speak (at least FOCUS_MIN_MS of the moment's words) in the moment, or null. Exclusive with `speaker`. */
@@ -20,7 +21,9 @@ export interface BriefingFilters {
   show: ShowFilter;
 }
 
-export const DEFAULT_FILTERS: BriefingFilters = { granularity: "exchange", speaker: null, person: null, minRelevance: 0, types: [], show: "open" };
+const ALL_LEVELS: Granularity[] = ["exchange", "passage", "punchline"];
+
+export const DEFAULT_FILTERS: BriefingFilters = { levels: [...ALL_LEVELS], speaker: null, person: null, minRelevance: 0, types: [], show: "open" };
 /** "Show hidden": every approved moment, nothing else narrowing the list. */
 export const SHOW_HIDDEN_FILTERS: BriefingFilters = { ...DEFAULT_FILTERS, show: "approved" };
 
@@ -41,13 +44,14 @@ export interface FocusContext {
   peopleByMoment: Map<string, Set<string>>;
 }
 
-/** Every filter except the granularity floor (speaker, person, relevance, types, status). */
-function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters, ctx: FocusContext): boolean {
+/** Every filter except the levels (speaker, person, relevance, types, status). `sticky` skips the status filter only. */
+function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters, ctx: FocusContext, sticky: boolean): boolean {
   if (f.person !== null && !ctx.peopleByMoment.get(m.id)?.has(f.person)) return false;
   if (f.speaker !== null && !m.speakers.includes(f.speaker)) return false;
   // Counted values aren't AI judgments, and Ask/user moments carry no score: the relevance floor is for model-scored picks.
   if ((m.origin === "ai" || m.origin === "find_more") && m.relevance < f.minRelevance) return false;
   if (f.types.length > 0 && !m.highlights.some((h) => f.types.includes(h.type))) return false;
+  if (sticky) return true;
   switch (f.show) {
     case "all":
       return true;
@@ -69,12 +73,12 @@ function topicIndex(m: Pick<MomentWithHighlights, "topicId" | "startMs">, topics
 }
 
 /**
- * The moments the filters show, as a tree. The selected granularity is the primary list; finer moments nest under
- * their `insideMomentId` parent when that parent is shown. A finer moment whose parent is filtered out is listed on
- * its own only when its level is the selected one; otherwise it is hidden. Personal moments are never nested.
- * Approved work is never invisible (Ruling R23): an approved moment that passes every other filter but would be hidden
- * by its level or a missing parent is listed flat, at the top of its topic's rows; `show=approved` lists every approved
- * moment flat, ignoring granularity and nesting.
+ * The moments the filters show, as a tree. A moment is listed when it passes the content and status filters and its
+ * level is ticked or it is approved (Ruling R23: approved work is never hidden by a level). `sticky` ids (rows decided
+ * during this visit) skip the status filter only. Each listed official moment nests under its nearest listed
+ * coarser ancestor (walking `insideMomentId` with a visited set); with none it is a root of its topic. Personal moments
+ * (`ask`, `user`, `find_more`) are always roots. A moment is never hidden because of its parent, whatever the data
+ * (self-reference, missing, finer parent, cycle).
  * Order: by topic (`topics` order; a moment without a known topic goes with the topic covering its start), then start.
  */
 export function filterMoments(
@@ -83,26 +87,33 @@ export function filterMoments(
   f: BriefingFilters,
   topics: TopicSpan[] = [],
   ctx: FocusContext = { peopleByMoment: new Map() },
+  sticky?: ReadonlySet<string>,
 ): MomentView[] {
-  const flat = f.show === "approved";
-  // Moments at or below the selected level that pass every filter: these build the tree.
-  const shown = new Map<string, MomentView>();
-  const roots: MomentView[] = [];
+  const byId = new Map(moments.map((m) => [m.id, m]));
+  const listed = new Map<string, MomentView>();
   for (const m of moments) {
     const status = selections[m.id] ?? null;
-    if (!passesContent(m, status, f, ctx)) continue;
-    const view = { moment: m, status, children: [] };
-    if (flat) roots.push(view);
-    else if (LEVEL[m.granularity] >= LEVEL[f.granularity]) shown.set(m.id, view);
-    else if (status === "approved") roots.push(view); // coarser than the level, but approved: listed flat, never a parent
+    if (!passesContent(m, status, f, ctx, sticky?.has(m.id) ?? false)) continue;
+    if (!f.levels.includes(m.granularity) && status !== "approved") continue;
+    listed.set(m.id, { moment: m, status, children: [] });
   }
-  for (const v of shown.values()) {
-    const parentId = isPersonal(v.moment) ? null : v.moment.insideMomentId;
-    const found = parentId !== null ? shown.get(parentId) : undefined;
-    // Only a coarser moment can hold a finer one, so bad data can't make a nesting cycle that hides both.
-    const parent = found && LEVEL[found.moment.granularity] < LEVEL[v.moment.granularity] ? found : undefined;
+  const roots: MomentView[] = [];
+  for (const v of listed.values()) {
+    let parent: MomentView | undefined;
+    if (!isPersonal(v.moment)) {
+      const seen = new Set([v.moment.id]);
+      for (let id = v.moment.insideMomentId; id !== null && !seen.has(id); id = byId.get(id)?.insideMomentId ?? null) {
+        seen.add(id);
+        const up = listed.get(id);
+        // Only a coarser moment can hold a finer one, so bad data can't make a nesting cycle that hides both.
+        if (up && LEVEL[up.moment.granularity] < LEVEL[v.moment.granularity]) {
+          parent = up;
+          break;
+        }
+      }
+    }
     if (parent) parent.children.push(v);
-    else if (v.moment.granularity === f.granularity || v.status === "approved") roots.push(v);
+    else roots.push(v);
   }
   const topicRank = (m: MomentWithHighlights) => {
     const i = topicIndex(m, topics);
@@ -142,10 +153,10 @@ export function groupByTopic<T extends TopicSpan>(views: MomentView[], topics: T
     .map(([i, list]) => ({ topic: topics[i] ?? null, views: list }));
 }
 
-/** The filters as a query string without `?` (defaults omitted): `g=passage&s=B&r=40&t=heated,laughter&show=all`. */
+/** The filters as a query string without `?` (defaults omitted): `lv=passage&s=B&r=40&t=heated,laughter&show=all`. */
 export function toSearchParams(f: BriefingFilters): string {
   const parts: string[] = [];
-  if (f.granularity !== DEFAULT_FILTERS.granularity) parts.push(`g=${f.granularity}`);
+  if (ALL_LEVELS.some((l) => !f.levels.includes(l))) parts.push(`lv=${ALL_LEVELS.filter((l) => f.levels.includes(l)).join(",")}`);
   if (f.speaker !== null) parts.push(`s=${encodeURIComponent(f.speaker)}`);
   if (f.person !== null) parts.push(`p=${encodeURIComponent(f.person)}`);
   if (f.minRelevance !== DEFAULT_FILTERS.minRelevance) parts.push(`r=${f.minRelevance}`);
@@ -156,7 +167,7 @@ export function toSearchParams(f: BriefingFilters): string {
 
 /** Filters read back from the URL. Unknown or invalid values fall back to the defaults; with `speakers` / `persons`, an unknown one too. A person wins over a speaker. */
 export function fromSearchParams(params: { get(name: string): string | null }, known: { speakers?: string[]; persons?: string[] } = {}): BriefingFilters {
-  const g = GranularitySchema.safeParse(params.get("g"));
+  const lv = ALL_LEVELS.filter((l) => (params.get("lv") ?? "").split(",").includes(l));
   const s = params.get("s");
   const p = params.get("p");
   const person = p && (!known.persons || known.persons.includes(p)) ? p : null;
@@ -172,7 +183,7 @@ export function fromSearchParams(params: { get(name: string): string | null }, k
   ];
   const show = SHOW_FILTERS.find((x) => x === params.get("show"));
   return {
-    granularity: g.success ? g.data : DEFAULT_FILTERS.granularity,
+    levels: lv.length > 0 ? lv : [...ALL_LEVELS],
     speaker: !person && s && (!known.speakers || known.speakers.includes(s)) ? s : DEFAULT_FILTERS.speaker,
     person,
     minRelevance: relevance >= 0 && relevance <= 100 ? relevance : DEFAULT_FILTERS.minRelevance,
