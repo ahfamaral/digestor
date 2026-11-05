@@ -460,6 +460,7 @@ export const en = {
     saveFailed: "Couldn't save. Try again.",
     // trim
     trim: "Trim",
+    clipLengthLive: "Clip length {length}",
     trimHelp: "Handles snap to sentence pauses; hold Alt (Option) to move freely. The saved cut always starts and ends between sentences.",
     trimStrip: "Trim strip for {title}, {from} to {to}",
     startHandle: "Clip start",

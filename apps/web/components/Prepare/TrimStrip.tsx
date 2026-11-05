@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatTimestamp, type Range } from "@digestor/core";
 import { cn } from "@/lib/utils";
-import { clampHandle, nearestBoundary, stepHandle, trimView } from "@/lib/trim";
+import { clampHandle, formatTenths, nearestBoundary, stepHandle, timeMarks, trimView } from "@/lib/trim";
 import { t } from "@/lib/i18n";
 
 /** How long keyboard nudges wait before the new cut is saved. */
@@ -37,6 +37,8 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
   const stripRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<Range | null>(null);
   const [dragging, setDragging] = useState<Which | null>(null);
+  /** Where the pointer is over the strip, in ms (null when it is elsewhere). */
+  const [hoverMs, setHoverMs] = useState<number | null>(null);
   const draftRef = useRef<Range | null>(null);
   const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentRef = useRef<Range | null>(null);
@@ -154,8 +156,8 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
         <span
           aria-hidden
           className={cn(
-            "absolute -top-6 rounded bg-foreground px-1 font-mono text-[10px] whitespace-nowrap text-white opacity-0 group-focus-visible:opacity-100",
-            dragging === which && "opacity-100",
+            "absolute -top-7 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white opacity-0 group-focus-visible:opacity-100",
+            (dragging === which || (hoverMs !== null && !dragging)) && "opacity-100",
           )}
         >
           {tenths(ms)}
@@ -173,8 +175,22 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
         ref={stripRef}
         role="group"
         aria-label={t("prepare.trimStrip", { title, from: tenths(view.viewStart), to: tenths(view.viewEnd) })}
-        className="relative mt-6 h-12 rounded-md bg-stone-100 select-none"
+        onPointerMove={(e) => setHoverMs(msAt(e.clientX))}
+        onPointerLeave={() => setHoverMs(null)}
+        className="relative mt-16 h-12 rounded-md bg-stone-100 select-none"
       >
+        {hoverMs !== null && (
+          <>
+            <span aria-hidden className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-foreground/60" style={{ left: `${view.toPct(hoverMs)}%` }} />
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -top-14 z-20 -translate-x-1/2 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white"
+              style={{ left: `${Math.min(92, Math.max(8, view.toPct(hoverMs)))}%` }}
+            >
+              {tenths(hoverMs)}
+            </span>
+          </>
+        )}
         {points.starts.map((p) => (
           <span key={p} aria-hidden className="absolute top-2 bottom-2 w-px bg-stone-300" style={{ left: `${view.toPct(p)}%` }} />
         ))}
@@ -186,10 +202,21 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
         {handle("start")}
         {handle("end")}
       </div>
-      <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground" aria-hidden>
-        <span>{tenths(view.viewStart)}</span>
-        <span>{tenths(view.viewEnd)}</span>
+      <div className="relative mt-1 h-6 font-mono text-[10px] text-muted-foreground" aria-hidden>
+        {timeMarks(view.viewStart, view.viewEnd).map((m, _i, all) => {
+          // Every 10 s gets a tick; the labels thin out to 30 s when the window is long.
+          const labelled = all.length <= 8 || m % 30_000 === 0;
+          return (
+            <span key={m} className="absolute top-0 flex -translate-x-1/2 flex-col items-center" style={{ left: `${view.toPct(m)}%` }}>
+              <span className="h-1 w-px bg-stone-400" />
+              {labelled && <span>{formatTimestamp(m).replace(/^00:0?/, "")}</span>}
+            </span>
+          );
+        })}
       </div>
+      <p role="status" className="mt-1 min-h-5 font-mono text-xs text-foreground">
+        {dragging ? t("prepare.clipLengthLive", { length: formatTenths(shown.endMs - shown.startMs) }) : ""}
+      </p>
       <p id={`trim-help-${clipId}`} className="mt-1 text-xs text-muted-foreground">
         {t("prepare.trimHelp")}
       </p>

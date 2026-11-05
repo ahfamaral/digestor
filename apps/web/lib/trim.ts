@@ -77,3 +77,18 @@ export function cutPoints(boundaries: Boundary[], fromMs: number, toMs: number):
     .filter(inside);
   return { starts, ends };
 }
+
+/** Round `stepMs` positions (10 s by default) strictly inside the window, ascending. */
+export function timeMarks(viewStart: number, viewEnd: number, stepMs = 10_000): number[] {
+  const marks: number[] = [];
+  for (let m = (Math.floor(viewStart / stepMs) + 1) * stepMs; m < viewEnd; m += stepMs) marks.push(m);
+  return marks;
+}
+
+/** `m:ss.s` (tenths rounded), for the live "Clip length". */
+export function formatTenths(ms: number): string {
+  const total = Math.round(Math.max(0, ms) / 100);
+  const m = Math.floor(total / 600);
+  const s = (total % 600) / 10;
+  return `${m}:${s < 10 ? "0" : ""}${s.toFixed(1)}`;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Boundary } from "@digestor/core";
-import { clampHandle, cutPoints, nearestBoundary, stepHandle, trimView } from "./trim";
+import { clampHandle, cutPoints, formatTenths, nearestBoundary, stepHandle, timeMarks, trimView } from "./trim";
 
 describe("trimView", () => {
   it("trimView maps ms and pct both ways", () => {
@@ -83,5 +83,16 @@ describe("cutPoints", () => {
   it("gives the cut positions snapRange produces, as plain numbers, inside the window", () => {
     expect(cutPoints(b, 0, 10_000)).toEqual({ starts: [0, 4_850], ends: [2_050, 6_050] });
     expect(cutPoints(b, 3_000, 10_000)).toEqual({ starts: [4_850], ends: [6_050] });
+  });
+});
+
+describe("timeMarks / formatTenths", () => {
+  it("timeMarks: round 10 s positions strictly inside the window", () => {
+    expect(timeMarks(62_000, 125_000)).toEqual([70_000, 80_000, 90_000, 100_000, 110_000, 120_000]);
+    expect(timeMarks(60_000, 120_000)).toEqual([70_000, 80_000, 90_000, 100_000, 110_000]);
+  });
+  it("formatTenths", () => {
+    expect(formatTenths(75_250)).toBe("1:15.3");
+    expect(formatTenths(9_000)).toBe("0:09.0");
   });
 });
