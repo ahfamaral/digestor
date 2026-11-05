@@ -93,7 +93,7 @@ export function MomentRow({
         className={cn(
           "flex flex-wrap items-start gap-x-2.5 gap-y-1.5 rounded-lg py-1.5 pr-2 transition-colors duration-700 motion-reduce:transition-none sm:flex-nowrap",
           nested ? "pl-3.5" : "pl-2",
-          view.status === "rejected" && "opacity-75",
+          view.status === "rejected" && "bg-stone-50",
           (ctx.flashId === m.id || hoveredId === m.id) && "bg-background",
         )}
         onMouseEnter={onHover && (() => onHover(m.id))}

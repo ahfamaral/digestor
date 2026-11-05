@@ -134,6 +134,10 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
       }
       // New bounds need the cut positions of the new window (and a fresh undo state) from the server.
       if (opts.refresh) router.refresh();
+      // A look, format or crop change stales the made subtitle videos on the server: read the tracks again.
+      if ("format" in body || "cropOffset" in body || "subtitleStyle" in body || "subtitlePosition" in body) {
+        fetchTracks(id).then((tracks) => update(id, (i) => ({ ...i, tracks }))).catch(() => {});
+      }
       setBusy((b) => ({ ...b, [id]: false }));
       return true;
     } catch (err) {

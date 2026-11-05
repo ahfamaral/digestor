@@ -120,6 +120,7 @@ export interface SessionSummary {
   language: string | null;
   profile: string | null;
   stage: Stage;
+  source: "upload" | "youtube";
   error: string | null;
   videoRemoved: boolean;
   lastActivityAt: Date;
@@ -142,7 +143,7 @@ export async function listSessionSummaries(db: Db, ownerId: string, limit = 50):
   const rows = await db
     .select({
       id: sessions.id, title: sessions.title, language: sessions.language, profile: sessions.profile,
-      stage: sessions.stage, error: sessions.error, videoDeletedAt: sessions.videoDeletedAt,
+      stage: sessions.stage, source: sessions.source, error: sessions.error, videoDeletedAt: sessions.videoDeletedAt,
       lastActivityAt: activity.mapWith(sessions.updatedAt), rendered: agg.rendered,
     })
     .from(sessions)
@@ -150,7 +151,7 @@ export async function listSessionSummaries(db: Db, ownerId: string, limit = 50):
     .orderBy(desc(activity))
     .limit(limit);
   return rows.map((r) => ({
-    id: r.id, title: r.title, language: r.language, profile: r.profile, stage: r.stage, error: r.error,
+    id: r.id, title: r.title, language: r.language, profile: r.profile, stage: r.stage, source: r.source, error: r.error,
     videoRemoved: r.videoDeletedAt !== null, lastActivityAt: r.lastActivityAt, renderedClips: r.rendered ?? 0,
   }));
 }

@@ -224,10 +224,11 @@ describe("PATCH /api/clips/[id]", () => {
     const res = await undo(req({}), ctx(clip.id));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ endMs: 30_000 });
-    // undo the creation: the clip is soft-deleted; with every event undone, a further undo has nothing to do (409)
-    await undo(req({}), ctx(clip.id));
-    expect(await getClip(h.db, clip.id)).toBeNull();
-    expect((await undo(req({}), ctx(clip.id))).status).toBe(409);
+    // a user's undo never undoes the creation (a second quick click must not remove the clip)
+    const second = await undo(req({}), ctx(clip.id));
+    expect(second.status).toBe(409);
+    expect((await second.json()).error).toBe("There is nothing to undo.");
+    expect(await getClip(h.db, clip.id)).not.toBeNull();
     expect((await undo(req({}), ctx("00000000-0000-4000-8000-000000000000"))).status).toBe(404);
   });
 
@@ -263,7 +264,7 @@ describe("PATCH /api/clips/[id]", () => {
     await deleteClip(h.db, gone.id, "user");
     expect((await undo(req(guarded), ctx(gone.id))).status).toBe(409);
     expect(await getClip(h.db, gone.id)).toBeNull();
-    // without the body the old behaviour stays: Prepare's Undo restores it
+    // without the body Prepare's Undo still restores a deleted clip
     expect((await undo(req({}), ctx(gone.id))).status).toBe(200);
     expect(await getClip(h.db, gone.id)).not.toBeNull();
   });

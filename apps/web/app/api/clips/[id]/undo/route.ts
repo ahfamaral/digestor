@@ -7,7 +7,7 @@ import { getServer } from "@/lib/server";
 const NOTHING_TO_UNDO = "There is nothing to undo.";
 
 /**
- * POST /api/clips/[id]/undo — reverts the latest change (also brings back a deleted clip). An optional body
+ * POST /api/clips/[id]/undo — reverts the latest change (also brings back a deleted clip) but never a clip's creation unless it is Ask's own. An optional body
  * `{ "ifActor": "ask" }` makes it conditional: the latest change must have been made by the Ask agent, so the
  * Ask drawer's Undo never reverts something the user did afterwards. 409 once the video is removed (R30).
  */
@@ -20,9 +20,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const frozen = frozenError(found.session);
   if (frozen) return frozen;
   const body: unknown = await request.json().catch(() => null);
+  const latest = (await listClipEvents(db, id)).filter((e) => e.undoneAt === null).at(-1);
   if ((body as { ifActor?: unknown } | null)?.ifActor === "ask") {
-    const latest = (await listClipEvents(db, id)).filter((e) => e.undoneAt === null).at(-1);
     if (latest?.actor !== "ask") return errorResponse(409, NOTHING_TO_UNDO);
+  } else if (latest?.kind === "create") {
+    // Prepare's Undo never removes the clip itself (a second quick click would); Ask's own undo does.
+    return errorResponse(409, NOTHING_TO_UNDO);
   }
   const reverted = await undoLastEvent(db, id);
   if (!reverted) return errorResponse(409, NOTHING_TO_UNDO);

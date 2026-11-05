@@ -8,19 +8,19 @@ describe("processing steps follow the new stages", () => {
   it("lists the ten steps in order, all waiting before anything runs", () => {
     expect(states(buildSteps("uploaded", "upload"))).toEqual([
       "Uploading:running", "Transcribing:waiting", "Understanding context:waiting", "Naming speakers:waiting", "Indexing:waiting",
-      "Finding topics:waiting", "Finding moments:waiting", "Writing briefing:waiting", "Preparing the video preview:waiting", "Ready:waiting",
+      "Finding topics:waiting", "Finding moments:waiting", "Writing briefing:waiting", "Preparing the video for playback:waiting", "Ready:waiting",
     ]);
   });
   it("marks earlier steps done, the current running, later waiting", () => {
     expect(states(buildSteps("finding_topics", "upload"))).toEqual([
       "Uploading:done", "Transcribing:done", "Understanding context:done", "Naming speakers:done", "Indexing:done",
-      "Finding topics:running", "Finding moments:waiting", "Writing briefing:waiting", "Preparing the video preview:waiting", "Ready:waiting",
+      "Finding topics:running", "Finding moments:waiting", "Writing briefing:waiting", "Preparing the video for playback:waiting", "Ready:waiting",
     ]);
   });
   it("preparing_preview is the step after Writing briefing: everything before it is done", () => {
     expect(states(buildSteps("preparing_preview", "upload"))).toEqual([
       "Uploading:done", "Transcribing:done", "Understanding context:done", "Naming speakers:done", "Indexing:done",
-      "Finding topics:done", "Finding moments:done", "Writing briefing:done", "Preparing the video preview:running", "Ready:waiting",
+      "Finding topics:done", "Finding moments:done", "Writing briefing:done", "Preparing the video for playback:running", "Ready:waiting",
     ]);
   });
   it("preparing belongs to the first step; ready completes every step", () => {
