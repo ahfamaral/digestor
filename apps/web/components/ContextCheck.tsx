@@ -13,6 +13,7 @@ import { sampleSrc } from "@/lib/media";
 import { usePauseWhenHidden } from "@/lib/usePauseWhenHidden";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
+import { Dropdown } from "@/components/Dropdown";
 
 const BADGES = {
   video: { text: "context.badgeVideo", cls: "bg-green-100 text-green-800" },
@@ -148,36 +149,28 @@ export function ContextCheck({
           audio
           badge={edited.language !== original.language ? "human" : card.language.value ? (card.language.source ?? "video") : "missing"}
         >
-          <select
-            className={inputCls}
+          <Dropdown
+            className="flex-1"
             aria-label={t("context.language")}
             value={edited.language}
-            onChange={(e) => set("language", e.target.value)}
-          >
-            {!edited.language && <option value="">{t("context.languageUnknown")}</option>}
-            {!LANGUAGES.some((l) => l.code === original.language) && original.language && (
-              <option value={original.language}>{t("context.languageDetected", { code: original.language })}</option>
-            )}
-            {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(v) => set("language", v)}
+            options={[
+              ...(!edited.language ? [{ value: "", label: t("context.languageUnknown") }] : []),
+              ...(!LANGUAGES.some((l) => l.code === original.language) && original.language
+                ? [{ value: original.language, label: t("context.languageDetected", { code: original.language }) }]
+                : []),
+              ...LANGUAGES.map((l) => ({ value: l.code as string, label: l.label, lang: l.code as string })),
+            ]}
+          />
         </Row>
         <Row label={t("context.profile")} badge={profileBadge(edited.profile, original.profile)}>
-          <select
-            className={inputCls}
+          <Dropdown
+            className="flex-1"
             aria-label={t("context.profile")}
             value={edited.profile}
-            onChange={(e) => set("profile", e.target.value as ProfileId)}
-          >
-            {(Object.keys(PROFILES) as ProfileId[]).map((id) => (
-              <option key={id} value={id}>
-                {t(`profile.${id}`)}
-              </option>
-            ))}
-          </select>
+            onValueChange={(v) => set("profile", v)}
+            options={(Object.keys(PROFILES) as ProfileId[]).map((id) => ({ value: id, label: t(`profile.${id}`) }))}
+          />
         </Row>
         {textRow(t("context.titleTopic"), "title", card.title)}
         {textRow(t("context.setting"), "setting", card.setting)}

@@ -69,10 +69,10 @@ describe("the house select", () => {
 });
 
 describe("the house select's accessible name", () => {
-  it("has a visible label \"House\" tied to the select", () => {
+  it("has a visible label \"House\" tied to the dropdown", () => {
     const html = renderToStaticMarkup(createElement(RecordHouseSelect, { id: "record-house-x", value: "", onChange: () => {} }));
     expect(html).toMatch(/<label[^>]*for="record-house-x"[^>]*>House<\/label>/);
-    expect(html).toMatch(/<select[^>]*id="record-house-x"/);
+    expect(html).toMatch(/<button[^>]*id="record-house-x"/);
   });
 });
 

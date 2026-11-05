@@ -17,6 +17,7 @@ import { recordFieldError } from "@/components/Names/RecordLink";
 import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "@/components/Names/RecordHouseSelect";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { Dropdown } from "@/components/Dropdown";
 
 type Mode = "file" | "youtube";
 type Meta = { durationMs: number; width: number; height: number } | null;
@@ -392,21 +393,18 @@ export function UploadForm() {
         <label htmlFor="language" className="mt-4 font-semibold">
           {t("upload.languageLabel")} <span className="font-normal text-muted-foreground">{t("upload.languageOptional")}</span>
         </label>
-        <select
+        <Dropdown
           id="language"
-          className="mt-2 h-8 w-full rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+          className="mt-2"
           value={language}
           disabled={busy}
           aria-describedby="language-help"
-          onChange={(e) => setLanguage(e.target.value)}
-        >
-          <option value="">{t("upload.languageAuto")}</option>
-          {SPOKEN_LANGUAGE_CODES.map((code) => (
-            <option key={code} value={code}>
-              {t(`upload.language_${code}`)}
-            </option>
-          ))}
-        </select>
+          onValueChange={setLanguage}
+          options={[
+            { value: "", label: t("upload.languageAuto") },
+            ...SPOKEN_LANGUAGE_CODES.map((code) => ({ value: code as string, label: t(`upload.language_${code}`) })),
+          ]}
+        />
         <p id="language-help" className="mt-1 text-xs text-muted-foreground">
           {t("upload.languageHelp")}
         </p>

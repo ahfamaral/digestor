@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/http";
 import type { PreviewSection } from "@/lib/preview";
 import { t } from "@/lib/i18n";
+import { Dropdown } from "@/components/Dropdown";
 
 type Target = { kind: ProblemTargetKind; id: string; label: string };
 
@@ -81,13 +82,12 @@ export function ReportProblem({
           </DialogHeader>
           <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
             {t("preview.reportTarget")}
-            <select value={target} onChange={(e) => setTarget(Number(e.target.value))} className={FIELD}>
-              {targets.map((tg, i) => (
-                <option key={`${tg.kind}:${tg.id}`} value={i}>
-                  {tg.label}
-                </option>
-              ))}
-            </select>
+            <Dropdown
+              value={String(target)}
+              onValueChange={(v) => setTarget(Number(v))}
+              options={targets.map((tg, i) => ({ value: String(i), label: tg.label }))}
+              className="mt-0"
+            />
           </label>
           <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
             {t("preview.reportNote")}

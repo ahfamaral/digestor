@@ -24,6 +24,7 @@ import { languageName, t } from "@/lib/i18n";
 import { BriefingDoc } from "./BriefingDoc";
 import { Timeline } from "./Timeline";
 import { TopHighlights } from "./TopHighlights";
+import { Dropdown } from "@/components/Dropdown";
 
 export interface PreviewProps {
   session: { id: string; title: string; durationMs: number; language: string | null; hasVideo: boolean; videoRemoved: boolean };
@@ -398,17 +399,11 @@ function ReanalyzeDialog({
           </DialogHeader>
           <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
             {t("preview.reanalyzeProfile")}
-            <select
+            <Dropdown
               value={profile}
-              onChange={(e) => setProfile(e.target.value as ProfileId)}
-              className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand"
-            >
-              {(Object.keys(PROFILES) as ProfileId[]).map((id) => (
-                <option key={id} value={id}>
-                  {t(`profile.${id}`)}
-                </option>
-              ))}
-            </select>
+              onValueChange={setProfile}
+              options={(Object.keys(PROFILES) as ProfileId[]).map((id) => ({ value: id, label: t(`profile.${id}`) }))}
+            />
           </label>
           {error && (
             <p role="alert" className="text-xs text-red-700">

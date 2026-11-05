@@ -6,6 +6,7 @@ import { TONE_CHIP } from "@/components/HighlightChip";
 import { SHOW_FILTERS, type BriefingFilters, type ShowFilter } from "@/lib/briefingFilters";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
+import { Dropdown } from "@/components/Dropdown";
 
 const LEVELS: Granularity[] = ["exchange", "passage", "punchline"];
 const SHOW_TEXT: Record<ShowFilter, MessageKey> = {
@@ -96,24 +97,21 @@ export function Controls({
           <div className="flex items-center gap-1">
             <span className="relative">
               <SearchIcon aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <select
+              <Dropdown
                 id="focus-speaker"
                 value={focusValue}
-                onChange={(e) => {
+                onValueChange={(v) => {
                   // Person and voice are exclusive: choosing one clears the other.
-                  const [kind, ...rest] = e.target.value.split(":");
+                  const [kind, ...rest] = v.split(":");
                   const id = rest.join(":");
                   set({ person: kind === "p" && id ? id : null, speaker: kind === "v" && id ? id : null });
                 }}
-                className={cn(FIELD, "max-w-64 pl-7")}
-              >
-                <option value="">{t("briefing.everyone")}</option>
-                {choices.map((c) => (
-                  <option key={choiceValue(c)} value={choiceValue(c)} title={shareTitle(c)}>
-                    {focusText(c)}
-                  </option>
-                ))}
-              </select>
+                className="max-w-64 pl-7"
+                options={[
+                  { value: "", label: t("briefing.everyone") },
+                  ...choices.map((c) => ({ value: choiceValue(c), label: focusText(c), title: shareTitle(c) })),
+                ]}
+              />
             </span>
             {focusValue !== "" && (
               <button
@@ -160,13 +158,12 @@ export function Controls({
           <label htmlFor="show-status" className={LABEL}>
             {t("briefing.show")}
           </label>
-          <select id="show-status" value={filters.show} onChange={(e) => set({ show: e.target.value as ShowFilter })} className={FIELD}>
-            {SHOW_FILTERS.map((s) => (
-              <option key={s} value={s}>
-                {t(SHOW_TEXT[s])}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            id="show-status"
+            value={filters.show}
+            onValueChange={(v) => set({ show: v })}
+            options={SHOW_FILTERS.map((s) => ({ value: s, label: t(SHOW_TEXT[s]) }))}
+          />
         </div>
       </div>
 

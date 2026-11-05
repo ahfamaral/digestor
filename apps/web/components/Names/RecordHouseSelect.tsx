@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CHAMBERS, CHAMBER_IDS, chamberLabel, type ChamberId } from "@digestor/core";
 import { t } from "@/lib/i18n";
+import { Dropdown } from "@/components/Dropdown";
 
 /** What the select holds: a house, or "" for "Detect from the link". */
 export type RecordHouse = ChamberId | "";
@@ -63,25 +64,18 @@ export function RecordHouseSelect({ id, value, disabled, describedBy, onChange }
       <label htmlFor={id} className="block text-xs text-muted-foreground">
         {t("upload.recordHouse")}
       </label>
-      <select
-      id={id}
-      className="mt-1 h-8 w-full rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-      value={value}
-      disabled={disabled}
-      aria-describedby={describedBy}
-      onChange={(e) => onChange(e.target.value as RecordHouse)}
-    >
-      <option value={detect.value}>{detect.label}</option>
-      {groups.map((g) => (
-        <optgroup key={g.country} label={g.country}>
-          {g.options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
+      <Dropdown
+        id={id}
+        className="mt-1"
+        value={value}
+        disabled={disabled}
+        aria-describedby={describedBy}
+        onValueChange={onChange}
+        options={[
+          { value: detect.value as RecordHouse, label: detect.label },
+          ...groups.flatMap((g) => g.options.map((o) => ({ value: o.value as RecordHouse, label: o.label, group: g.country }))),
+        ]}
+      />
     </div>
   );
 }

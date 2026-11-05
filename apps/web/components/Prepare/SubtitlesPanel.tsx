@@ -8,6 +8,7 @@ import { addTrack, patchTrack } from "@/lib/prepareApi";
 import { subtitleLanguages, type TrackView } from "@/lib/prepareData";
 import { languageName, t } from "@/lib/i18n";
 import { TrackEditor } from "./TrackEditor";
+import { Dropdown } from "@/components/Dropdown";
 
 export interface SubtitlesPanelProps {
   sessionId: string;
@@ -105,18 +106,18 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, fr
         <div className="mt-2 flex flex-wrap items-end gap-2">
           <label className="grid min-w-0 gap-0.5 text-xs font-semibold text-muted-foreground">
             {t("prepare.addLanguage")}
-            <select
+            <Dropdown
+              size="sm"
               value={chosen}
               disabled={busy}
-              onChange={(e) => setPick(e.target.value)}
-              className="h-8 max-w-full rounded-md border border-border bg-white px-2 text-sm font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand"
-            >
-              {options.map((o) => (
-                <option key={o.code} value={o.code}>
-                  {o.code === originalLanguage ? t("prepare.original", { language: o.label }) : o.label}
-                </option>
-              ))}
-            </select>
+              onValueChange={setPick}
+              className="w-auto max-w-full min-w-32 font-normal"
+              options={options.map((o) => ({
+                value: o.code,
+                label: o.code === originalLanguage ? t("prepare.original", { language: o.label }) : o.label,
+                lang: o.code,
+              }))}
+            />
           </label>
           <button type="button" className={`${ACT} h-8`} disabled={busy || !chosen} onClick={() => void add()}>
             {busy ? t("prepare.adding") : t("prepare.add")}

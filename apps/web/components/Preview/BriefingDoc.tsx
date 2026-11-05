@@ -15,6 +15,7 @@ import { errorMessage } from "@/lib/http";
 import type { PreviewSection } from "@/lib/preview";
 import { cn } from "@/lib/utils";
 import { languageName, t } from "@/lib/i18n";
+import { Dropdown } from "@/components/Dropdown";
 
 const POLL_MS = 3000;
 const ACT =
@@ -202,14 +203,16 @@ export function BriefingDoc({
           </button>
           <label className="flex items-center gap-1 text-xs text-muted-foreground">
             {t("preview.readIn")}
-            <select value={readIn} onChange={(e) => pickLanguage(e.target.value)} className={cn(ACT, "max-w-36 pr-1")}>
-              <option value="">{language ? t("preview.readInOriginal", { language: languageName(language) }) : t("preview.readInOriginalUnknown")}</option>
-              {offered.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
+            <Dropdown
+              size="sm"
+              value={readIn}
+              onValueChange={pickLanguage}
+              className="w-auto max-w-36"
+              options={[
+                { value: "", label: language ? t("preview.readInOriginal", { language: languageName(language) }) : t("preview.readInOriginalUnknown") },
+                ...offered.map((l) => ({ value: l.code as string, label: l.label, lang: l.code as string })),
+              ]}
+            />
           </label>
         </div>
       </div>
