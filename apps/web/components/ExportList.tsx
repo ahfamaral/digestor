@@ -10,7 +10,8 @@ import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { WarningIcon } from "@/components/WarningNote";
-import { inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { ApprovalDismissed } from "@/components/ApprovalDismissed";
+import { exportableIds, inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,8 @@ export interface ExportClipData {
   endMs: number;
   /** Checklist items that don't hold yet. Empty = ready to export. */
   failing: ChecklistId[];
+  /** The clip's moment is no longer approved on the Briefing: shown with a label, left out of Export ready clips. */
+  dismissed: boolean;
   /** Voices of the clip whose name is not confirmed yet, as the screens show them ("Speaker C"). */
   unconfirmed: string[];
   /** Who speaks in the clip (longest first). */
@@ -51,7 +54,8 @@ export function ExportList({ session, names, clips }: ExportListProps) {
   // Only errors and one-off answers are click-set; "rendering has started" is derived from live statuses.
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const lang = session.language ?? undefined;
-  const ready = clips.filter((c) => c.failing.length === 0);
+  const readyIds = exportableIds(clips);
+  const ready = clips.filter((c) => readyIds.includes(c.id));
   const polling = inFlight(clips.map((c) => c.row));
   const missing = toMake(ready.map((c) => c.row));
 
@@ -68,7 +72,7 @@ export function ExportList({ session, names, clips }: ExportListProps) {
       const res = await fetch(`/api/sessions/${session.id}/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clipIds: ready.map((c) => c.id) }),
+        body: JSON.stringify({ clipIds: readyIds }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; queued?: number; burns?: number; blocked?: unknown[] };
       if (!res.ok) {
@@ -186,6 +190,11 @@ function ClipRow({
           <h2 lang={lang} dir="auto" className="text-base font-semibold break-words">
             {heading}
           </h2>
+          {clip.dismissed && (
+            <p className="mt-1">
+              <ApprovalDismissed id={`dismissed-${clip.id}`} />
+            </p>
+          )}
           {clip.voices.length > 0 && (
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
               <span className="sr-only">{t("briefing.speakers")}: </span>

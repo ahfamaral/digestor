@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exportRows, inFlight, toMake } from "./exportRows";
+import { exportableIds, exportRows, inFlight, toMake } from "./exportRows";
 
 const clip = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => ({
   id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", ...over,
@@ -112,5 +112,17 @@ describe("inFlight", () => {
       burned: [{ language: "en", src: "/api/files/s1/clips/c1.en.burned.mp4" }],
     });
     expect(exportRows([clip({ renderStatus: "stale" })], [track()])[0]!.watch.mp4).toBeNull();
+  });
+});
+
+describe("exportableIds", () => {
+  it("keeps ready clips and drops dismissed or failing ones", () => {
+    expect(
+      exportableIds([
+        { id: "ready", dismissed: false, failing: [] },
+        { id: "dismissed", dismissed: true, failing: [] },
+        { id: "failing", dismissed: false, failing: ["speaker"] },
+      ]),
+    ).toEqual(["ready"]);
   });
 });

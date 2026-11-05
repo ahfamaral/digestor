@@ -18,6 +18,7 @@ import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ApprovalDismissed } from "@/components/ApprovalDismissed";
 import { ChecksPanel } from "./ChecksPanel";
 import { Checklist } from "./Checklist";
 import { FormatPicker, cropPosition } from "./FormatPicker";
@@ -43,6 +44,8 @@ export interface PrepareClipData {
   /** Who speaks where in the trim window (clip ± 30 s), the least the speaker check needs to follow a trim. */
   speakerWords: { startMs: number; endMs: number; speaker: string }[];
   thumbUrl: string | null;
+  /** The clip's moment is no longer approved on the Briefing. */
+  dismissed: boolean;
 }
 
 export interface PrepareListProps {
@@ -379,6 +382,11 @@ function ClipCard({
             <h2 id={headingId} lang={lang} dir="auto" className="text-[15px] font-bold break-words">
               {title || t("prepare.clipHeading", { n })}
             </h2>
+            {item.dismissed && (
+              <p className="mt-1">
+                <ApprovalDismissed id={`${headingId}-dismissed`} />
+              </p>
+            )}
             {item.voices.length > 0 && (
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                 <span className="sr-only">{t("briefing.speakers")}: </span>

@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { OWNER_ID, PROFILES, exportChecklist, speakersInRange } from "@digestor/core";
-import { getMoment, getSession, getTranscript, listClips, listTracks } from "@digestor/core/server";
+import { getMoment, getSession, getTranscript, listClips, listSelections, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { ExportList, type ExportClipData } from "@/components/ExportList";
 import { exportRows } from "@/lib/exportRows";
+import { approvalDismissed } from "@/lib/prepareData";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
 import { loadNames } from "@/lib/namesServer";
@@ -29,6 +30,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
 
   const profile = asProfile(session.profile);
   const clips = await listClips(db, OWNER_ID, id);
+  const selections = await listSelections(db, OWNER_ID, id);
   const [names, transcript] = clips.length > 0 ? await Promise.all([loadNames(db, id), getTranscript(db, id)]) : [{ persons: [], attributions: [] }, null];
   const sensitive = PROFILES[profile].sensitive;
   const data: ExportClipData[] = await Promise.all(
@@ -43,6 +45,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         startMs: clip.startMs,
         endMs: clip.endMs,
         failing,
+        dismissed: approvalDismissed(clip.momentId, selections),
         unconfirmed: unconfirmedVoices(names, transcript?.words ?? [], clip, sensitive).map((v) => v.label.text),
         voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
         row: exportRows([clip], tracks)[0]!,

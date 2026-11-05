@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { canUndo, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
+import { approvalDismissed, canUndo, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -106,4 +106,11 @@ describe("checksToPoll", () => {
     expect(checksToPoll(items, true, {})).toEqual([]);
     expect(checksToPoll(items, true, { b: true })).toEqual(["b"]);
   });
+});
+
+describe("approvalDismissed", () => {
+  it("never labels a clip without a moment", () => expect(approvalDismissed(null, {})).toBe(false));
+  it("is false while the moment is approved", () => expect(approvalDismissed("m1", { m1: "approved" })).toBe(false));
+  it("is true when the moment was skipped", () => expect(approvalDismissed("m1", { m1: "rejected" })).toBe(true));
+  it("is true when the moment is undecided", () => expect(approvalDismissed("m1", {})).toBe(true));
 });

@@ -1,8 +1,13 @@
 import {
-  LANGUAGES, type Clip, type ClipEventKind, type ClipFormat, type MomentChecks, type RenderStatus, type SubtitlePosition, type SubtitleStyle, type Track, type TrackCue,
+  LANGUAGES, type SelectionStatus, type Clip, type ClipEventKind, type ClipFormat, type MomentChecks, type RenderStatus, type SubtitlePosition, type SubtitleStyle, type Track, type TrackCue,
   type TrackStatus,
 } from "@digestor/core";
 import { languageName } from "./i18n";
+
+/** A clip whose moment is no longer approved (skipped or undecided) keeps existing; clips without a moment are never labelled. */
+export function approvalDismissed(momentId: string | null, selections: Record<string, SelectionStatus>): boolean {
+  return momentId !== null && selections[momentId] !== "approved";
+}
 
 /** The credit line a clip starts with: the YouTube channel (or uploader); uploads have none. */
 export function defaultCredit(session: { source: string; metadata: Record<string, unknown> }): string {

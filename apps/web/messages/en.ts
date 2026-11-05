@@ -455,6 +455,8 @@ export const en = {
   },
   prepare: {
     title: "Prepare clips",
+    approvalDismissed: "Approval dismissed",
+    approvalDismissedHint: "You skipped this moment or undid its approval on the Briefing. The clip stays, but Export ready clips leaves it out.",
     backToBriefing: "Briefing",
     clipsOne: "1 clip",
     clipsMany: "{n} clips",

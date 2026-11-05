@@ -2,11 +2,11 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OWNER_ID, PROFILES, cutsMidSentence, findBoundaries } from "@digestor/core";
-import { getMoment, getSession, getTranscript, listClipEvents, listClips, listTracks } from "@digestor/core/server";
+import { getMoment, getSession, getTranscript, listClipEvents, listClips, listSelections, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { PrepareList, type PrepareClipData } from "@/components/Prepare/PrepareList";
 import { isUuid } from "@/lib/ids";
-import { canUndo, defaultCredit, toClipView, toTrackView } from "@/lib/prepareData";
+import { approvalDismissed, canUndo, defaultCredit, toClipView, toTrackView } from "@/lib/prepareData";
 import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
 import { loadNames } from "@/lib/namesServer";
@@ -48,6 +48,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const clips = await listClips(db, OWNER_ID, id);
+  const selections = await listSelections(db, OWNER_ID, id);
   const transcript = clips.length > 0 ? await getTranscript(db, id) : null;
   const durationMs = session.durationMs ?? transcript?.durationMs ?? Math.max(0, ...clips.map((c) => c.endMs));
   // Boundaries are computed here and only the clip's window (± 30 s) is sent, as plain numbers.
@@ -78,6 +79,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
               .map((w) => ({ startMs: w.startMs, endMs: w.endMs, speaker: w.speaker }))
           : [],
         thumbUrl: moment?.thumbKey ? `/api/files/${id}/thumbs/${moment.id}.jpg` : null,
+        dismissed: approvalDismissed(clip.momentId, selections),
       };
     }),
   );

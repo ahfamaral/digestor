@@ -129,3 +129,8 @@ export function toMake(rows: ExportRow[]): number {
     }
   return n;
 }
+
+/** The clips "Export ready clips" sends: every checklist item holds and the moment is still approved. */
+export function exportableIds(clips: { id: string; dismissed: boolean; failing: string[] }[]): string[] {
+  return clips.filter((c) => c.failing.length === 0 && !c.dismissed).map((c) => c.id);
+}
