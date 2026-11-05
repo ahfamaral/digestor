@@ -51,7 +51,7 @@ After adding a dependency: `pnpm install` on the host first (updates the lockfil
 - Concurrency is guarded in the database, not by pg-boss:
   - stage changes via `transitionStage` (compare-and-set);
   - `confirmClips` and `claimAnalysisVersion` run under `pg_advisory_xact_lock(hashtext(sessionId))`;
-  - renders and burns use claim/finish compare-and-set (`claimClipRender` / `finishClipRender`, `claimTrackBurn` / `finishTrackBurn`); a burn or render whose cues, bounds or credit changed meanwhile is marked `stale`;
+  - renders and burns use claim/finish compare-and-set (`claimClipRender` / `finishClipRender`, `claimTrackBurn` / `finishTrackBurn`); a burn or render whose cues, bounds, credit or subtitle style/position (`burnSignature`) changed meanwhile is marked `stale`;
   - Ask actions use `resolveAskAction` (compare-and-set), and Ask undo only reverts what the call itself set.
 - `singletonKey` is a no-op on our standard queues: never rely on it to dedupe; claim in the database first, then send.
   - `moment.check` is claimed with `claimMomentCheck` (checks null and no claim younger than 10 min); a failed send or a job that gives up calls `releaseMomentCheck`. Ask answers are claimed with `claimAskMessage` (`pending` → `running`); a retry that finds `running` fails the message instead of repeating tool calls.

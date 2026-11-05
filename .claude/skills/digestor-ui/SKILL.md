@@ -37,7 +37,7 @@ Use tokens, not new hex literals. Highlight colours live in one place: each type
 | Meaning | Colour | Where |
 |---|---|---|
 | Highlight type | the type's `tone` (red, blue, amber, violet, green, teal, slate, pink) | `HighlightChip`, timeline pins, legend |
-| Approved | green | status buttons, "Approved ✓" |
+| Approved | green | status buttons, "Approved" |
 | Error | red | `role="alert"` boxes |
 | Warning | **neutral + ⚠**: stone border/background (`WARNING_BOX`) with the ⚠ icon (`WarningIcon`) and text — never amber (amber is a highlight tone) | `components/WarningNote.tsx`: clip checks, sensitive-profile notice, audio-only upload, "out of date", "Subtitles are for the old cut." |
 | Human-in-the-loop, "from you" | purple | context badge, edited facts, the pause screens' accent |

@@ -13,30 +13,29 @@ flowchart LR
   A[Upload / YouTube link] --> B[Download]
   B --> C[Ingest: audio]
   C --> D[Transcribe]
-  C -.-> PX[Preview copy: own job]
+  C -.-> PX[Playback copy: own job]
   D --> E[Context agent]
   E -->|needs answers| H1{{Human: context check}}
   H1 --> E
   E --> I[Index transcript in Chroma]
   I --> T[Topics] --> M[Moments + highlights] --> W[Briefing]
-  W --> P[Preview]
-  PX -.-> P
-  P --> FB{{Human: Full briefing}}
+  W --> FB{{Human: Briefing}}
+  PX -.-> FB
   FB --> PR{{Human: Prepare clips}}
   PR --> X[Export MP4 + SRT + VTT]
 ```
 
-The stepper reads Upload › Processing › Context › Preview › Briefing › Prepare › Export.
+The stepper reads Upload › Processing › Context › Briefing › Prepare › Export.
 
 1. **Intake:** an uploaded file (video or audio) or a YouTube link (downloaded with yt-dlp).
-2. **Ingest and transcribe:** ffmpeg extracts the audio and AssemblyAI returns a word-timed transcript in the spoken language. The 480p preview copy is made in a separate job meanwhile: the context check plays voice samples from the audio, and the session becomes ready once both the analysis and the copy are done.
+2. **Ingest and transcribe:** ffmpeg extracts the audio and AssemblyAI returns a word-timed transcript in the spoken language. The 480p playback copy is made in a separate job meanwhile: the context check plays voice samples from the audio, and the session becomes ready once both the analysis and the copy are done.
 3. **Context agent:** Claude extracts the profile (Parliament, Supreme court, Electoral debate, Trial / hearing, Interview, UN session, Other), participants and topic, each fact tagged with its source ("from video", "from metadata", "from you", "suggested by AI", or "missing"). If it is unsure it asks up to 3 questions. **Pause:** the human answers or skips.
 4. **Analysis:** the transcript is indexed in Chroma (local multilingual embeddings); Claude finds topics, then moments per granularity with profile-specific highlight types (AI-judged ones carry an "AI" badge and a "Why:" line; counted ones say "counted"), then writes a briefing whose quotes are checked against the transcript. Every boundary is snapped to a sentence edge. Each analysis is a version; "Something's off" re-runs it.
-5. **Preview:** a session timeline, top highlights and the briefing document.
-6. **Full briefing:** instant filters (granularity, speaker focus, relevance, highlight type) and keyboard triage (`A` approve, `N` neutral, `R` reject, `E` open in Prepare, arrows to move). Approved moments are never hidden by filters. "Confirm selection → Prepare clips".
-7. **Prepare clips:** trim on a sentence-snapped strip, checks ("The argument continues", "Context:", "Quoting someone else", "Interpreter audio"), 16:9 or 9:16 with a crop offset, a credit line, and per-language subtitles (translated by Claude, editable, approved before burn-in).
-8. **Export:** ffmpeg cuts each ready clip from the original (H.264, optional burned-in subtitles in Noto Sans, a credit line drawn bottom-right) and offers MP4, SRT and VTT downloads.
-9. **Ask** (press `/` on Preview or Full briefing): a RAG copilot answering only from the video's stored data, with function calls that change your personal selections (undoable; bulk changes need confirmation). It knows the speakers' names (confirmed or proposed) and can list when a named person speaks.
+5. **Briefing:** one page at `/s/[id]` once the session is ready: a summary on top (what it is about, top highlights, the briefing text), then a card per topic with its moment tree. Instant filters (levels Exchanges / Passages / Punchlines, speaker focus, relevance, highlight type, status); each moment has Approve / Skip (click the active one again to undo it). Approved moments are never hidden by filters. "Prepare clips →" confirms the selection.
+6. **Prepare clips:** trim on a sentence-snapped strip that always shows where you are in time (hold Alt/Option for a free cut, saved as is with a "Cuts mid-sentence" warning), checks ("The argument continues", "Context:", "Quoting someone else", "Interpreter audio"), 16:9 or 9:16 with a crop offset, a credit line, and per-language subtitles (translated by Claude, editable, approved before an MP4 with subtitles is made). The subtitle look (style and position) is chosen per clip with a preview.
+7. **Export:** ffmpeg cuts each ready clip from the original (H.264, a credit line drawn bottom-right). Each one offers MP4, SRT and VTT downloads, "MP4 with <language> subtitles" (the words in the picture, Noto Sans) and a Watch toggle that plays the rendered file inline.
+8. **Your sessions:** the home page lists your earlier sessions with their status, so you can pick up where you left off.
+9. **Ask** (press `/` on the Briefing page): a RAG copilot answering only from the video's stored data, with function calls that change your personal selections (undoable; bulk changes need confirmation). It knows the speakers' names (confirmed or proposed) and can list when a named person speaks.
 10. **Speaker names (Plan 3):** a registry of people, and a name for each voice with its source (the official Senado record, a caption on screen, the transcript, or you). Names from AI are proposals until you confirm them in Who's who; Prepare is blocked until the voices in a clip are confirmed or marked "No name"; sensitive profiles (a trial) never show an unconfirmed name. Results: the debate scores 0.99, the Senado plenary 0.93, a Bundestag debate 0.95 and a US House floor hour 0.85 (see Evaluation). Câmara plenary links are matched the same way; see the "Câmara record names" paragraph under Evaluation (matching validated on recorded text only, not yet scored on a golden file). "Report a problem" on a name goes to the reports list.
 
 Progress streams to the browser over SSE; the pipeline survives worker restarts because it resumes from a Postgres checkpoint.
@@ -57,7 +56,7 @@ Progress streams to the browser over SSE; the pipeline survives worker restarts 
 ## Architecture
 
 ```
-apps/web      Next.js app: screens (Upload, Processing, Context check, Preview, Full briefing, Prepare, Export, Reports) and API routes
+apps/web      Next.js app: screens (Upload, Processing, Context check, Briefing, Prepare, Export, Reports) and API routes
 apps/worker   Node worker: job queue consumer, LangGraph pipeline, ffmpeg, yt-dlp, AssemblyAI, Claude
 packages/core Shared schemas, time/snap helpers, Drizzle tables, repo functions, LocalStorage
 docker/initdb Creates the digestor_test database

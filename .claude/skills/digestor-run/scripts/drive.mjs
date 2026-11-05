@@ -6,7 +6,7 @@
 //
 // --visit   screenshot a page, e.g. /  /s/<id> (Briefing once ready)  /s/<id>/prepare  /s/<id>/export  /reports
 // --upload  upload a file from the home page, follow the redirect to /s/<id>, screenshot it
-// --keys    open a page, press keys in order (Playwright key names: a, n, r, e, ArrowDown, Escape, "/"),
+// --keys    open a page, press keys in order (Playwright key names: ArrowDown, Escape, "/"),
 //           screenshot after each key: e.g. /s/<id>=/,Escape
 //           ("/" opens the Ask drawer on the Briefing page)
 // Uses Google Chrome (channel "chrome"): Playwright's bundled Chromium cannot play H.264.

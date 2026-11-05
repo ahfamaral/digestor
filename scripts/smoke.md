@@ -44,7 +44,7 @@ No API keys were available while Plan 2 was built, so every AI fake is shaped fr
 - [ ] Start it again (`docker compose up -d worker`).
 
 Expected:
-- [ ] The job is retried and the session reaches the context check or the Preview.
+- [ ] The job is retried and the session reaches the context check or the Briefing.
 - [ ] No duplicate topics or moments on the Briefing page.
 
 ## 3. Ask (real Claude tool calls)
@@ -67,7 +67,7 @@ On a `ready` session with a confirmed name (Who's who) and an LLM key. This is o
 - [ ] Briefing → Focus on that person → "Find more moments with <name>" shows beside the picker (and under the list when fewer than 5 moments are shown at the ticked levels).
 - [ ] Click it: the button reads "Finding…", then the line "Found N moments with <name>." appears (with " M are at the Passage or Punchline level." when some sit at other levels), or "No new moments found.".
 - [ ] New rows carry the "Found for you" marker and the AI badge, and none repeats a moment already listed.
-- [ ] Clicking again replaces the earlier found moments, except ones you approved, marked neutral or made a clip from.
+- [ ] Clicking again replaces the earlier found moments, except ones you approved, skipped or made a clip from.
 - [ ] The browser console and network tab show no errors (with the Playwright drive: `errors.txt` is empty).
 
 ## 4. OpenRouter (`LLM_PROVIDER=openrouter`)
