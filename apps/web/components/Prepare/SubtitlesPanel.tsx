@@ -5,15 +5,22 @@ import { LANGUAGES } from "@digestor/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WarningIcon } from "@/components/WarningNote";
 import { addTrack, patchTrack } from "@/lib/prepareApi";
-import { subtitleLanguages, type TrackView } from "@/lib/prepareData";
+import { subtitleLanguages, type ClipView, type TrackView } from "@/lib/prepareData";
 import { languageName, t } from "@/lib/i18n";
 import { TrackEditor } from "./TrackEditor";
 import { Dropdown } from "@/components/Dropdown";
 import { Busy, Spinner } from "@/components/ui/spinner";
+import { SubtitleStyleDialog } from "./SubtitleStyleDialog";
+import type { SubtitleLook } from "@/lib/subtitlePreview";
 
 export interface SubtitlesPanelProps {
   sessionId: string;
   clipId: string;
+  clip: ClipView;
+  /** The session has a picture (false: audio only). */
+  hasVideo: boolean;
+  /** Saves the clip's subtitle style and position; resolves false when it failed. */
+  onLook: (look: SubtitleLook) => Promise<boolean>;
   /** The video's spoken language, or null when unknown. */
   originalLanguage: string | null;
   tracks: TrackView[];
@@ -29,7 +36,7 @@ const ACT =
  * Subtitles per language: add a language, download drafts, review and approve lines, and ask for a burned-in version.
  * A track built for an older cut is "outdated" (R27): no downloads, and Rebuild replaces it.
  */
-export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, frozen, onTrack }: SubtitlesPanelProps) {
+export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, onLook, originalLanguage, tracks, frozen, onTrack }: SubtitlesPanelProps) {
   const options = subtitleLanguages(originalLanguage, tracks.map((tr) => tr.language));
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,6 +44,8 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, fr
   const [trackErrors, setTrackErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  /** The style dialog: opened by ticking "put in the video" (then Use also requests it) or by "Change look". */
+  const [styling, setStyling] = useState<{ trackId: string; thenBurn: boolean } | null>(null);
   const chosen = options.some((o) => o.code === pick) ? pick : (options[0]?.code ?? "");
 
   const label = (code: string) => {
@@ -79,6 +88,14 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, fr
   }
 
   const editingTrack = tracks.find((tr) => tr.id === editing) ?? null;
+  const stylingTrack = tracks.find((tr) => tr.id === styling?.trackId) ?? null;
+
+  async function saveLook(track: TrackView, look: SubtitleLook, thenBurn: boolean) {
+    if (look.style !== clip.subtitleStyle || look.position !== clip.subtitlePosition) {
+      if (!(await onLook(look))) throw new Error(t("prepare.saveFailed"));
+    }
+    if (thenBurn) await burn(track, true);
+  }
 
   return (
     <section aria-labelledby={`subs-h-${clipId}`}>
@@ -97,7 +114,8 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, fr
             frozen={frozen}
             error={trackErrors[tr.id] ?? null}
             onReview={() => setEditing(tr.id)}
-            onBurn={(want) => void burn(tr, want)}
+            onBurn={(want) => (want ? setStyling({ trackId: tr.id, thenBurn: true }) : void burn(tr, false))}
+            onChangeLook={() => setStyling({ trackId: tr.id, thenBurn: false })}
             retrying={retrying === tr.id}
             onRetry={() => void retry(tr)}
           />
@@ -129,6 +147,18 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, fr
         <p role="alert" className="mt-1 text-xs text-red-700">
           {error}
         </p>
+      )}
+      {stylingTrack && styling && (
+        <SubtitleStyleDialog
+          open
+          onOpenChange={(open) => !open && setStyling(null)}
+          clip={clip}
+          track={stylingTrack}
+          sessionId={sessionId}
+          hasVideo={hasVideo}
+          languageLabel={label(stylingTrack.language)}
+          onUse={(look) => saveLook(stylingTrack, look, styling.thenBurn)}
+        />
       )}
       {editingTrack && (
         <TrackEditor
@@ -163,7 +193,7 @@ function burnNote(track: TrackView): string | null {
 }
 
 function TrackRow({
-  sessionId, clipId, track, label, frozen, error, onReview, onBurn, retrying, onRetry,
+  sessionId, clipId, track, label, frozen, error, onReview, onBurn, onChangeLook, retrying, onRetry,
 }: {
   sessionId: string;
   clipId: string;
@@ -173,6 +203,7 @@ function TrackRow({
   error: string | null;
   onReview: () => void;
   onBurn: (want: boolean) => void;
+  onChangeLook: () => void;
   retrying: boolean;
   onRetry: () => void;
 }) {
@@ -262,6 +293,16 @@ function TrackRow({
             />
             <span aria-hidden>{t("prepare.burnIn")}</span>
           </label>
+          {burnOn && !frozen && !making && (
+            <button
+              type="button"
+              className="rounded text-xs underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              onClick={onChangeLook}
+              aria-label={t("prepare.changeLookLabel", { language: label })}
+            >
+              {t("prepare.changeLook")}
+            </button>
+          )}
           {!track.approved && <span className="text-xs text-muted-foreground">{t("prepare.burnNeedsApproval")}</span>}
           {note && (
             <span

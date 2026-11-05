@@ -481,6 +481,9 @@ function ClipCard({
             <SubtitlesPanel
               sessionId={session.id}
               clipId={clip.id}
+              clip={clip}
+              hasVideo={session.hasVideo}
+              onLook={(look) => onChange({ subtitleStyle: look.style, subtitlePosition: look.position })}
               originalLanguage={session.language}
               tracks={item.tracks}
               frozen={frozen}
