@@ -77,24 +77,50 @@ export function cutsMidSentence(b: Boundary[], r: Range): boolean {
   return !(inGap(r.startMs) && inGap(r.endMs));
 }
 
+/** An edge is untouched when the request is the stored value floored to tenths (what `formatTimestamp` sends). */
+const untouched = (requested: number, current: number, toleranceMs: number) => {
+  const d = current - requested;
+  return d >= 0 && d < toleranceMs;
+};
+
 /**
- * Snaps only the edges that changed. An edge within `toleranceMs` of its current value (times travel as tenths of a
- * second, stored edges are whole ms) is kept verbatim. If the result is empty, the whole request is snapped instead.
+ * Snaps only the edges that changed. An untouched edge (the request equals the stored value floored to tenths: times
+ * travel as tenths of a second, stored edges are whole ms) is kept verbatim. A single changed edge snaps on its own
+ * against the kept one; with both changed, or nothing valid, the whole request goes through `snapRange`.
  */
-export function snapEdges(b: Boundary[], current: Range, requested: Range, toleranceMs = 100): Range {
-  const snapped = snapRange(b, requested);
-  const r = {
-    startMs: Math.abs(requested.startMs - current.startMs) <= toleranceMs ? current.startMs : snapped.startMs,
-    endMs: Math.abs(requested.endMs - current.endMs) <= toleranceMs ? current.endMs : snapped.endMs,
-  };
-  return r.startMs >= r.endMs ? snapped : r;
+export function snapEdges(b: Boundary[], current: Range, requested: Range, toleranceMs = 100, padMs = 150): Range {
+  const snapped = snapRange(b, requested, padMs);
+  const keepStart = untouched(requested.startMs, current.startMs, toleranceMs);
+  const keepEnd = untouched(requested.endMs, current.endMs, toleranceMs);
+  if (keepStart === keepEnd) {
+    const r = { startMs: keepStart ? current.startMs : snapped.startMs, endMs: keepEnd ? current.endMs : snapped.endMs };
+    return r.startMs >= r.endMs ? snapped : r;
+  }
+  let best: number | null = null;
+  let bestDist = Infinity;
+  if (keepStart) {
+    for (let i = 1; i < b.length; i++) {
+      const x = b[i]!;
+      const pos = Math.min(x.beforeWordStartMs, x.afterWordEndMs + padMs);
+      const dist = Math.abs(x.afterWordEndMs - requested.endMs);
+      if (pos > current.startMs && dist < bestDist) { best = pos; bestDist = dist; }
+    }
+    return best === null ? snapped : { startMs: current.startMs, endMs: best };
+  }
+  for (let i = 0; i < b.length - 1; i++) {
+    const x = b[i]!;
+    const pos = Math.max(x.afterWordEndMs, x.beforeWordStartMs - padMs);
+    const dist = Math.abs(x.beforeWordStartMs - requested.startMs);
+    if (pos < current.endMs && dist < bestDist) { best = pos; bestDist = dist; }
+  }
+  return best === null ? snapped : { startMs: best, endMs: current.endMs };
 }
 
 /** Like `snapEdges`, with no snapping: a changed edge is taken as given (the Alt cut). */
 export function freeEdges(current: Range, requested: Range, toleranceMs = 100): Range {
   return {
-    startMs: Math.abs(requested.startMs - current.startMs) <= toleranceMs ? current.startMs : requested.startMs,
-    endMs: Math.abs(requested.endMs - current.endMs) <= toleranceMs ? current.endMs : requested.endMs,
+    startMs: untouched(requested.startMs, current.startMs, toleranceMs) ? current.startMs : requested.startMs,
+    endMs: untouched(requested.endMs, current.endMs, toleranceMs) ? current.endMs : requested.endMs,
   };
 }
 

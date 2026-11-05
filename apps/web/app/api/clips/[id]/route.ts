@@ -83,6 +83,10 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
           ? { endMs: snapRange(boundaries, { startMs, endMs }).endMs }
           : snapEdges(boundaries, current, { startMs, endMs });
     }
+    // Kept edges can leave the result inverted or out of the video: re-check what is stored.
+    const nextStart = patch.startMs ?? clip.startMs;
+    const nextEnd = patch.endMs ?? clip.endMs;
+    if (!(nextStart >= 0 && nextStart < nextEnd && nextEnd <= durationMs)) return errorResponse(400, RANGE_ERROR);
   } else if ("format" in body || "cropOffset" in body) {
     patch = {};
     if (body.format !== undefined) patch.format = body.format;

@@ -176,6 +176,17 @@ describe("PATCH /api/clips/[id]", () => {
     expect(await bad.json()).toEqual({ error: "End must be after start and within the video (hh:mm:ss)" });
   });
 
+  it("a free request next to a kept edge never stores an inverted range; out-of-video ends are refused", async () => {
+    const { clip } = await clipFor();
+    await updateClip(h.db, clip.id, { startMs: 20_090, endMs: 30_000 }, "user");
+    // start "20.0" is the kept 20090 floored to tenths; the end moves to 20100, just past it
+    const res = await patchClip(req({ start: "00:00:20.0", end: "00:00:20.1", free: true }, "PATCH"), ctx(clip.id));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ startMs: 20_090, endMs: 20_100 });
+    const bad = await patchClip(req({ start: "00:00:20.0", end: "00:01:50", free: true }, "PATCH"), ctx(clip.id));
+    expect(bad.status).toBe(400);
+  });
+
   it("extend moves the end to the next sentence end", async () => {
     const { clip } = await clipFor();
     const res = await patchClip(req({ extend: "next" }, "PATCH"), ctx(clip.id));

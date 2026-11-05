@@ -143,13 +143,25 @@ describe("free cuts (Alt)", () => {
       endMs: snapRange(b, { startMs: 3000, endMs: 5200 }).endMs,
     });
     expect(snapEdges(b, { startMs: 3045, endMs: 9150 }, { startMs: 3000, endMs: 5200 }).startMs).toBe(3045);
+    expect(snapEdges(b, { startMs: 12345, endMs: 20000 }, { startMs: 12300, endMs: 20000 }).startMs).toBe(12345);
   });
   it("snapEdges falls back to snapRange when the result would be empty", () => {
     const requested = { startMs: 9200, endMs: 9500 };
     expect(snapEdges(b, { startMs: 9200, endMs: 9800 }, requested)).toEqual(snapRange(b, requested));
   });
+  it("a single Alt step is a change, from an on-grid and an off-grid value", () => {
+    const end = { startMs: 0, endMs: 30000 };
+    for (const [cur, req] of [[12700, 12800], [12700, 12600], [5750, 5850], [5750, 5650]] as const) {
+      expect(freeEdges({ startMs: cur, endMs: 30000 }, { startMs: req, endMs: end.endMs }).startMs, `${cur}->${req}`).toBe(req);
+    }
+    // the unchanged edge sent as tenths (floored) stays untouched
+    expect(freeEdges({ startMs: 5750, endMs: 30000 }, { startMs: 5700, endMs: 30000 }).startMs).toBe(5750);
+  });
+  it("snapEdges snaps a single changed end on its own against a kept free start", () => {
+    expect(snapEdges(b, { startMs: 4000, endMs: 9150 }, { startMs: 4000, endMs: 5100 })).toEqual({ startMs: 4000, endMs: 5150 });
+  });
   it("freeEdges takes changed edges as given", () => {
     expect(freeEdges({ startMs: 1250, endMs: 9150 }, { startMs: 1250, endMs: 7777 })).toEqual({ startMs: 1250, endMs: 7777 });
-    expect(freeEdges({ startMs: 1250, endMs: 9150 }, { startMs: 1300, endMs: 7777 }).startMs).toBe(1250);
+    expect(freeEdges({ startMs: 1250, endMs: 9150 }, { startMs: 1200, endMs: 7777 }).startMs).toBe(1250);
   });
 });
