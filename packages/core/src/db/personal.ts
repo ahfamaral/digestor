@@ -298,11 +298,13 @@ async function afterBoundsChange(tx: Tx, clipId: string, bounds: { startMs: numb
 type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor };
 
 async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
+  // The style of the clip whose style was set (or that was created) last: render writes bump updated_at, so not that.
   const [last] = await tx
     .select({ subtitleStyle: clips.subtitleStyle })
-    .from(clips)
-    .where(and(eq(clips.ownerId, a.ownerId), alive))
-    .orderBy(desc(clips.updatedAt))
+    .from(clipEvents)
+    .innerJoin(clips, eq(clips.id, clipEvents.clipId))
+    .where(and(eq(clips.ownerId, a.ownerId), alive, inArray(clipEvents.kind, ["style", "create"])))
+    .orderBy(desc(clipEvents.at), desc(clipEvents.id))
     .limit(1);
   const [sess] = await tx.select({ profile: sessions.profile }).from(sessions).where(eq(sessions.id, a.sessionId));
   const profile = ProfileIdSchema.safeParse(sess?.profile);

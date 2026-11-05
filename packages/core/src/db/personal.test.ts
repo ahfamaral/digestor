@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
+  setClipRenderStatus, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -241,6 +241,15 @@ describe("tracks", () => {
     expect(c1).toMatchObject({ subtitleStyle: "yellow", subtitlePosition: "above_banner" });
     await updateClip(db, c1.id, { subtitleStyle: "white_box" }, "user");
     expect(await newClip()).toMatchObject({ subtitleStyle: "white_box", subtitlePosition: "above_banner" });
+  });
+
+  it("the inherited style follows the clip whose style was set last, not the last render write", async () => {
+    const a = await newClip();
+    await updateClip(db, a.id, { subtitleStyle: "white_box" }, "user");
+    const b = await newClip();
+    await updateClip(db, b.id, { subtitleStyle: "white" }, "user");
+    await setClipRenderStatus(db, a.id, "rendering");
+    expect(await newClip()).toMatchObject({ subtitleStyle: "white" });
   });
 
   it("a style change stales a done burn, keeps the render, and undo restores it", async () => {
