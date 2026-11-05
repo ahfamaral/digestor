@@ -34,6 +34,15 @@ export const en = {
       Export: "Export",
     },
   },
+  home: {
+    sessions: "Your sessions",
+    waiting: "Waiting for you",
+    failed: "Failed",
+    ready: "Ready",
+    videoRemoved: "Video removed",
+    clipOne: "1 clip",
+    clipMany: "{n} clips",
+  },
   upload: {
     title: "Digest a long video",
     intro: "Drop a video or paste a YouTube link — the language and the kind of event are detected for you.",

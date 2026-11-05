@@ -1,7 +1,7 @@
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { ContextCard, Transcript } from "../schemas.ts";
 import type { Db } from "./client.ts";
-import { contextCards, sessions, transcripts, type Stage } from "./schema.ts";
+import { clips, contextCards, sessions, transcripts, type Stage } from "./schema.ts";
 
 export type Session = typeof sessions.$inferSelect;
 
@@ -112,4 +112,45 @@ export async function saveContextCard(db: Db, id: string, card: ContextCard, rou
 export async function getContextCard(db: Db, id: string): Promise<{ card: ContextCard; round: number } | null> {
   const [row] = await db.select().from(contextCards).where(eq(contextCards.sessionId, id));
   return row ? { card: row.card, round: row.round } : null;
+}
+
+export interface SessionSummary {
+  id: string;
+  title: string;
+  language: string | null;
+  profile: string | null;
+  stage: Stage;
+  error: string | null;
+  videoRemoved: boolean;
+  lastActivityAt: Date;
+  renderedClips: number;
+}
+
+/** The owner's sessions, newest activity first (the session's own update or its latest clip update). */
+export async function listSessionSummaries(db: Db, ownerId: string, limit = 50): Promise<SessionSummary[]> {
+  const agg = db
+    .select({
+      sessionId: clips.sessionId,
+      lastClipAt: sql<Date | null>`max(${clips.updatedAt})`.as("last_clip_at"),
+      rendered: sql<number>`count(*) filter (where ${clips.renderStatus} = 'done')::int`.as("rendered"),
+    })
+    .from(clips)
+    .where(and(eq(clips.ownerId, ownerId), isNull(clips.deletedAt)))
+    .groupBy(clips.sessionId)
+    .as("clip_agg");
+  const activity = sql<Date>`greatest(${sessions.updatedAt}, ${agg.lastClipAt})`;
+  const rows = await db
+    .select({
+      id: sessions.id, title: sessions.title, language: sessions.language, profile: sessions.profile,
+      stage: sessions.stage, error: sessions.error, videoDeletedAt: sessions.videoDeletedAt,
+      lastActivityAt: activity.mapWith(sessions.updatedAt), rendered: agg.rendered,
+    })
+    .from(sessions)
+    .leftJoin(agg, eq(agg.sessionId, sessions.id))
+    .orderBy(desc(activity))
+    .limit(limit);
+  return rows.map((r) => ({
+    id: r.id, title: r.title, language: r.language, profile: r.profile, stage: r.stage, error: r.error,
+    videoRemoved: r.videoDeletedAt !== null, lastActivityAt: r.lastActivityAt, renderedClips: r.rendered ?? 0,
+  }));
 }

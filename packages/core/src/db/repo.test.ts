@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createDb, type Db } from "./client.ts";
+import { eq } from "drizzle-orm";
+import { clips, sessions } from "./schema.ts";
 import {
   createSession, deleteSession, getContextCard, getSession, getTranscript, listExpiredSessions, saveContextCard,
-  saveTranscript, setStage, transitionStage, updateSession, type Session,
+  listSessionSummaries, saveTranscript, setStage, transitionStage, updateSession, type Session,
 } from "./repo.ts";
 
 let db: Db;
@@ -66,5 +68,28 @@ describe("transitionStage", () => {
     expect(await getSession(db, s.id)).toMatchObject({ stage: "understanding", progress: 55 });
     expect(await transitionStage(db, s.id, "awaiting_context", "indexing", 70)).toBe(false);
     expect((await getSession(db, s.id))?.stage).toBe("understanding");
+  });
+});
+
+describe("listSessionSummaries", () => {
+  const at = (n: number) => new Date(Date.UTC(2026, 0, n));
+  it("orders by latest activity (session or clip) and counts only done live clips", async () => {
+    const a = await createSession(db, { title: "A", source: "upload" });
+    const b = await createSession(db, { title: "B", source: "upload" });
+    await db.update(sessions).set({ updatedAt: at(2) }).where(eq(sessions.id, s.id));
+    await db.update(sessions).set({ updatedAt: at(1) }).where(eq(sessions.id, a.id));
+    await db.update(sessions).set({ updatedAt: at(3) }).where(eq(sessions.id, b.id));
+    const base = { startMs: 0, endMs: 1000, format: "16:9" as const };
+    await db.insert(clips).values([
+      { ...base, sessionId: a.id, ownerId: "owner", renderStatus: "done", updatedAt: at(5) },
+      { ...base, sessionId: a.id, ownerId: "owner", renderStatus: "none", updatedAt: at(4) },
+      { ...base, sessionId: a.id, ownerId: "owner", renderStatus: "done", deletedAt: at(4), updatedAt: at(4) },
+      { ...base, sessionId: a.id, ownerId: "other", renderStatus: "done", updatedAt: at(4) },
+    ]);
+    const list = await listSessionSummaries(db, "owner");
+    expect(list.map((x) => x.title)).toEqual(["A", "B", "T"]);
+    expect(list.map((x) => x.renderedClips)).toEqual([1, 0, 0]);
+    expect(list[0]!.lastActivityAt).toEqual(at(5));
+    expect(list[0]).toMatchObject({ id: a.id, stage: "uploaded", videoRemoved: false, profile: null });
   });
 });

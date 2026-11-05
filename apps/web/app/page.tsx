@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { AppBar } from "@/components/AppBar";
 import { UploadForm } from "@/components/UploadForm";
+import { SessionList } from "@/components/SessionList";
 import { t } from "@/lib/i18n";
 
 export default function UploadPage() {
@@ -12,6 +14,9 @@ export default function UploadPage() {
           {t("upload.intro")}
         </p>
         <UploadForm />
+        <Suspense fallback={null}>
+          <SessionList />
+        </Suspense>
       </main>
     </>
   );
