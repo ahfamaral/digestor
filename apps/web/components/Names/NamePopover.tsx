@@ -9,6 +9,7 @@ import { ReportProblem } from "@/components/ReportProblem";
 import { errorMessage } from "@/lib/http";
 import { reportTargetId, scopeFields, type NamesData, type VoiceLabel } from "@/lib/names";
 import { t } from "@/lib/i18n";
+import { Spinner } from "@/components/ui/spinner";
 
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
@@ -278,7 +279,8 @@ export function NamePopover({
                 </p>
               )}
               {busy && (
-                <p role="status" className="mt-2 text-xs text-muted-foreground">
+                <p role="status" className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Spinner />
                   {t("names.saving")}
                 </p>
               )}

@@ -9,6 +9,7 @@ import { subtitleLanguages, type TrackView } from "@/lib/prepareData";
 import { languageName, t } from "@/lib/i18n";
 import { TrackEditor } from "./TrackEditor";
 import { Dropdown } from "@/components/Dropdown";
+import { Busy, Spinner } from "@/components/ui/spinner";
 
 export interface SubtitlesPanelProps {
   sessionId: string;
@@ -120,7 +121,7 @@ export function SubtitlesPanel({ sessionId, clipId, originalLanguage, tracks, fr
             />
           </label>
           <button type="button" className={`${ACT} h-8`} disabled={busy || !chosen} onClick={() => void add()}>
-            {busy ? t("prepare.adding") : t("prepare.add")}
+            <Busy busy={busy}>{busy ? t("prepare.adding") : t("prepare.add")}</Busy>
           </button>
         </div>
       )}
@@ -188,7 +189,8 @@ function TrackRow({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="font-semibold">{label}</span>
         {track.status === "preparing" && (
-          <span role="status" className="text-xs text-muted-foreground">
+          <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Spinner />
             {t("prepare.preparing")}
           </span>
         )}
@@ -225,7 +227,7 @@ function TrackRow({
             onClick={onRetry}
             aria-label={t("prepare.retryLabel", { language: label })}
           >
-            {retrying ? t("prepare.adding") : t("prepare.retry")}
+            <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.retry")}</Busy>
           </button>
         </div>
       )}
@@ -242,7 +244,7 @@ function TrackRow({
             onClick={onRetry}
             aria-label={t("prepare.rebuildLabel", { language: label })}
           >
-            {retrying ? t("prepare.adding") : t("prepare.rebuild")}
+            <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.rebuild")}</Busy>
           </button>
         </div>
       )}

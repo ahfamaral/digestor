@@ -22,6 +22,7 @@ import { Checklist } from "./Checklist";
 import { FormatPicker, cropPosition } from "./FormatPicker";
 import { SubtitlesPanel } from "./SubtitlesPanel";
 import { TrimStrip } from "./TrimStrip";
+import { Busy } from "@/components/ui/spinner";
 
 /** One clip as the server page sends it. */
 export interface PrepareClipData {
@@ -427,8 +428,8 @@ function ClipCard({
               onCommit={commitBounds}
               onCommitText={(start, end) => onChange({ start, end }, { refresh: true, announce: true })}
             />
-            <p role="status" className="min-h-4 text-xs text-muted-foreground">
-              {busy ? t("prepare.saving") : status}
+            <p role="status" className="flex min-h-4 items-center text-xs text-muted-foreground">
+              <Busy busy={busy}>{busy ? t("prepare.saving") : status}</Busy>
             </p>
             {error && (
               <p role="alert" className="-mt-2 text-xs text-red-700">

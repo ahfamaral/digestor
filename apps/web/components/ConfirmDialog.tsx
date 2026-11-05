@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { pauseAllMedia } from "@/lib/media";
 import { t } from "@/lib/i18n";
+import { Busy } from "@/components/ui/spinner";
 
 /**
  * Asks before a one-click action that changes data or leaves the page. Opening it pauses any playing media (nothing
@@ -69,7 +70,7 @@ export function ConfirmDialog({
             {t("confirm.cancel")}
           </Button>
           <Button type="button" className="bg-brand text-brand-foreground hover:bg-brand/90" disabled={busy} onClick={() => void confirm()}>
-            {busy && busyLabel ? busyLabel : actionLabel}
+            <Busy busy={busy}>{busy && busyLabel ? busyLabel : actionLabel}</Busy>
           </Button>
         </DialogFooter>
       </DialogContent>

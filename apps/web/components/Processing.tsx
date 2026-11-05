@@ -6,6 +6,7 @@ import { PROFILES, type ProfileId } from "@digestor/core";
 import { buildSteps, type StageName } from "@/lib/processingSteps";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
+import { Busy } from "@/components/ui/spinner";
 
 export interface ProgressState {
   stage: StageName;
@@ -68,8 +69,8 @@ export function Processing({ sessionId, source, hasVideo = true, initial }: { se
             {s.state === "done" ? "✓" : s.state === "running" ? "●" : i + 1}
           </span>
           <div className="min-w-0 flex-1">
-            <div className={cn("text-sm", s.state === "waiting" ? "text-muted-foreground" : "font-semibold")}>
-              {s.label}
+            <div className={cn("flex items-center text-sm", s.state === "waiting" ? "text-muted-foreground" : "font-semibold")}>
+              <Busy busy={s.state === "running"}>{s.label}</Busy>
               <span className="sr-only"> ({t(STATE_KEY[s.state])})</span>
             </div>
             {s.key === "transcribing" && s.state === "done" && language && (

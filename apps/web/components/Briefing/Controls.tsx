@@ -7,6 +7,7 @@ import { SHOW_FILTERS, type BriefingFilters, type ShowFilter } from "@/lib/brief
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
 import { Dropdown } from "@/components/Dropdown";
+import { Busy } from "@/components/ui/spinner";
 
 const LEVELS: Granularity[] = ["exchange", "passage", "punchline"];
 const SHOW_TEXT: Record<ShowFilter, MessageKey> = {
@@ -131,7 +132,7 @@ export function Controls({
                 onClick={findMore.onClick}
                 className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {findMore.label}
+                <Busy busy={findMore.busy}>{findMore.label}</Busy>
               </button>
             )}
           </div>

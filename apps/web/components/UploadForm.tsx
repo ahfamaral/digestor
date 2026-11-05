@@ -18,6 +18,7 @@ import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "@/
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Dropdown } from "@/components/Dropdown";
+import { Busy } from "@/components/ui/spinner";
 
 type Mode = "file" | "youtube";
 type Meta = { durationMs: number; width: number; height: number } | null;
@@ -415,7 +416,9 @@ export function UploadForm() {
           disabled={!canSubmit}
           onClick={() => void submit()}
         >
-          {upload.phase === "uploading" ? t("upload.submitUploading", { pct: upload.pct }) : submitting ? t("upload.submitStarting") : t("upload.submit")}
+          <Busy busy={upload.phase === "uploading" || submitting}>
+            {upload.phase === "uploading" ? t("upload.submitUploading", { pct: upload.pct }) : submitting ? t("upload.submitStarting") : t("upload.submit")}
+          </Busy>
         </Button>
         {submitError && (
           <p role="alert" className="mt-2 text-sm text-destructive">

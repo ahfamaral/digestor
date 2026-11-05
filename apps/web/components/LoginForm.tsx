@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { t } from "@/lib/i18n";
+import { Busy } from "@/components/ui/spinner";
 
 export function LoginForm() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export function LoginForm() {
             </p>
           )}
           <Button type="submit" className="h-9 bg-brand text-brand-foreground hover:bg-brand/90" disabled={pending || !password}>
-            {pending ? t("login.checking") : t("login.continue")}
+            <Busy busy={pending}>{pending ? t("login.checking") : t("login.continue")}</Busy>
           </Button>
         </form>
       </CardContent>

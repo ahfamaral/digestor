@@ -11,6 +11,7 @@ import { asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimest
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { isTyping, opensAsk } from "@/lib/review";
+import { Busy, Spinner } from "@/components/ui/spinner";
 
 const MAX_QUESTION = 500;
 /** The counter appears this close to the limit. */
@@ -295,7 +296,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
                 )}
               </p>
               <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:bg-brand/90">
-                {sending ? t("ask.sending") : t("ask.send")}
+                <Busy busy={sending}>{sending ? t("ask.sending") : t("ask.send")}</Busy>
               </Button>
             </div>
             {sendError && (
@@ -338,7 +339,7 @@ function MessageItem({
   return (
     <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
       <span className="sr-only">{t("ask.answer")}: </span>
-      {isAnswering(message.status) && !stale && <p className="text-muted-foreground">{t("ask.thinking")}</p>}
+      {isAnswering(message.status) && !stale && <p className="inline-flex items-center gap-1.5 text-muted-foreground"><Spinner />{t("ask.thinking")}</p>}
       {isAnswering(message.status) && stale && (
         <p role="alert" className="text-red-700">
           {t("ask.tooSlow")}
@@ -386,7 +387,7 @@ function MessageItem({
                       <span className="text-xs text-muted-foreground">{t("ask.undone")}</span>
                     ) : (
                       <button type="button" className={CHIP} disabled={busy.has(key)} aria-label={t("ask.undoLabel", { call: label })} onClick={() => onUndo(key, call)}>
-                        {busy.has(key) ? t("ask.undoing") : t("ask.undo")}
+                        <Busy busy={busy.has(key)}>{busy.has(key) ? t("ask.undoing") : t("ask.undo")}</Busy>
                       </button>
                     ))}
                 </div>
@@ -432,7 +433,7 @@ function ActionItem({
       {action.status === "pending" ? (
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, "confirm")}>
-            {busy ? t("ask.bulkApplying") : n === 1 ? t("ask.bulkApplyOne") : t("ask.bulkApply", { n })}
+            <Busy busy={busy}>{busy ? t("ask.bulkApplying") : n === 1 ? t("ask.bulkApplyOne") : t("ask.bulkApply", { n })}</Busy>
           </Button>
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDecide(action, "dismiss")}>
             {t("ask.bulkDismiss")}

@@ -12,6 +12,7 @@ import { inFlight, type ExportLanguageRow, type ExportRow } from "@/lib/exportRo
 import { languageName, t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
+import { Busy } from "@/components/ui/spinner";
 
 export const EXPORT_POLL_MS = 3000;
 
@@ -143,7 +144,7 @@ export function ExportList({ session, names, clips }: ExportListProps) {
               aria-describedby={session.videoRemoved ? "video-removed" : undefined}
               className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? t("exportScreen.exporting") : t("exportScreen.exportReady")}
+              <Busy busy={busy}>{busy ? t("exportScreen.exporting") : t("exportScreen.exportReady")}</Busy>
             </button>
           </div>
         </footer>
@@ -199,7 +200,7 @@ function ClipRow({
           className={cn("inline-flex items-center gap-1 text-xs", bad ? "text-red-700" : row.renderOutOfDate ? "font-medium text-stone-900" : "text-muted-foreground")}
         >
           {row.renderOutOfDate && <WarningIcon className="size-3.5" />}
-          {status}
+          <Busy busy={row.renderStatus === "queued" || row.renderStatus === "rendering"}>{status}</Busy>
         </p>
       </div>
 
@@ -277,7 +278,9 @@ function LanguageLine({ l, heading }: { l: ExportLanguageRow; heading: string })
       {burnNote !== "" && (
         <span className={cn("inline-flex items-center gap-1 text-xs", l.burn.status === "failed" ? "text-red-700" : l.burn.outOfDate ? "font-medium text-stone-900" : "text-muted-foreground")}>
           {l.burn.outOfDate && <WarningIcon className="size-3.5" />}
-          {t("exportScreen.burned")}: {burnNote}
+          <Busy busy={l.burn.status === "queued" || l.burn.status === "rendering"}>
+            {t("exportScreen.burned")}: {burnNote}
+          </Busy>
         </span>
       )}
     </li>

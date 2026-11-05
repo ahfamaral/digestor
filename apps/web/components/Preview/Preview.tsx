@@ -25,6 +25,7 @@ import { BriefingDoc } from "./BriefingDoc";
 import { Timeline } from "./Timeline";
 import { TopHighlights } from "./TopHighlights";
 import { Dropdown } from "@/components/Dropdown";
+import { Busy } from "@/components/ui/spinner";
 
 export interface PreviewProps {
   session: { id: string; title: string; durationMs: number; language: string | null; hasVideo: boolean; videoRemoved: boolean };
@@ -415,7 +416,7 @@ function ReanalyzeDialog({
               {t("preview.cancel")}
             </Button>
             <Button type="submit" disabled={busy}>
-              {busy ? t("preview.reanalyzeBusy") : t("preview.reanalyzeConfirm")}
+              <Busy busy={busy}>{busy ? t("preview.reanalyzeBusy") : t("preview.reanalyzeConfirm")}</Busy>
             </Button>
           </DialogFooter>
         </form>

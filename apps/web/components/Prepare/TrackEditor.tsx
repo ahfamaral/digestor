@@ -8,6 +8,7 @@ import { patchTrack } from "@/lib/prepareApi";
 import type { TrackView } from "@/lib/prepareData";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { Busy } from "@/components/ui/spinner";
 
 export interface TrackEditorProps {
   open: boolean;
@@ -130,10 +131,10 @@ export function TrackEditor({ open, onOpenChange, track, languageLabel, original
             {t("prepare.close")}
           </Button>
           <Button type="button" variant="outline" disabled={busy !== null || changed.length === 0} onClick={() => void run("save")}>
-            {busy === "save" ? t("prepare.saving") : t("prepare.saveLines")}
+            <Busy busy={busy === "save"}>{busy === "save" ? t("prepare.saving") : t("prepare.saveLines")}</Busy>
           </Button>
           <Button type="button" disabled={busy !== null || !canApprove} onClick={() => void run("approve")}>
-            {busy === "approve" ? t("prepare.approving") : t("prepare.approve")}
+            <Busy busy={busy === "approve"}>{busy === "approve" ? t("prepare.approving") : t("prepare.approve")}</Busy>
           </Button>
         </DialogFooter>
       </DialogContent>

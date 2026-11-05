@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { WarningNote } from "@/components/WarningNote";
 import { checkWarnings, checksStatus } from "@/lib/prepareData";
 import { t } from "@/lib/i18n";
+import { Spinner } from "@/components/ui/spinner";
 
 export interface ChecksPanelProps {
   clipId: string;
@@ -48,7 +49,7 @@ export function ChecksPanel({
         {t("prepare.checks")}
       </h3>
       <div role="status" className="grid gap-1.5">
-        {status === "checking" && <p className="text-[13px] text-muted-foreground">{t("prepare.checking")}</p>}
+        {status === "checking" && <p className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground"><Spinner />{t("prepare.checking")}</p>}
         {status === "failed" && (
           <WarningNote>
             <div className="flex flex-wrap items-center justify-between gap-2">

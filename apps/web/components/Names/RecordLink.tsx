@@ -8,6 +8,7 @@ import { t } from "@/lib/i18n";
 import { recordMatchedLine } from "@/lib/names";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "./RecordHouseSelect";
+import { Busy, Spinner } from "@/components/ui/spinner";
 
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
@@ -64,7 +65,7 @@ export function RecordStatusLine({ record }: { record: RecordState }) {
   return (
     <>
     {record.status === "pending" || record.status === "running" ? (
-      <p role="status" className="text-muted-foreground">{t("names.record.matching")}</p>
+      <p role="status" className="inline-flex items-center gap-1.5 text-muted-foreground"><Spinner />{t("names.record.matching")}</p>
     ) : record.status === "matched" ? (
       <p role="status" className="text-foreground">{recordMatchedLine(record)}</p>
     ) : record.status === "waiting" && record.chamber ? (
@@ -276,7 +277,7 @@ export function RecordLink({ sessionId, profile, suggestionOnly = false }: { ses
               className="h-8 min-w-0 flex-1 rounded-md border border-border bg-white px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
             />
             <button type="submit" className={BTN} disabled={busy || text.trim() === ""}>
-              {busy ? t("names.record.linking") : t("names.record.link")}
+              <Busy busy={busy}>{busy ? t("names.record.linking") : t("names.record.link")}</Busy>
             </button>
           </div>
           <p id={`record-help-${sessionId}`} className="mt-1 text-xs text-muted-foreground">

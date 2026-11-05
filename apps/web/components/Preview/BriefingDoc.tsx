@@ -16,6 +16,7 @@ import type { PreviewSection } from "@/lib/preview";
 import { cn } from "@/lib/utils";
 import { languageName, t } from "@/lib/i18n";
 import { Dropdown } from "@/components/Dropdown";
+import { Busy, Spinner } from "@/components/ui/spinner";
 
 const POLL_MS = 3000;
 const ACT =
@@ -224,7 +225,8 @@ export function BriefingDoc({
           </p>
         )}
         {current?.status === "pending" && (
-          <p role="status" className="mt-2 text-xs text-muted-foreground">
+          <p role="status" className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Spinner />
             {t("preview.translating")}
           </p>
         )}
@@ -406,7 +408,7 @@ function HighlightRow({
             aria-label={t("preview.clipLabel", { title: m.title })}
             aria-describedby={videoRemoved ? "video-removed" : undefined}
           >
-            {clipping ? t("preview.clipBusy") : t("preview.clip")}
+            <Busy busy={clipping}>{clipping ? t("preview.clipBusy") : t("preview.clip")}</Busy>
           </button>
         </span>
       </div>

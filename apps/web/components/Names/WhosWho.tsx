@@ -14,6 +14,7 @@ import { t } from "@/lib/i18n";
 import { NamePopover } from "./NamePopover";
 import { RecordLink } from "./RecordLink";
 import { SpeakerName } from "./SpeakerName";
+import { Busy } from "@/components/ui/spinner";
 
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
@@ -157,7 +158,7 @@ export function WhosWho({
           {proposed && (
             <div className="mb-2">
               <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "confirm_all" })}>
-                {busy ? t("names.confirmAllBusy") : t("names.confirmAll")}
+                <Busy busy={busy}>{busy ? t("names.confirmAllBusy") : t("names.confirmAll")}</Busy>
               </button>
             </div>
           )}

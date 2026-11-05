@@ -8,6 +8,7 @@ import { errorMessage } from "@/lib/http";
 import type { PreviewSection } from "@/lib/preview";
 import { t } from "@/lib/i18n";
 import { Dropdown } from "@/components/Dropdown";
+import { Busy } from "@/components/ui/spinner";
 
 type Target = { kind: ProblemTargetKind; id: string; label: string };
 
@@ -110,7 +111,7 @@ export function ReportProblem({
               {t("preview.cancel")}
             </Button>
             <Button type="submit" disabled={busy || targets.length === 0}>
-              {busy ? t("preview.reportBusy") : t("preview.reportSend")}
+              <Busy busy={busy}>{busy ? t("preview.reportBusy") : t("preview.reportSend")}</Busy>
             </Button>
           </DialogFooter>
         </form>

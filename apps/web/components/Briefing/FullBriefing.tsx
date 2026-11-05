@@ -24,6 +24,7 @@ import { Controls, type FocusChoice } from "./Controls";
 import { WhosWhoDrawer } from "@/components/Names/WhosWho";
 import type { NamesData, Voice, WhosWhoRow } from "@/lib/names";
 import { MomentRow, type RowContext } from "./MomentRow";
+import { Busy } from "@/components/ui/spinner";
 
 export interface FullBriefingProps {
   session: { id: string; title: string; language: string | null; hasVideo: boolean; videoRemoved: boolean };
@@ -462,7 +463,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
                   onClick={() => void startFindMore()}
                   className="inline-flex h-9 items-center rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {findMoreLabel}
+                  <Busy busy={fmBusy}>{findMoreLabel}</Busy>
                 </button>
               </div>
             )}
@@ -507,7 +508,7 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
                   aria-describedby={session.videoRemoved ? "video-removed" : undefined}
                   className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {busy === "confirm" ? t("briefing.confirmBusy") : t("briefing.confirm")}
+                  <Busy busy={busy === "confirm"}>{busy === "confirm" ? t("briefing.confirmBusy") : t("briefing.confirm")}</Busy>
                 </button>
               </span>
             </div>
