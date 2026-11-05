@@ -128,6 +128,7 @@ describe("runAsk tools", () => {
     const [moment] = await listPersonalMoments(db, OWNER_ID, analysisId!);
     expect(moment).toMatchObject({ origin: "ask", ownerId: OWNER_ID, title: "Rent caps", startMs: expected.startMs, endMs: expected.endMs });
     expect(clip!.momentId).toBe(moment!.id);
+    expect((await listSelections(db, OWNER_ID, s.id))[moment!.id]).toBe("approved");
     const events = await listClipEvents(db, clip!.id);
     expect(events.map((e) => [e.actor, e.kind])).toEqual([["ask", "create"]]);
     expect(toolResults(llm.calls[1]!)[0]).toContain(clip!.id);
@@ -328,7 +329,12 @@ describe("runAsk tools", () => {
     expect(sel).toBe("Waiting for the user to confirm 1 changes.");
     expect((await listClips(db, OWNER_ID, s.id)).map((c) => c.id)).toHaveLength(3); // existing + two
     expect(await getClip(db, existing.id)).toMatchObject({ startMs: 600_000, endMs: 630_000 });
-    expect(await listSelections(db, OWNER_ID, s.id)).toEqual({ [momentIds[0]!]: "approved" });
+    // the two Ask clips approve their own moments (part of the clip change, not extra ones); momentIds[1] still waits
+    const selections = await listSelections(db, OWNER_ID, s.id);
+    expect(Object.keys(selections)).toHaveLength(3);
+    expect(selections[momentIds[0]!]).toBe("approved");
+    expect(selections[momentIds[1]!]).toBeUndefined();
+    expect(Object.values(selections).every((v) => v === "approved")).toBe(true);
     const stored = (await listAskMessages(db, OWNER_ID, s.id)).find((m) => m.id === msg.id)!;
     expect(stored.actions).toEqual([expect.objectContaining({ kind: "bulk_selection", payload: { momentIds: [momentIds[1]], status: "approved" } })]);
     const recs = stored.toolCalls as AskToolCallRecord[];

@@ -467,6 +467,14 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
       set = { ...set, ...(ev.before as object) };
     } else if (ev.kind === "create") {
       set = { ...set, deletedAt: now };
+      // An Ask clip approved its moment when it was made; undoing the creation takes that approval back.
+      if (clip.momentId) {
+        await tx.delete(selections).where(and(
+          eq(selections.ownerId, clip.ownerId),
+          eq(selections.momentId, clip.momentId),
+          inArray(selections.momentId, tx.select({ id: moments.id }).from(moments).where(and(eq(moments.id, clip.momentId), eq(moments.origin, "ask")))),
+        ));
+      }
     } else {
       set = { ...set, deletedAt: null };
     }

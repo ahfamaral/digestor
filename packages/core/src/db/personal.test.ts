@@ -139,6 +139,22 @@ describe("clips", () => {
     expect(await undoLastEvent(db, c.id)).toBeNull();
   });
 
+  it("undoing the creation of an Ask clip clears its moment's approval; user and official moments keep theirs", async () => {
+    const mk = async (origin: "ask" | "user") => {
+      const m = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 0, endMs: 20_000, title: origin, origin });
+      await setSelection(db, OWNER, m.id, "approved");
+      const c = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m.id, startMs: 0, endMs: 20_000, actor: "user" });
+      return { m, c };
+    };
+    const ask = await mk("ask");
+    const user = await mk("user");
+    await undoLastEvent(db, ask.c.id);
+    await undoLastEvent(db, user.c.id);
+    const sel = await listSelections(db, OWNER, s.id);
+    expect(sel[ask.m.id]).toBeUndefined();
+    expect(sel[user.m.id]).toBe("approved");
+  });
+
   it("delete then undo restores the clip with its history", async () => {
     const c = await newClip();
     await updateClip(db, c.id, { endMs: 55_000 }, "user");

@@ -113,6 +113,13 @@
       "when": 1793890572205,
       "tag": "0015_vertical_subtitles",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793894172205,
+      "tag": "0016_ask_clip_approval",
+      "breakpoints": true
     }
   ]
 }

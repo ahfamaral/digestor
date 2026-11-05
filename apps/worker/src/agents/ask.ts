@@ -437,6 +437,7 @@ const tools: Tool[] = [
       ctx.directChanges += 1;
       const moment = await createPersonalMoment(ctx.db, { analysisId: analysis.version.id, ownerId: ctx.ownerId, ...range, title, origin: "ask" });
       const clip = await createClip(ctx.db, { sessionId: ctx.session.id, ownerId: ctx.ownerId, momentId: moment.id, ...range, actor: "ask" });
+      await setSelection(ctx.db, ctx.ownerId, moment.id, "approved"); // so Prepare never shows "Approval dismissed"
       return {
         text: `Created clip ${clip.id} ${span(range)} "${title}" (moment ${moment.id}), snapped to whole sentences.`,
         clipId: clip.id,
