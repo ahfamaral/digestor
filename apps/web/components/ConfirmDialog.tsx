@@ -1,0 +1,78 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { pauseAllMedia } from "@/lib/media";
+import { t } from "@/lib/i18n";
+
+/**
+ * Asks before a one-click action that changes data or leaves the page. Opening it pauses any playing media (nothing
+ * resumes it). Focus starts on Cancel, so Enter cancels; the action must be chosen on purpose. `onConfirm` throws to
+ * keep the dialog open with its message shown.
+ */
+export function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  actionLabel,
+  busyLabel,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  actionLabel: string;
+  busyLabel?: string;
+  onConfirm: () => Promise<void>;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) pauseAllMedia();
+    else setError(null);
+  }, [open]);
+
+  async function confirm() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm();
+      onOpenChange(false);
+    } catch (err) {
+      console.error("confirm: action failed", err);
+      setError(err instanceof Error && err.message ? err.message : t("confirm.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => (busy && !next ? undefined : onOpenChange(next))}>
+      <DialogContent showCloseButton={false} initialFocus={cancelRef}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription dir="auto">{description}</DialogDescription>
+        </DialogHeader>
+        {error && (
+          <p role="alert" className="text-xs text-red-700">
+            {error}
+          </p>
+        )}
+        <DialogFooter>
+          <Button ref={cancelRef} type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+            {t("confirm.cancel")}
+          </Button>
+          <Button type="button" className="bg-brand text-brand-foreground hover:bg-brand/90" disabled={busy} onClick={() => void confirm()}>
+            {busy && busyLabel ? busyLabel : actionLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

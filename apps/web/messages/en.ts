@@ -153,6 +153,10 @@ export const en = {
     bannerLabel: "Context",
     bannerDismiss: "Dismiss context summary",
   },
+  confirm: {
+    cancel: "Cancel",
+    failed: "That didn't work. Try again.",
+  },
   names: {
     changedNotice: "Names changed after this analysis was written. AI text may use earlier names.",
     reanalyse: "Re-analyse",
@@ -198,6 +202,11 @@ export const en = {
     confirm: "Confirm",
     change: "Change…",
     noName: "No name",
+    noNameTitle: "Remove the name from {voice}?",
+    noNameBody: "{name} will be removed from {where}. You can name the voice again later.",
+    noNameMarkTitle: "Mark {voice} as no name?",
+    noNameMarkBody: "{voice} will be shown as no name in {where}. You can name the voice again later.",
+    noNameWhole: "the whole video",
     onlyThisPart: "Only this part",
     newPerson: "New person: {name}",
     search: "Search or type a name",

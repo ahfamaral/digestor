@@ -3,7 +3,8 @@
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
 import { Popover } from "@base-ui/react/popover";
-import { closeMatches, type Person, type Range } from "@digestor/core";
+import { closeMatches, formatTimestamp, type Person, type Range } from "@digestor/core";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ReportProblem } from "@/components/ReportProblem";
 import { errorMessage } from "@/lib/http";
 import { reportTargetId, scopeFields, type NamesData, type VoiceLabel } from "@/lib/names";
@@ -67,6 +68,8 @@ export function NamePopover({
   const [error, setError] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSent, setReportSent] = useState(false);
+  // "No name" asks first; the part it applies to is fixed when it is clicked (closing the popover resets the choice).
+  const [noName, setNoName] = useState<{ part: Record<string, unknown>; where: string } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -118,7 +121,7 @@ export function NamePopover({
     }
   }
 
-  async function send(body: Record<string, unknown>) {
+  async function send(body: Record<string, unknown>, opts: { rethrow?: boolean } = {}) {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -133,7 +136,9 @@ export function NamePopover({
       router.refresh();
     } catch (err) {
       console.error("names: save failed", err);
-      setError(err instanceof HttpError ? err.message : t("names.failed"));
+      const message = err instanceof HttpError ? err.message : t("names.failed");
+      if (opts.rethrow) throw new Error(message);
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -156,6 +161,7 @@ export function NamePopover({
     }
   }
 
+  const named = label.badge !== null;
   const title = t("names.popoverTitle", { label: label.text });
   // "Report a problem" points at the attribution row this name comes from; a voice with no row (unnamed, or a conflict) has none.
   const reportId = reportTargetId(names, speakerId, { atMs, range, ranges });
@@ -188,7 +194,16 @@ export function NamePopover({
                     {t("names.change")}
                   </button>
                   {(label.badge !== null || offerNoName) && (
-                    <button type="button" className={BTN} disabled={busy} onClick={() => void send({ action: "anonymous", speakerId, ...part })}>
+                    <button type="button" className={BTN} disabled={busy} onClick={() => {
+                      const spans = ranges && ranges.length > 0 ? ranges : range ? [range] : [];
+                      const where =
+                        scoped && spans.length > 0
+                          ? `${formatTimestamp(Math.min(...spans.map((r) => r.startMs)))}–${formatTimestamp(Math.max(...spans.map((r) => r.endMs)))}`
+                          : t("names.noNameWhole");
+                      setNoName({ part, where });
+                      reset(false);
+                    }}
+                  >
                       {t("names.noName")}
                     </button>
                   )}
@@ -271,6 +286,24 @@ export function NamePopover({
           </Popover.Positioner>
         </Popover.Portal>
       </Popover.Root>
+      <ConfirmDialog
+        open={noName !== null}
+        onOpenChange={(next) => {
+          if (next) return;
+          setNoName(null);
+          // The popover item that opened the dialog is gone: focus goes back to the name.
+          setTimeout(() => triggerRef.current?.focus(), 0);
+        }}
+        title={t(named ? "names.noNameTitle" : "names.noNameMarkTitle", { voice: label.text })}
+        description={
+          noName
+            ? t(named ? "names.noNameBody" : "names.noNameMarkBody", { name: label.text, voice: label.text, where: noName.where })
+            : ""
+        }
+        actionLabel={t("names.noName")}
+        busyLabel={t("names.saving")}
+        onConfirm={() => send({ action: "anonymous", speakerId, ...(noName?.part ?? {}) }, { rethrow: true })}
+      />
       {reportId !== null && (
         <ReportProblem
           open={reportOpen}
