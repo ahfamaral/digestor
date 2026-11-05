@@ -268,11 +268,11 @@ function TrackRow({
               className={
                 track.burnStatus === "stale" && track.burnBuilt
                   ? "inline-flex items-center gap-1 text-xs font-medium text-stone-900"
-                  : "text-xs text-muted-foreground"
+                  : "inline-flex items-center text-xs text-muted-foreground"
               }
             >
               {track.burnStatus === "stale" && track.burnBuilt && <WarningIcon className="size-3.5" />}
-              {note}
+              <Busy busy={making}>{note}</Busy>
             </span>
           )}
         </div>
