@@ -22,7 +22,7 @@ async function call<T>(url: string, init: RequestInit, map: (body: never) => T):
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 export type ClipChange =
-  | { start: string; end: string }
+  | { start: string; end: string; free?: true }
   | { format?: "16:9" | "9:16"; cropOffset?: number }
   | { credit: string | null }
   | { noCreditNeeded: boolean }

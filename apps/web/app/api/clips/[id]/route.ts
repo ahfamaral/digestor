@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { InvalidTimestampError, endsSentence, findBoundaries, parseTimestamp, snapRange } from "@digestor/core";
+import { InvalidTimestampError, endsSentence, findBoundaries, freeEdges, parseTimestamp, snapEdges, snapRange } from "@digestor/core";
 import { getTranscript, updateClip, type ClipPatch } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { frozenError, readyClip } from "@/lib/personal";
+import { frozenError, midSentenceFor, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.union([
-  z.object({ start: z.string(), end: z.string() }).strict(),
+  z.object({ start: z.string(), end: z.string(), free: z.literal(true).optional() }).strict(),
   z
     .object({ format: z.enum(["16:9", "9:16"]).optional(), cropOffset: z.number().finite().optional() })
     .strict()
@@ -26,7 +26,7 @@ const BAD_BODY = "Send one change: new times, format and crop, credit, or an ack
 const NOTHING_TO_EXTEND = "There is no later sentence to extend to.";
 
 /**
- * PATCH /api/clips/[id] — one change per request (see BodySchema). Cut times are always snapped to sentence boundaries.
+ * PATCH /api/clips/[id] — one change per request (see BodySchema). Cut times snap to sentence boundaries, only for the edges that changed; `free` (an Alt cut) saves them as given.
  * Once the video is removed, everything but the acknowledgements answers 409.
  */
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -72,10 +72,17 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       endMs = Math.min(next.endMs, durationMs);
     }
     if (!(startMs >= 0 && startMs < endMs && endMs <= durationMs)) return errorResponse(400, RANGE_ERROR);
-    const boundaries = findBoundaries(transcript.words, durationMs);
-    if (boundaries.length < 2) return errorResponse(409, NO_TRANSCRIPT);
-    const snapped = snapRange(boundaries, { startMs, endMs });
-    patch = "extend" in body ? { endMs: snapped.endMs } : snapped;
+    const current = { startMs: clip.startMs, endMs: clip.endMs };
+    if ("start" in body && body.free) {
+      patch = freeEdges(current, { startMs, endMs });
+    } else {
+      const boundaries = findBoundaries(transcript.words, durationMs);
+      if (boundaries.length < 2) return errorResponse(409, NO_TRANSCRIPT);
+      patch =
+        "extend" in body
+          ? { endMs: snapRange(boundaries, { startMs, endMs }).endMs }
+          : snapEdges(boundaries, current, { startMs, endMs });
+    }
   } else if ("format" in body || "cropOffset" in body) {
     patch = {};
     if (body.format !== undefined) patch.format = body.format;
@@ -85,5 +92,6 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   } else {
     patch = body;
   }
-  return Response.json(await updateClip(db, id, patch, "user"));
+  const updated = await updateClip(db, id, patch, "user");
+  return Response.json({ ...updated, midSentence: await midSentenceFor(db, session, updated) });
 }

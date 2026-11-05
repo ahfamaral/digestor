@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { OWNER_ID, PROFILES, findBoundaries } from "@digestor/core";
+import { OWNER_ID, PROFILES, cutsMidSentence, findBoundaries } from "@digestor/core";
 import { getMoment, getSession, getTranscript, listClipEvents, listClips, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { PrepareList, type PrepareClipData } from "@/components/Prepare/PrepareList";
@@ -64,7 +64,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
       ]);
       const view = trimView(clip, durationMs);
       return {
-        clip: toClipView(clip),
+        clip: toClipView({ ...clip, midSentence: boundaries.length >= 2 && cutsMidSentence(boundaries, clip) }),
         title: moment?.title ?? "",
         checks: moment?.checks ?? null,
         momentRange: moment ? { startMs: moment.startMs, endMs: moment.endMs } : null,

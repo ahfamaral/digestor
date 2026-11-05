@@ -461,7 +461,8 @@ export const en = {
     // trim
     trim: "Trim",
     clipLengthLive: "Clip length {length}",
-    trimHelp: "Handles snap to sentence pauses; hold Alt (Option) to move freely. The saved cut always starts and ends between sentences.",
+    trimHelp: "Handles snap to sentence boundaries. Hold Alt (Option) while dragging, or with the arrow keys, to save an exact position instead; that cut is marked as mid-sentence.",
+    midSentence: "Cuts mid-sentence: the clip starts or ends while someone is still speaking.",
     trimStrip: "Trim strip for {title}, {from} to {to}",
     startHandle: "Clip start",
     endHandle: "Clip end",
@@ -485,6 +486,7 @@ export const en = {
     interpreter: "Interpreter audio",
     noWarnings: "No warnings: the point is complete and nothing is quoted or interpreted.",
     warningsAck: "I've read these warnings",
+    warningsAckMid: "I've read these warnings, including the mid-sentence cut",
     // format
     format: "Format",
     landscape: "16:9",

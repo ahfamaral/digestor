@@ -71,6 +71,33 @@ export function snapRange(b: Boundary[], r: Range, padMs = 150): Range {
   };
 }
 
+/** True when the start or the end lies in no boundary gap (gap ends included): the cut falls while someone is speaking. */
+export function cutsMidSentence(b: Boundary[], r: Range): boolean {
+  const inGap = (ms: number) => b.some((x) => ms >= x.afterWordEndMs && ms <= x.beforeWordStartMs);
+  return !(inGap(r.startMs) && inGap(r.endMs));
+}
+
+/**
+ * Snaps only the edges that changed. An edge within `toleranceMs` of its current value (times travel as tenths of a
+ * second, stored edges are whole ms) is kept verbatim. If the result is empty, the whole request is snapped instead.
+ */
+export function snapEdges(b: Boundary[], current: Range, requested: Range, toleranceMs = 100): Range {
+  const snapped = snapRange(b, requested);
+  const r = {
+    startMs: Math.abs(requested.startMs - current.startMs) <= toleranceMs ? current.startMs : snapped.startMs,
+    endMs: Math.abs(requested.endMs - current.endMs) <= toleranceMs ? current.endMs : snapped.endMs,
+  };
+  return r.startMs >= r.endMs ? snapped : r;
+}
+
+/** Like `snapEdges`, with no snapping: a changed edge is taken as given (the Alt cut). */
+export function freeEdges(current: Range, requested: Range, toleranceMs = 100): Range {
+  return {
+    startMs: Math.abs(requested.startMs - current.startMs) <= toleranceMs ? current.startMs : requested.startMs,
+    endMs: Math.abs(requested.endMs - current.endMs) <= toleranceMs ? current.endMs : requested.endMs,
+  };
+}
+
 export function fitChildInParent(child: Range, parent: Range, minMs = 8000): Range | null {
   const startMs = Math.max(child.startMs, parent.startMs);
   const endMs = Math.min(child.endMs, parent.endMs);

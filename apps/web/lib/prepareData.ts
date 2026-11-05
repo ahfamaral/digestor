@@ -76,12 +76,14 @@ export interface ClipView {
   noCreditNeeded: boolean;
   warningsAck: boolean;
   protectedAck: boolean;
+  /** The cut starts or ends inside a sentence (an Alt cut). */
+  midSentence: boolean;
   updatedAt: string;
 }
 
 type Jsonish<T> = { [K in keyof T]: T[K] extends Date ? Date | string : T[K] extends Date | null ? Date | string | null : T[K] };
 
-export function toClipView(c: Jsonish<Clip>): ClipView {
+export function toClipView(c: Jsonish<Clip> & { midSentence?: boolean }): ClipView {
   return {
     id: c.id,
     startMs: c.startMs,
@@ -92,6 +94,7 @@ export function toClipView(c: Jsonish<Clip>): ClipView {
     noCreditNeeded: c.noCreditNeeded,
     warningsAck: c.warningsAck,
     protectedAck: c.protectedAck,
+    midSentence: c.midSentence ?? false,
     updatedAt: new Date(c.updatedAt).toISOString(),
   };
 }

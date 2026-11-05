@@ -1,6 +1,6 @@
-import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED, cutsMidSentence, findBoundaries, type Range } from "@digestor/core";
 import {
-  claimMomentCheck, getAnalysisVersion, getClip, getClipAny, getMoment, getSession, releaseMomentCheck, type Clip, type Db,
+  claimMomentCheck, getAnalysisVersion, getClip, getClipAny, getMoment, getSession, getTranscript, releaseMomentCheck, type Clip, type Db,
   type Session,
 } from "@digestor/core/server";
 import { errorResponse } from "./http";
@@ -69,4 +69,12 @@ export async function sendMomentCheckQuietly(db: Db, boss: JobSender, momentId: 
 /** R30: once the video is removed, a kept clip and its subtitles are frozen (their rendered files still download). */
 export function frozenError(session: Session): Response | null {
   return session.videoDeletedAt ? errorResponse(409, VIDEO_REMOVED) : null;
+}
+
+/** True when the cut starts or ends inside a sentence (an Alt cut); false when there is no transcript to tell. */
+export async function midSentenceFor(db: Db, session: Pick<Session, "id" | "durationMs">, range: Range): Promise<boolean> {
+  const transcript = await getTranscript(db, session.id);
+  if (!transcript) return false;
+  const boundaries = findBoundaries(transcript.words, session.durationMs ?? transcript.durationMs);
+  return boundaries.length >= 2 && cutsMidSentence(boundaries, range);
 }

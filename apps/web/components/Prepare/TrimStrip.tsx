@@ -21,8 +21,8 @@ export interface TrimStripProps {
   /** Cut positions in the strip's window (from the server): where a cut may start / end. */
   points: { starts: number[]; ends: number[] };
   disabled?: boolean;
-  /** Saves new bounds (as numbers from the handles). The server snaps again and its value wins. */
-  onCommit: (r: Range) => Promise<unknown>;
+  /** Saves new bounds (as numbers from the handles); `free` (Alt) saves them as given, otherwise the server snaps. */
+  onCommit: (r: Range, opts: { free: boolean }) => Promise<unknown>;
   /** Saves the typed time fields as they are (the server parses and validates them). */
   onCommitText: (start: string, end: string) => Promise<unknown>;
 }
@@ -42,6 +42,8 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
   const draftRef = useRef<Range | null>(null);
   const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentRef = useRef<Range | null>(null);
+  /** Whether the last move of the draft was an Alt one (a free position): the save then asks for the exact time. */
+  const freeRef = useRef(false);
   /** Where a handle drag began, and whether the pointer has moved since (a plain click must not save). */
   const downXRef = useRef<number | null>(null);
   const movedRef = useRef(false);
@@ -58,7 +60,7 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
     setDraft(r);
   }
 
-  function commit() {
+  function commit(free = freeRef.current) {
     if (keyTimer.current) clearTimeout(keyTimer.current);
     keyTimer.current = null;
     const r = draftRef.current;
@@ -69,7 +71,7 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
     };
     if (r.startMs === clip.startMs && r.endMs === clip.endMs) return clear();
     sentRef.current = r;
-    void onCommit(r).finally(clear);
+    void onCommit(r, { free }).finally(clear);
   }
 
   function moveTo(which: Which, ms: number, base: Range): Range {
@@ -99,6 +101,7 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
     if (!movedRef.current && Math.abs(e.clientX - (downXRef.current ?? e.clientX)) < 3) return;
     movedRef.current = true;
     const raw = msAt(e.clientX);
+    freeRef.current = e.altKey;
     const ms = e.altKey ? raw : (nearestBoundary(which === "start" ? points.starts : points.ends, raw) ?? raw);
     update(moveTo(which, ms, draftRef.current ?? clip));
   }
@@ -108,7 +111,10 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
     e.currentTarget.releasePointerCapture(e.pointerId);
     setDragging(null);
     if (!movedRef.current) {
-      update(null);
+      // A click saves nothing, but a keyboard nudge still waiting for its timer (or a draft that differs) is kept.
+      const d = draftRef.current;
+      if (keyTimer.current || (d && (d.startMs !== clip.startMs || d.endMs !== clip.endMs))) commit();
+      else update(null);
       return;
     }
     commit();
@@ -131,6 +137,7 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
       return;
     } else return;
     e.preventDefault();
+    freeRef.current = e.altKey && (e.key.startsWith("Arrow"));
     update(moveTo(which, next, base));
     if (keyTimer.current) clearTimeout(keyTimer.current);
     keyTimer.current = setTimeout(commit, KEY_COMMIT_MS);
@@ -155,7 +162,7 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
         onPointerUp={(e) => onPointerUp(which, e)}
         onPointerCancel={(e) => onPointerUp(which, e)}
         onKeyDown={(e) => onKeyDown(which, e)}
-        onBlur={commit}
+        onBlur={() => commit()}
         style={{ left: `${pct}%` }}
         className={cn(
           "group absolute top-0 bottom-0 z-10 flex w-6 -translate-x-1/2 cursor-ew-resize touch-none items-stretch justify-center rounded outline-none",

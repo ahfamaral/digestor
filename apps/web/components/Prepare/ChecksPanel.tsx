@@ -19,6 +19,8 @@ export interface ChecksPanelProps {
   /** Checks were still null after a minute: they couldn't run. */
   timedOut: boolean;
   warningsAck: boolean;
+  /** The cut starts or ends inside a sentence (an Alt cut). */
+  midSentence: boolean;
   busy: boolean;
   /** The video was removed (R30): Extend changes the bounds, so it is off; the acknowledgement still works. */
   frozen: boolean;
@@ -37,11 +39,11 @@ const ACT =
  * "Check again" (R11, R29); checks made for the original cut don't count once the clip is trimmed (R28).
  */
 export function ChecksPanel({
-  clipId, title, language, checks, originalCut, timedOut, warningsAck, busy, frozen, checkingAgain, onAck, onExtend, onCheckAgain,
+  clipId, title, language, checks, originalCut, timedOut, warningsAck, midSentence, busy, frozen, checkingAgain, onAck, onExtend, onCheckAgain,
 }: ChecksPanelProps) {
   const status = checksStatus({ checks, originalCut, timedOut });
   const warnings = checks ? checkWarnings(checks) : [];
-  const showAck = warnings.length > 0 || status === "failed" || status === "originalCut" || warningsAck;
+  const showAck = warnings.length > 0 || status === "failed" || status === "originalCut" || midSentence || warningsAck;
 
   return (
     <section aria-labelledby={`checks-h-${clipId}`}>
@@ -73,6 +75,13 @@ export function ChecksPanel({
         )}
         {status === "checked" && warnings.length === 0 && <p className="text-[13px] text-muted-foreground">{t("prepare.noWarnings")}</p>}
       </div>
+      {midSentence && (
+        <div className="mb-1.5">
+          <WarningNote>
+            <p className="font-semibold">{t("prepare.midSentence")}</p>
+          </WarningNote>
+        </div>
+      )}
       {warnings.length > 0 && (
         <ul className="grid gap-1.5">
           {warnings.map((w) => (
@@ -114,7 +123,7 @@ export function ChecksPanel({
       {showAck && (
         <label className="mt-2 flex items-start gap-2 text-[13px] font-medium">
           <Checkbox checked={warningsAck} disabled={busy} onCheckedChange={(v) => onAck(v === true)} className="mt-0.5" />
-          <span>{t("prepare.warningsAck")}</span>
+          <span>{t(midSentence ? "prepare.warningsAckMid" : "prepare.warningsAck")}</span>
         </label>
       )}
     </section>

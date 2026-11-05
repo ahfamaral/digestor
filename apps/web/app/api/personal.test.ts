@@ -149,6 +149,33 @@ describe("PATCH /api/clips/[id]", () => {
     expect((await patchClip(req({ start: "00:00:10", end: "00:05:00" }, "PATCH"), ctx(clip.id))).status).toBe(400);
   });
 
+  it("a free (Alt) cut is stored as given and flagged mid-sentence; a later normal change keeps it verbatim", async () => {
+    const { clip } = await clipFor();
+    const free = await patchClip(req({ start: "00:00:12.3", end: "00:00:30", free: true }, "PATCH"), ctx(clip.id));
+    expect(free.status).toBe(200);
+    expect(await free.json()).toMatchObject({ startMs: 12_300, endMs: 30_000, midSentence: true });
+    // the end is dragged normally: only it snaps, the free start stays
+    const normal = await patchClip(req({ start: "00:00:12.3", end: "00:00:51" }, "PATCH"), ctx(clip.id));
+    expect(await normal.json()).toMatchObject({ startMs: 12_300, endMs: 50_000 });
+    // a stored whole-ms edge sent back as tenths stays verbatim
+    await patchClip(req({ start: "00:00:12.3", end: "00:00:30", free: true }, "PATCH"), ctx(clip.id));
+    await updateClip(h.db, clip.id, { startMs: 12_345 }, "user");
+    const kept = await patchClip(req({ start: "00:00:12.3", end: "00:00:20" }, "PATCH"), ctx(clip.id));
+    expect(await kept.json()).toMatchObject({ startMs: 12_345 });
+    // undo restores the previous bounds verbatim
+    const undone = await undo(req({}), ctx(clip.id));
+    expect(await undone.json()).toMatchObject({ startMs: 12_345, endMs: 30_000, midSentence: true });
+  });
+
+  it("a snapped cut is not mid-sentence, and a free cut past the video is refused", async () => {
+    const { clip } = await clipFor();
+    const ok = await patchClip(req({ start: "00:00:20", end: "00:00:51" }, "PATCH"), ctx(clip.id));
+    expect(await ok.json()).toMatchObject({ midSentence: false });
+    const bad = await patchClip(req({ start: "00:00:10", end: "00:05:00", free: true }, "PATCH"), ctx(clip.id));
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "End must be after start and within the video (hh:mm:ss)" });
+  });
+
   it("extend moves the end to the next sentence end", async () => {
     const { clip } = await clipFor();
     const res = await patchClip(req({ extend: "next" }, "PATCH"), ctx(clip.id));

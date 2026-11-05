@@ -338,9 +338,13 @@ function ClipCard({
   const cropOffset = cropDraft ?? clip.cropOffset;
   const headingId = `clip-h-${clip.id}`;
 
-  const commitBounds = (r: Range) =>
+  const commitBounds = (r: Range, opts: { free: boolean }) =>
     onChange(
-      { start: formatTimestamp(r.startMs, { tenths: true }), end: formatTimestamp(r.endMs, { tenths: true }) },
+      {
+        start: formatTimestamp(r.startMs, { tenths: true }),
+        end: formatTimestamp(r.endMs, { tenths: true }),
+        ...(opts.free ? { free: true as const } : {}),
+      },
       { refresh: true, announce: true },
     );
 
@@ -443,6 +447,7 @@ function ClipCard({
               originalCut={originalCut}
               timedOut={timedOut}
               warningsAck={clip.warningsAck}
+              midSentence={clip.midSentence}
               busy={busy}
               frozen={frozen}
               checkingAgain={busy}

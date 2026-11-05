@@ -17,6 +17,15 @@ describe("buildCues", () => {
     expect(text).toContain("word10");
   });
 
+  it("a free cut that starts and ends mid-sentence keeps only words inside the range", () => {
+    const sentence = [w("alpha", 0, 500), w("bravo", 600, 1100), w("charlie", 1200, 1700), w("delta", 1800, 2300), w("echo.", 2400, 2900)];
+    const cues = buildCues(sentence, { startMs: 1150, endMs: 1850 });
+    const text = cues.flatMap((c) => c.lines).join(" ");
+    expect(text).toBe("charlie delta");
+    expect(cues[0]!.startMs).toBe(50);
+    expect(cues.at(-1)!.endMs).toBeLessThanOrEqual(700);
+  });
+
   it("clips words straddling the range", () => {
     const cues = buildCues([w("a", 900, 1200), w("b", 1900, 2300)], { startMs: 1000, endMs: 2000 });
     expect(cues.map((c) => [c.startMs, c.endMs])).toEqual([[0, 200], [900, 1000]]);

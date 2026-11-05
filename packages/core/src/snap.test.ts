@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Word } from "./schemas.ts";
-import { endsSentence, findBoundaries, fitChildInParent, overlapRatio, snapRange } from "./snap.ts";
+import { cutsMidSentence, endsSentence, findBoundaries, fitChildInParent, freeEdges, overlapRatio, snapEdges, snapRange, type Boundary } from "./snap.ts";
 
 const w = (text: string, startMs: number, endMs: number): Word => ({
   text, startMs, endMs, speaker: "A", confidence: 1,
@@ -124,5 +124,32 @@ describe("fitChildInParent / overlapRatio", () => {
   it("computes intersection over shorter length", () => {
     expect(overlapRatio({ startMs: 0, endMs: 10 }, { startMs: 5, endMs: 25 })).toBe(0.5);
     expect(overlapRatio({ startMs: 0, endMs: 10 }, { startMs: 20, endMs: 30 })).toBe(0);
+  });
+});
+
+describe("free cuts (Alt)", () => {
+  const b: Boundary[] = [
+    { afterWordEndMs: 1000, beforeWordStartMs: 1400 },
+    { afterWordEndMs: 5000, beforeWordStartMs: 5600 },
+    { afterWordEndMs: 9000, beforeWordStartMs: 9300 },
+  ];
+  it("cutsMidSentence is false for snapped cuts and true for an edge in a sentence", () => {
+    expect(cutsMidSentence(b, snapRange(b, { startMs: 1200, endMs: 9100 }))).toBe(false);
+    expect(cutsMidSentence(b, { startMs: 3000, endMs: 9100 })).toBe(true);
+  });
+  it("snapEdges keeps an untouched edge verbatim, within tenths precision", () => {
+    expect(snapEdges(b, { startMs: 3000, endMs: 9150 }, { startMs: 3000, endMs: 5200 })).toEqual({
+      startMs: 3000,
+      endMs: snapRange(b, { startMs: 3000, endMs: 5200 }).endMs,
+    });
+    expect(snapEdges(b, { startMs: 3045, endMs: 9150 }, { startMs: 3000, endMs: 5200 }).startMs).toBe(3045);
+  });
+  it("snapEdges falls back to snapRange when the result would be empty", () => {
+    const requested = { startMs: 9200, endMs: 9500 };
+    expect(snapEdges(b, { startMs: 9200, endMs: 9800 }, requested)).toEqual(snapRange(b, requested));
+  });
+  it("freeEdges takes changed edges as given", () => {
+    expect(freeEdges({ startMs: 1250, endMs: 9150 }, { startMs: 1250, endMs: 7777 })).toEqual({ startMs: 1250, endMs: 7777 });
+    expect(freeEdges({ startMs: 1250, endMs: 9150 }, { startMs: 1300, endMs: 7777 }).startMs).toBe(1250);
   });
 });

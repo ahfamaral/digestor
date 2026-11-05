@@ -68,8 +68,9 @@ describe("views", () => {
     expect(toClipView(JSON.parse(JSON.stringify(clip)))).toEqual(fromRow);
     expect(fromRow).toEqual({
       id: "c", startMs: 1, endMs: 2, format: "9:16", cropOffset: 0.5, credit: null, noCreditNeeded: false, warningsAck: true,
-      protectedAck: false, updatedAt: "2026-10-30T10:00:00.000Z",
+      protectedAck: false, midSentence: false, updatedAt: "2026-10-30T10:00:00.000Z",
     });
+    expect(toClipView({ ...clip, midSentence: true }).midSentence).toBe(true);
 
     const track = {
       id: "t", clipId: "c", language: "de", status: "ready" as const, cues: [], approvedAt: at, burnStatus: "stale" as const,

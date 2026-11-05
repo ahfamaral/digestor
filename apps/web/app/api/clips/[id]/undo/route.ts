@@ -1,7 +1,7 @@
 import { listClipEvents, undoLastEvent } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { frozenError, readyClip } from "@/lib/personal";
+import { frozenError, midSentenceFor, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const NOTHING_TO_UNDO = "There is nothing to undo.";
@@ -26,5 +26,5 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   }
   const reverted = await undoLastEvent(db, id);
   if (!reverted) return errorResponse(409, NOTHING_TO_UNDO);
-  return Response.json(reverted);
+  return Response.json({ ...reverted, midSentence: await midSentenceFor(db, found.session, reverted) });
 }
