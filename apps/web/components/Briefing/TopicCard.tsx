@@ -6,13 +6,15 @@ import type { MomentView } from "@/lib/briefingFilters";
 import { splitFirstSentence, type PreviewSection } from "@/lib/preview";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { laneBars } from "@/lib/laneBars";
+import { LaneGraph } from "./LaneGraph";
 import { MomentRow, type RowContext } from "./MomentRow";
 
 const sentences = (s: { text: string }[]) => s.map((x) => x.text).join(" ").trim();
 
 /**
  * One topic of the Briefing page: numbered title and time range, the topic summary and key quote (collapsed to the
- * first sentence, with "More"), the lane graph (`lanes`, Task 8) and the topic's moments as a tree.
+ * first sentence, with "More"), the lane graph and the topic's moments as a tree.
  * `section` is null for the moments outside every topic.
  */
 export function TopicCard({
@@ -21,7 +23,6 @@ export function TopicCard({
   trLang,
   views,
   ctx,
-  lanes,
   emptyNote,
 }: {
   section: PreviewSection | null;
@@ -29,11 +30,11 @@ export function TopicCard({
   trLang: string | undefined;
   views: MomentView[];
   ctx: RowContext;
-  lanes?: React.ReactNode;
   /** Say that the filters hide this topic's moments (when it has none to show). */
   emptyNote: boolean;
 }) {
   const [more, setMore] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const lang = ctx.language;
   const key = section?.topic.id ?? "outside";
   const trSection = section ? translated?.sections.find((x) => x.topicId === section.topic.id) : undefined;
@@ -42,6 +43,13 @@ export function TopicCard({
   const quoteTr = quote && trSection?.keyQuote?.momentId === quote.momentId ? trSection.keyQuote.translation : "";
   const { first, rest } = splitFirstSentence(summaryTr || section?.summary || "");
   const hasMore = rest !== "" || quote !== null;
+  const bars = section ? laneBars(views, section.topic) : [];
+  const pick = (id: string) => {
+    const row = document.getElementById(`moment-${id}`);
+    if (!row) return;
+    row.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    row.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+  };
 
   return (
     <section
@@ -65,12 +73,14 @@ export function TopicCard({
             t("briefing.outsideTopics")
           )}
         </h2>
-        {first && (
+        {(first || (more && quote)) && (
           <div id={`topic-more-${key}`} className="mt-1 text-sm leading-relaxed">
-            <p lang={summaryTr ? trLang : lang} dir="auto" className={cn(!section?.fromBriefing && "text-muted-foreground")}>
-              {first}
-              {more && rest && <> {rest}</>}
-            </p>
+            {first && (
+              <p lang={summaryTr ? trLang : lang} dir="auto" className={cn(!section?.fromBriefing && "text-muted-foreground")}>
+                {first}
+                {more && rest && <> {rest}</>}
+              </p>
+            )}
             {more && quote && (
               <blockquote className="my-2 border-l-[3px] border-stone-400 bg-stone-50 px-3 py-1.5">
                 <p lang={lang} dir="auto" className="italic">
@@ -86,7 +96,7 @@ export function TopicCard({
             )}
           </div>
         )}
-        {first && hasMore && (
+        {hasMore && (
           <button
             type="button"
             aria-expanded={more}
@@ -99,13 +109,16 @@ export function TopicCard({
         )}
       </div>
 
-      {/* Task 8: the three-lane graph goes here (hidden below 640 px). */}
-      {lanes && <div className="mt-2 px-2">{lanes}</div>}
+      {bars.length > 0 && (
+        <div className="mt-2 px-2">
+          <LaneGraph bars={bars} hoveredId={hoveredId} onHover={setHoveredId} onPick={pick} />
+        </div>
+      )}
 
       {views.length > 0 ? (
         <ul className="mt-2">
           {views.map((v) => (
-            <MomentRow key={v.moment.id} view={v} ctx={ctx} />
+            <MomentRow key={v.moment.id} view={v} ctx={ctx} hoveredId={hoveredId} onHover={setHoveredId} />
           ))}
         </ul>
       ) : (

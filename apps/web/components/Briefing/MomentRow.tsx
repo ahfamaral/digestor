@@ -17,7 +17,7 @@ const STATUS_BTN =
   "inline-grid justify-items-center rounded-md border border-border bg-white px-[7px] py-0.5 text-[11.5px] leading-[1.4] font-medium text-foreground hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const STATUS_BUTTONS: { status: SelectionStatus; text: MessageKey; done: MessageKey; label: MessageKey; on: string }[] = [
   { status: "approved", text: "briefing.approve", done: "briefing.approved", label: "briefing.approveLabel", on: "border-green-300 bg-green-100 text-green-800 hover:bg-green-100" },
-  { status: "rejected", text: "briefing.skip", done: "briefing.skipped", label: "briefing.skipLabel", on: "border-stone-300 bg-stone-100 text-stone-600 hover:bg-stone-100" },
+  { status: "rejected", text: "briefing.skip", done: "briefing.skipped", label: "briefing.skipLabel", on: "border-stone-300 bg-stone-100 text-stone-900 hover:bg-stone-100" },
 ];
 const STATUS_TEXT: Record<SelectionStatus | "proposed", MessageKey> = {
   proposed: "briefing.statusUndecided",
@@ -51,7 +51,20 @@ export interface RowContext {
 /**
  * One moment of the Briefing tree and, nested below it with connector lines, the shown moments inside it.
  */
-export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx: RowContext; nested?: boolean }) {
+export function MomentRow({
+  view,
+  ctx,
+  nested = false,
+  hoveredId = null,
+  onHover,
+}: {
+  view: MomentView;
+  ctx: RowContext;
+  nested?: boolean;
+  /** The moment whose lane-graph bar or row the pointer is on (its row is shaded). */
+  hoveredId?: string | null;
+  onHover?: (id: string | null) => void;
+}) {
   const m = view.moment;
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const playing = ctx.playingId === m.id;
@@ -81,8 +94,10 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
           "flex flex-wrap items-start gap-x-2.5 gap-y-1.5 rounded-lg py-1.5 pr-2 transition-colors duration-700 motion-reduce:transition-none sm:flex-nowrap",
           nested ? "pl-3.5" : "pl-2",
           view.status === "rejected" && "opacity-75",
-          ctx.flashId === m.id && "bg-background",
+          (ctx.flashId === m.id || hoveredId === m.id) && "bg-background",
         )}
+        onMouseEnter={onHover && (() => onHover(m.id))}
+        onMouseLeave={onHover && (() => onHover(null))}
       >
         <button
           type="button"
@@ -193,7 +208,7 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
       {view.children.length > 0 && (
         <ul className="ml-[18px] border-l border-border">
           {view.children.map((c) => (
-            <MomentRow key={c.moment.id} view={c} ctx={ctx} nested />
+            <MomentRow key={c.moment.id} view={c} ctx={ctx} nested hoveredId={hoveredId} onHover={onHover} />
           ))}
         </ul>
       )}

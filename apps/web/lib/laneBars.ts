@@ -8,6 +8,8 @@ export interface LaneBar {
   widthPct: number;
   tone: Tone | null;
   approved: boolean;
+  title: string;
+  startMs: number;
 }
 
 const MIN_WIDTH_PCT = 0.8;
@@ -25,7 +27,7 @@ export function laneBars(views: MomentView[], topic: { startMs: number; endMs: n
       const first = m.highlights[0];
       out.push({
         id: m.id, level: m.granularity, leftPct: Math.min(left, 100 - width), widthPct: width,
-        tone: first ? HIGHLIGHT_TYPES[first.type].tone : null, approved: v.status === "approved",
+        tone: first ? HIGHLIGHT_TYPES[first.type].tone : null, approved: v.status === "approved", title: m.title, startMs: m.startMs,
       });
       walk(v.children);
     }
