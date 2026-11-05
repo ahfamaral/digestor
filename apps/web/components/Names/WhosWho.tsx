@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { formatTimestamp } from "@digestor/core";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
-import { anonymousBody, conflictText, confirmBody, evidenceLine, personDetail, rowRange, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
+import { anonymousBody, conflictText, confirmBody, evidenceLine, personDetail, rowRange, rowRanges, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { sampleSrc } from "@/lib/media";
 import { usePauseWhenHidden } from "@/lib/usePauseWhenHidden";
@@ -82,6 +83,8 @@ export function WhosWho({
   const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "No name" asks first: the row it applies to, and its label, are fixed when the button is clicked.
+  const [noName, setNoName] = useState<{ row: WhosWhoRow; text: string; named: boolean } | null>(null);
   const player = useRef<HTMLVideoElement>(null);
   usePauseWhenHidden(player);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +108,7 @@ export function WhosWho({
     stopTimer.current = setTimeout(() => v.pause(), SAMPLE_MS);
   }
 
-  async function send(body: Record<string, unknown>) {
+  async function send(body: Record<string, unknown>, opts: { rethrow?: boolean } = {}) {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -119,7 +122,9 @@ export function WhosWho({
       router.refresh();
     } catch (err) {
       console.error("whos-who: save failed", err);
-      setError(err instanceof HttpError ? err.message : t("names.failed"));
+      const message = err instanceof HttpError ? err.message : t("names.failed");
+      if (opts.rethrow) throw new Error(message);
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -130,6 +135,11 @@ export function WhosWho({
   const shown = showAll || main.length === 0 ? rows : main;
   const proposed = rows.some((r) => r.resolution.kind === "named" && !r.resolution.confirmed);
   const totalMs = rows.reduce((a, r) => a + r.ms, 0);
+  const noNameSpans = noName ? rowRanges(noName.row) : [];
+  const noNameWhere =
+    noNameSpans.length > 0
+      ? `${formatTimestamp(Math.min(...noNameSpans.map((r) => r.startMs)))}–${formatTimestamp(Math.max(...noNameSpans.map((r) => r.endMs)))}`
+      : t("names.noNameWhole");
 
   return (
     <div>
@@ -226,7 +236,7 @@ export function WhosWho({
                       }
                     />
                     {res.kind !== "anonymous" && (
-                      <button type="button" className={BTN} disabled={busy} onClick={() => void send(anonymousBody(row))}>
+                      <button type="button" className={BTN} disabled={busy} onClick={() => setNoName({ row, text: label.text, named: label.badge !== null })}>
                         {t("names.noName")}
                       </button>
                     )}
@@ -247,6 +257,19 @@ export function WhosWho({
           )}
         </>
       )}
+      <ConfirmDialog
+        open={noName !== null}
+        onOpenChange={(next) => {
+          if (!next) setNoName(null);
+        }}
+        title={noName ? t(noName.named ? "names.noNameTitle" : "names.noNameMarkTitle", { voice: noName.text }) : ""}
+        description={
+          noName ? t(noName.named ? "names.noNameBody" : "names.noNameMarkBody", { name: noName.text, voice: noName.text, where: noNameWhere }) : ""
+        }
+        actionLabel={t("names.noName")}
+        busyLabel={t("names.saving")}
+        onConfirm={() => (noName ? send(anonymousBody(noName.row), { rethrow: true }) : Promise.resolve())}
+      />
       {error && (
         <p role="alert" className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-700">
           {error}
