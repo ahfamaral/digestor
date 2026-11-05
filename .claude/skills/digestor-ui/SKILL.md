@@ -10,7 +10,7 @@ description: Frontend conventions for Digestor's web UI (concept agreed 2026-10-
 The UI concept was **agreed on 2026-10-30** and Plan 2 built it. The source of truth is `docs/superpowers/specs/2026-10-30-digestor-ui-concept-design.md` (§5 is the journalist flow; §8 is the Tracker, still to come in Plan 4).
 
 - **The flow and stepper:** Upload › Processing › Context › Preview › Briefing › Prepare › Export (`STEPS` in `components/AppBar.tsx`). Routes: `/` upload, `/s/[id]` (Processing, Context check, then **Preview** once ready), `/s/[id]/briefing` (**Full briefing**), `/s/[id]/prepare` (**Prepare clips**), `/s/[id]/export`, `/reports`. The v1 review inbox and `ClipCard` no longer exist.
-- **Preview** (`components/Preview/`): session timeline with neutral topic bands and highlight pins, top-highlight cards, then the briefing document. **Full briefing** (`components/Briefing/`): instant filters, keyboard triage, "Confirm selection → Prepare clips". **Prepare** (`components/Prepare/`): trim, checks, format, credit, subtitles, checklist.
+- **Preview** (`components/Preview/`): session timeline with neutral topic bands and highlight pins, top-highlight cards, then the briefing document. **Full briefing** (`components/Briefing/`): instant filters, Approve / Skip triage, "Confirm selection → Prepare clips". **Prepare** (`components/Prepare/`): trim, checks, format, credit, subtitles, checklist.
 - Mockups in `docs/design/` (`ui-concept-overview.html`, `ui-concept-tracker.html`) are inspiration, not a pixel spec; the Tracker is Plan 4.
 - **Colour is reserved for highlight types**; topic bands are neutral greys. AI judgments carry an "AI" badge and a "Why:" line, counted values read "counted", and names show their source.
 - If a task needs a design decision the spec doesn't answer, propose 1–2 options with a quick screenshot or sketch and ask. Don't silently invent the concept.
@@ -38,7 +38,7 @@ Use tokens, not new hex literals. Highlight colours live in one place: each type
 |---|---|---|
 | Highlight type | the type's `tone` (red, blue, amber, violet, green, teal, slate, pink) | `HighlightChip`, timeline pins, legend |
 | Approved | green | status buttons, "Approved ✓" |
-| Rejected / error | red | status buttons, `role="alert"` boxes |
+| Error | red | `role="alert"` boxes |
 | Warning | **neutral + ⚠**: stone border/background (`WARNING_BOX`) with the ⚠ icon (`WarningIcon`) and text — never amber (amber is a highlight tone) | `components/WarningNote.tsx`: clip checks, sensitive-profile notice, audio-only upload, "out of date", "Subtitles are for the old cut." |
 | Human-in-the-loop, "from you" | purple | context badge, edited facts, the pause screens' accent |
 | Source badges | "from video" / "from audio" green; "from metadata" grey; "from you" purple; "suggested by AI" neutral; "missing" red | context check and context banner (`lib/contextBadge.ts`) |
@@ -58,7 +58,7 @@ Colour is never the only signal: every chip/badge carries text.
 
 ## Copy
 
-- Spec-exact strings: each type's label from `HIGHLIGHT_TYPES` (e.g. "Heated", "Key point", "Light moment"); statuses Approve / Neutral / Reject; "Looks right → Full briefing", "Something's off", "Copy text", "Share link", "Export…", "Confirm selection → Prepare clips", "Report a problem"; Export notice "You're responsible for how you use and share downloaded clips."
+- Spec-exact strings: each type's label from `HIGHLIGHT_TYPES` (e.g. "Heated", "Key point", "Light moment"); statuses Approve / Skip (Skip is stored as `rejected`; clicking the active one returns the moment to undecided, `nextStatus`); "Looks right → Full briefing", "Something's off", "Copy text", "Share link", "Export…", "Confirm selection → Prepare clips", "Report a problem"; Export notice "You're responsible for how you use and share downloaded clips."
 - Footer of the Full briefing: "N approved · M hidden by filters" with a "Show hidden" button. Approved moments are never hidden.
 - AI reasons start with "Why:". Questions say why they're asked.
 - Errors are friendly, specific sentences shown **inline** next to what failed (`role="alert"`); success/progress uses `role="status"`. Never show raw errors, stack traces or vendor messages the user can't act on.
@@ -66,12 +66,10 @@ Colour is never the only signal: every chip/badge carries text.
 
 ## Keyboard
 
-Full briefing shortcuts (global `keydown` in `components/Briefing/FullBriefing.tsx`, logic in `lib/review.ts`): `A` approve, `N` neutral, `R` reject, `E` open in Prepare clips, `↓`/`↑` move focus. `/` opens the Ask drawer on Preview and Full briefing. Rules that already cost a fix round:
+`/` opens Ask (and Escape closes it); no letter shortcuts (no A/N/R/E, no arrow-key triage). Keys stay only inside controls: trim handles, fields, name search. Rules that already cost a fix round:
 
-- Ignore keys while typing (`isTyping`), with modifiers, while a dialog is open, or when `defaultPrevented`.
-- Ignore `e.repeat` for status keys (holding `A` must not approve a run of moments); arrows may repeat.
+- Ignore `/` while typing (`isTyping`), with modifiers, while a dialog is open, or when `defaultPrevented` (`opensAsk`).
 - Status changes per moment are serialised latest-wins (`lib/statusQueue.ts`); Confirm waits for `StatusQueue.idle()`.
-- Show the shortcuts as `kbd` hints on buttons and in the footer legend. New shortcuts must not collide.
 - Trim: Alt/Option previews free handle positions only; the server always snaps to sentence boundaries (help text says so).
 
 ## Accessibility

@@ -14,8 +14,7 @@ const SHOW_TEXT: Record<ShowFilter, MessageKey> = {
   open: "briefing.showOpen",
   all: "briefing.showAll",
   approved: "briefing.showApproved",
-  neutral: "briefing.showNeutral",
-  rejected: "briefing.showRejected",
+  skipped: "briefing.showSkipped",
 };
 const FIELD =
   "h-8 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand";

@@ -3,6 +3,7 @@ import { OWNER_ID } from "@digestor/core";
 import {
   confirmBulkSelection, getAskAction, getAskMessage, getMoment, resolveAskAction,
 } from "@digestor/core/server";
+import { asSelectionStatus } from "@/lib/askText";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { readySession, sendMomentCheckQuietly, sessionIdOfMoment } from "@/lib/personal";
@@ -11,7 +12,8 @@ import { getServer } from "@/lib/server";
 const BodySchema = z.object({ decision: z.enum(["confirm", "dismiss"]) }).strict();
 const PayloadSchema = z.object({
   momentIds: z.array(z.string().uuid()).max(500),
-  status: z.enum(["approved", "neutral", "rejected"]).nullable(),
+  // Stored payloads may still say "neutral" (read as skipped).
+  status: z.unknown().transform((v) => (v === null ? null : (asSelectionStatus(v) ?? undefined))).refine((v) => v !== undefined),
 });
 
 const NOT_PENDING = "This suggestion was already handled.";

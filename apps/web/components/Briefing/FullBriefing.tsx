@@ -15,7 +15,7 @@ import {
 } from "@/lib/briefingFilters";
 import { errorMessage } from "@/lib/http";
 import {
-  ACTION_STATUS, actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, moveFocus, resolveFocus,
+  approvedMomentIds, asClipStatus, asSelection, flattenViews, nextStatus,
 } from "@/lib/review";
 import { StatusQueue } from "@/lib/statusQueue";
 import { startRefreshLoop } from "@/lib/refreshLoop";
@@ -56,8 +56,7 @@ export interface FullBriefingProps {
 const NOTICE = "mb-3 rounded-xl border px-3 py-2 text-sm";
 const ANNOUNCE: Record<SelectionStatus, MessageKey> = {
   approved: "briefing.announceApproved",
-  neutral: "briefing.announceNeutral",
-  rejected: "briefing.announceRejected",
+  rejected: "briefing.announceSkipped",
 };
 
 /** Persists one selection; throws with the API's sentence on failure. */
@@ -97,8 +96,6 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
     persons: choices.filter((c) => c.kind === "person").map((c) => c.id),
   }));
   const [statuses, setStatuses] = useState<Record<string, SelectionStatus>>(selections);
-  const [focus, setFocus] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
-  const [keyboardMoved, setKeyboardMoved] = useState(0);
   const [playing, setPlaying] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [announcement, setAnnouncement] = useState("");
@@ -150,7 +147,6 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   const views = useMemo(() => filterMoments(moments, statuses, filters, topics, focusCtx), [moments, statuses, filters, topics, focusCtx]);
   const groups = useMemo(() => groupByTopic(views, topics), [views, topics]);
   const order = useMemo(() => flattenViews(views).map((v) => v.moment.id), [views]);
-  const currentId = resolveFocus(order, focus);
   const titleOf = useMemo(() => new Map(moments.map((m) => [m.id, m.title])), [moments]);
   const approved = useMemo(() => approvedMomentIds(moments, statuses), [moments, statuses]);
   const hiddenApproved = useMemo(() => hiddenApprovedCount(views, approved), [views, approved]);
@@ -219,24 +215,9 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
       : t(hiddenFound === 1 ? "briefing.findMoreOtherLevelsOne" : "briefing.findMoreOtherLevels", { m: hiddenFound, levels: otherLevels.map((g) => t(`granularity.${g}`)).join(" or ") }));
   const findMoreLabel = fmBusy ? t("briefing.finding") : t("briefing.findMore", { name: personName });
 
-  const focusRow = (id: string) => setFocus({ id, index: Math.max(0, order.indexOf(id)) });
-
-  // After a keyboard move (or when the focused row left the list), real focus follows the current row.
-  const rowFocusPending = useRef(false);
-  useEffect(() => {
-    if (!keyboardMoved || !currentId) return;
-    const el = document.querySelector<HTMLElement>(`[data-moment-id="${currentId}"]`);
-    if (!el) return;
-    if (rowFocusPending.current || document.activeElement === document.body || !document.activeElement) {
-      el.focus({ preventScroll: true });
-      el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
-    }
-    rowFocusPending.current = false;
-  }, [keyboardMoved, currentId]);
-
-  function setStatus(id: string, status: SelectionStatus) {
-    queue.set(id, status, asClipStatus(statuses[id] ?? null));
-    setAnnouncement(t(ANNOUNCE[status], { title: titleOf.get(id) ?? "" }));
+  function setStatus(id: string, status: SelectionStatus | null) {
+    queue.set(id, asClipStatus(status), asClipStatus(statuses[id] ?? null));
+    setAnnouncement(t(status ? ANNOUNCE[status] : "briefing.announceUndecided", { title: titleOf.get(id) ?? "" }));
   }
 
   async function openInPrepare(id: string) {
@@ -276,49 +257,19 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
   // Next can keep this page (and its state) alive after navigating away: re-enable the buttons for when it comes back.
   useEffect(() => () => setBusy(null), []);
 
-  const onKey = useEffectEvent((e: KeyboardEvent) => {
-    const dialogOpen = document.querySelector("[role='dialog']") !== null;
-    const action = actionForKey(e, { typing: isTyping(e.target), dialogOpen });
-    if (!action || !currentId) return;
-    e.preventDefault();
-    if (action === "next" || action === "prev") {
-      const next = moveFocus(order, currentId, action === "next" ? 1 : -1);
-      if (next) focusRow(next);
-      rowFocusPending.current = true;
-      setKeyboardMoved((n) => n + 1);
-    } else if (action === "edit") {
-      void openInPrepare(currentId);
-    } else {
-      focusRow(currentId);
-      setStatus(currentId, ACTION_STATUS[action]);
-      setKeyboardMoved((n) => n + 1);
-    }
-  });
-
-  useEffect(() => {
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   const ctx: RowContext = {
     sessionId: session.id,
     language: lang,
     hasVideo: session.hasVideo,
     videoRemoved: session.videoRemoved,
-    focusedId: currentId,
     playingId: playing,
     excerpts,
     names,
     voices,
     sensitive,
     errors,
-    onFocusRow: focusRow,
-    onStatus: (id, s) => {
-      focusRow(id);
-      setStatus(id, s);
-      // If the change takes the row out of the list, focus moves to the row now in its place (not to the page).
-      setKeyboardMoved((n) => n + 1);
-    },
+    // Clicking the active status returns the moment to undecided.
+    onStatus: (id, clicked) => setStatus(id, nextStatus(statuses[id] ?? null, clicked)),
     onPlay: (id) => setPlaying((p) => (p === id ? null : id)),
   };
   const isDefault = toSearchParams(filters) === "";
@@ -476,12 +427,6 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
 
         <footer className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <p className="hidden text-xs text-muted-foreground md:block">
-              <span className="sr-only">{t("briefing.keyboard")}: </span>
-              <Kbd>A</Kbd> {t("briefing.keysApprove")} · <Kbd>N</Kbd> {t("briefing.keysNeutral")} · <Kbd>R</Kbd> {t("briefing.keysReject")} ·{" "}
-              <Kbd>E</Kbd> {t("briefing.keysPrepare")} · <Kbd>↓</Kbd>
-              <Kbd>↑</Kbd> {t("briefing.keysMove")}
-            </p>
             <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
               <span className="text-sm font-medium text-muted-foreground">
                 {approved.length === 1 ? t("briefing.approvedOne") : t("briefing.approvedMany", { n: approved.length })}
@@ -522,8 +467,4 @@ export function FullBriefing({ session, analysis, topics, moments, excerpts, sel
       </main>
     </>
   );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return <kbd className="mx-0.5 rounded border border-b-2 border-[#ddd9d0] bg-white px-1.5 text-[10px]">{children}</kbd>;
 }

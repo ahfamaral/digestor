@@ -73,7 +73,7 @@ node .claude/skills/digestor-run/scripts/drive.mjs --out <scratch>/shots \
   --mobile
 ```
 
-- `--visit <path>` full-page screenshot; `--keys <path>=k1,k2` presses keys in order with a screenshot after each (Full briefing keys: `a` approve, `n` neutral, `r` reject, `e` open in Prepare, `ArrowDown`/`ArrowUp`, `Escape`; `/` opens the Ask drawer on Preview and Full briefing); `--upload <file>` goes through the home page and follows the redirect to `/s/<id>`; `--mobile` adds a 390 px-wide copy of each shot.
+- `--visit <path>` full-page screenshot; `--keys <path>=k1,k2` presses keys in order with a screenshot after each (`/` opens the Ask drawer on Preview and Full briefing, `Escape` closes it; there are no letter shortcuts); `--upload <file>` goes through the home page and follows the redirect to `/s/<id>`; `--mobile` adds a 390 px-wide copy of each shot.
 - If `APP_PASSWORD` is set, pass `--password` (or export `APP_PASSWORD`); the script logs in when redirected to `/login`.
 - Console errors, uncaught page errors and 5xx responses go to `<out>/errors.txt`. An empty file is part of "it works".
 

@@ -3,8 +3,8 @@ import {
   type Topic,
 } from "@digestor/core";
 
-export const SHOW_FILTERS = ["open", "all", "approved", "neutral", "rejected"] as const;
-/** Which statuses are listed. `open` = proposed or approved (neutral and rejected are put aside). */
+export const SHOW_FILTERS = ["open", "all", "approved", "skipped"] as const;
+/** Which statuses are listed. `open` = proposed or approved (skipped moments are put aside). */
 export type ShowFilter = (typeof SHOW_FILTERS)[number];
 
 export interface BriefingFilters {
@@ -53,8 +53,10 @@ function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, 
       return true;
     case "open":
       return status === null || status === "approved";
-    default:
-      return status === f.show;
+    case "approved":
+      return status === "approved";
+    case "skipped":
+      return status === "rejected";
   }
 }
 

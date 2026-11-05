@@ -13,16 +13,14 @@ import { t, type MessageKey } from "@/lib/i18n";
 const ACT =
   "inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 
-const STATUS_BUTTONS: { status: SelectionStatus; key: string; text: MessageKey; label: MessageKey; on: string }[] = [
-  { status: "approved", key: "A", text: "briefing.approve", label: "briefing.approveLabel", on: "border-green-300 bg-green-100 text-green-800 hover:bg-green-100" },
-  { status: "neutral", key: "N", text: "briefing.neutral", label: "briefing.neutralLabel", on: "border-stone-400 bg-stone-200 text-stone-800 hover:bg-stone-200" },
-  { status: "rejected", key: "R", text: "briefing.reject", label: "briefing.rejectLabel", on: "border-red-300 bg-red-100 text-red-800 hover:bg-red-100" },
+const STATUS_BUTTONS: { status: SelectionStatus; text: MessageKey; done: MessageKey; label: MessageKey; on: string }[] = [
+  { status: "approved", text: "briefing.approve", done: "briefing.approved", label: "briefing.approveLabel", on: "border-green-300 bg-green-100 text-green-800 hover:bg-green-100" },
+  { status: "rejected", text: "briefing.skip", done: "briefing.skipped", label: "briefing.skipLabel", on: "border-stone-400 bg-stone-200 text-stone-800 hover:bg-stone-200" },
 ];
 const STATUS_TEXT: Record<SelectionStatus | "proposed", MessageKey> = {
   proposed: "briefing.statusProposed",
   approved: "briefing.approve",
-  neutral: "briefing.neutral",
-  rejected: "briefing.reject",
+  rejected: "briefing.skip",
 };
 
 export interface RowContext {
@@ -31,25 +29,21 @@ export interface RowContext {
   language: string | undefined;
   hasVideo: boolean;
   videoRemoved: boolean;
-  focusedId: string | null;
   playingId: string | null;
   excerpts: Record<string, string>;
   names: NamesData;
   voices: Record<string, Voice[]>;
   sensitive: boolean;
   errors: Record<string, string>;
-  onFocusRow: (id: string) => void;
   onStatus: (id: string, status: SelectionStatus) => void;
   onPlay: (id: string) => void;
 }
 
 /**
- * One moment of the Full briefing and, nested below it, the finer moments inside it. Rows use a roving tabindex: the
- * focused row is the one Tab reaches and the keyboard shortcuts act on.
+ * One moment of the Full briefing and, nested below it, the finer moments inside it.
  */
 export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx: RowContext; nested?: boolean }) {
   const m = view.moment;
-  const focused = ctx.focusedId === m.id;
   const playing = ctx.playingId === m.id;
   const types = [...new Map(m.highlights.map((h) => [h.type, h])).values()];
   const excerpt = ctx.excerpts[m.id] ?? "";
@@ -62,15 +56,11 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
     <li className={cn(nested && "border-l-2 border-border pl-3 sm:pl-4")}>
       <div
         data-moment-id={m.id}
-        tabIndex={focused ? 0 : -1}
         aria-labelledby={`m-title-${m.id}`}
         aria-describedby={`m-status-${m.id}`}
-        onFocus={() => ctx.onFocusRow(m.id)}
         className={cn(
-          "scroll-m-24 rounded-lg border border-transparent px-2 py-2 outline-none sm:px-3",
-          focused && "border-foreground/70 bg-white shadow-sm",
-          "focus-visible:ring-2 focus-visible:ring-brand",
-          (view.status === "neutral" || view.status === "rejected") && "opacity-75",
+          "scroll-m-24 rounded-lg border border-transparent px-2 py-2 sm:px-3",
+          view.status === "rejected" && "opacity-75",
         )}
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -139,10 +129,7 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
               onClick={() => ctx.onStatus(m.id, b.status)}
               className={cn(ACT, view.status === b.status && b.on)}
             >
-              {t(b.text)}
-              <kbd aria-hidden className="rounded border border-b-2 border-[#ddd9d0] bg-white px-1 text-[10px] text-muted-foreground">
-                {b.key}
-              </kbd>
+              {view.status === b.status ? t(b.done) : t(b.text)}
             </button>
           ))}
         </div>

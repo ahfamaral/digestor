@@ -80,7 +80,7 @@ describe("personal moments and selections", () => {
     const [b1] = await saveMoments(db, v2.id, [row("b1")]);
     await setSelection(db, OWNER, a1!.id, "approved");
     await setSelection(db, OWNER, a2!.id, "rejected");
-    await setSelection(db, OWNER, b1!.id, "neutral");
+    await setSelection(db, OWNER, b1!.id, "rejected");
     await setSelection(db, "someone-else", b1!.id, "approved");
     const other = await createSession(db, { title: "Other", source: "upload" });
     const ov = await startAnalysisVersion(db, other.id, { profile: "interview", reason: "r", models: {}, promptVersions: {} });
@@ -501,7 +501,7 @@ describe("find more", () => {
     expect((await listPersonalMoments(db, OWNER, analysisId)).filter((m) => m.origin === "find_more")).toHaveLength(3);
 
     const [old] = (await listPersonalMoments(db, OWNER, analysisId)).filter((m) => m.title === "Old 1");
-    await setSelection(db, OWNER, old!.id, "neutral"); // any status keeps it
+    await setSelection(db, OWNER, old!.id, "rejected"); // any status keeps it
     const req = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId: tralli.id }))!;
     expect(req.id).toBe(first.id);
     await claimFindMore(db, req.id);
@@ -518,7 +518,7 @@ describe("find more", () => {
     expect(all.find((m) => m.title === "New")).toMatchObject({ origin: "find_more", ownerId: OWNER, findMoreRequestId: req.id });
     expect(all.find((m) => m.title === "New")!.highlights).toEqual([{ type: "heated", method: "ai", value: null }]);
     expect(all.find((m) => m.id === mine.id)).toBeTruthy();
-    expect(await listSelections(db, OWNER, s.id)).toEqual({ [old!.id]: "neutral" });
+    expect(await listSelections(db, OWNER, s.id)).toEqual({ [old!.id]: "rejected" });
     expect(await getFindMore(db, { ownerId: OWNER, analysisId, personId: tralli.id })).toMatchObject({ status: "done", momentCount: 1 });
   });
 

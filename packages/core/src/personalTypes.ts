@@ -1,6 +1,6 @@
 // Client-safe row shapes of the personal layer (Ruling R3). `db/personal.ts` returns these.
 
-export type SelectionStatus = "approved" | "neutral" | "rejected";
+export type SelectionStatus = "approved" | "rejected";
 export type ClipFormat = "16:9" | "9:16";
 export type RenderStatus = "none" | "queued" | "rendering" | "done" | "failed" | "stale";
 export type ClipActor = "user" | "ask";

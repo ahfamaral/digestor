@@ -52,11 +52,18 @@ describe("PUT /api/moments/[id]/selection", () => {
     expect(await res.json()).toEqual({ status: "approved" });
     expect(h.send).toHaveBeenCalledTimes(1);
     expect(h.send).toHaveBeenCalledWith(QUEUES.checkMoment, { momentId: m.id }, JOB_OPTIONS);
-    // neutral does not enqueue; checks already present do not enqueue
-    await putSelection(req({ status: "neutral" }, "PUT"), ctx(m.id));
+    // skipped does not enqueue; checks already present do not enqueue
+    await putSelection(req({ status: "rejected" }, "PUT"), ctx(m.id));
     await setMomentChecks(h.db, m.id, cleanChecks);
     await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
     expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("neutral is no longer a status (400); rejected (shown as Skip) is accepted", async () => {
+    const { moments } = await seedReadySession(h.db);
+    const m = moments[0]!;
+    expect((await putSelection(req({ status: "neutral" }, "PUT"), ctx(m.id))).status).toBe(400);
+    expect((await putSelection(req({ status: "rejected" }, "PUT"), ctx(m.id))).status).toBe(200);
   });
 
   it("null clears the selection; bad bodies and unready sessions are refused", async () => {
@@ -326,11 +333,11 @@ describe("tracks", () => {
 });
 
 describe("moment checks are claimed in the database (R29)", () => {
-  it("approve, neutral, approve again sends one check while the claim is fresh", async () => {
+  it("approve, skip, approve again sends one check while the claim is fresh", async () => {
     const { moments } = await seedReadySession(h.db);
     const m = moments[0]!;
     await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
-    await putSelection(req({ status: "neutral" }, "PUT"), ctx(m.id));
+    await putSelection(req({ status: "rejected" }, "PUT"), ctx(m.id));
     await putSelection(req({ status: "approved" }, "PUT"), ctx(m.id));
     expect(h.send.mock.calls.filter((c) => c[0] === QUEUES.checkMoment)).toHaveLength(1);
   });

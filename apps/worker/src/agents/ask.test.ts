@@ -171,7 +171,7 @@ describe("runAsk tools", () => {
     const msg = await ask(s.id, "Reject the first two, clear the third.");
     const llm = new FakeToolLLM([
       toolStep(
-        call("set_selection", { momentIds: momentIds.slice(0, 2), status: "rejected" }),
+        call("set_selection", { momentIds: momentIds.slice(0, 2), status: "skipped" }),
         call("set_selection", { momentIds: [momentIds[3], "00000000-0000-0000-0000-000000000000"], status: "approved" }),
       ),
       answer("Done [00:00:00]."),
@@ -186,7 +186,7 @@ describe("runAsk tools", () => {
     const msg = await ask(s.id, "Approve moments 0-2, then reject 3 and 4 and clear 0.");
     const llm = new FakeToolLLM([
       toolStep(call("set_selection", { momentIds: momentIds.slice(0, 3), status: "approved" })),
-      toolStep(call("set_selection", { momentIds: [momentIds[3], momentIds[4], momentIds[0]], status: "rejected" })),
+      toolStep(call("set_selection", { momentIds: [momentIds[3], momentIds[4], momentIds[0]], status: "skipped" })),
       answer("Done [00:00:00]."),
     ]);
     await runAsk(depsFor(llm), msg.id);
@@ -201,12 +201,28 @@ describe("runAsk tools", () => {
 
   it("direct selection changes record the previous status for undo", async () => {
     const { s, momentIds } = await seed();
-    await setSelection(db, OWNER_ID, momentIds[0]!, "neutral");
+    await setSelection(db, OWNER_ID, momentIds[0]!, "rejected");
     const msg = await ask(s.id, "Approve the first two.");
     const llm = new FakeToolLLM([toolStep(call("set_selection", { momentIds: momentIds.slice(0, 2), status: "approved" })), answer("Done [00:00:00].")]);
     await runAsk(depsFor(llm), msg.id);
     const [rec] = (await getAskMessage(db, msg.id))!.toolCalls as AskToolCallRecord[];
-    expect(rec!.undo).toEqual({ [momentIds[0]!]: "neutral", [momentIds[1]!]: null });
+    expect(rec!.undo).toEqual({ [momentIds[0]!]: "rejected", [momentIds[1]!]: null });
+  });
+
+  it("skipped is stored as rejected, and the schema rejects neutral", async () => {
+    const { s, momentIds } = await seed();
+    const msg = await ask(s.id, "Skip the first, then neutral.");
+    const llm = new FakeToolLLM([
+      toolStep(
+        call("set_selection", { momentIds: [momentIds[0]!], status: "skipped" }),
+        call("set_selection", { momentIds: [momentIds[1]!], status: "neutral" }),
+      ),
+      answer("Done [00:00:00]."),
+    ]);
+    await runAsk(depsFor(llm), msg.id);
+    expect((await listSelections(db, OWNER_ID, s.id))[momentIds[0]!]).toBe("rejected");
+    expect((await listSelections(db, OWNER_ID, s.id))[momentIds[1]!]).toBeUndefined();
+    expect(toolResults(llm.calls[1]!)[1]).toMatch(/^Error: invalid arguments for set_selection/);
   });
 
   it("tool output is capped at 4000 chars", async () => {

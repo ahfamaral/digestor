@@ -77,6 +77,12 @@ describe("POST /api/ask-actions/[id]", () => {
     expect(await second.json()).toEqual({ error: "This suggestion was already handled." });
   });
 
+  it("confirms a pending action stored before the change with status neutral, as skipped", async () => {
+    const { sessionId, ids, action } = await actionFor("neutral" as unknown as "rejected");
+    expect((await postAction(req({ decision: "confirm" }), ctx(action.id))).status).toBe(200);
+    expect(await listSelections(h.db, OWNER_ID, sessionId)).toEqual({ [ids[0]!]: "rejected", [ids[1]!]: "rejected" });
+  });
+
   it("two parallel confirms apply once (the loser gets 409)", async () => {
     const { action } = await actionFor("rejected");
     const [a, b] = await Promise.all([postAction(req({ decision: "confirm" }), ctx(action.id)), postAction(req({ decision: "confirm" }), ctx(action.id))]);

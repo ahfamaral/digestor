@@ -100,8 +100,8 @@ describe("filterMoments", () => {
     expect(shape(filterMoments(all, {}, f({ types: [] }), topics))).toHaveLength(3);
   });
 
-  it("show=open hides neutral and rejected", () => {
-    const sel: Record<string, SelectionStatus> = { ex1: "approved", pa1: "neutral", pu1: "rejected", ex2: "rejected" };
+  it("show=open hides skipped moments", () => {
+    const sel: Record<string, SelectionStatus> = { ex1: "approved", pa1: "rejected", pu1: "rejected", ex2: "rejected" };
     const open = filterMoments(all, sel, f(), topics);
     expect(shape(open)).toEqual([
       ["ex1", [["pa2", []]]],
@@ -109,9 +109,9 @@ describe("filterMoments", () => {
     ]);
     expect(open[0]!.status).toBe("approved");
     expect(open[0]!.children[0]!.status).toBeNull();
-    expect(shape(filterMoments(all, sel, f({ show: "rejected" }), topics))).toEqual([["ex2", []]]);
+    expect(shape(filterMoments(all, sel, f({ show: "skipped" }), topics))).toEqual([["ex2", []]]);
     expect(shape(filterMoments(all, sel, f({ show: "approved" }), topics))).toEqual([["ex1", []]]);
-    expect(shape(filterMoments(all, sel, f({ show: "neutral", granularity: "passage" }), topics))).toEqual([["pa1", []]]);
+    expect(shape(filterMoments(all, sel, f({ show: "skipped", granularity: "passage" }), topics))).toEqual([["pa1", []]]);
     expect(shape(filterMoments(all, sel, f({ show: "all" }), topics))).toEqual([
       ["ex1", [["pa1", []], ["pu1", []], ["pa2", []]]],
       ["ex2", [["pu2", []]]],
@@ -184,7 +184,7 @@ describe("approved work is never invisible (Ruling R23)", () => {
     expect(hiddenApprovedCount(filterMoments(all, sel, f(), topics), ids)).toBe(0);
     expect(hiddenApprovedCount(filterMoments(all, sel, f({ speaker: "A" }), topics), ids)).toBe(1); // pu1 (B)
     expect(hiddenApprovedCount(filterMoments(all, sel, f({ types: ["light"] }), topics), ids)).toBe(3);
-    expect(hiddenApprovedCount(filterMoments(all, sel, f({ show: "rejected" }), topics), ids)).toBe(3);
+    expect(hiddenApprovedCount(filterMoments(all, sel, f({ show: "skipped" }), topics), ids)).toBe(3);
     expect(SHOW_HIDDEN_FILTERS).toEqual({ ...DEFAULT_FILTERS, show: "approved" });
     expect(hiddenApprovedCount(filterMoments(all, sel, SHOW_HIDDEN_FILTERS, topics), ids)).toBe(0);
   });

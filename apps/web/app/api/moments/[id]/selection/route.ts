@@ -6,7 +6,7 @@ import { isUuid } from "@/lib/ids";
 import { readySession, sendMomentCheckQuietly, sessionIdOfMoment } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
-const BodySchema = z.object({ status: z.enum(["approved", "neutral", "rejected"]).nullable() }).strict();
+const BodySchema = z.object({ status: z.enum(["approved", "rejected"]).nullable() }).strict();
 
 /** PUT /api/moments/[id]/selection — `{ status }`; null clears it back to "proposed". Approving queues the clip checks once. */
 export async function PUT(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -19,7 +19,7 @@ export async function PUT(request: Request, ctx: { params: Promise<{ id: string 
     return errorResponse(400, "Send the change as JSON.");
   }
   const parsed = BodySchema.safeParse(raw);
-  if (!parsed.success) return errorResponse(400, "Choose approved, neutral, rejected or null.");
+  if (!parsed.success) return errorResponse(400, "Choose approved, skipped or null.");
 
   const { db, boss } = getServer();
   const moment = await getMoment(db, id);

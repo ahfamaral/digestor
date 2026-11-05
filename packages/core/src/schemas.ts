@@ -20,7 +20,7 @@ export type Transcript = z.infer<typeof TranscriptSchema>;
 
 export const ClipLabelSchema = z.enum(["heated", "key_point", "light"]);
 export type ClipLabel = z.infer<typeof ClipLabelSchema>;
-export const ClipStatusSchema = z.enum(["proposed", "approved", "neutral", "rejected"]);
+export const ClipStatusSchema = z.enum(["proposed", "approved", "rejected"]);
 export type ClipStatus = z.infer<typeof ClipStatusSchema>;
 export const ClipOriginSchema = z.enum(["ai", "user", "copilot"]);
 export type ClipOrigin = z.infer<typeof ClipOriginSchema>;

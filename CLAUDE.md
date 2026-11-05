@@ -8,7 +8,7 @@ Long public-interest videos (interviews, parliament, UN, trials) → subtitled c
 
 ## The journalist flow
 
-Stepper: Upload › Processing › Context › Preview › Briefing › Prepare › Export. Routes: `/` (upload), `/s/[id]` (Processing, Context check, then Preview once `ready`), `/s/[id]/briefing` (Full briefing: triage), `/s/[id]/prepare`, `/s/[id]/export`, `/reports`. The Ask drawer opens with `/` on Preview and Full briefing.
+Stepper: Upload › Processing › Context › Preview › Briefing › Prepare › Export. Routes: `/` (upload), `/s/[id]` (Processing, Context check, then Preview once `ready`), `/s/[id]/briefing` (Full briefing: triage), `/s/[id]/prepare`, `/s/[id]/export`, `/reports`. The Ask drawer opens with `/` on Preview and Full briefing; there are no letter shortcuts. A moment is Approved or Skipped (stored as `rejected`), or undecided; clicking the active status undoes it.
 
 - Stages (`schemas.ts`): `uploaded`, `downloading`, `preparing`, `transcribing`, `understanding`, `awaiting_context`, `naming_speakers`, `indexing`, `finding_topics`, `finding_moments`, `writing_briefing`, `preparing_preview`, `ready`, `failed`. A first analysis ends in `preparing_preview` (96) and the session becomes `ready` only when the 480p preview copy (`proxy.mp4`, its own job; `sessions.proxy_status`) is done too: `settlePreview` closes that join from whichever side finishes last. Until the copy exists the context check and Who's who play voice samples from `audio.mp3`.
 - Profiles (`profiles.ts`): `parliament`, `supreme_court`, `electoral_debate`, `trial` (sensitive), `interview`, `un`, `other`. Each profile lists its highlight types; a type is `ai` or `counted` (`longest_speech`). The chip colour comes from `HIGHLIGHT_TYPES[*].tone` via `components/HighlightChip.tsx`.

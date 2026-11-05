@@ -57,8 +57,8 @@ describe("StatusQueue", () => {
   it("keeps only the newest desired value while one is in flight", async () => {
     const h = harness();
     h.q.set("c1", "approved", "proposed");
-    h.q.set("c1", "neutral", "approved");
-    h.q.set("c1", "rejected", "neutral");
+    h.q.set("c1", "proposed", "approved");
+    h.q.set("c1", "rejected", "proposed");
     h.calls[0]!.resolve();
     await h.flush();
     h.calls[1]!.resolve();

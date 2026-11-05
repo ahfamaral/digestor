@@ -410,7 +410,7 @@ const tools: Tool[] = [
           m.ownerId ? `personal (${m.origin})` : `relevance ${m.relevance}`,
           labels,
           m.speakers.length ? `speakers ${m.speakers.join(", ")}` : "",
-          selections[m.id] ?? "proposed",
+          selections[m.id] === "rejected" ? "skipped" : (selections[m.id] ?? "proposed"),
         ].filter(Boolean);
         return `${m.id} ${span(m)} ${meta.join("; ")}: ${m.title}${m.why ? ` — ${m.why}` : ""}`;
       });
@@ -467,13 +467,13 @@ const tools: Tool[] = [
     spec: {
       name: "set_selection",
       description:
-        `Mark moments approved, neutral or rejected, or back to proposed (only when the user asks). Send every moment of one request in a single call. Per question, only ${MAX_DIRECT_CHANGES} changes apply at once (clips count too); a call that would go beyond that waits for the user's confirmation instead.`,
+        `Mark moments approved or skipped (not a clip), or back to undecided (only when the user asks). Send every moment of one request in a single call. Per question, only ${MAX_DIRECT_CHANGES} changes apply at once (clips count too); a call that would go beyond that waits for the user's confirmation instead.`,
       schema: z.object({
         momentIds: z.array(z.string().uuid()).min(1).max(200),
-        status: z.enum(["approved", "neutral", "rejected", "proposed"]),
+        status: z.enum(["approved", "skipped", "proposed"]),
       }),
     },
-    async run(ctx, a: { momentIds: string[]; status: SelectionStatus | "proposed" }) {
+    async run(ctx, a: { momentIds: string[]; status: "approved" | "skipped" | "proposed" }) {
       const analysis = requireAnalysis(ctx);
       const ids = [...new Set(a.momentIds)];
       const found = await Promise.all(ids.map((id) => getMoment(ctx.db, id)));
@@ -481,7 +481,7 @@ const tools: Tool[] = [
         (id, i) => !found[i] || found[i]!.analysisId !== analysis.version.id || (found[i]!.ownerId !== null && found[i]!.ownerId !== ctx.ownerId),
       );
       if (unknown.length > 0) throw new ToolInputError(`unknown moment ids: ${unknown.slice(0, 5).join(", ")}. Nothing was changed.`);
-      const status = a.status === "proposed" ? null : a.status;
+      const status: SelectionStatus | null = a.status === "proposed" ? null : a.status === "skipped" ? "rejected" : "approved";
       if (ctx.directChanges + ids.length > MAX_DIRECT_CHANGES) {
         willWrite(ctx);
         await createAskAction(ctx.db, { messageId: ctx.messageId, kind: "bulk_selection", payload: { momentIds: ids, status } });

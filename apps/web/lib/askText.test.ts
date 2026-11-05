@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASK_PENDING_LIMIT_MS, asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
+import { ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
 
 describe("linkifyTimestamps", () => {
   it("splits text and times", () => {
@@ -59,7 +59,20 @@ describe("formatToolCall", () => {
   });
 });
 
+describe("asSelectionStatus", () => {
+  it("reads legacy neutral and the model's skipped as rejected", () => {
+    expect(asSelectionStatus("neutral")).toBe("rejected");
+    expect(asSelectionStatus("skipped")).toBe("rejected");
+    expect(asSelectionStatus("approved")).toBe("approved");
+    expect(asSelectionStatus("maybe")).toBeNull();
+  });
+});
+
 describe("parseBulkPayload", () => {
+  it("accepts a stored neutral payload", () => {
+    expect(parseBulkPayload({ momentIds: ["m1"], status: "neutral" })).toEqual({ momentIds: ["m1"], status: "rejected" });
+  });
+
   it("reads momentIds and status", () => {
     expect(parseBulkPayload({ momentIds: ["a", "b"], status: "rejected" })).toEqual({ momentIds: ["a", "b"], status: "rejected" });
     expect(parseBulkPayload({ momentIds: ["a"], status: null })).toEqual({ momentIds: ["a"], status: null });
@@ -69,10 +82,15 @@ describe("parseBulkPayload", () => {
 });
 
 describe("planSelectionUndo", () => {
-  const call = (status: unknown, undo: Record<string, "approved" | "neutral" | "rejected" | null>) => ({ name: "set_selection", args: { momentIds: Object.keys(undo), status }, result: "", ok: true, undo });
+  const call = (status: unknown, undo: Record<string, "approved" | "neutral" | "rejected" | null>) => ({ name: "set_selection", args: { momentIds: Object.keys(undo), status }, result: "", ok: true, undo: undo as Record<string, "approved" | "rejected" | null> });
 
   it("restores moments still at the status the tool call set", () => {
     expect(planSelectionUndo(call("approved", { a: null, b: "neutral" }), { a: "approved", b: "approved" })).toEqual({ restore: { a: null, b: "neutral" }, skipped: 0 });
+  });
+
+  it("reads a stored neutral undo target or status as skipped", () => {
+    expect(planSelectionUndo(call("neutral", { a: null }), { a: "rejected" })).toEqual({ restore: { a: null }, skipped: 0 });
+    expect(asToolCalls([{ name: "set_selection", args: {}, undo: { a: "neutral", b: null } }])[0]!.undo).toEqual({ a: "rejected", b: null });
   });
 
   it("skips moments the user changed since", () => {

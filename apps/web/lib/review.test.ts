@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MomentWithHighlights } from "@digestor/core";
 import type { MomentView } from "./briefingFilters";
 import {
-  actionForKey, approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, keyToAction, moveFocus, opensAsk, resolveFocus, type KeyInput,
+  approvedMomentIds, asClipStatus, asSelection, flattenViews, isTyping, nextStatus, opensAsk,
 } from "./review";
 
 let n = 0;
@@ -15,53 +15,6 @@ function moment(over: Partial<MomentWithHighlights> = {}): MomentWithHighlights 
   };
 }
 const view = (m: MomentWithHighlights, children: MomentView[] = []): MomentView => ({ moment: m, status: null, children });
-
-describe("keyToAction", () => {
-  it("maps the triage keys (letters case-insensitive)", () => {
-    expect(keyToAction("a")).toBe("approve");
-    expect(keyToAction("A")).toBe("approve");
-    expect(keyToAction("n")).toBe("neutral");
-    expect(keyToAction("R")).toBe("reject");
-    expect(keyToAction("e")).toBe("edit");
-    expect(keyToAction("ArrowDown")).toBe("next");
-    expect(keyToAction("ArrowUp")).toBe("prev");
-    expect(keyToAction("x")).toBeNull();
-    expect(keyToAction("Enter")).toBeNull();
-  });
-
-  it("leaves / free for the Ask drawer", () => {
-    expect(keyToAction("/")).toBeNull();
-  });
-});
-
-describe("actionForKey", () => {
-  const key = (k: string, over: Partial<KeyInput> = {}): KeyInput => ({
-    key: k, repeat: false, metaKey: false, ctrlKey: false, altKey: false, defaultPrevented: false, ...over,
-  });
-  const idle = { typing: false, dialogOpen: false };
-
-  it("returns the action for a plain key press", () => {
-    expect(actionForKey(key("a"), idle)).toBe("approve");
-    expect(actionForKey(key("ArrowDown"), idle)).toBe("next");
-  });
-
-  it("ignores keys while typing, in an open dialog, with modifiers, or already handled", () => {
-    expect(actionForKey(key("a"), { typing: true, dialogOpen: false })).toBeNull();
-    expect(actionForKey(key("a"), { typing: false, dialogOpen: true })).toBeNull();
-    expect(actionForKey(key("a", { metaKey: true }), idle)).toBeNull();
-    expect(actionForKey(key("a", { ctrlKey: true }), idle)).toBeNull();
-    expect(actionForKey(key("a", { altKey: true }), idle)).toBeNull();
-    expect(actionForKey(key("ArrowDown", { defaultPrevented: true }), idle)).toBeNull();
-  });
-
-  it("holding a status key does not triage a run of moments; arrows may repeat", () => {
-    expect(actionForKey(key("a", { repeat: true }), idle)).toBeNull();
-    expect(actionForKey(key("r", { repeat: true }), idle)).toBeNull();
-    expect(actionForKey(key("e", { repeat: true }), idle)).toBeNull();
-    expect(actionForKey(key("ArrowDown", { repeat: true }), idle)).toBe("next");
-    expect(actionForKey(key("ArrowUp", { repeat: true }), idle)).toBe("prev");
-  });
-});
 
 /** A minimal element: a tag, an optional role, a parent, and `closest` over simple `tag` / `[role='x']` selectors. */
 interface FakeEl {
@@ -127,23 +80,12 @@ describe("flattenViews", () => {
   });
 });
 
-describe("focus", () => {
-  const order = ["a", "b", "c"];
-
-  it("moveFocus steps within the list and stops at both ends", () => {
-    expect(moveFocus(order, "a", 1)).toBe("b");
-    expect(moveFocus(order, "c", 1)).toBe("c");
-    expect(moveFocus(order, "a", -1)).toBe("a");
-    expect(moveFocus(order, null, 1)).toBe("a");
-    expect(moveFocus([], null, 1)).toBeNull();
-  });
-
-  it("a focused moment that leaves the list hands focus to whatever now sits at its place", () => {
-    expect(resolveFocus(order, { id: "b", index: 1 })).toBe("b");
-    expect(resolveFocus(["a", "c"], { id: "b", index: 1 })).toBe("c");
-    expect(resolveFocus(["a"], { id: "b", index: 1 })).toBe("a");
-    expect(resolveFocus([], { id: "b", index: 1 })).toBeNull();
-    expect(resolveFocus(order, { id: null, index: 0 })).toBe("a");
+describe("nextStatus", () => {
+  it("clicking the active status returns the moment to undecided", () => {
+    expect(nextStatus("approved", "approved")).toBeNull();
+    expect(nextStatus("rejected", "rejected")).toBeNull();
+    expect(nextStatus(null, "rejected")).toBe("rejected");
+    expect(nextStatus("approved", "rejected")).toBe("rejected");
   });
 });
 

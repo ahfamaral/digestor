@@ -26,8 +26,15 @@ export function linkifyTimestamps(text: string): AskTextPart[] {
   return parts;
 }
 
-const STATUSES: readonly string[] = ["approved", "neutral", "rejected"];
-const isStatus = (v: unknown): v is SelectionStatus => typeof v === "string" && STATUSES.includes(v);
+/**
+ * A stored or model-written selection status as the current one. Legacy "neutral" and the model's "skipped" are
+ * "rejected"; anything unknown is null. Every reader of stored Ask payloads and undo maps goes through this.
+ */
+export function asSelectionStatus(v: unknown): SelectionStatus | null {
+  if (v === "approved") return "approved";
+  if (v === "rejected" || v === "neutral" || v === "skipped") return "rejected";
+  return null;
+}
 
 /** The stored tool calls of an answer, keeping only well-formed records (the column is untyped JSON). */
 export function asToolCalls(raw: unknown): AskToolCallRecord[] {
@@ -41,7 +48,11 @@ export function asToolCalls(raw: unknown): AskToolCallRecord[] {
     if (typeof r.undo === "object" && r.undo !== null) {
       const undo: Record<string, SelectionStatus | null> = {};
       for (const [id, prev] of Object.entries(r.undo)) {
-        if (prev === null || isStatus(prev)) undo[id] = prev;
+        if (prev === null) undo[id] = null;
+        else {
+          const status = asSelectionStatus(prev);
+          if (status) undo[id] = status;
+        }
       }
       if (Object.keys(undo).length > 0) call.undo = undo;
     }
@@ -78,8 +89,10 @@ export function parseBulkPayload(raw: unknown): { momentIds: string[]; status: S
   if (typeof raw !== "object" || raw === null) return null;
   const { momentIds, status } = raw as { momentIds?: unknown; status?: unknown };
   if (!Array.isArray(momentIds) || !momentIds.every((id) => typeof id === "string")) return null;
-  if (status !== null && !isStatus(status)) return null;
-  return { momentIds: momentIds as string[], status };
+  if (status === null) return { momentIds: momentIds as string[], status: null };
+  const mapped = asSelectionStatus(status);
+  if (!mapped) return null;
+  return { momentIds: momentIds as string[], status: mapped };
 }
 
 /** Undo of `set_selection` restores only moments still at the status the call set; the rest were changed since. */
@@ -89,12 +102,12 @@ export function planSelectionUndo(
 ): { restore: Record<string, SelectionStatus | null>; skipped: number } {
   const args = call.args as { status?: unknown } | null;
   const raw = typeof args === "object" && args !== null && "status" in args ? args.status : undefined;
-  const set = raw === "proposed" ? null : raw; // the tool's "proposed" is stored as no selection
+  const set = raw === "proposed" || raw === null ? null : (asSelectionStatus(raw) ?? undefined); // the tool's "proposed" is stored as no selection
 
   const restore: Record<string, SelectionStatus | null> = {};
   let skipped = 0;
   for (const [id, previous] of Object.entries(call.undo ?? {})) {
-    if ((set === null || isStatus(set)) && (current[id] ?? null) === set) restore[id] = previous;
+    if (set !== undefined && (current[id] ?? null) === set) restore[id] = previous;
     else skipped += 1;
   }
   return { restore, skipped };
