@@ -1,4 +1,5 @@
-import type { RenderStatus, TrackStatus } from "@digestor/core";
+import { LANGUAGES, type RenderStatus, type TrackStatus } from "@digestor/core";
+import { languageName } from "@/lib/i18n";
 
 export interface ExportClipInput {
   id: string;
@@ -40,9 +41,18 @@ export interface ExportRow {
   mp4: string | null;
   renderOutOfDate: boolean;
   languages: ExportLanguageRow[];
+  /** Inline (no `?download=1`) URLs for the Watch player: the plain MP4 with its text tracks, and each made subtitle video. */
+  watch: {
+    mp4: string | null;
+    tracks: { src: string; srcLang: string; label: string }[];
+    burned: { language: string; src: string }[];
+  };
 }
 
-const url = (sessionId: string, name: string) => `/api/files/${sessionId}/clips/${name}?download=1`;
+export const languageLabel = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? languageName(code);
+
+const inline = (sessionId: string, name: string) => `/api/files/${sessionId}/clips/${name}`;
+const url = (sessionId: string, name: string) => `${inline(sessionId, name)}?download=1`;
 
 function burnState(status: RenderStatus, key: string | null): BurnState {
   switch (status) {
@@ -62,14 +72,25 @@ function burnState(status: RenderStatus, key: string | null): BurnState {
 
 /** Groups each clip's download links by language. A `stale` render or burn is "out of date" and has no link. */
 export function exportRows(clips: ExportClipInput[], tracks: ExportTrackInput[]): ExportRow[] {
-  return clips.map((clip) => ({
+  return clips.map((clip) => {
+    const own = tracks.filter((tr) => tr.clipId === clip.id).sort((a, b) => a.language.localeCompare(b.language));
+    const hasText = (tr: ExportTrackInput) => tr.status !== "outdated" && tr.cues.some((c) => c.text.trim() !== "");
+    const renderDone = clip.renderStatus === "done" && !!clip.renderKey;
+    return {
     clipId: clip.id,
     renderStatus: clip.renderStatus,
     mp4: clip.renderStatus === "done" && clip.renderKey ? url(clip.sessionId, `${clip.id}.mp4`) : null,
     renderOutOfDate: clip.renderStatus === "stale",
-    languages: tracks
-      .filter((tr) => tr.clipId === clip.id)
-      .sort((a, b) => a.language.localeCompare(b.language))
+    watch: {
+      mp4: renderDone ? inline(clip.sessionId, `${clip.id}.mp4`) : null,
+      tracks: own
+        .filter(hasText)
+        .map((tr) => ({ src: inline(clip.sessionId, `${clip.id}.${tr.language}.vtt`), srcLang: tr.language, label: languageLabel(tr.language) })),
+      burned: own
+        .filter((tr) => tr.burnStatus === "done" && tr.burnKey)
+        .map((tr) => ({ language: tr.language, src: inline(clip.sessionId, `${clip.id}.${tr.language}.burned.mp4`) })),
+    },
+    languages: own
       .map((tr) => {
         const outdated = tr.status === "outdated";
         const hasText = !outdated && tr.cues.some((c) => c.text.trim() !== "");
@@ -87,7 +108,8 @@ export function exportRows(clips: ExportClipInput[], tracks: ExportTrackInput[])
           },
         };
       }),
-  }));
+    };
+  });
 }
 
 const active = (s: RenderStatus) => s === "queued" || s === "rendering";

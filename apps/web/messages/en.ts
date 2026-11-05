@@ -614,6 +614,10 @@ export const en = {
     draft: "draft",
     outOfDate: "out of date",
     downloadLabel: "Download {what}: {title}",
+    watch: "▶ Watch",
+    watchHide: "■ Hide",
+    watchLabel: "Watch: {what}, {title}",
+    playerLabel: "{what}: {title}",
     status: {
       none: "Not rendered yet",
       queued: "Queued…",

@@ -90,4 +90,27 @@ describe("inFlight", () => {
     expect(inFlight(exportRows([clip()], [track({ burnStatus: "rendering" })]))).toBe(true);
     expect(inFlight(exportRows([clip({ renderStatus: "failed" })], [track({ burnStatus: "failed" })]))).toBe(false);
   });
+
+  it("watch: plain inline URLs for the MP4, text tracks and done subtitle videos", () => {
+    const rows = exportRows(
+      [clip()],
+      [
+        track({ language: "de" }),
+        track({ language: "pt", status: "outdated" }),
+        track({ language: "fr", cues: [] }),
+        track({ language: "en", burnStatus: "done", burnKey: "s1/clips/c1.en.burned.mp4" }),
+        track({ language: "es", burnStatus: "stale", burnKey: "k" }),
+      ],
+    );
+    expect(rows[0]!.watch).toEqual({
+      mp4: "/api/files/s1/clips/c1.mp4",
+      tracks: [
+        { src: "/api/files/s1/clips/c1.de.vtt", srcLang: "de", label: "German" },
+        { src: "/api/files/s1/clips/c1.en.vtt", srcLang: "en", label: "English" },
+        { src: "/api/files/s1/clips/c1.es.vtt", srcLang: "es", label: "Spanish" },
+      ],
+      burned: [{ language: "en", src: "/api/files/s1/clips/c1.en.burned.mp4" }],
+    });
+    expect(exportRows([clip({ renderStatus: "stale" })], [track()])[0]!.watch.mp4).toBeNull();
+  });
 });

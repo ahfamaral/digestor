@@ -3,14 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LANGUAGES, formatLength, formatTimestamp, type ChecklistId } from "@digestor/core";
+import { formatLength, formatTimestamp, type ChecklistId } from "@digestor/core";
 import { SpeakerName } from "@/components/Names/SpeakerName";
 import type { NamesData, Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
+import { MediaPlayer } from "@/components/MediaPlayer";
 import { WarningIcon } from "@/components/WarningNote";
-import { inFlight, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
-import { languageName, t } from "@/lib/i18n";
+import { inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { Busy } from "@/components/ui/spinner";
@@ -42,12 +43,11 @@ const LINK =
   "inline-flex h-8 items-center rounded-lg border border-border bg-white px-3 text-xs font-semibold outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand";
 const NOTICE = "mb-3 rounded-lg border px-3 py-2 text-sm";
 
-const languageLabel = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? languageName(code);
-
 /** Export: each prepared clip with its checklist, the Export button, and every download (MP4, SRT/VTT, MP4 with subtitles). */
 export function ExportList({ session, names, clips }: ExportListProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [watching, setWatching] = useState<string | null>(null);
   // Only errors and one-off answers are click-set; "rendering has started" is derived from live statuses.
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const lang = session.language ?? undefined;
@@ -130,7 +130,7 @@ export function ExportList({ session, names, clips }: ExportListProps) {
         ) : (
           <ol className="grid gap-3">
             {clips.map((clip, n) => (
-              <ClipRow key={clip.id} n={n + 1} clip={clip} sessionId={session.id} lang={lang} names={names} sensitive={session.sensitive} />
+              <ClipRow key={clip.id} n={n + 1} clip={clip} sessionId={session.id} lang={lang} names={names} sensitive={session.sensitive} watching={watching} setWatching={setWatching} />
             ))}
           </ol>
         )}
@@ -161,7 +161,7 @@ export function ExportList({ session, names, clips }: ExportListProps) {
 }
 
 function ClipRow({
-  n, clip, sessionId, lang, names, sensitive,
+  n, clip, sessionId, lang, names, sensitive, watching, setWatching,
 }: {
   n: number;
   clip: ExportClipData;
@@ -169,6 +169,8 @@ function ClipRow({
   lang: string | undefined;
   names: NamesData;
   sensitive: boolean;
+  watching: string | null;
+  setWatching: (key: string | null) => void;
 }) {
   const { row } = clip;
   const heading = clip.title || t("exportScreen.clipHeading", { n });
@@ -244,10 +246,19 @@ function ClipRow({
                 <a href={row.mp4} aria-label={t("exportScreen.downloadLabel", { what: t("exportScreen.mp4"), title: heading })} className={LINK}>
                   {t("exportScreen.mp4")}
                 </a>
+                <WatchToggle
+                  id={`${clip.id}:mp4`}
+                  what={t("exportScreen.mp4")}
+                  title={heading}
+                  src={row.watch.mp4}
+                  tracks={row.watch.tracks}
+                  watching={watching}
+                  setWatching={setWatching}
+                />
               </li>
             )}
             {row.languages.map((l) => (
-              <LanguageLine key={l.language} l={l} heading={heading} />
+              <LanguageLine key={l.language} l={l} heading={heading} id={`${clip.id}:${l.language}:burned`} watchSrc={row.watch.burned.find((b) => b.language === l.language)?.src ?? null} watching={watching} setWatching={setWatching} />
             ))}
           </ul>
         )}
@@ -256,7 +267,58 @@ function ClipRow({
   );
 }
 
-function LanguageLine({ l, heading }: { l: ExportLanguageRow; heading: string }) {
+/** "▶ Watch" toggle for a rendered file; the player opens full width under its row (the parent `li` wraps). */
+function WatchToggle({
+  id, what, title, src, tracks, watching, setWatching,
+}: {
+  id: string;
+  what: string;
+  title: string;
+  src: string | null;
+  tracks?: { src: string; srcLang: string; label: string }[];
+  watching: string | null;
+  setWatching: (key: string | null) => void;
+}) {
+  if (src === null) return null;
+  const open = watching === id;
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`player-${id.replaceAll(":", "-")}`}
+        aria-label={t("exportScreen.watchLabel", { what, title })}
+        onClick={() => setWatching(open ? null : id)}
+        className={LINK}
+      >
+        {open ? t("exportScreen.watchHide") : t("exportScreen.watch")}
+      </button>
+      {open && (
+        <div id={`player-${id.replaceAll(":", "-")}`} className="basis-full">
+          <MediaPlayer
+            kind="video"
+            src={src}
+            label={t("exportScreen.playerLabel", { what, title })}
+            tracks={tracks}
+            autoPlay
+            className="max-h-[70vh] w-full max-w-xl rounded-lg bg-black"
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function LanguageLine({
+  l, heading, id, watching, setWatching, watchSrc,
+}: {
+  l: ExportLanguageRow;
+  heading: string;
+  id: string;
+  watching: string | null;
+  setWatching: (key: string | null) => void;
+  watchSrc: string | null;
+}) {
   const name = languageLabel(l.language);
   const state = l.burn.state;
   const burnNote = state === "none" || state === "done" ? "" : t(`exportScreen.burnState.${state}`);
@@ -285,6 +347,7 @@ function LanguageLine({ l, heading }: { l: ExportLanguageRow; heading: string })
           {burnLabel}
         </a>
       )}
+      <WatchToggle id={id} what={burnLabel} title={heading} src={watchSrc} watching={watching} setWatching={setWatching} />
       {burnNote !== "" && (
         <span className={cn("inline-flex items-center gap-1 text-xs", state === "failed" ? "text-red-700" : state === "outOfDate" ? "font-medium text-stone-900" : "text-muted-foreground")}>
           {state === "outOfDate" && <WarningIcon className="size-3.5" />}
