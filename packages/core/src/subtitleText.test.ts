@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSrt, buildVtt, trackToCues } from "./subtitleText.ts";
+import { buildSrt, buildVtt, layout, trackToCues } from "./subtitleText.ts";
 import type { TrackCue } from "./personalTypes.ts";
 
 const cue = (text: string, startMs = 0, endMs = 6000): TrackCue => ({ startMs, endMs, original: "x", text, missing: text === "" });
@@ -73,5 +73,14 @@ describe("trackToCues per format", () => {
     expect(lines.length).toBeGreaterThan(1);
     for (const l of lines) expect([...l].length).toBeLessThanOrEqual(24);
     expect(lines.join("")).toBe("Donaudampfschifffahrtsgesellschaftskapitän".slice(0, 30));
+  });
+  it("layout keeps a 50-char word whole", () => {
+    const w = "x".repeat(50);
+    expect(layout([{ text: w, start: 0, end: 1, confidence: 1, speaker: null } as never])).toEqual([w]);
+  });
+  it("9:16 splits a long word that follows a normal word on the same cue", () => {
+    const lines = trackToCues([cue("Der " + "y".repeat(30))], "9:16").flatMap((c) => c.lines);
+    for (const l of lines) expect([...l].length).toBeLessThanOrEqual(24);
+    expect(lines.join("").replace(/ /g, "")).toBe("Der" + "y".repeat(30));
   });
 });

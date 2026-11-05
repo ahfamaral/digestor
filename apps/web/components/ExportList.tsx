@@ -11,7 +11,7 @@ import { BackLink } from "@/components/BackLink";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { WarningIcon } from "@/components/WarningNote";
 import { ApprovalDismissed } from "@/components/ApprovalDismissed";
-import { exportableIds, isExportReady, inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { exportableIds, inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";

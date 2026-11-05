@@ -33,10 +33,10 @@ function hardSplit(units: Unit[], maxChars: number): Unit[] {
   });
 }
 
-function wrap(units: Unit[], maxChars = MAX_CHARS): string[] {
+function wrap(units: Unit[], maxChars = MAX_CHARS, splitLongWords = false): string[] {
   const lines: string[] = [];
   let cur = "";
-  for (const u of hardSplit(units, maxChars)) {
+  for (const u of splitLongWords ? hardSplit(units, maxChars) : units) {
     const joined = cur === "" ? u.text : cur + (u.spaceBefore ? " " : "") + u.text;
     if (cur !== "" && [...joined].length > maxChars) {
       lines.push(cur);
@@ -61,7 +61,7 @@ export function wrapText(text: string, maxChars = MAX_CHARS): string[] {
   const units: Unit[] = [];
   const words = text.split(/\s+/).filter(Boolean);
   words.forEach((w, i) => units.push(...toUnits(w, i === 0, words[i - 1])));
-  return wrap(units, maxChars);
+  return wrap(units, maxChars, true);
 }
 
 /**
