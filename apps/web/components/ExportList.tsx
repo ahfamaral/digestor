@@ -11,7 +11,7 @@ import { BackLink } from "@/components/BackLink";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { WarningIcon } from "@/components/WarningNote";
 import { ApprovalDismissed } from "@/components/ApprovalDismissed";
-import { exportableIds, inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { exportableIds, isExportReady, inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -238,6 +238,8 @@ function ClipRow({
             {t("exportScreen.fixInPrepare")}
           </Link>
         </div>
+      ) : clip.dismissed ? (
+        <p className="mt-2 text-[13px] text-stone-700">{t("prepare.approvalDismissedHint")}</p>
       ) : (
         <p className="mt-2 text-[13px] text-green-800">{t("exportScreen.ready")}</p>
       )}

@@ -130,7 +130,12 @@ export function toMake(rows: ExportRow[]): number {
   return n;
 }
 
-/** The clips "Export ready clips" sends: every checklist item holds and the moment is still approved. */
+/** One rule for "ready to export": every checklist item holds and the moment is still approved. */
+export function isExportReady(c: { dismissed: boolean; failing: string[] }): boolean {
+  return c.failing.length === 0 && !c.dismissed;
+}
+
+/** The clips "Export ready clips" sends. */
 export function exportableIds(clips: { id: string; dismissed: boolean; failing: string[] }[]): string[] {
-  return clips.filter((c) => c.failing.length === 0 && !c.dismissed).map((c) => c.id);
+  return clips.filter(isExportReady).map((c) => c.id);
 }

@@ -11,6 +11,7 @@ import { SpeakerName } from "@/components/Names/SpeakerName";
 import { unconfirmedVoices, type NamesData, type Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
+import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { fetchChecks, fetchTracks, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
 import { checksToPoll, type ClipView, type TrackView } from "@/lib/prepareData";
@@ -247,7 +248,9 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
       }),
     ]),
   );
-  const readyCount = items.filter((i) => checklists.get(i.clip.id)!.every((x) => x.ok)).length;
+  const readyCount = items.filter((i) =>
+    isExportReady({ dismissed: i.dismissed, failing: checklists.get(i.clip.id)!.filter((x) => !x.ok).map((x) => x.id) }),
+  ).length;
 
   return (
     <>

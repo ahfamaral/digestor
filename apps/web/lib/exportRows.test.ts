@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exportableIds, exportRows, inFlight, toMake } from "./exportRows";
+import { exportableIds, isExportReady, exportRows, inFlight, toMake } from "./exportRows";
 
 const clip = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => ({
   id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", ...over,
@@ -124,5 +124,13 @@ describe("exportableIds", () => {
         { id: "failing", dismissed: false, failing: ["speaker"] },
       ]),
     ).toEqual(["ready"]);
+  });
+});
+
+describe("isExportReady", () => {
+  it("is ready only when nothing fails and the moment is still approved", () => {
+    expect(isExportReady({ dismissed: false, failing: [] })).toBe(true);
+    expect(isExportReady({ dismissed: true, failing: [] })).toBe(false);
+    expect(isExportReady({ dismissed: false, failing: ["speaker"] })).toBe(false);
   });
 });

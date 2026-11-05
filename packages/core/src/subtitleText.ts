@@ -22,10 +22,21 @@ function toUnits(word: string, first: boolean, prevText: string | undefined): Un
   return chars.map((c, i) => ({ text: c, spaceBefore: i === 0 && spaceBefore }));
 }
 
+/** A unit longer than the line (a long compound word) is cut into line-sized chunks: the renderer cannot break inside a word. */
+function hardSplit(units: Unit[], maxChars: number): Unit[] {
+  return units.flatMap((u) => {
+    const chars = [...u.text];
+    if (chars.length <= maxChars) return [u];
+    const out: Unit[] = [];
+    for (let i = 0; i < chars.length; i += maxChars) out.push({ text: chars.slice(i, i + maxChars).join(""), spaceBefore: i === 0 && u.spaceBefore });
+    return out;
+  });
+}
+
 function wrap(units: Unit[], maxChars = MAX_CHARS): string[] {
   const lines: string[] = [];
   let cur = "";
-  for (const u of units) {
+  for (const u of hardSplit(units, maxChars)) {
     const joined = cur === "" ? u.text : cur + (u.spaceBefore ? " " : "") + u.text;
     if (cur !== "" && [...joined].length > maxChars) {
       lines.push(cur);

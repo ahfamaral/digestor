@@ -67,4 +67,11 @@ describe("trackToCues per format", () => {
     const out = trackToCues([cue("这是一个很长的中文字幕".repeat(5))], "9:16");
     for (const c of out) for (const l of c.lines) expect([...l].length).toBeLessThanOrEqual(24);
   });
+  it("9:16 hard-splits a word longer than the line", () => {
+    const out = trackToCues([cue("Donaudampfschifffahrtsgesellschaftskapitän".slice(0, 30))], "9:16");
+    const lines = out.flatMap((c) => c.lines);
+    expect(lines.length).toBeGreaterThan(1);
+    for (const l of lines) expect([...l].length).toBeLessThanOrEqual(24);
+    expect(lines.join("")).toBe("Donaudampfschifffahrtsgesellschaftskapitän".slice(0, 30));
+  });
 });

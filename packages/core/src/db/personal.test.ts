@@ -155,6 +155,23 @@ describe("clips", () => {
     expect(sel[user.m.id]).toBe("approved");
   });
 
+  it("undoing an Ask clip's creation keeps a choice the user changed since, and an official moment's selection", async () => {
+    const m = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 0, endMs: 20_000, title: "ask", origin: "ask" });
+    await setSelection(db, OWNER, m.id, "approved");
+    const c = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m.id, startMs: 0, endMs: 20_000, actor: "ask" });
+    await setSelection(db, OWNER, m.id, "rejected");
+    await undoLastEvent(db, c.id);
+    expect((await listSelections(db, OWNER, s.id))[m.id]).toBe("rejected");
+
+    const [off] = await saveMoments(db, analysisId, [
+      { topicId: null, granularity: "passage", startMs: 0, endMs: 40_000, title: "O", why: "w", relevance: 50, speakers: [], evidence: [], origin: "ai", highlights: [] },
+    ]);
+    await setSelection(db, OWNER, off!.id, "approved");
+    const oc = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: off!.id, startMs: 0, endMs: 20_000, actor: "user" });
+    await undoLastEvent(db, oc.id);
+    expect((await listSelections(db, OWNER, s.id))[off!.id]).toBe("approved");
+  });
+
   it("delete then undo restores the clip with its history", async () => {
     const c = await newClip();
     await updateClip(db, c.id, { endMs: 55_000 }, "user");

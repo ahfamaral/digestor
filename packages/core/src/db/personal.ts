@@ -472,6 +472,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
         await tx.delete(selections).where(and(
           eq(selections.ownerId, clip.ownerId),
           eq(selections.momentId, clip.momentId),
+          eq(selections.status, "approved"),
           inArray(selections.momentId, tx.select({ id: moments.id }).from(moments).where(and(eq(moments.id, clip.momentId), eq(moments.origin, "ask")))),
         ));
       }
