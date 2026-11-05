@@ -1,10 +1,11 @@
 // Client-safe row shapes of the personal layer (Ruling R3). `db/personal.ts` returns these.
+import type { SubtitlePosition, SubtitleStyle } from "./subtitleStyle.ts";
 
 export type SelectionStatus = "approved" | "rejected";
 export type ClipFormat = "16:9" | "9:16";
 export type RenderStatus = "none" | "queued" | "rendering" | "done" | "failed" | "stale";
 export type ClipActor = "user" | "ask";
-export type ClipEventKind = "create" | "bounds" | "format" | "delete";
+export type ClipEventKind = "create" | "bounds" | "format" | "style" | "delete";
 /** `outdated`: built for clip bounds that have since changed (Rebuild replaces it). */
 export type TrackStatus = "preparing" | "ready" | "failed" | "outdated";
 export type AskRole = "user" | "assistant";
@@ -32,6 +33,8 @@ export interface Clip {
   format: ClipFormat;
   /** -1…1 */
   cropOffset: number;
+  subtitleStyle: SubtitleStyle;
+  subtitlePosition: SubtitlePosition;
   credit: string | null;
   noCreditNeeded: boolean;
   warningsAck: boolean;

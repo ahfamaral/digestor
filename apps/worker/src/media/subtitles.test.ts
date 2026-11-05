@@ -73,6 +73,10 @@ describe("buildCues", () => {
   });
 });
 
+const look = (over: Partial<{ style: "yellow" | "white" | "white_box"; position: "bottom" | "above_banner" | "top" }> = {}) => ({
+  style: "yellow" as const, position: "bottom" as const, ...over,
+});
+
 describe("buildSrt / buildAss", () => {
   const cues = [
     { startMs: 0, endMs: 1500, lines: ["Hello", "world"] },
@@ -85,17 +89,40 @@ describe("buildSrt / buildAss", () => {
   });
 
   it("ass has script info, style and dialogue lines", () => {
-    const ass = buildAss([{ startMs: 0, endMs: 1500, lines: ["a {b}", "c"] }, cues[1]!], { width: 640, height: 360 });
+    const ass = buildAss([{ startMs: 0, endMs: 1500, lines: ["a {b}", "c"] }, cues[1]!], { width: 640, height: 360 }, look());
     expect(ass).toContain("PlayResX: 640");
     expect(ass).toContain("PlayResY: 360");
     expect(ass).toContain("WrapStyle: 2");
-    expect(ass).toContain("Style: Default,Noto Sans,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,20,20,22,1");
+    expect(ass).toContain("Style: Default,Noto Sans,20,&H0000E6FF,&H0000E6FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,20,20,22,1");
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:01.50,Default,,0,0,0,,a \\{b\\}\\Nc");
     expect(ass).toContain("Dialogue: 0,1:02:03.45,1:02:05.00,Default,,0,0,0,,Later");
   });
 
+  it("yellow above the banner at 1080p", () => {
+    const ass = buildAss(cues, { width: 1920, height: 1080 }, look({ position: "above_banner" }));
+    expect(ass).toContain("&H0000E6FF");
+    expect(ass).toContain(",-1,0,0,0,100,100,0,0,1,4,1,2,");
+    expect(ass).toContain(",2,20,20,238,1");
+    expect(ass).toContain("Noto Sans,59,");
+  });
+
+  it("white is bold white with an outline", () => {
+    const ass = buildAss(cues, { width: 1920, height: 1080 }, look({ style: "white" }));
+    expect(ass).toContain("Noto Sans,59,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,1,2,20,20,65,1");
+  });
+
+  it("top uses alignment 8 and the top margin", () => {
+    const ass = buildAss(cues, { width: 1920, height: 1080 }, look({ position: "top" }));
+    expect(ass).toContain(",8,20,20,54,1");
+  });
+
+  it("white_box draws a 75% black box with border style 3", () => {
+    const ass = buildAss(cues, { width: 1920, height: 1080 }, look({ style: "white_box" }));
+    expect(ass).toContain("&H00FFFFFF,&H00FFFFFF,&H40000000,&H40000000,0,0,0,0,100,100,0,0,3,");
+  });
+
   it("escapes literal backslashes and never emits zero-duration cues", () => {
-    const ass = buildAss([{ startMs: 1000, endMs: 1000, lines: ["a\\Nb"] }], { width: 640, height: 360 });
+    const ass = buildAss([{ startMs: 1000, endMs: 1000, lines: ["a\\Nb"] }], { width: 640, height: 360 }, look());
     expect(ass).toContain("Default,,0,0,0,,a\\\\Nb");
     expect(ass).toContain("0:00:01.00,0:00:01.01,Default");
   });

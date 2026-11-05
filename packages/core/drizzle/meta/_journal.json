@@ -99,6 +99,13 @@
       "when": 1793882579582,
       "tag": "0013_selections_skip",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793886972205,
+      "tag": "0014_subtitle_style",
+      "breakpoints": true
     }
   ]
 }

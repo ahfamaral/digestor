@@ -6,10 +6,11 @@ import type {
   AskActionKind, AskAction, AskMessage, AskMessageStatus, AskMessageWithActions, AskRole, Clip, ClipActor, ClipFormat,
   ClipEvent, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
-import { GRANULARITY, type Granularity } from "../profiles.ts";
+import { GRANULARITY, ProfileIdSchema, type Granularity } from "../profiles.ts";
+import { defaultSubtitlePosition, type SubtitlePosition, type SubtitleStyle } from "../subtitleStyle.ts";
 import type { Db } from "./client.ts";
 import {
-  askActions, askMessages, analysisVersions, clipEvents, clips, findMoreRequests, momentHighlights, moments, problemReports, selections, subtitleTracks,
+  askActions, askMessages, analysisVersions, clipEvents, clips, findMoreRequests, momentHighlights, moments, problemReports, selections, sessions, subtitleTracks,
   topics,
 } from "./schema.ts";
 
@@ -242,7 +243,7 @@ export async function releaseMomentCheck(db: Db, momentId: string): Promise<void
 // ---------------------------------------------------------------- clips
 
 export type ClipPatch = Partial<
-  Pick<Clip, "startMs" | "endMs" | "format" | "cropOffset" | "credit" | "noCreditNeeded" | "warningsAck" | "protectedAck">
+  Pick<Clip, "startMs" | "endMs" | "format" | "cropOffset" | "subtitleStyle" | "subtitlePosition" | "credit" | "noCreditNeeded" | "warningsAck" | "protectedAck">
 >;
 
 const alive = isNull(clips.deletedAt);
@@ -258,6 +259,11 @@ async function staleIfDone(tx: Tx, clipId: string): Promise<void> {
     .update(clips)
     .set({ renderStatus: "stale" })
     .where(and(eq(clips.id, clipId), eq(clips.renderStatus, "done")));
+  await staleBurnsIfDone(tx, clipId);
+}
+
+/** A subtitle style or position change only affects the burned-in videos: the plain render stays valid. */
+async function staleBurnsIfDone(tx: Tx, clipId: string): Promise<void> {
   await tx
     .update(subtitleTracks)
     .set({ burnStatus: "stale" })
@@ -292,9 +298,25 @@ async function afterBoundsChange(tx: Tx, clipId: string, bounds: { startMs: numb
 type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor };
 
 async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
+  const [last] = await tx
+    .select({ subtitleStyle: clips.subtitleStyle })
+    .from(clips)
+    .where(and(eq(clips.ownerId, a.ownerId), alive))
+    .orderBy(desc(clips.updatedAt))
+    .limit(1);
+  const [sess] = await tx.select({ profile: sessions.profile }).from(sessions).where(eq(sessions.id, a.sessionId));
+  const profile = ProfileIdSchema.safeParse(sess?.profile);
   const [row] = await tx
     .insert(clips)
-    .values({ sessionId: a.sessionId, ownerId: a.ownerId, momentId: a.momentId ?? null, startMs: a.startMs, endMs: a.endMs })
+    .values({
+      sessionId: a.sessionId,
+      ownerId: a.ownerId,
+      momentId: a.momentId ?? null,
+      startMs: a.startMs,
+      endMs: a.endMs,
+      subtitleStyle: last?.subtitleStyle ?? "yellow",
+      subtitlePosition: profile.success ? defaultSubtitlePosition(profile.data) : "bottom",
+    })
     .returning();
   await tx.insert(clipEvents).values({
     clipId: row!.id,
@@ -367,6 +389,7 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
     const changed = <K extends keyof ClipPatch>(k: K) => patch[k] !== undefined && patch[k] !== before[k];
     const boundsChanged = changed("startMs") || changed("endMs");
     const formatChanged = changed("format") || changed("cropOffset");
+    const styleChanged = changed("subtitleStyle") || changed("subtitlePosition");
     const creditChanged = changed("credit") || changed("noCreditNeeded");
     const [row] = await tx
       .update(clips)
@@ -391,7 +414,17 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
         after: { format: row!.format, cropOffset: row!.cropOffset },
       });
     }
+    if (styleChanged) {
+      await tx.insert(clipEvents).values({
+        clipId: id,
+        actor,
+        kind: "style",
+        before: { subtitleStyle: before.subtitleStyle, subtitlePosition: before.subtitlePosition },
+        after: { subtitleStyle: row!.subtitleStyle, subtitlePosition: row!.subtitlePosition },
+      });
+    }
     if (boundsChanged) await afterBoundsChange(tx, id, row!);
+    if (styleChanged) await staleBurnsIfDone(tx, id);
     if (boundsChanged || formatChanged || creditChanged) {
       await staleIfDone(tx, id);
       const [fresh] = await tx.select().from(clips).where(eq(clips.id, id));
@@ -428,7 +461,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
     if (!ev) return null;
     const now = new Date();
     let set: Partial<typeof clips.$inferInsert> = { updatedAt: now };
-    if (ev.kind === "bounds" || ev.kind === "format") {
+    if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "style") {
       set = { ...set, ...(ev.before as object) };
     } else if (ev.kind === "create") {
       set = { ...set, deletedAt: now };
@@ -438,6 +471,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
     await tx.update(clips).set(set).where(eq(clips.id, clipId));
     await tx.update(clipEvents).set({ undoneAt: now }).where(eq(clipEvents.id, ev.id));
     if (ev.kind === "bounds" || ev.kind === "format") await staleIfDone(tx, clipId);
+    if (ev.kind === "style") await staleBurnsIfDone(tx, clipId);
     if (ev.kind === "bounds") await afterBoundsChange(tx, clipId, ev.before as { startMs: number; endMs: number });
     const [fresh] = await tx.select().from(clips).where(eq(clips.id, clipId));
     return fresh!;
@@ -495,14 +529,17 @@ export async function finishClipRender(
 
 // ---------------------------------------------------------------- subtitle tracks
 
-/** What a burned-in render depends on: the cue texts plus the clip geometry and credit. */
+/** What a burned-in render depends on: the cue texts plus the clip geometry, credit and subtitle look. */
 export function burnSignature(
   track: { cues: TrackCue[] },
-  clip: { startMs: number; endMs: number; format: ClipFormat; cropOffset: number; credit: string | null },
+  clip: {
+    startMs: number; endMs: number; format: ClipFormat; cropOffset: number; credit: string | null;
+    subtitleStyle: SubtitleStyle; subtitlePosition: SubtitlePosition;
+  },
 ): string {
-  const { startMs, endMs, format, cropOffset, credit } = clip;
+  const { startMs, endMs, format, cropOffset, credit, subtitleStyle, subtitlePosition } = clip;
   return createHash("sha1")
-    .update(JSON.stringify({ texts: track.cues.map((c) => c.text), startMs, endMs, format, cropOffset, credit }))
+    .update(JSON.stringify({ texts: track.cues.map((c) => c.text), startMs, endMs, format, cropOffset, credit, subtitleStyle, subtitlePosition }))
     .digest("hex");
 }
 

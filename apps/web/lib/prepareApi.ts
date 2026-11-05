@@ -1,5 +1,5 @@
 // Client calls of Prepare clips. Each resolves to plain views, or throws an Error carrying the API's friendly sentence.
-import type { MomentChecks } from "@digestor/core";
+import type { MomentChecks, SubtitlePosition, SubtitleStyle } from "@digestor/core";
 import { errorMessage } from "./http";
 import { toClipView, toTrackView, type ClipView, type TrackView } from "./prepareData";
 import { t } from "./i18n";
@@ -24,6 +24,7 @@ const json = (method: string, body?: unknown): RequestInit => ({ method, body: b
 export type ClipChange =
   | { start: string; end: string; free?: true }
   | { format?: "16:9" | "9:16"; cropOffset?: number }
+  | { subtitleStyle?: SubtitleStyle; subtitlePosition?: SubtitlePosition }
   | { credit: string | null }
   | { noCreditNeeded: boolean }
   | { warningsAck: boolean }

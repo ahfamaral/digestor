@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
 import {
   createCustomPerson, failFindMore, getFindMore, replaceAiAttributions, setHumanAttribution, claimFindMore,
   createClip, createTrack, deleteClip, failTrack, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
-  approveTrack, updateClip, setSelection,
+  approveTrack, updateClip, setSelection, confirmClips,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
@@ -516,5 +516,21 @@ describe("/api/sessions/[id]/find-more", () => {
     expect(h.send).not.toHaveBeenCalled();
     await updateSession(h.db, sessionId, { stage: "finding_moments" });
     expect((await postFindMore(req({ personId }), ctx(sessionId))).status).toBe(409);
+  });
+});
+
+describe("PATCH /api/clips/[id] subtitle style and position", () => {
+  it("validates, saves and answers with midSentence", async () => {
+    const { sessionId, moments } = await seedReadySession(h.db);
+    const [clip] = await confirmClips(h.db, OWNER_ID, sessionId, [moments[0]!]);
+    expect((await patchClip(req({ subtitleStyle: "neon" }, "PATCH"), ctx(clip!.id))).status).toBe(400);
+    const res = await patchClip(req({ subtitlePosition: "top" }, "PATCH"), ctx(clip!.id));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ subtitlePosition: "top", subtitleStyle: "yellow", midSentence: false });
+    expect(await (await patchClip(req({ subtitleStyle: "white_box", subtitlePosition: "bottom" }, "PATCH"), ctx(clip!.id))).json()).toMatchObject({ subtitleStyle: "white_box", subtitlePosition: "bottom" });
+    await updateSession(h.db, sessionId, { videoDeletedAt: new Date() });
+    const frozen = await patchClip(req({ subtitleStyle: "white" }, "PATCH"), ctx(clip!.id));
+    expect(frozen.status).toBe(409);
+    expect(await frozen.json()).toEqual({ error: VIDEO_REMOVED });
   });
 });

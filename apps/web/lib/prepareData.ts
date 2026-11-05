@@ -1,5 +1,5 @@
 import {
-  LANGUAGES, type Clip, type ClipEventKind, type ClipFormat, type MomentChecks, type RenderStatus, type Track, type TrackCue,
+  LANGUAGES, type Clip, type ClipEventKind, type ClipFormat, type MomentChecks, type RenderStatus, type SubtitlePosition, type SubtitleStyle, type Track, type TrackCue,
   type TrackStatus,
 } from "@digestor/core";
 import { languageName } from "./i18n";
@@ -72,6 +72,8 @@ export interface ClipView {
   endMs: number;
   format: ClipFormat;
   cropOffset: number;
+  subtitleStyle: SubtitleStyle;
+  subtitlePosition: SubtitlePosition;
   credit: string | null;
   noCreditNeeded: boolean;
   warningsAck: boolean;
@@ -90,6 +92,8 @@ export function toClipView(c: Jsonish<Clip> & { midSentence?: boolean }): ClipVi
     endMs: c.endMs,
     format: c.format,
     cropOffset: c.cropOffset,
+    subtitleStyle: c.subtitleStyle,
+    subtitlePosition: c.subtitlePosition,
     credit: c.credit,
     noCreditNeeded: c.noCreditNeeded,
     warningsAck: c.warningsAck,

@@ -1,4 +1,6 @@
-import { endsSentence, layout, MAX_LINES, type Cue, type Word } from "@digestor/core";
+import {
+  endsSentence, layout, MAX_LINES, SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type Cue, type SubtitlePosition, type SubtitleStyle, type Word,
+} from "@digestor/core";
 
 export { buildSrt, buildVtt, type Cue } from "@digestor/core";
 
@@ -48,9 +50,32 @@ function assTime(ms: number): string {
 
 const escapeAssText = (s: string) => s.replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
 
-export function buildAss(cues: Cue[], video: { width: number; height: number }): string {
-  const fontSize = Math.round(video.height * 0.055);
-  const marginV = Math.round(video.height * 0.06);
+/** Opacity 0…1 → ASS alpha byte (00 opaque … FF transparent), two hex digits. */
+const assAlpha = (opacity: number) => Math.round((1 - opacity) * 255).toString(16).toUpperCase().padStart(2, "0");
+
+/** CSS `#RRGGBB` → ASS `&HAABBGGRR` colour. */
+function assColour(hex: string, alpha = "00"): string {
+  const h = hex.replace("#", "").toUpperCase();
+  return `&H${alpha}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`;
+}
+
+export function buildAss(
+  cues: Cue[],
+  video: { width: number; height: number },
+  look: { style: SubtitleStyle; position: SubtitlePosition },
+): string {
+  const g = SUBTITLE_GEOMETRY;
+  const st = SUBTITLE_STYLES[look.style];
+  const fontSize = Math.round(video.height * g.fontPct);
+  const marginV = Math.round(video.height * g.marginPct[look.position]);
+  const alignment = look.position === "top" ? 8 : 2;
+  const outline = Math.round((g.outlinePx1080 * video.height) / 1080);
+  const shadow = st.box ? 0 : Math.round((g.shadowPx1080 * video.height) / 1080);
+  // BorderStyle 3 draws the box in OutlineColour (libass), so the box colour goes there and in BackColour.
+  const boxColour = assColour("#000000", assAlpha(g.boxOpacity));
+  const outlineColour = st.box ? boxColour : assColour("#000000");
+  const backColour = st.box ? boxColour : assColour("#000000");
+  const primary = assColour(st.color);
   const dialogue = cues.map(
     (c) => `Dialogue: 0,${assTime(c.startMs)},${assTime(Math.max(c.endMs, c.startMs + 10))},Default,,0,0,0,,${c.lines.map(escapeAssText).join("\\N")}`,
   );
@@ -64,7 +89,7 @@ export function buildAss(cues: Cue[], video: { width: number; height: number }):
     "",
     "[V4+ Styles]",
     "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    `Style: Default,Noto Sans,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,20,20,${marginV},1`,
+    `Style: Default,Noto Sans,${fontSize},${primary},${primary},${outlineColour},${backColour},${st.bold ? -1 : 0},0,0,0,100,100,0,0,${st.box ? 3 : 1},${outline},${shadow},${alignment},20,20,${marginV},1`,
     "",
     "[Events]",
     "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",

@@ -72,7 +72,7 @@ export async function burnTrack(deps: RenderDeps, trackId: string): Promise<void
   const tmp = await mkdtemp(join(tmpdir(), "digestor-burn-"));
   try {
     const assPath = join(tmp, "subs.ass");
-    await writeFile(assPath, buildAss(trackToCues(track.cues), size), "utf8");
+    await writeFile(assPath, buildAss(trackToCues(track.cues), size, { style: clip.subtitleStyle, position: clip.subtitlePosition }), "utf8");
     await (deps.renderClip ?? ffmpegRenderClip)({
       input: src.input, output: deps.storage.resolve(key), startMs: clip.startMs, endMs: clip.endMs, format: clip.format,
       cropOffset: clip.cropOffset, credit: clip.credit, hasVideo, assPath,

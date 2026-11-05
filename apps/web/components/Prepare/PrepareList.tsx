@@ -128,7 +128,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const clip = await patchClip(id, body);
-      update(id, (i) => ({ ...i, clip, canUndo: i.canUndo || "start" in body || "extend" in body || "format" in body || "cropOffset" in body }));
+      update(id, (i) => ({ ...i, clip, canUndo: i.canUndo || "start" in body || "extend" in body || "format" in body || "cropOffset" in body || "subtitleStyle" in body || "subtitlePosition" in body }));
       if (opts.announce) {
         setFor(setStatuses, id, t("prepare.savedRange", { start: formatTimestamp(clip.startMs, { tenths: true }), end: formatTimestamp(clip.endMs, { tenths: true }) }));
       }

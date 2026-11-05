@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { InvalidTimestampError, endsSentence, findBoundaries, freeEdges, parseTimestamp, snapEdges, snapRange } from "@digestor/core";
+import {
+  InvalidTimestampError, SubtitlePositionSchema, SubtitleStyleSchema, endsSentence, findBoundaries, freeEdges, parseTimestamp, snapEdges, snapRange,
+} from "@digestor/core";
 import { getTranscript, updateClip, type ClipPatch } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
@@ -12,6 +14,10 @@ const BodySchema = z.union([
     .object({ format: z.enum(["16:9", "9:16"]).optional(), cropOffset: z.number().finite().optional() })
     .strict()
     .refine((b) => b.format !== undefined || b.cropOffset !== undefined),
+  z
+    .object({ subtitleStyle: SubtitleStyleSchema.optional(), subtitlePosition: SubtitlePositionSchema.optional() })
+    .strict()
+    .refine((b) => b.subtitleStyle !== undefined || b.subtitlePosition !== undefined),
   z.object({ credit: z.string().max(200).nullable() }).strict(),
   z.object({ noCreditNeeded: z.boolean() }).strict(),
   z.object({ warningsAck: z.boolean() }).strict(),
@@ -22,7 +28,7 @@ const BodySchema = z.union([
 const FORMAT_ERROR = "Use the format hh:mm:ss or hh:mm:ss.s";
 const RANGE_ERROR = "End must be after start and within the video (hh:mm:ss)";
 const NO_TRANSCRIPT = "This video has no transcript to snap the cut to.";
-const BAD_BODY = "Send one change: new times, format and crop, credit, or an acknowledgement.";
+const BAD_BODY = "Send one change: new times, format and crop, subtitle look, credit, or an acknowledgement.";
 const NOTHING_TO_EXTEND = "There is no later sentence to extend to.";
 
 /**
@@ -91,6 +97,10 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     patch = {};
     if (body.format !== undefined) patch.format = body.format;
     if (body.cropOffset !== undefined) patch.cropOffset = Math.max(-1, Math.min(1, body.cropOffset));
+  } else if ("subtitleStyle" in body || "subtitlePosition" in body) {
+    patch = {};
+    if (body.subtitleStyle !== undefined) patch.subtitleStyle = body.subtitleStyle;
+    if (body.subtitlePosition !== undefined) patch.subtitlePosition = body.subtitlePosition;
   } else if ("credit" in body) {
     patch = { credit: body.credit === null || body.credit.trim() === "" ? null : body.credit.trim() };
   } else {

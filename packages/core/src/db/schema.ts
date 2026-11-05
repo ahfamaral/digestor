@@ -10,6 +10,7 @@ import type {
 } from "../personalTypes.ts";
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
+import type { SubtitlePosition, SubtitleStyle } from "../subtitleStyle.ts";
 import type { ContextCard, ProxyStatus, Stage, Word } from "../schemas.ts";
 
 export type { Stage };
@@ -193,6 +194,8 @@ export const clips = pgTable(
     endMs: integer("end_ms").notNull(),
     format: text("format").$type<ClipFormat>().notNull().default("16:9"),
     cropOffset: doublePrecision("crop_offset").notNull().default(0),
+    subtitleStyle: text("subtitle_style").$type<SubtitleStyle>().notNull().default("yellow"),
+    subtitlePosition: text("subtitle_position").$type<SubtitlePosition>().notNull().default("bottom"),
     credit: text("credit"),
     noCreditNeeded: boolean("no_credit_needed").notNull().default(false),
     warningsAck: boolean("warnings_ack").notNull().default(false),

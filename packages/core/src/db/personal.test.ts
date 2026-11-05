@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage,
+  claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -153,7 +153,7 @@ describe("clips", () => {
 
   it("credit change during a render is stale; unchanged is done; credit change stales a done render", async () => {
     const c = await newClip();
-    const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null };
+    const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const };
     await claimClipRender(db, c.id);
     await updateClip(db, c.id, { credit: "Parliament TV" }, "user");
     expect(await finishClipRender(db, c.id, geo, { renderKey: "k" })).toBe("stale");
@@ -210,7 +210,7 @@ describe("tracks", () => {
     await approveTrack(db, t.id);
     expect(await claimTrackBurn(db, t.id)).toBe(true);
     expect(await claimTrackBurn(db, t.id)).toBe(false);
-    const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null };
+    const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const };
     const sig = burnSignature({ cues: [cue("Oi")] }, geo);
     await editTrackCues(db, t.id, [{ i: 0, text: "Olá" }]);
     expect(await finishTrackBurn(db, t.id, sig, "b.mp4")).toBe("stale");
@@ -232,6 +232,41 @@ describe("tracks", () => {
     await claimTrackBurn(db, t.id);
     const now = (await getClip(db, c.id))!;
     expect(await finishTrackBurn(db, t.id, burnSignature({ cues: [cue("Oi")] }, now), "b.mp4")).toBe("done");
+  });
+
+  it("new clips get the position of the session's profile and the owner's latest style", async () => {
+    expect(await newClip()).toMatchObject({ subtitleStyle: "yellow", subtitlePosition: "bottom" });
+    await db.execute(sql`update sessions set profile = 'parliament' where id = ${s.id}`);
+    const c1 = await newClip();
+    expect(c1).toMatchObject({ subtitleStyle: "yellow", subtitlePosition: "above_banner" });
+    await updateClip(db, c1.id, { subtitleStyle: "white_box" }, "user");
+    expect(await newClip()).toMatchObject({ subtitleStyle: "white_box", subtitlePosition: "above_banner" });
+  });
+
+  it("a style change stales a done burn, keeps the render, and undo restores it", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await db.execute(sql`update clips set render_status = 'done' where id = ${c.id}`);
+    await db.execute(sqlBurnDone(t.id));
+    await updateClip(db, c.id, { subtitlePosition: "top" }, "user");
+    expect((await getClip(db, c.id))).toMatchObject({ renderStatus: "done", subtitlePosition: "top" });
+    expect((await getTrack(db, t.id))!.burnStatus).toBe("stale");
+    const events = await listClipEvents(db, c.id);
+    expect(events.at(-1)).toMatchObject({ kind: "style", before: { subtitleStyle: "yellow", subtitlePosition: "bottom" }, after: { subtitleStyle: "yellow", subtitlePosition: "top" } });
+    await db.execute(sqlBurnDone(t.id));
+    expect(await undoLastEvent(db, c.id)).toMatchObject({ subtitlePosition: "bottom", renderStatus: "done" });
+    expect((await getTrack(db, t.id))!.burnStatus).toBe("stale");
+  });
+
+  it("finishTrackBurn is stale when the style changed during the burn", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready");
+    await approveTrack(db, t.id);
+    await claimTrackBurn(db, t.id);
+    const sig = burnSignature({ cues: [cue("Oi")] }, c);
+    await updateClip(db, c.id, { subtitleStyle: "white" }, "user");
+    expect(await finishTrackBurn(db, t.id, sig, "b.mp4")).toBe("stale");
   });
 
   it("setTrackCues stales a done burn", async () => {
