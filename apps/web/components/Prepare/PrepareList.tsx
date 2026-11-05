@@ -10,6 +10,7 @@ import {
 import { SpeakerName } from "@/components/Names/SpeakerName";
 import { unconfirmedVoices, type NamesData, type Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
+import { BackLink } from "@/components/BackLink";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { fetchChecks, fetchTracks, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
 import { checksToPoll, type ClipView, type TrackView } from "@/lib/prepareData";
@@ -246,12 +247,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
       <AppBar current="Prepare" />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
-          <Link
-            href={`/s/${session.id}`}
-            className="text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand"
-          >
-            {t("prepare.backToBriefing")}
-          </Link>
+          <BackLink href={`/s/${session.id}`} label={t("prepare.backToBriefing")} />
           <h1 lang={lang} dir="auto" className="mt-1 text-xl font-bold tracking-tight break-words">
             {session.title}
           </h1>

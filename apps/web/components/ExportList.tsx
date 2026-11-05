@@ -7,6 +7,7 @@ import { LANGUAGES, formatLength, formatTimestamp, type ChecklistId } from "@dig
 import { SpeakerName } from "@/components/Names/SpeakerName";
 import type { NamesData, Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
+import { BackLink } from "@/components/BackLink";
 import { WarningIcon } from "@/components/WarningNote";
 import { inFlight, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { languageName, t } from "@/lib/i18n";
@@ -89,12 +90,7 @@ export function ExportList({ session, names, clips }: ExportListProps) {
       <AppBar current="Export" />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
-          <Link
-            href={`/s/${session.id}/prepare`}
-            className="text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand"
-          >
-            {t("exportScreen.backToPrepare")}
-          </Link>
+          <BackLink href={`/s/${session.id}/prepare`} label={t("exportScreen.backToPrepare")} />
           <h1 lang={lang} dir="auto" className="mt-1 text-xl font-bold tracking-tight break-words">
             {session.title}
           </h1>

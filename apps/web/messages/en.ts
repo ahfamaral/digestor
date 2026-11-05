@@ -446,7 +446,7 @@ export const en = {
   },
   prepare: {
     title: "Prepare clips",
-    backToBriefing: "← Briefing",
+    backToBriefing: "Briefing",
     clipsOne: "1 clip",
     clipsMany: "{n} clips",
     noClips: "No clips yet. Approve moments in the Briefing, then choose Prepare clips.",
@@ -562,7 +562,7 @@ export const en = {
   },
   exportScreen: {
     title: "Export",
-    backToPrepare: "← Prepare clips",
+    backToPrepare: "Prepare clips",
     clipsOne: "1 clip",
     clipsMany: "{n} clips",
     noClips: "No clips to export yet. Approve moments in the Briefing and prepare them first.",
