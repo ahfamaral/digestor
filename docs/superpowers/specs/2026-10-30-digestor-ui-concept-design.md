@@ -108,6 +108,8 @@ The v1 labels (Heated / Key point / Light moment) become three highlight types i
 
 ## 5. The journalist flow (manual mode)
 
+> **Note (2026-11-05):** Preview (§5.3) and Full briefing (§5.4) are now **one Briefing page at `/s/[id]`**: a summary card on top (lead, timeline, top highlights, document actions, "Something's off") and one card per topic with its moment tree underneath; `/s/[id]/briefing` redirects there. The stepper is Upload › Processing › Context › Briefing › Prepare › Export. See `docs/superpowers/specs/2026-11-05-digestor-owner-review-batch-design.md`, "#15 One Briefing page". §5.3 and §5.4 below are kept as the original concept.
+
 ```
 Upload ─► Processing ─► Context check + Who's who ─► Preview ─► Full briefing ─► Prepare clips ─► Export
                          (pause #1, only if needed)    (proof)    (shape + confirm)   (trim, subs)     (cut)

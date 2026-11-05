@@ -1,16 +1,16 @@
 ---
 name: digestor-ui
-description: Frontend conventions for Digestor's web UI (concept agreed 2026-10-30 and built in Plan 2: Preview → Full briefing → Prepare clips → Export) — visual tokens, semantic colours, shadcn/Base UI components, layout, exact copy, keyboard triage, accessibility, multilingual content and how to verify a screen. Use this before building or changing any screen or component in apps/web (upload, processing, context check, Preview, Full briefing, Prepare clips, Ask drawer, export, reports, login) and for later parts (speaker names, Tracker) — also for small tweaks like a new button, badge, shortcut or error message, since consistency is what these rules protect.
+description: Frontend conventions for Digestor's web UI (concept agreed 2026-10-30 and built in Plan 2; since 2026-11-05 one Briefing page → Prepare clips → Export) — visual tokens, semantic colours, shadcn/Base UI components, layout, exact copy, keyboard triage, accessibility, multilingual content and how to verify a screen. Use this before building or changing any screen or component in apps/web (upload, processing, context check, Briefing, Prepare clips, Ask drawer, export, reports, login) and for later parts (speaker names, Tracker) — also for small tweaks like a new button, badge, shortcut or error message, since consistency is what these rules protect.
 ---
 
 # Digestor UI
 
 ## Status of the design (read first)
 
-The UI concept was **agreed on 2026-10-30** and Plan 2 built it. The source of truth is `docs/superpowers/specs/2026-10-30-digestor-ui-concept-design.md` (§5 is the journalist flow; §8 is the Tracker, still to come in Plan 4).
+The UI concept was **agreed on 2026-10-30** and Plan 2 built it. The source of truth is `docs/superpowers/specs/2026-10-30-digestor-ui-concept-design.md` (§5 is the journalist flow; §8 is the Tracker, still to come in Plan 4), with the owner review batch `docs/superpowers/specs/2026-11-05-digestor-owner-review-batch-design.md` on top (#15 merged Preview and Full briefing into one Briefing page).
 
-- **The flow and stepper:** Upload › Processing › Context › Preview › Briefing › Prepare › Export (`STEPS` in `components/AppBar.tsx`). Routes: `/` upload, `/s/[id]` (Processing, Context check, then **Preview** once ready), `/s/[id]/briefing` (**Full briefing**), `/s/[id]/prepare` (**Prepare clips**), `/s/[id]/export`, `/reports`. The v1 review inbox and `ClipCard` no longer exist.
-- **Preview** (`components/Preview/`): session timeline with neutral topic bands and highlight pins, top-highlight cards, then the briefing document. **Full briefing** (`components/Briefing/`): instant filters, Approve / Skip triage, "Confirm selection → Prepare clips". **Prepare** (`components/Prepare/`): trim, checks, format, credit, subtitles, checklist.
+- **The flow and stepper:** Upload › Processing › Context › Briefing › Prepare › Export (`STEPS` in `components/AppBar.tsx`). Routes: `/` upload, `/s/[id]` (Processing, Context check, then the **Briefing** page once ready), `/s/[id]/prepare` (**Prepare clips**), `/s/[id]/export`, `/reports`. `/s/[id]/briefing` only redirects to `/s/[id]` (query string kept). "Preview" and "Full briefing" are no longer words in the UI. The v1 review inbox and `ClipCard` no longer exist.
+- **Briefing** (`components/Briefing/`, data from `lib/briefingPage.ts`): header (title, meta line with "N speakers · M named" → Who's who, "Analysis v<n>"), notices, then a **summary card** (lead, session timeline with neutral topic bands and highlight pins, top-highlight cards, Copy text / Export… / Share link / Read in, "Something's off"), the **filter row** (level checkboxes Exchanges · Passages · Punchlines with counts, Focus, min. relevance, highlight types, status All / Open / Approved / Skipped), and **one card per topic** (numbered title and time range, summary and key quote collapsed to the first sentence with "More", a lane-graph slot, and the moment tree: children nested under their nearest shown ancestor with connector lines and "N inside"). Rows: round ▶ / ■ play with an inline `MediaPlayer`, title, level tag, time · length, chips, speakers, "Why:" line, a collapsed "Transcript" disclosure, and Approve / Skip. Sticky bar: "N approved · M hidden by filters [Show hidden]" and "Prepare clips →". **Prepare** (`components/Prepare/`): trim, checks, format, credit, subtitles, checklist.
 - Mockups in `docs/design/` (`ui-concept-overview.html`, `ui-concept-tracker.html`) are inspiration, not a pixel spec; the Tracker is Plan 4.
 - **Colour is reserved for highlight types**; topic bands are neutral greys. AI judgments carry an "AI" badge and a "Why:" line, counted values read "counted", and names show their source.
 - If a task needs a design decision the spec doesn't answer, propose 1–2 options with a quick screenshot or sketch and ask. Don't silently invent the concept.
@@ -42,7 +42,7 @@ Use tokens, not new hex literals. Highlight colours live in one place: each type
 | Warning | **neutral + ⚠**: stone border/background (`WARNING_BOX`) with the ⚠ icon (`WarningIcon`) and text — never amber (amber is a highlight tone) | `components/WarningNote.tsx`: clip checks, sensitive-profile notice, audio-only upload, "out of date", "Subtitles are for the old cut." |
 | Human-in-the-loop, "from you" | purple | context badge, edited facts, the pause screens' accent |
 | Source badges | "from video" / "from audio" green; "from metadata" grey; "from you" purple; "suggested by AI" neutral; "missing" red | context check and context banner (`lib/contextBadge.ts`) |
-| AI-judged item | "AI" badge on the chip, plus a "Why:" line | Preview, Full briefing |
+| AI-judged item | "AI" badge on the chip, plus a "Why:" line | Briefing page |
 | Counted value | "counted" badge | e.g. "Most discussed" |
 
 Colour is never the only signal: every chip/badge carries text.
@@ -50,16 +50,16 @@ Colour is never the only signal: every chip/badge carries text.
 ## Components and layout
 
 - shadcn (style `base-nova`, on **Base UI**, not Radix) in `components/ui/` (badge, button, card, checkbox, dialog, input, progress, tabs, textarea, and the later additions: check `components/ui/`); add new primitives with `pnpm --filter @digestor/web exec shadcn add <name>` and keep `cn()` from `lib/utils.ts`. Icons: `lucide-react`.
-- Screen frame: `AppBar` with the stepper **Upload › Processing › Context › Preview › Briefing › Prepare › Export** (current step bold, done steps green with ✓), then `<main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">` with an `h1` title.
-- Full briefing and Prepare have a sticky bottom bar with the primary action ("Confirm selection → Prepare clips", "Export ready clips →").
+- Screen frame: `AppBar` with the stepper **Upload › Processing › Context › Briefing › Prepare › Export** (current step bold, done steps green with ✓), then `<main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">` with an `h1` title.
+- The Briefing page and Prepare have a sticky bottom bar with the primary action ("Prepare clips →", "Export ready clips →").
 - Primary action = brand button, right/bottom; secondary = text-style link or outline button ("Something's off").
 - Text comes from the typed catalogue `apps/web/messages/en.ts` via `t()` (`lib/i18n.ts`); add strings there, never inline.
 - Pages are server components; interactive parts are `"use client"` components that receive data as props (see `nextjs16-gotchas`).
 
 ## Copy
 
-- Spec-exact strings: each type's label from `HIGHLIGHT_TYPES` (e.g. "Heated", "Key point", "Light moment"); statuses Approve / Skip (Skip is stored as `rejected`; clicking the active one returns the moment to undecided, `nextStatus`); "Looks right → Full briefing", "Something's off", "Copy text", "Share link", "Export…", "Confirm selection → Prepare clips", "Report a problem"; Export notice "You're responsible for how you use and share downloaded clips."
-- Footer of the Full briefing: "N approved · M hidden by filters" with a "Show hidden" button. Approved moments are never hidden.
+- Spec-exact strings: each type's label from `HIGHLIGHT_TYPES` (e.g. "Heated", "Key point", "Light moment"); statuses Approve / Skip (Skip is stored as `rejected`; clicking the active one returns the moment to undecided, `nextStatus`); "Something's off", "Copy text", "Share link", "Export…", "Prepare clips →", "Report a problem", "More", "Transcript"; Export notice "You're responsible for how you use and share downloaded clips."
+- Footer of the Briefing page: "N approved · M hidden by filters" with a "Show hidden" button. Approved moments are never hidden. Approve / Skip keep one width in both states (both labels share one grid cell); a row decided during this visit stays in place (dimmed when skipped) until the filters change.
 - AI reasons start with "Why:". Questions say why they're asked.
 - Errors are friendly, specific sentences shown **inline** next to what failed (`role="alert"`); success/progress uses `role="status"`. Never show raw errors, stack traces or vendor messages the user can't act on.
 - Times: `m:ss` for durations, `hh:mm:ss` for positions in the video; inputs accept what `parseTimestamp` accepts.
@@ -74,7 +74,7 @@ Colour is never the only signal: every chip/badge carries text.
 
 ## Accessibility
 
-- The focused moment uses real roving focus plus a polite live region announcing status changes ("Approved: <title>"); keep both when touching the list.
+- A polite live region announces status changes ("Approved: <title>", "Skipped: <title>", "Back to undecided: <title>"); keep it when touching the list. Tab moves between the row buttons (no roving focus, no arrow-key triage).
 - Buttons carry the item title in their accessible name (`aria-label="Approve: <title>"`); every icon-only button needs `aria-label`.
 - Keep visible focus rings, AA contrast (muted text on off-white is the tightest case), and respect `prefers-reduced-motion`.
 

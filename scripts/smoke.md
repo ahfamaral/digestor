@@ -10,8 +10,7 @@ Setup: `colima start --cpu 4 --memory 8`, `docker compose up -d --build`, `pnpm 
   - On a server IP, once without and once with `YTDLP_COOKIES_FILE` (docs/deploy.md): without, the bot-check sentence; with, the download works. Not yet verified with real cookies past a real bot check.
 - [ ] Processing: the stepper advances through download, ingest, transcribe, context.
 - [ ] Context check: answer one question (or skip) and continue; profile is detected or chosen.
-- [ ] Preview: timeline, top highlights and briefing appear; Play a highlight; "Looks right → Full briefing".
-- [ ] Full briefing: approve 2 moments, mark 1 neutral, reject 1 (keys `A`, `N`, `R`); filter by granularity, focus speaker and highlight type; "Confirm selection → Prepare clips".
+- [ ] Briefing: summary (lead, timeline, top highlights) and the topic cards appear; Play a moment; approve 2 moments and skip 1 (click one again to undo); untick a level, focus a speaker and pick a highlight type; "Prepare clips →".
 - [ ] Prepare clips: trim one clip (handles snap to sentence pauses), switch one to 9:16 and move the crop, add a credit line, add the video's own subtitle language and approve it.
 - [ ] Export: "Export ready clips"; download the MP4, SRT and VTT.
 
@@ -46,7 +45,7 @@ No API keys were available while Plan 2 was built, so every AI fake is shaped fr
 
 Expected:
 - [ ] The job is retried and the session reaches the context check or the Preview.
-- [ ] No duplicate topics or moments in the Full briefing.
+- [ ] No duplicate topics or moments on the Briefing page.
 
 ## 3. Ask (real Claude tool calls)
 
@@ -65,7 +64,7 @@ The Ask fakes (`FakeToolLLM`) are shaped from the `@langchain/anthropic` 1.6 / `
 
 On a `ready` session with a confirmed name (Who's who) and an LLM key. This is one paid `reasoning` call (about $0.03 on Haiku).
 
-- [ ] Full briefing → Focus on that person → "Find more moments with <name>" shows beside the picker (and under the list when fewer than 5 moments are at the selected level).
+- [ ] Briefing → Focus on that person → "Find more moments with <name>" shows beside the picker (and under the list when fewer than 5 moments are shown at the ticked levels).
 - [ ] Click it: the button reads "Finding…", then the line "Found N moments with <name>." appears (with " M are at the Passage or Punchline level." when some sit at other levels), or "No new moments found.".
 - [ ] New rows carry the "Found for you" marker and the AI badge, and none repeats a moment already listed.
 - [ ] Clicking again replaces the earlier found moments, except ones you approved, marked neutral or made a clip from.

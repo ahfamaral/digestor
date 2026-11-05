@@ -1,6 +1,6 @@
 ---
 name: digestor-run
-description: Launch the Digestor stack (Colima, docker compose, Next.js dev server), seed demo sessions at the context-check pause or fully analysed (`ready`), and drive the journalist flow (Preview, Full briefing, Prepare, Export), and drive the web UI with Playwright to take screenshots and catch console errors. Use this whenever you need to see a Digestor screen, confirm a UI or API change works in the real app rather than only in tests, check a layout at phone width, reproduce a UI bug, or prepare screenshots for the capstone README/showcase — even if the user just says "check it works", "how does the briefing look" or "run the app".
+description: Launch the Digestor stack (Colima, docker compose, Next.js dev server), seed demo sessions at the context-check pause or fully analysed (`ready`), and drive the journalist flow (Briefing, Prepare, Export), and drive the web UI with Playwright to take screenshots and catch console errors. Use this whenever you need to see a Digestor screen, confirm a UI or API change works in the real app rather than only in tests, check a layout at phone width, reproduce a UI bug, or prepare screenshots for the capstone README/showcase — even if the user just says "check it works", "how does the briefing look" or "run the app".
 ---
 
 # Run and see Digestor
@@ -28,7 +28,7 @@ What you can reach depends on the API keys in `.env`:
 | Keys | Reachable for real |
 |---|---|
 | none | Upload → Processing → "Something went wrong" (`ASSEMBLYAI_API_KEY is not set on the server.`) |
-| both | the whole flow: Processing → Context check → Preview → Full briefing → Prepare → Export (real analysis, translated subtitles, Ask) |
+| both | the whole flow: Processing → Context check → Briefing → Prepare → Export (real analysis, translated subtitles, Ask) |
 
 Without keys, anything AI fails with the friendly "`<VAR>` is not set on the server." text (for example a translated subtitle track, shown inline in Prepare). The English track of an English video is the original, so it needs no key. Cutting and rendering need no key, so Prepare → Export works on the seed.
 
@@ -66,22 +66,22 @@ Then (from the repo root):
 
 ```bash
 node .claude/skills/digestor-run/scripts/drive.mjs --out <scratch>/shots \
-  --visit / --visit /s/<contextId> --visit /s/<readyId> --visit /s/<readyId>/briefing \
+  --visit / --visit /s/<contextId> --visit /s/<readyId> \
   --visit /s/<readyId>/prepare --visit /s/<readyId>/export --visit /reports \
-  --keys "/s/<readyId>/briefing=a,ArrowDown,n,ArrowDown,r" \
+  --keys "/s/<readyId>=/,Escape" \
   --upload ./data/sample.mp4 \
   --mobile
 ```
 
-- `--visit <path>` full-page screenshot; `--keys <path>=k1,k2` presses keys in order with a screenshot after each (`/` opens the Ask drawer on Preview and Full briefing, `Escape` closes it; there are no letter shortcuts); `--upload <file>` goes through the home page and follows the redirect to `/s/<id>`; `--mobile` adds a 390 px-wide copy of each shot.
+- `--visit <path>` full-page screenshot; `--keys <path>=k1,k2` presses keys in order with a screenshot after each (`/` opens the Ask drawer on the Briefing page, `Escape` closes it; there are no letter shortcuts); `--upload <file>` goes through the home page and follows the redirect to `/s/<id>`; `--mobile` adds a 390 px-wide copy of each shot.
 - If `APP_PASSWORD` is set, pass `--password` (or export `APP_PASSWORD`); the script logs in when redirected to `/login`.
 - Console errors, uncaught page errors and 5xx responses go to `<out>/errors.txt`. An empty file is part of "it works".
 
 Then **look at the screenshots** (Read the PNGs) — a screenshot nobody looked at proves nothing. Check: the stepper shows the right step, badges/labels use the spec's wording ("Heated", "Key point", "Light moment"), nothing overflows at 390 px, errors render inline.
 
-For flows the script doesn't cover (Confirm, trim, 9:16, credit, adding a subtitle language, Export and waiting for "Rendered"), write a short throwaway Playwright script in your scratch directory using the same `createRequire(~/.cache/digestor-run/package.json)` trick as `drive.mjs`; prefer role/label selectors (`getByRole`, `getByLabel`). Handy ones: the Full briefing Confirm button is "Confirm selection → Prepare clips"; the Prepare fields are labelled "Start" / "End", "Crop position", the credit input has the placeholder "e.g. the channel or broadcaster", the language `select` is "Subtitle language" and its button "Add"; the way on to Export is a *link* "Export ready clips →" (on Export itself it is a button); a finished render shows "Rendered".
+For flows the script doesn't cover (Confirm, trim, 9:16, credit, adding a subtitle language, Export and waiting for "Rendered"), write a short throwaway Playwright script in your scratch directory using the same `createRequire(~/.cache/digestor-run/package.json)` trick as `drive.mjs`; prefer role/label selectors (`getByRole`, `getByLabel`). Handy ones: on the Briefing page the rows' buttons are "Approve: <title>" / "Skip: <title>" (`aria-pressed`), the level checkboxes "Exchanges" / "Passages" / "Punchlines", the status filter `#show-status`, and the confirm button "Prepare clips →"; the Prepare fields are labelled "Start" / "End", "Crop position", the credit input has the placeholder "e.g. the channel or broadcaster", the language `select` is "Subtitle language" and its button "Add"; the way on to Export is a *link* "Export ready clips →" (on Export itself it is a button); a finished render shows "Rendered".
 
-The full journalist pass to run before calling a UI change done: Preview → `/` Ask drawer → Full briefing (triage 3 moments with `a`, `n`, `r`; pick a highlight-type chip that hides an approved moment to see "N approved · M hidden by filters" and "Show hidden") → Confirm → Prepare (trim, 9:16, credit, add a language) → Export (render), at 1280 and 390 px.
+The full journalist pass to run before calling a UI change done: Briefing (`/` Ask drawer; approve 2 moments and skip 1 with the buttons, click one again to undo; untick a level; pick a highlight-type chip that hides an approved moment to see "N approved · M hidden by filters" and "Show hidden") → "Prepare clips →" → Prepare (trim, 9:16, credit, add a language) → Export (render), at 1280 and 390 px.
 
 To check a rendered clip's credit line or crop, extract a frame **inside the worker container** (`docker compose exec worker ffmpeg -ss 60 -i /data/<id>/clips/<clipId>.mp4 -frames:v 1 /data/<id>/frame.png`), copy it out, look at it, and delete it. Never run ffmpeg on the host.
 
