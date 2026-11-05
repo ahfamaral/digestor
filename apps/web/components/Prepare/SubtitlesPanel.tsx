@@ -78,11 +78,13 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, onLook, orig
     setRetrying(null);
   }
 
-  async function burn(track: TrackView, want: boolean) {
+  /** `inline`: the caller (the style dialog) shows the failure itself, so it is rethrown instead of put on the row. */
+  async function burn(track: TrackView, want: boolean, inline = false) {
     setTrackErrors((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== track.id)));
     try {
       onTrack(await patchTrack(track.id, { burn: want }));
     } catch (err) {
+      if (inline) throw err instanceof Error && err.message ? err : new Error(t("prepare.saveFailed"));
       setTrackErrors((e) => ({ ...e, [track.id]: err instanceof Error ? err.message : t("prepare.saveFailed") }));
     }
   }
@@ -94,7 +96,7 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, onLook, orig
     if (look.style !== clip.subtitleStyle || look.position !== clip.subtitlePosition) {
       if (!(await onLook(look))) throw new Error(t("prepare.saveFailed"));
     }
-    if (thenBurn) await burn(track, true);
+    if (thenBurn) await burn(track, true, true);
   }
 
   return (
