@@ -83,7 +83,7 @@ function Body({
   }, []);
 
   // Cue times are relative to the clip start.
-  const first = trackToCues(track.cues)[0];
+  const first = trackToCues(track.cues, clip.format)[0];
   const lines = first?.lines ?? [t("prepare.styleSample")];
   const at = clip.startMs + (first?.startMs ?? 0);
   const vertical = clip.format === "9:16";
@@ -136,7 +136,7 @@ function Body({
               lang={track.language}
               dir="auto"
               className={noto.className}
-              style={previewCss(look, frameH)}
+              style={previewCss({ ...look, format: clip.format }, frameH)}
               data-testid="subtitle-preview"
             >
               {lines.join("\n")}

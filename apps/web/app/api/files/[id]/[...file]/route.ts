@@ -95,7 +95,7 @@ async function subtitleResponse(sessionId: string, match: Match, download: boole
   const lang = match.lang!.toLowerCase();
   const track = (await listTracks(db, clip.id)).find((t) => t.language.toLowerCase() === lang);
   if (!track || track.status === "outdated" || track.cues.length === 0) return errorResponse(404, "Not found.");
-  const cues = trackToCues(track.cues);
+  const cues = trackToCues(track.cues, clip.format);
   if (cues.length === 0) return errorResponse(404, "Not found.");
   const headers = new Headers({ "Content-Type": CONTENT_TYPES[match.ext]! });
   if (download) headers.set("Content-Disposition", contentDisposition(`${safeBaseName(await clipTitle(clip.id))}.${track.language}.${match.ext}`));

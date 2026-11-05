@@ -45,3 +45,26 @@ describe("buildVtt escaping", () => {
     expect(buildSrt([{ startMs: 0, endMs: 1000, lines: ["A & B"] }])).toContain("A & B");
   });
 });
+
+describe("trackToCues per format", () => {
+  const LONG = PT.slice(0, 120);
+  it("9:16 wraps at 24 chars, 2 lines per cue, covering the same time", () => {
+    const out = trackToCues([cue(LONG, 1000, 7000)], "9:16");
+    expect(out.length).toBeGreaterThan(1);
+    for (const c of out) {
+      expect(c.lines.length).toBeLessThanOrEqual(2);
+      for (const l of c.lines) expect([...l].length).toBeLessThanOrEqual(24);
+    }
+    expect(out[0]!.startMs).toBe(1000);
+    expect(out.at(-1)!.endMs).toBe(7000);
+  });
+  it("no format argument is the 16:9 output", () => {
+    expect(trackToCues([cue(PT, 1000, 7000)])).toEqual(trackToCues([cue(PT, 1000, 7000)], "16:9"));
+    expect(trackToCues([cue(LONG)])[0]!.lines.every((l) => l.length <= 42)).toBe(true);
+    expect(trackToCues([cue(LONG)]).length).toBe(2);
+  });
+  it("9:16 breaks CJK text at 24 characters", () => {
+    const out = trackToCues([cue("这是一个很长的中文字幕".repeat(5))], "9:16");
+    for (const c of out) for (const l of c.lines) expect([...l].length).toBeLessThanOrEqual(24);
+  });
+});

@@ -73,8 +73,8 @@ describe("buildCues", () => {
   });
 });
 
-const look = (over: Partial<{ style: "yellow" | "white" | "white_box"; position: "bottom" | "above_banner" | "top" }> = {}) => ({
-  style: "yellow" as const, position: "bottom" as const, ...over,
+const look = (over: Partial<{ style: "yellow" | "white" | "white_box"; position: "bottom" | "above_banner" | "top"; format: "16:9" | "9:16" }> = {}) => ({
+  style: "yellow" as const, position: "bottom" as const, format: "16:9" as const, ...over,
 });
 
 describe("buildSrt / buildAss", () => {
@@ -92,10 +92,17 @@ describe("buildSrt / buildAss", () => {
     const ass = buildAss([{ startMs: 0, endMs: 1500, lines: ["a {b}", "c"] }, cues[1]!], { width: 640, height: 360 }, look());
     expect(ass).toContain("PlayResX: 640");
     expect(ass).toContain("PlayResY: 360");
-    expect(ass).toContain("WrapStyle: 2");
+    expect(ass).toContain("WrapStyle: 0");
     expect(ass).toContain("Style: Default,Noto Sans,20,&H0000E6FF,&H0000E6FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,20,20,22,1");
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:01.50,Default,,0,0,0,,a \\{b\\}\\Nc");
     expect(ass).toContain("Dialogue: 0,1:02:03.45,1:02:05.00,Default,,0,0,0,,Later");
+  });
+
+  it("9:16 uses a 4% font on 1080x1920 and 16:9 stays at 5.5%", () => {
+    const v = buildAss(cues, { width: 1080, height: 1920 }, look({ format: "9:16" }));
+    expect(v).toContain("Noto Sans,77,");
+    expect(v).toContain("WrapStyle: 0");
+    expect(buildAss(cues, { width: 1920, height: 1080 }, look({ format: "16:9" }))).toContain("Noto Sans,59,");
   });
 
   it("yellow above the banner at 1080p", () => {

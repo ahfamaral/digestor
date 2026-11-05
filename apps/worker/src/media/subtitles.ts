@@ -1,5 +1,5 @@
 import {
-  endsSentence, layout, MAX_LINES, SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type Cue, type SubtitlePosition, type SubtitleStyle, type Word,
+  endsSentence, layout, MAX_LINES, SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type ClipFormat, type Cue, type SubtitlePosition, type SubtitleStyle, type Word,
 } from "@digestor/core";
 
 export { buildSrt, buildVtt, type Cue } from "@digestor/core";
@@ -62,11 +62,11 @@ function assColour(hex: string, alpha = "00"): string {
 export function buildAss(
   cues: Cue[],
   video: { width: number; height: number },
-  look: { style: SubtitleStyle; position: SubtitlePosition },
+  look: { style: SubtitleStyle; position: SubtitlePosition; format: ClipFormat },
 ): string {
   const g = SUBTITLE_GEOMETRY;
   const st = SUBTITLE_STYLES[look.style];
-  const fontSize = Math.round(video.height * g.fontPct);
+  const fontSize = Math.round(video.height * g.fontPct[look.format]);
   const marginV = Math.round(video.height * g.marginPct[look.position]);
   const alignment = look.position === "top" ? 8 : 2;
   const outline = Math.round((g.outlinePx1080 * video.height) / 1080);
@@ -84,7 +84,7 @@ export function buildAss(
     "ScriptType: v4.00+",
     `PlayResX: ${video.width}`,
     `PlayResY: ${video.height}`,
-    "WrapStyle: 2",
+    "WrapStyle: 0",
     "ScaledBorderAndShadow: yes",
     "",
     "[V4+ Styles]",

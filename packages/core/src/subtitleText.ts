@@ -1,3 +1,5 @@
+import type { ClipFormat } from "./personalTypes.ts";
+import { SUBTITLE_GEOMETRY } from "./subtitleStyle.ts";
 import { formatTimestamp } from "./time.ts";
 import type { TrackCue } from "./personalTypes.ts";
 import type { Word } from "./schemas.ts";
@@ -20,12 +22,12 @@ function toUnits(word: string, first: boolean, prevText: string | undefined): Un
   return chars.map((c, i) => ({ text: c, spaceBefore: i === 0 && spaceBefore }));
 }
 
-function wrap(units: Unit[]): string[] {
+function wrap(units: Unit[], maxChars = MAX_CHARS): string[] {
   const lines: string[] = [];
   let cur = "";
   for (const u of units) {
     const joined = cur === "" ? u.text : cur + (u.spaceBefore ? " " : "") + u.text;
-    if (cur !== "" && [...joined].length > MAX_CHARS) {
+    if (cur !== "" && [...joined].length > maxChars) {
       lines.push(cur);
       cur = u.text;
     } else {
@@ -44,21 +46,22 @@ export function layout(words: Word[]): string[] {
 
 
 /** Wraps a plain string (CJK breaks per character, other scripts per word). */
-export function wrapText(text: string): string[] {
+export function wrapText(text: string, maxChars = MAX_CHARS): string[] {
   const units: Unit[] = [];
   const words = text.split(/\s+/).filter(Boolean);
   words.forEach((w, i) => units.push(...toUnits(w, i === 0, words[i - 1])));
-  return wrap(units);
+  return wrap(units, maxChars);
 }
 
 /**
- * Track cues to renderable cues: each text is wrapped to at most 42 characters per line and 2 lines per cue. Text that
+ * Track cues to renderable cues: each text is wrapped to the format's line width (`SUBTITLE_GEOMETRY.maxChars`) and 2 lines per cue. Text that
  * needs more lines is split into consecutive cues, dividing the cue's time by characters. Empty text is skipped.
  */
-export function trackToCues(cues: TrackCue[]): Cue[] {
+export function trackToCues(cues: TrackCue[], format: ClipFormat = "16:9"): Cue[] {
   const out: Cue[] = [];
+  const maxChars = SUBTITLE_GEOMETRY.maxChars[format];
   for (const c of cues) {
-    const lines = wrapText(c.text);
+    const lines = wrapText(c.text, maxChars);
     if (lines.length === 0) continue;
     const chunks: string[][] = [];
     for (let i = 0; i < lines.length; i += MAX_LINES) chunks.push(lines.slice(i, i + MAX_LINES));

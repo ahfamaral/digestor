@@ -100,7 +100,7 @@ describe("ffmpeg wrappers", () => {
   it("renders a 2 s clip with subtitles", async () => {
     const output = join(outDir, "clip.mp4");
     const assPath = join(outDir, "clip.ass");
-    writeFileSync(assPath, buildAss([{ startMs: 0, endMs: 1500, lines: ["Olá mundo"] }], { width: 640, height: 360 }, { style: "yellow", position: "bottom" }));
+    writeFileSync(assPath, buildAss([{ startMs: 0, endMs: 1500, lines: ["Olá mundo"] }], { width: 640, height: 360 }, { style: "yellow", position: "bottom", format: "16:9" }));
     await renderClip({ ...PLAIN, input: TEST_MP4, output, startMs: 1000, endMs: 3000, assPath });
     expect(Math.abs((await probe(output)).durationMs - 2000)).toBeLessThan(150);
   });
@@ -109,7 +109,7 @@ describe("ffmpeg wrappers", () => {
     const dir = join(outDir, "we ird: it's [x],y;z");
     mkdirSync(dir, { recursive: true });
     const assPath = join(dir, "a:b 'c', [d];.ass");
-    writeFileSync(assPath, buildAss([{ startMs: 0, endMs: 1000, lines: ["Hi"] }], { width: 640, height: 360 }, { style: "yellow", position: "bottom" }));
+    writeFileSync(assPath, buildAss([{ startMs: 0, endMs: 1000, lines: ["Hi"] }], { width: 640, height: 360 }, { style: "yellow", position: "bottom", format: "16:9" }));
     const output = join(outDir, "weird.mp4");
     await renderClip({ ...PLAIN, input: TEST_MP4, output, startMs: 500, endMs: 2500, assPath });
     expect(Math.abs((await probe(output)).durationMs - 2000)).toBeLessThan(150);

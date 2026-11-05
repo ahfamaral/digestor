@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type SubtitlePosition, type SubtitleStyle } from "@digestor/core";
+import { SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type ClipFormat, type SubtitlePosition, type SubtitleStyle } from "@digestor/core";
 
 export interface SubtitleLook {
   style: SubtitleStyle;
@@ -12,7 +12,7 @@ export interface SubtitleLook {
  * ASS draws the outline outside the glyph; `-webkit-text-stroke` is centred on the edge, so it is doubled and the fill
  * is painted over its inner half (`paint-order`). The white box is one rectangle here, one per line in libass.
  */
-export function previewCss(look: SubtitleLook, frameHeightPx: number): CSSProperties {
+export function previewCss(look: SubtitleLook & { format: ClipFormat }, frameHeightPx: number): CSSProperties {
   const g = SUBTITLE_GEOMETRY;
   const st = SUBTITLE_STYLES[look.style];
   const outline = Math.round((g.outlinePx1080 * frameHeightPx) / 1080);
@@ -29,7 +29,7 @@ export function previewCss(look: SubtitleLook, frameHeightPx: number): CSSProper
     lineHeight: 1.25,
     color: st.color,
     fontWeight: st.bold ? 700 : 400,
-    fontSize: g.fontPct * frameHeightPx,
+    fontSize: g.fontPct[look.format] * frameHeightPx,
     ...(look.position === "top" ? { top: margin } : { bottom: margin }),
   };
   if (st.box) {

@@ -12,5 +12,8 @@ describe("subtitle style and position", () => {
     expect(SUBTITLE_STYLES.yellow).toEqual({ color: "#FFE600", bold: true, box: false });
     expect(SUBTITLE_STYLES.white_box).toEqual({ color: "#FFFFFF", bold: false, box: true });
     expect(SUBTITLE_GEOMETRY.marginPct.above_banner).toBe(0.22);
+    expect(SUBTITLE_GEOMETRY.fontPct).toEqual({ "16:9": 0.055, "9:16": 0.04 });
+    expect(SUBTITLE_GEOMETRY.maxChars["16:9"]).toBe(42);
+    expect(SUBTITLE_GEOMETRY.maxChars["9:16"]).toBe(24);
   });
 });
