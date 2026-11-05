@@ -42,6 +42,9 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
   const draftRef = useRef<Range | null>(null);
   const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentRef = useRef<Range | null>(null);
+  /** Where a handle drag began, and whether the pointer has moved since (a plain click must not save). */
+  const downXRef = useRef<number | null>(null);
+  const movedRef = useRef(false);
   // The strip's scale follows the saved clip, so it never rescales under a moving handle.
   const view = trimView(clip, durationMs);
   const shown = draft ?? clip;
@@ -85,12 +88,16 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.focus();
+    downXRef.current = e.clientX;
+    movedRef.current = false;
     setDragging(which);
     update(draftRef.current ?? clip);
   }
 
   function onPointerMove(which: Which, e: React.PointerEvent<HTMLDivElement>) {
     if (dragging !== which) return;
+    if (!movedRef.current && Math.abs(e.clientX - (downXRef.current ?? e.clientX)) < 3) return;
+    movedRef.current = true;
     const raw = msAt(e.clientX);
     const ms = e.altKey ? raw : (nearestBoundary(which === "start" ? points.starts : points.ends, raw) ?? raw);
     update(moveTo(which, ms, draftRef.current ?? clip));
@@ -100,6 +107,10 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
     if (dragging !== which) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
     setDragging(null);
+    if (!movedRef.current) {
+      update(null);
+      return;
+    }
     commit();
   }
 
@@ -156,9 +167,11 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
         <span
           aria-hidden
           className={cn(
-            "absolute -top-7 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white opacity-0 group-focus-visible:opacity-100",
+            "absolute -top-7 left-1/2 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white opacity-0 group-focus-visible:opacity-100",
             (dragging === which || (hoverMs !== null && !dragging)) && "opacity-100",
           )}
+          // Near the strip's ends the label leans inward so it is never clipped.
+          style={{ transform: `translateX(${pct < 12 ? "-10%" : pct > 88 ? "-90%" : "-50%"})` }}
         >
           {tenths(ms)}
         </span>
@@ -214,7 +227,7 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
           );
         })}
       </div>
-      <p role="status" className="mt-1 min-h-5 font-mono text-xs text-foreground">
+      <p aria-hidden className="mt-1 min-h-5 font-mono text-xs text-foreground">
         {dragging ? t("prepare.clipLengthLive", { length: formatTenths(shown.endMs - shown.startMs) }) : ""}
       </p>
       <p id={`trim-help-${clipId}`} className="mt-1 text-xs text-muted-foreground">
