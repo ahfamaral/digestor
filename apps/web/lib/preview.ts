@@ -1,5 +1,5 @@
 import {
-  PROFILES, ProfileIdSchema, formatMinutes, mostDiscussedTopic, topHighlights, type HighlightMethod, type AnalysisVersion, type BriefingContent, type MomentWithHighlights, type ProfileId,
+  PROFILES, ProfileIdSchema, formatMinutes, mostDiscussedTopic, type HighlightMethod, type AnalysisVersion, type BriefingContent, type MomentWithHighlights, type ProfileId,
   type Topic,
 } from "@digestor/core";
 import { t } from "./i18n";
@@ -12,42 +12,37 @@ export interface PreviewSection {
   summary: string;
   fromBriefing: boolean;
   keyQuote: { momentId: string; text: string; startMs: number | null } | null;
-  /** The topic's best moment per highlight type (one row per moment), in time order. */
-  rows: MomentWithHighlights[];
 }
 
 /** The topic a moment belongs to: its `topicId`, else the topic whose span covers its start. */
-function topicIdOf(m: MomentWithHighlights, topics: Topic[]): string | null {
+export function topicIdOf(m: MomentWithHighlights, topics: Topic[]): string | null {
   if (m.topicId && topics.some((t) => t.id === m.topicId)) return m.topicId;
   return topics.find((t) => m.startMs >= t.startMs && m.startMs < t.endMs)?.id ?? null;
 }
 
-/** Preview sections in topic order: summary, key quote (with its time) and the topic's highlight rows. */
-export function buildSections(
-  topics: Topic[],
-  moments: MomentWithHighlights[],
-  briefing: BriefingContent | null,
-  profile: ProfileId,
-): PreviewSection[] {
+/** The topic header of each Briefing card, in topic order: summary and key quote (with its time). */
+export function buildSections(topics: Topic[], moments: MomentWithHighlights[], briefing: BriefingContent | null): PreviewSection[] {
   const startOf = new Map(moments.map((m) => [m.id, m.startMs]));
-  const byTopic = new Map<string, MomentWithHighlights[]>();
-  for (const m of moments) {
-    const id = topicIdOf(m, topics);
-    if (id) byTopic.set(id, [...(byTopic.get(id) ?? []), m]);
-  }
   return topics.map((topic, i) => {
     const section = briefing?.sections.find((s) => s.topicId === topic.id);
-    const best = topHighlights(byTopic.get(topic.id) ?? [], profile).map((h) => h.moment);
-    const rows = [...new Map(best.map((m) => [m.id, m])).values()].sort((a, b) => a.startMs - b.startMs);
     return {
       n: i + 1,
       topic,
       summary: section ? section.summary.map((s) => s.text).join(" ").trim() : topic.summary,
       fromBriefing: Boolean(section),
       keyQuote: section?.keyQuote ? { ...section.keyQuote, startMs: startOf.get(section.keyQuote.momentId) ?? null } : null,
-      rows,
     };
   });
+}
+
+/**
+ * Text split after its first sentence (for "More"): a sentence ends at . ! ? … or their CJK/Arabic forms followed by
+ * a space (or, for CJK full stops, directly). `rest` is "" when there is nothing more.
+ */
+export function splitFirstSentence(text: string): { first: string; rest: string } {
+  const s = text.trim();
+  const m = /^([\s\S]+?(?:[.!?…؟](?=\s)|[。！？]))\s*(\S[\s\S]*)$/u.exec(s);
+  return m ? { first: m[1]!, rest: m[2]! } : { first: s, rest: "" };
 }
 
 /** A stored profile id as a known profile (older rows or bad data fall back to "other"). */

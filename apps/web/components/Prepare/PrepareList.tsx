@@ -247,7 +247,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
           <Link
-            href={`/s/${session.id}/briefing`}
+            href={`/s/${session.id}`}
             className="text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand"
           >
             {t("prepare.backToBriefing")}
@@ -269,7 +269,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
         {items.length === 0 ? (
           <div className="rounded-xl border border-border bg-white p-6 text-sm text-muted-foreground">
             <p>{t("prepare.noClips")}</p>
-            <Link href={`/s/${session.id}/briefing`} className="mt-2 inline-block text-foreground underline underline-offset-2">
+            <Link href={`/s/${session.id}`} className="mt-2 inline-block text-foreground underline underline-offset-2">
               {t("prepare.openBriefing")}
             </Link>
           </div>

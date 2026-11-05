@@ -1,24 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import type { ProblemTargetKind } from "@digestor/core";
+import type { MomentWithHighlights, ProblemTargetKind } from "@digestor/core";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/http";
-import type { PreviewSection } from "@/lib/preview";
+import { topicIdOf, type PreviewSection } from "@/lib/preview";
 import { t } from "@/lib/i18n";
 import { Dropdown } from "@/components/Dropdown";
 import { Busy } from "@/components/ui/spinner";
 
-type Target = { kind: ProblemTargetKind; id: string; label: string };
+export type Target = { kind: ProblemTargetKind; id: string; label: string };
 
-/** What a Preview report can point at: the briefing, a topic, a key quote or a highlight. */
-export function previewTargets(analysisId: string, sections: PreviewSection[]): Target[] {
+/** What a Briefing report can point at: the briefing, a topic, its key quote or one of its moments (time order). */
+export function previewTargets(analysisId: string, sections: PreviewSection[], moments: MomentWithHighlights[]): Target[] {
   const out: Target[] = [{ kind: "briefing", id: analysisId, label: t("preview.targetBriefing") }];
+  const topics = sections.map((s) => s.topic);
+  const byTopic = new Map<string, MomentWithHighlights[]>();
+  for (const m of [...moments].sort((a, b) => a.startMs - b.startMs)) {
+    const id = topicIdOf(m, topics);
+    if (id) byTopic.set(id, [...(byTopic.get(id) ?? []), m]);
+  }
   for (const s of sections) {
     out.push({ kind: "topic", id: s.topic.id, label: t("preview.targetTopic", { n: s.n, title: s.topic.title }) });
     if (s.keyQuote) out.push({ kind: "quote", id: s.keyQuote.momentId, label: t("preview.targetQuote", { n: s.n }) });
-    for (const m of s.rows) out.push({ kind: "moment", id: m.id, label: t("preview.targetMoment", { title: m.title }) });
+    for (const m of byTopic.get(s.topic.id) ?? []) out.push({ kind: "moment", id: m.id, label: t("preview.targetMoment", { title: m.title }) });
   }
   return out;
 }

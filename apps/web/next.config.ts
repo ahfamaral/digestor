@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@digestor/core"],
   serverExternalPackages: ["pg", "pg-boss"],
   cacheComponents: true,
+  // Preview and Full briefing became one Briefing page at /s/[id] (2026-11-05); old links keep their query string.
+  async redirects() {
+    return [{ source: "/s/:id/briefing", destination: "/s/:id", permanent: false }];
+  },
   partialPrefetching: true,
   turbopack: {
     rules: {

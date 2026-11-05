@@ -281,7 +281,7 @@ export function WhosWho({
   );
 }
 
-/** Who's who as a side drawer (Preview and Full briefing). */
+/** Who's who as a side drawer (the Briefing page). */
 export function WhosWhoDrawer({
   open,
   onOpenChange,

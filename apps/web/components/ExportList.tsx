@@ -120,7 +120,7 @@ export function ExportList({ session, names, clips }: ExportListProps) {
         {clips.length === 0 ? (
           <div className="rounded-xl border border-border bg-white p-6 text-sm text-muted-foreground">
             <p>{t("exportScreen.noClips")}</p>
-            <Link href={`/s/${session.id}/briefing`} className="mt-2 inline-block text-foreground underline underline-offset-2">
+            <Link href={`/s/${session.id}`} className="mt-2 inline-block text-foreground underline underline-offset-2">
               {t("exportScreen.openBriefing")}
             </Link>
           </div>

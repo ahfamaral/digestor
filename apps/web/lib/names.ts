@@ -279,7 +279,7 @@ export function evidenceLine(a: Attribution): string {
   return t(`names.evidence.${a.source}`);
 }
 
-/** Voices of the session with a name, for the Preview header ("N speakers · M named"). Unconfirmed names in sensitive profiles don't count. */
+/** Voices of the session with a name, for the Briefing header ("N speakers · M named"). Unconfirmed names in sensitive profiles don't count. */
 export function namedCount(names: NamesData, speakerIds: string[], sensitive: boolean): number {
   return speakerIds.filter((id) => voiceLabel(names, id, 0, sensitive).badge !== null).length;
 }

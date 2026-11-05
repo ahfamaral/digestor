@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BriefingContent, MomentWithHighlights, Topic } from "@digestor/core";
-import { buildSections, latestFailedAfter, mostDiscussedCard, versionNote } from "./preview";
+import { buildSections, latestFailedAfter, mostDiscussedCard, splitFirstSentence, versionNote } from "./preview";
 
 const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
   id, analysisId: "a", idx, startMs, endMs, title: `Topic ${id}`, summary: `Summary ${id}`,
@@ -14,7 +14,7 @@ const moment = (id: string, topicId: string | null, startMs: number, relevance: 
 describe("buildSections", () => {
   const topics = [topic("t1", 0, 0, 100_000), topic("t2", 1, 100_000, 200_000)];
 
-  it("one section per topic with the briefing summary, quote time and the topic's best moment per type", () => {
+  it("one section per topic with the briefing summary (else the topic's own) and the key quote with its time", () => {
     const moments = [
       moment("weak-heated", "t1", 10_000, 50, ["heated"]),
       moment("best-heated", "t1", 40_000, 90, ["heated"]),
@@ -26,16 +26,30 @@ describe("buildSections", () => {
       lead: [],
       sections: [{ topicId: "t1", summary: [{ text: "One.", momentIds: [] }, { text: "Two.", momentIds: [] }], keyQuote: { momentId: "key", text: "Quoted." } }],
     };
-    const sections = buildSections(topics, moments, briefing, "interview");
+    const sections = buildSections(topics, moments, briefing);
     expect(sections.map((s) => [s.n, s.topic.id, s.summary, s.fromBriefing])).toEqual([
       [1, "t1", "One. Two.", true],
       [2, "t2", "Summary t2", false],
     ]);
     expect(sections[0]!.keyQuote).toEqual({ momentId: "key", text: "Quoted.", startMs: 20_000 });
     expect(sections[1]!.keyQuote).toBeNull();
-    // rows sorted by start; the weaker heated moment loses; the topic-less moment lands in the topic covering its start
-    expect(sections[0]!.rows.map((m) => m.id)).toEqual(["key", "best-heated"]);
-    expect(sections[1]!.rows.map((m) => m.id)).toEqual(["orphan-light"]);
+  });
+
+  it("a key quote whose moment is gone keeps its text without a time", () => {
+    const briefing: BriefingContent = { lead: [], sections: [{ topicId: "t2", summary: [], keyQuote: { momentId: "gone", text: "Q." } }] };
+    expect(buildSections(topics, [], briefing)[1]!.keyQuote).toEqual({ momentId: "gone", text: "Q.", startMs: null });
+  });
+});
+
+describe("splitFirstSentence", () => {
+  it("splits after the first sentence end followed by a space", () => {
+    expect(splitFirstSentence("One. Two! Three?")).toEqual({ first: "One.", rest: "Two! Three?" });
+    expect(splitFirstSentence("Es kostet 19.5 Milliarden. Ja.")).toEqual({ first: "Es kostet 19.5 Milliarden.", rest: "Ja." });
+  });
+  it("handles CJK full stops without a space, and a single sentence", () => {
+    expect(splitFirstSentence("最初の文。次の文。")).toEqual({ first: "最初の文。", rest: "次の文。" });
+    expect(splitFirstSentence("  Only one sentence.  ")).toEqual({ first: "Only one sentence.", rest: "" });
+    expect(splitFirstSentence("")).toEqual({ first: "", rest: "" });
   });
 });
 

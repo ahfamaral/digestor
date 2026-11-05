@@ -7,9 +7,8 @@ import { t } from "@/lib/i18n";
 const FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1";
 
 /**
- * The session strip: one neutral band per topic (the topic being read is dark), coloured pins for the top
- * highlights, a time axis and a legend. Long sessions with many topics scroll inside their own box. From `sm` up it
- * stays at the top while the briefing scrolls, so the dark band visibly follows the section being read.
+ * The session strip: one neutral band per topic (the last one jumped to is dark), coloured pins for the top
+ * highlights, a time axis and a legend. Long sessions with many topics scroll inside their own box.
  */
 export function Timeline({
   bands,
@@ -29,9 +28,9 @@ export function Timeline({
   const legend = [...new Set(pins.map((p) => p.type))] as HighlightTypeId[];
   const ticks = durationMs > 0 ? [0, durationMs / 2, durationMs] : [0];
   return (
-    <section aria-label={t("preview.timeline")} className="mb-4 bg-background py-1 sm:sticky sm:top-0 sm:z-10">
+    <section aria-label={t("preview.timeline")} className="mt-3">
       <div className="overflow-x-auto">
-        <div className="px-2 pt-1" style={{ minWidth: `${Math.max(bands.length * 24, 280)}px` }}>
+        <div className="pt-1" style={{ minWidth: `${Math.max(bands.length * 24, 280)}px` }}>
           <div className="flex h-8 overflow-hidden rounded-lg border border-border bg-white">
             {bands.map((b, i) => {
               const active = b.topicId === activeTopicId;
@@ -79,7 +78,7 @@ export function Timeline({
         </div>
       </div>
       {legend.length > 0 && (
-        <ul aria-label={t("preview.legend")} className="mt-1 flex flex-wrap gap-x-3 gap-y-1 px-2 text-[11.5px] text-muted-foreground">
+        <ul aria-label={t("preview.legend")} className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted-foreground">
           {legend.map((type) => (
             <li key={type} className="flex items-center gap-1">
               <span aria-hidden className={cn("size-2 rounded-full", TONE_DOT[HIGHLIGHT_TYPES[type].tone])} />

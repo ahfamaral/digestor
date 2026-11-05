@@ -3,27 +3,27 @@
 import { SearchIcon, XIcon } from "lucide-react";
 import { HIGHLIGHT_TYPES, type Granularity, type HighlightTypeId } from "@digestor/core";
 import { TONE_CHIP } from "@/components/HighlightChip";
-import { SHOW_FILTERS, type BriefingFilters, type ShowFilter } from "@/lib/briefingFilters";
+import { DEFAULT_FILTERS, toSearchParams, type BriefingFilters, type ShowFilter } from "@/lib/briefingFilters";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
 import { Dropdown } from "@/components/Dropdown";
 import { Busy } from "@/components/ui/spinner";
-
-/** Tick or untick a level (at least one stays ticked). Task 7 replaces this with checkboxes. */
-function toggleLevel(levels: Granularity[], g: Granularity): Granularity[] {
-  if (!levels.includes(g)) return LEVELS.filter((l) => l === g || levels.includes(l));
-  return levels.length > 1 ? levels.filter((l) => l !== g) : levels;
-}
+import { Checkbox } from "@/components/ui/checkbox";
 
 const LEVELS: Granularity[] = ["exchange", "passage", "punchline"];
+const LEVEL_TEXT: Record<Granularity, MessageKey> = {
+  exchange: "briefing.levelExchanges",
+  passage: "briefing.levelPassages",
+  punchline: "briefing.levelPunchlines",
+};
+/** The status filter's order on screen (Open stays the default). */
+const SHOW_ORDER: ShowFilter[] = ["all", "open", "approved", "skipped"];
 const SHOW_TEXT: Record<ShowFilter, MessageKey> = {
   open: "briefing.showOpen",
   all: "briefing.showAll",
   approved: "briefing.showApproved",
   skipped: "briefing.showSkipped",
 };
-const FIELD =
-  "h-8 rounded-md border border-border bg-white px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const LABEL = "text-xs font-semibold text-muted-foreground";
 
 /** One Focus choice: a person or a voice, with the text shown for it (name and badge text, or "Speaker C") and its share of the words. */
@@ -49,22 +49,29 @@ export function focusText(c: FocusChoice): string {
 }
 
 /**
- * The Full briefing's instant filters: granularity (Exchange / Passage / Punchline), Focus on one person or voice, minimum
- * relevance, highlight-type chips and which statuses to show. Every change is applied on screen at once.
+ * The Briefing page's instant filters: the levels (Exchanges / Passages / Punchlines checkboxes with their counts; one
+ * stays ticked), Focus on one person or voice, minimum relevance, highlight-type chips and the status. Every change
+ * is applied on screen at once.
  */
 export function Controls({
   filters,
   onChange,
   choices,
   types,
+  levelCounts,
+  shown,
   findMore,
 }: {
   filters: BriefingFilters;
   onChange: (next: BriefingFilters) => void;
+  /** How many moments the analysis has at each level. */
+  levelCounts: Record<Granularity, number>;
   choices: FocusChoice[];
   types: HighlightTypeId[];
-  /** The "Find more" action for the focused person (shown beside the picker), or null when focus isn't on a person. */
-  findMore: { label: string; busy: boolean; onClick: () => void } | null;
+  /** How many moments the tree shows ("N shown"). */
+  shown: number;
+  /** The "Find more" action for the focused person (shown beside the picker, with its outcome below), or null when focus isn't on a person. */
+  findMore: { label: string; busy: boolean; onClick: () => void; error: string | null; summary: string | null } | null;
 }) {
   const set = (patch: Partial<BriefingFilters>) => onChange({ ...filters, ...patch });
   const focusValue = filters.person !== null ? `p:${filters.person}` : filters.speaker !== null ? `v:${filters.speaker}` : "";
@@ -72,27 +79,36 @@ export function Controls({
     set({ types: filters.types.includes(type) ? filters.types.filter((x) => x !== type) : [...filters.types, type] });
 
   return (
+    <>
     <section aria-label={t("briefing.filters")} className="mb-4 grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
         <div className="grid gap-1">
-          <span id="granularity-label" className={LABEL}>
-            {t("briefing.granularity")}
+          <span id="levels-label" className={LABEL}>
+            {t("briefing.levels")}
           </span>
-          <div role="group" aria-labelledby="granularity-label" className="inline-flex rounded-lg border border-border bg-background p-0.5">
-            {LEVELS.map((g) => (
-              <button
-                key={g}
-                type="button"
-                aria-pressed={filters.levels.includes(g)}
-                onClick={() => set({ levels: toggleLevel(filters.levels, g) })}
-                className={cn(
-                  "h-7 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                  filters.levels.includes(g) && "bg-foreground text-white",
-                )}
-              >
-                {t(`granularity.${g}`)}
-              </button>
-            ))}
+          <div role="group" aria-labelledby="levels-label" className="flex flex-wrap gap-1.5">
+            {LEVELS.map((g) => {
+              const on = filters.levels.includes(g);
+              const last = on && filters.levels.length === 1;
+              return (
+                <label
+                  key={g}
+                  title={last ? t("briefing.levelLast") : undefined}
+                  className={cn(
+                    "flex h-8 items-center gap-2 rounded-md border border-border bg-white px-2.5 text-sm text-foreground",
+                    last ? "cursor-not-allowed" : "cursor-pointer hover:bg-muted",
+                  )}
+                >
+                  <Checkbox
+                    checked={on}
+                    disabled={last}
+                    onCheckedChange={(v) => set({ levels: LEVELS.filter((l) => (l === g ? v === true : filters.levels.includes(l))) })}
+                  />
+                  {t(LEVEL_TEXT[g])}
+                  <span className="font-mono text-[11px] text-muted-foreground">{levelCounts[g]}</span>
+                </label>
+              );
+            })}
           </div>
         </div>
 
@@ -168,7 +184,7 @@ export function Controls({
             id="show-status"
             value={filters.show}
             onValueChange={(v) => set({ show: v })}
-            options={SHOW_FILTERS.map((s) => ({ value: s, label: t(SHOW_TEXT[s]) }))}
+            options={SHOW_ORDER.map((s) => ({ value: s, label: t(SHOW_TEXT[s]) }))}
           />
         </div>
       </div>
@@ -211,5 +227,24 @@ export function Controls({
         </div>
       )}
     </section>
+    {findMore?.error && (
+      <p role="alert" className="mb-2 text-xs text-red-700">
+        {findMore.error}
+      </p>
+    )}
+    {findMore?.summary && (
+      <p role="status" className="mb-2 text-xs text-muted-foreground">
+        {findMore.summary}
+      </p>
+    )}
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+      <span aria-live="off">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>
+      {toSearchParams(filters) !== "" && (
+        <button type="button" onClick={() => onChange(DEFAULT_FILTERS)} className="underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
+          {t("briefing.reset")}
+        </button>
+      )}
+    </div>
+    </>
   );
 }
