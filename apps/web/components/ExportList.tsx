@@ -9,7 +9,7 @@ import type { NamesData, Voice } from "@/lib/names";
 import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
 import { WarningIcon } from "@/components/WarningNote";
-import { inFlight, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { inFlight, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { languageName, t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -44,14 +44,16 @@ const NOTICE = "mb-3 rounded-lg border px-3 py-2 text-sm";
 
 const languageLabel = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? languageName(code);
 
-/** Export: each prepared clip with its checklist, the Export button, and every download (MP4, SRT/VTT, burned-in). */
+/** Export: each prepared clip with its checklist, the Export button, and every download (MP4, SRT/VTT, MP4 with subtitles). */
 export function ExportList({ session, names, clips }: ExportListProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  // Only errors and one-off answers are click-set; "rendering has started" is derived from live statuses.
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const lang = session.language ?? undefined;
   const ready = clips.filter((c) => c.failing.length === 0);
   const polling = inFlight(clips.map((c) => c.row));
+  const missing = toMake(ready.map((c) => c.row));
 
   // Refresh the server data every 3 s while anything is queued or rendering; stops itself when nothing is in flight.
   useEffect(() => {
@@ -74,8 +76,8 @@ export function ExportList({ session, names, clips }: ExportListProps) {
       } else if ((data.queued ?? 0) + (data.burns ?? 0) === 0) {
         setMessage({ kind: "ok", text: t("exportScreen.nothingNew") });
       } else {
-        const blocked = (data.blocked ?? []).length > 0 ? ` ${t("exportScreen.blockedSome")}` : "";
-        setMessage({ kind: "ok", text: `${(data.burns ?? 0) > 0 ? t("exportScreen.startedBurns") : t("exportScreen.started")}${blocked}` });
+        // The "started" banner is derived from the statuses after the refresh; only the blocked note is click-set.
+        setMessage((data.blocked ?? []).length > 0 ? { kind: "ok", text: t("exportScreen.blockedSome") } : null);
       }
       router.refresh();
     } catch {
@@ -102,6 +104,11 @@ export function ExportList({ session, names, clips }: ExportListProps) {
         {session.videoRemoved && (
           <p id="video-removed" role="status" className={`${NOTICE} border-border bg-stone-100 text-stone-800`}>
             {t("preview.videoRemoved")}
+          </p>
+        )}
+        {polling && (
+          <p role="status" className={`${NOTICE} border-green-200 bg-green-50 text-green-900`}>
+            {t("exportScreen.started")}
           </p>
         )}
         {message && (
@@ -132,7 +139,11 @@ export function ExportList({ session, names, clips }: ExportListProps) {
 
         <footer className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-            <span className="text-sm font-medium text-muted-foreground">{t("exportScreen.readyCount", { n: ready.length, total: clips.length })}</span>
+            <span className="text-sm font-medium text-muted-foreground">{missing === 0
+                ? t("exportScreen.readyCount", { n: ready.length, total: clips.length })
+                : missing === 1
+                  ? t("exportScreen.readyCountToMakeOne", { n: ready.length, total: clips.length })
+                  : t("exportScreen.readyCountToMake", { n: ready.length, total: clips.length, m: missing })}</span>
             <button
               type="button"
               onClick={() => void start()}
@@ -222,6 +233,7 @@ function ClipRow({
 
       <div className="mt-3 border-t border-border pt-3">
         <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t("exportScreen.downloads")}</h3>
+        <p className="mb-2 text-xs text-muted-foreground">{t("exportScreen.explainer")}</p>
         {row.mp4 === null && row.languages.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">{t("exportScreen.noDownloads")}</p>
         ) : (
@@ -246,7 +258,9 @@ function ClipRow({
 
 function LanguageLine({ l, heading }: { l: ExportLanguageRow; heading: string }) {
   const name = languageLabel(l.language);
-  const burnNote = t(`exportScreen.burnStatus.${l.burn.status}`);
+  const state = l.burn.state;
+  const burnNote = state === "none" || state === "done" ? "" : t(`exportScreen.burnState.${state}`);
+  const burnLabel = t("exportScreen.burned", { language: name });
   return (
     <li className="flex flex-wrap items-center gap-2">
       <span className="w-40 text-[13px] font-medium">{t("exportScreen.subtitlesIn", { language: name })}</span>
@@ -267,15 +281,15 @@ function LanguageLine({ l, heading }: { l: ExportLanguageRow; heading: string })
         </span>
       )}
       {l.burn.url !== null && (
-        <a href={l.burn.url} aria-label={t("exportScreen.downloadLabel", { what: `${name} ${t("exportScreen.burned")}`, title: heading })} className={LINK}>
-          {t("exportScreen.burned")}
+        <a href={l.burn.url} aria-label={t("exportScreen.downloadLabel", { what: burnLabel, title: heading })} className={LINK}>
+          {burnLabel}
         </a>
       )}
       {burnNote !== "" && (
-        <span className={cn("inline-flex items-center gap-1 text-xs", l.burn.status === "failed" ? "text-red-700" : l.burn.outOfDate ? "font-medium text-stone-900" : "text-muted-foreground")}>
-          {l.burn.outOfDate && <WarningIcon className="size-3.5" />}
-          <Busy busy={l.burn.status === "queued" || l.burn.status === "rendering"}>
-            {t("exportScreen.burned")}: {burnNote}
+        <span className={cn("inline-flex items-center gap-1 text-xs", state === "failed" ? "text-red-700" : state === "outOfDate" ? "font-medium text-stone-900" : "text-muted-foreground")}>
+          {state === "outOfDate" && <WarningIcon className="size-3.5" />}
+          <Busy busy={state === "making"}>
+            {burnLabel}: {burnNote}
           </Busy>
         </span>
       )}
