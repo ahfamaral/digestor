@@ -254,11 +254,11 @@ export function Briefing(props: BriefingProps) {
       {props.card && <ContextBanner sessionId={session.id} card={props.card} />}
 
       <header className="mb-3">
-        <div className="flex items-start justify-between gap-3">
-          <h1 lang={lang} dir="auto" className="min-w-0 text-xl font-bold tracking-tight break-words">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <h1 lang={lang} dir="auto" className="min-w-0 basis-full text-xl font-bold tracking-tight break-words sm:flex-1 sm:basis-0">
             {session.title}
           </h1>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-2">
             <Button ref={whoRef} variant="outline" size="sm" onClick={() => openWho("button")}>
               {t("names.whoOpen")}
             </Button>
@@ -351,15 +351,15 @@ export function Briefing(props: BriefingProps) {
       {moments.length === 0 ? (
         <p className="mb-4 rounded-xl border border-border bg-white p-6 text-sm text-muted-foreground">{t("briefing.none")}</p>
       ) : (
-          <Controls
-            filters={filters}
-            onChange={setFilters}
-            choices={choices}
-            types={props.types}
-            levelCounts={levelCounts}
-            shown={shown}
-            findMore={fm.offer ? { label: fm.label, busy: fm.busy, onClick: fm.start, error: fm.error, summary: fm.summary } : null}
-          />
+        <Controls
+          filters={filters}
+          onChange={setFilters}
+          choices={choices}
+          types={props.types}
+          levelCounts={levelCounts}
+          shown={shown}
+          findMore={fm.offer ? { label: fm.label, busy: fm.busy, onClick: fm.start, error: fm.error, summary: fm.summary } : null}
+        />
       )}
 
       <div className="grid gap-3">

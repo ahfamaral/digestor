@@ -80,171 +80,172 @@ export function Controls({
 
   return (
     <>
-    <section aria-label={t("briefing.filters")} className="mb-4 grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
-      <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-        <div className="grid gap-1">
-          <span id="levels-label" className={LABEL}>
-            {t("briefing.levels")}
-          </span>
-          <div role="group" aria-labelledby="levels-label" className="flex flex-wrap gap-1.5">
-            {LEVELS.map((g) => {
-              const on = filters.levels.includes(g);
-              const last = on && filters.levels.length === 1;
-              return (
-                <label
-                  key={g}
-                  title={last ? t("briefing.levelLast") : undefined}
-                  className={cn(
-                    "flex h-8 items-center gap-2 rounded-md border border-border bg-white px-2.5 text-sm text-foreground",
-                    last ? "cursor-not-allowed" : "cursor-pointer hover:bg-muted",
-                  )}
-                >
-                  <Checkbox
-                    checked={on}
-                    disabled={last}
-                    onCheckedChange={(v) => set({ levels: LEVELS.filter((l) => (l === g ? v === true : filters.levels.includes(l))) })}
-                  />
-                  {t(LEVEL_TEXT[g])}
-                  <span className="font-mono text-[11px] text-muted-foreground">{levelCounts[g]}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="grid gap-1">
-          <label htmlFor="focus-speaker" className={LABEL}>
-            {t("briefing.focus")}
-          </label>
-          <div className="flex items-center gap-1">
-            <span className="relative">
-              <SearchIcon aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Dropdown
-                id="focus-speaker"
-                value={focusValue}
-                onValueChange={(v) => {
-                  // Person and voice are exclusive: choosing one clears the other.
-                  const [kind, ...rest] = v.split(":");
-                  const id = rest.join(":");
-                  set({ person: kind === "p" && id ? id : null, speaker: kind === "v" && id ? id : null });
-                }}
-                className="max-w-64 pl-7"
-                options={[
-                  { value: "", label: t("briefing.everyone") },
-                  ...choices.map((c) => ({ value: choiceValue(c), label: focusText(c), title: shareTitle(c) })),
-                ]}
-              />
+      <section aria-label={t("briefing.filters")} className="mb-4 grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
+        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+          <div className="grid gap-1">
+            <span id="levels-label" className={LABEL}>
+              {t("briefing.levels")}
             </span>
-            {focusValue !== "" && (
-              <button
-                type="button"
-                onClick={() => set({ speaker: null, person: null })}
-                aria-label={t("briefing.clearFocus")}
-                title={t("briefing.clearFocus")}
-                className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                <XIcon aria-hidden className="size-4" />
-              </button>
-            )}
-            {findMore && (
-              <button
-                type="button"
-                disabled={findMore.busy}
-                onClick={findMore.onClick}
-                className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Busy busy={findMore.busy}>{findMore.label}</Busy>
-              </button>
-            )}
+            <div role="group" aria-labelledby="levels-label" className="flex flex-wrap gap-1.5">
+              {LEVELS.map((g) => {
+                const on = filters.levels.includes(g);
+                const last = on && filters.levels.length === 1;
+                return (
+                  <label
+                    key={g}
+                    title={last ? t("briefing.levelLast") : undefined}
+                    className={cn(
+                      "flex h-8 items-center gap-2 rounded-md border border-border bg-white px-2.5 text-sm text-foreground",
+                      last ? "cursor-not-allowed" : "cursor-pointer hover:bg-muted",
+                    )}
+                  >
+                    <Checkbox
+                      checked={on}
+                      disabled={last}
+                      onCheckedChange={(v) => set({ levels: LEVELS.filter((l) => (l === g ? v === true : filters.levels.includes(l))) })}
+                    />
+                    {t(LEVEL_TEXT[g])}
+                    {last && <span className="sr-only">. {t("briefing.levelLast")}</span>}
+                    <span className="font-mono text-[11px] text-muted-foreground">{levelCounts[g]}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        <div className="grid gap-1">
-          <label htmlFor="min-relevance" className={LABEL}>
-            {t("briefing.relevance")} <span className="font-mono text-foreground">{filters.minRelevance}</span>
-          </label>
-          <input
-            id="min-relevance"
-            type="range"
-            min={0}
-            max={100}
-            step={5}
-            value={filters.minRelevance}
-            aria-valuetext={t("briefing.relevanceValue", { n: filters.minRelevance })}
-            onChange={(e) => set({ minRelevance: Number(e.target.value) })}
-            className="h-8 w-40 accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand"
-          />
-        </div>
-
-        <div className="grid gap-1">
-          <label htmlFor="show-status" className={LABEL}>
-            {t("briefing.show")}
-          </label>
-          <Dropdown
-            id="show-status"
-            value={filters.show}
-            onValueChange={(v) => set({ show: v })}
-            options={SHOW_ORDER.map((s) => ({ value: s, label: t(SHOW_TEXT[s]) }))}
-          />
-        </div>
-      </div>
-
-      {types.length > 0 && (
-        <div className="grid gap-1">
-          <span id="types-label" className={LABEL}>
-            {t("briefing.types")}
-          </span>
-          <div role="group" aria-labelledby="types-label" className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              aria-pressed={filters.types.length === 0}
-              onClick={() => set({ types: [] })}
-              className={cn(
-                "rounded-full border border-border bg-white px-2.5 py-0.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                filters.types.length === 0 && "border-foreground bg-foreground text-white",
-              )}
-            >
-              {t("briefing.allTypes")}
-            </button>
-            {types.map((type) => {
-              const on = filters.types.includes(type);
-              return (
+          <div className="grid gap-1">
+            <label htmlFor="focus-speaker" className={LABEL}>
+              {t("briefing.focus")}
+            </label>
+            <div className="flex items-center gap-1">
+              <span className="relative">
+                <SearchIcon aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Dropdown
+                  id="focus-speaker"
+                  value={focusValue}
+                  onValueChange={(v) => {
+                    // Person and voice are exclusive: choosing one clears the other.
+                    const [kind, ...rest] = v.split(":");
+                    const id = rest.join(":");
+                    set({ person: kind === "p" && id ? id : null, speaker: kind === "v" && id ? id : null });
+                  }}
+                  className="max-w-64 pl-7"
+                  options={[
+                    { value: "", label: t("briefing.everyone") },
+                    ...choices.map((c) => ({ value: choiceValue(c), label: focusText(c), title: shareTitle(c) })),
+                  ]}
+                />
+              </span>
+              {focusValue !== "" && (
                 <button
-                  key={type}
                   type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleType(type)}
-                  className={cn(
-                    "rounded-full border px-2.5 py-0.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                    on ? cn(TONE_CHIP[HIGHLIGHT_TYPES[type].tone], "border-current") : "border-border bg-white text-foreground",
-                  )}
+                  onClick={() => set({ speaker: null, person: null })}
+                  aria-label={t("briefing.clearFocus")}
+                  title={t("briefing.clearFocus")}
+                  className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  {t(`highlight.${type}`)}
+                  <XIcon aria-hidden className="size-4" />
                 </button>
-              );
-            })}
+              )}
+              {findMore && (
+                <button
+                  type="button"
+                  disabled={findMore.busy}
+                  onClick={findMore.onClick}
+                  className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Busy busy={findMore.busy}>{findMore.label}</Busy>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-1">
+            <label htmlFor="min-relevance" className={LABEL}>
+              {t("briefing.relevance")} <span className="font-mono text-foreground">{filters.minRelevance}</span>
+            </label>
+            <input
+              id="min-relevance"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={filters.minRelevance}
+              aria-valuetext={t("briefing.relevanceValue", { n: filters.minRelevance })}
+              onChange={(e) => set({ minRelevance: Number(e.target.value) })}
+              className="h-8 w-40 accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            />
+          </div>
+
+          <div className="grid gap-1">
+            <label htmlFor="show-status" className={LABEL}>
+              {t("briefing.show")}
+            </label>
+            <Dropdown
+              id="show-status"
+              value={filters.show}
+              onValueChange={(v) => set({ show: v })}
+              options={SHOW_ORDER.map((s) => ({ value: s, label: t(SHOW_TEXT[s]) }))}
+            />
           </div>
         </div>
+
+        {types.length > 0 && (
+          <div className="grid gap-1">
+            <span id="types-label" className={LABEL}>
+              {t("briefing.types")}
+            </span>
+            <div role="group" aria-labelledby="types-label" className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                aria-pressed={filters.types.length === 0}
+                onClick={() => set({ types: [] })}
+                className={cn(
+                  "rounded-full border border-border bg-white px-2.5 py-0.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                  filters.types.length === 0 && "border-foreground bg-foreground text-white",
+                )}
+              >
+                {t("briefing.allTypes")}
+              </button>
+              {types.map((type) => {
+                const on = filters.types.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleType(type)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-0.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                      on ? cn(TONE_CHIP[HIGHLIGHT_TYPES[type].tone], "border-current") : "border-border bg-white text-foreground",
+                    )}
+                  >
+                    {t(`highlight.${type}`)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+      {findMore?.error && (
+        <p role="alert" className="mb-2 text-xs text-red-700">
+          {findMore.error}
+        </p>
       )}
-    </section>
-    {findMore?.error && (
-      <p role="alert" className="mb-2 text-xs text-red-700">
-        {findMore.error}
-      </p>
-    )}
-    {findMore?.summary && (
-      <p role="status" className="mb-2 text-xs text-muted-foreground">
-        {findMore.summary}
-      </p>
-    )}
-    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-      <span aria-live="off">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>
-      {toSearchParams(filters) !== "" && (
-        <button type="button" onClick={() => onChange(DEFAULT_FILTERS)} className="underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
-          {t("briefing.reset")}
-        </button>
+      {findMore?.summary && (
+        <p role="status" className="mb-2 text-xs text-muted-foreground">
+          {findMore.summary}
+        </p>
       )}
-    </div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span aria-live="off">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>
+        {toSearchParams(filters) !== "" && (
+          <button type="button" onClick={() => onChange(DEFAULT_FILTERS)} className="underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
+            {t("briefing.reset")}
+          </button>
+        )}
+      </div>
     </>
   );
 }
