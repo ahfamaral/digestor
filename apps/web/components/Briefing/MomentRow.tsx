@@ -1,5 +1,6 @@
 "use client";
 
+import { MediaPlayer } from "@/components/MediaPlayer";
 import { formatLength, formatTimestamp, type SelectionStatus } from "@digestor/core";
 import { HighlightChip } from "@/components/HighlightChip";
 import { PersonalMarker } from "./PersonalMarker";
@@ -149,9 +150,9 @@ export function MomentRow({ view, ctx, nested = false }: { view: MomentView; ctx
         {playing && !ctx.videoRemoved && (
           <div className="mt-2">
             {ctx.hasVideo ? (
-              <video controls autoPlay preload="none" src={src} aria-label={playerLabel} className="aspect-video w-full max-w-xl rounded-lg bg-black" />
+              <MediaPlayer kind="video" autoPlay src={src} label={playerLabel} className="aspect-video w-full max-w-xl rounded-lg bg-black" />
             ) : (
-              <audio controls autoPlay preload="none" src={src} aria-label={playerLabel} className="w-full max-w-xl" />
+              <MediaPlayer kind="audio" autoPlay src={src} label={playerLabel} className="w-full max-w-xl" />
             )}
           </div>
         )}

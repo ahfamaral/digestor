@@ -1,5 +1,6 @@
 "use client";
 
+import { MediaPlayer } from "@/components/MediaPlayer";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -410,9 +411,9 @@ function HighlightRow({
       {playing && !videoRemoved && (
         <div className="mt-2">
           {hasVideo ? (
-            <video controls autoPlay preload="none" src={src} aria-label={playerLabel} className="aspect-video w-full max-w-xl rounded-lg bg-black" />
+            <MediaPlayer kind="video" autoPlay src={src} label={playerLabel} className="aspect-video w-full max-w-xl rounded-lg bg-black" />
           ) : (
-            <audio controls autoPlay preload="none" src={src} aria-label={playerLabel} className="w-full max-w-xl" />
+            <MediaPlayer kind="audio" autoPlay src={src} label={playerLabel} className="w-full max-w-xl" />
           )}
         </div>
       )}

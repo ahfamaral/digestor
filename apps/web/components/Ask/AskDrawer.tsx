@@ -1,5 +1,6 @@
 "use client";
 
+import { MediaPlayer } from "@/components/MediaPlayer";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus } from "@digestor/core";
@@ -226,9 +227,9 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
                 </button>
               </div>
               {hasVideo ? (
-                <video key={preview.n} controls autoPlay preload="none" src={previewSrc ?? undefined} aria-label={previewLabel} className="mx-auto aspect-video max-h-40 w-full rounded-lg bg-black" />
+                <MediaPlayer key={preview.n} kind="video" autoPlay src={previewSrc ?? undefined} label={previewLabel} className="mx-auto aspect-video max-h-40 w-full rounded-lg bg-black" />
               ) : (
-                <audio key={preview.n} controls autoPlay preload="none" src={previewSrc ?? undefined} aria-label={previewLabel} className="w-full" />
+                <MediaPlayer key={preview.n} kind="audio" autoPlay src={previewSrc ?? undefined} label={previewLabel} className="w-full" />
               )}
             </div>
           )}

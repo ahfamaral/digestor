@@ -1,5 +1,6 @@
 "use client";
 
+import { MediaPlayer } from "@/components/MediaPlayer";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -540,7 +541,7 @@ function ClipPlayer({
     return (
       <div className="grid gap-2">
         <div>{button}</div>
-        {playing && !videoRemoved && <audio controls autoPlay preload="none" src={src} aria-label={label} className="w-full" />}
+        {playing && !videoRemoved && <MediaPlayer kind="audio" autoPlay src={src} label={label} className="w-full" />}
       </div>
     );
   }
@@ -551,13 +552,12 @@ function ClipPlayer({
         {videoRemoved ? (
           <p className="px-4 text-center text-xs text-stone-300">{t("preview.videoRemoved")}</p>
         ) : playing ? (
-          <video
+          <MediaPlayer
             key={src}
-            controls
+            kind="video"
             autoPlay
-            preload="none"
             src={src}
-            aria-label={label}
+            label={label}
             className={fit}
             style={vertical ? { objectPosition: cropPosition(cropOffset) } : undefined}
           />

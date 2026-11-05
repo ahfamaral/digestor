@@ -8,6 +8,7 @@ import { errorMessage } from "@/lib/http";
 import { anonymousBody, conflictText, confirmBody, evidenceLine, personDetail, rowRange, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { sampleSrc } from "@/lib/media";
+import { usePauseWhenHidden } from "@/lib/usePauseWhenHidden";
 import { t } from "@/lib/i18n";
 import { NamePopover } from "./NamePopover";
 import { RecordLink } from "./RecordLink";
@@ -82,6 +83,7 @@ export function WhosWho({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const player = useRef<HTMLVideoElement>(null);
+  usePauseWhenHidden(player);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(

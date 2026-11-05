@@ -5,3 +5,15 @@
 export function sampleSrc(sessionId: string, proxyReady: boolean): string {
   return `/api/files/${sessionId}/${proxyReady ? "proxy.mp4" : "audio.mp3"}`;
 }
+
+/** Pauses every playing `<video>` / `<audio>` under `root`; returns how many it paused. */
+export function pauseAllMedia(root: Pick<Document, "querySelectorAll"> = document): number {
+  let n = 0;
+  for (const el of Array.from(root.querySelectorAll<HTMLMediaElement>("video, audio"))) {
+    if (!el.paused) {
+      el.pause();
+      n++;
+    }
+  }
+  return n;
+}

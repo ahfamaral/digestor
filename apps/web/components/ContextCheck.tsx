@@ -10,6 +10,7 @@ import { labelText, voiceLabel } from "@/lib/names";
 import { factBadge, profileBadge } from "@/lib/contextBadge";
 import { buildContextPayload, buildSkipPayload, type ContextFields } from "@/lib/contextPayload";
 import { sampleSrc } from "@/lib/media";
+import { usePauseWhenHidden } from "@/lib/usePauseWhenHidden";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
 
@@ -74,6 +75,7 @@ export function ContextCheck({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const player = useRef<HTMLVideoElement>(null);
+  usePauseWhenHidden(player);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
