@@ -70,7 +70,7 @@ Colour is never the only signal: every chip/badge carries text.
 
 - Ignore `/` while typing (`isTyping`), with modifiers, while a dialog is open, or when `defaultPrevented` (`opensAsk`).
 - Status changes per moment are serialised latest-wins (`lib/statusQueue.ts`); Confirm waits for `StatusQueue.idle()`.
-- Trim: Alt/Option previews free handle positions only; the server always snaps to sentence boundaries (help text says so).
+- Trim: AI and normal cuts snap to sentence boundaries (sentence ends, or a pause inside a very long sentence); an Alt cut is saved as is and carries a mid-sentence warning. Alt-drag or Alt+arrows on a handle sends `free: true`; the typed fields never do. The help text says so, and ChecksPanel shows the mid-sentence warning (`WarningNote`) with its own acknowledgement label.
 
 ## Accessibility
 
@@ -93,7 +93,7 @@ Players use the 480p proxy (`/api/files/<id>/proxy.mp4`, Range-enabled) with `pr
 ## Plan 2 pieces (built)
 
 - **Ask drawer** (`components/Ask/`, `/` opens it): answers only from stored data, with clickable `[hh:mm:ss]` timestamps. Tool calls show as small chips with Undo. Edits touch only the personal layer; bulk changes need confirmation; Undo never reverts later changes you made.
-- **Prepare clips:** a zoomed trim strip whose handles snap to sentence pauses; checks ("The argument continues" + Extend, "Context:", "Quoting someone else", "Interpreter audio"); 16:9 or 9:16 with a crop offset; the credit line (or "No credit needed"); per-language subtitles with review, approval and burn-in; and the "Before export" checklist.
+- **Prepare clips:** a zoomed trim strip whose handles snap to sentence boundaries (Alt saves an exact position, marked mid-sentence); checks ("The argument continues" + Extend, "Context:", "Quoting someone else", "Interpreter audio"); 16:9 or 9:16 with a crop offset; the credit line (or "No credit needed"); per-language subtitles with review, approval and burn-in; and the "Before export" checklist.
 - **Source badges** on names (Plan 3) read "from record", "from caption", "from voice", "from you"; a name with no source is never shown.
 
 ## Verify every UI change

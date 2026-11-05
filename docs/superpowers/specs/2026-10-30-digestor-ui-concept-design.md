@@ -181,7 +181,7 @@ The keyboard triage from Plan 1 carries over: **A** select (approve), **N** neut
 ### 5.5 Prepare clips
 For each selected moment:
 - **Trim:**
-  - A player on the proxy, with a zoomed strip whose handles **snap to sentence pauses** (a modifier key turns snapping off), plus exact time fields.
+  - A player on the proxy, with a zoomed strip whose handles **snap to sentence boundaries** (hold Alt/Option, while dragging or with the arrow keys, to save an exact position), plus exact time fields. AI and normal cuts snap to sentence boundaries (sentence ends, or a pause inside a very long sentence); an Alt cut is saved as is and carries a mid-sentence warning.
   - The session timeline doubles as the v1 "heat" overview.
 - **Checks** (§9.4): speaker confirmed, sentence and argument complete, context warnings, reported speech or interpreter flags.
 - **Format:** 16:9, or **vertical 9:16** (§9.2).
