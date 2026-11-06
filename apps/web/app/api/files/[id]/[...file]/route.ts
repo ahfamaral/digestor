@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { isUuid } from "@/lib/ids";
 import { errorResponse } from "@/lib/http";
 import { getServer } from "@/lib/server";
-import { buildSrt, buildVtt, trackToCues } from "@digestor/core";
+import { contentDisposition, safeBaseName, subtitleText } from "@/lib/subtitleFiles";
 import { getClip, getMoment, listTracks } from "@digestor/core/server";
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -63,19 +63,6 @@ function parseRange(header: string, size: number): { start: number; end: number 
   return { start, end: Math.min(end, size - 1) };
 }
 
-/** A download name from a clip title: no path or reserved characters, no control characters, bounded length. */
-function safeBaseName(title: string): string {
-  const cleaned = title.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100).trim();
-  return cleaned === "" ? "clip" : cleaned;
-}
-
-/** RFC 5987 `filename*` plus a plain-ASCII `filename` fallback (non-ASCII replaced, quotes and backslashes dropped). */
-function contentDisposition(name: string): string {
-  const ascii = name.replace(/["\\]/g, "").replace(/[^\x20-\x7e]/g, "_");
-  const encoded = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
-}
-
 /** The clip's moment title (the download name), or "clip" when the clip, its moment or its title is gone. */
 async function clipTitle(clipId: string): Promise<string> {
   const { db } = getServer();
@@ -94,12 +81,11 @@ async function subtitleResponse(sessionId: string, match: Match, download: boole
   if (!clip || clip.sessionId !== sessionId) return errorResponse(404, "Not found.");
   const lang = match.lang!.toLowerCase();
   const track = (await listTracks(db, clip.id)).find((t) => t.language.toLowerCase() === lang);
-  if (!track || track.status === "outdated" || track.cues.length === 0) return errorResponse(404, "Not found.");
-  const cues = trackToCues(track.cues, clip.format);
-  if (cues.length === 0) return errorResponse(404, "Not found.");
+  const text = track ? subtitleText(track, clip, match.ext as "srt" | "vtt") : null;
+  if (!track || text === null) return errorResponse(404, "Not found.");
   const headers = new Headers({ "Content-Type": CONTENT_TYPES[match.ext]! });
   if (download) headers.set("Content-Disposition", contentDisposition(`${safeBaseName(await clipTitle(clip.id))}.${track.language}.${match.ext}`));
-  return new Response(match.ext === "srt" ? buildSrt(cues) : buildVtt(cues), { status: 200, headers });
+  return new Response(text, { status: 200, headers });
 }
 
 /**

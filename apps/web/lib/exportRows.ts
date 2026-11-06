@@ -1,5 +1,5 @@
-import { LANGUAGES, type RenderStatus, type TrackStatus } from "@digestor/core";
-import { languageName } from "@/lib/i18n";
+import { LANGUAGES, type ChecklistId, type RenderStatus, type TrackStatus } from "@digestor/core";
+import { languageName, t } from "@/lib/i18n";
 
 export interface ExportClipInput {
   id: string;
@@ -138,4 +138,39 @@ export function isExportReady(c: { dismissed: boolean; failing: string[] }): boo
 /** The clips "Export ready clips" sends. */
 export function exportableIds(clips: { id: string; dismissed: boolean; failing: string[] }[]): string[] {
   return clips.filter(isExportReady).map((c) => c.id);
+}
+
+export type ClipStatus =
+  | { kind: "rendered" }
+  | { kind: "rendering" }
+  | { kind: "needs"; actions: ChecklistId[] }
+  | { kind: "ready" }
+  | { kind: "failed" }
+  | { kind: "stale" }
+  | { kind: "dismissed" };
+
+/**
+ * The one status of an Export row. What exists comes first (a made file is always downloadable, even when the
+ * checklist changed since); then what is missing, as actions. A dismissed approval keeps its own label.
+ */
+export function clipStatus(c: { dismissed: boolean; failing: ChecklistId[]; row: ExportRow }): ClipStatus {
+  const { row } = c;
+  if (active(row.renderStatus)) return { kind: "rendering" };
+  if (row.mp4 !== null) return { kind: "rendered" };
+  if (c.dismissed) return { kind: "dismissed" };
+  if (row.renderStatus === "failed") return { kind: "failed" };
+  if (row.renderStatus === "stale") return { kind: "stale" };
+  if (c.failing.length > 0) return { kind: "needs", actions: c.failing };
+  return { kind: "ready" };
+}
+
+/** The status as one short sentence ("Needs: Add a credit line; ..."). */
+export function statusLabel(s: ClipStatus): string {
+  if (s.kind === "needs") return t("exportScreen.status.needs", { actions: s.actions.map((id) => t(`exportScreen.action.${id}`)).join("; ") });
+  return t(`exportScreen.status.${s.kind}`);
+}
+
+/** Rendered clips first; the order inside each group is kept. */
+export function renderedFirst<T extends { row: ExportRow }>(clips: T[]): T[] {
+  return [...clips.filter((c) => c.row.mp4 !== null), ...clips.filter((c) => c.row.mp4 === null)];
 }

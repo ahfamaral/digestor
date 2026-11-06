@@ -12,11 +12,12 @@ import { BackLink } from "@/components/BackLink";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { WarningIcon } from "@/components/WarningNote";
 import { ApprovalDismissed } from "@/components/ApprovalDismissed";
-import { exportableIds, inFlight, languageLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { clipStatus, exportableIds, inFlight, languageLabel, renderedFirst, statusLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { Busy } from "@/components/ui/spinner";
+import { DownloadAllDialog } from "@/components/Export/DownloadAllDialog";
 
 export const EXPORT_POLL_MS = 3000;
 
@@ -102,7 +103,8 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
         facts={{ hasClips: clips.length > 0, allReadyRendered: ready.length > 0 && ready.every((c) => c.row.renderStatus === "done") }}
       />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
-        <header className="mb-3">
+        <header className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0">
           <BackLink href={`/s/${session.id}/prepare`} label={t("exportScreen.backToPrepare")} />
           <h1 lang={lang} dir="auto" className="mt-1 text-xl font-bold tracking-tight break-words">
             {session.title}
@@ -110,6 +112,8 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
           <p className="mt-1 font-mono text-xs text-muted-foreground">
             {t("exportScreen.title")} · {clips.length === 1 ? t("exportScreen.clipsOne") : t("exportScreen.clipsMany", { n: clips.length })}
           </p>
+          </div>
+          <DownloadAllDialog sessionId={session.id} clips={clips} />
         </header>
 
         <UnconfirmedBanner
@@ -142,6 +146,8 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
           </p>
         )}
 
+        <p className="mb-3 text-xs text-muted-foreground">{t("exportScreen.explainer")}</p>
+
         {clips.length === 0 ? (
           <div className="rounded-xl border border-border bg-white p-6 text-sm text-muted-foreground">
             <p>{t("exportScreen.noClips")}</p>
@@ -151,8 +157,8 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
           </div>
         ) : (
           <ol className="grid gap-3">
-            {clips.map((clip, n) => (
-              <ClipRow key={clip.id} n={n + 1} clip={clip} sessionId={session.id} lang={lang} names={names} sensitive={session.sensitive} watching={watching} setWatching={setWatching} />
+            {renderedFirst(clips.map((clip, i) => ({ clip, n: i + 1, row: clip.row }))).map(({ clip, n }) => (
+              <ClipRow key={clip.id} n={n} clip={clip} sessionId={session.id} lang={lang} names={names} sensitive={session.sensitive} watching={watching} setWatching={setWatching} />
             ))}
           </ol>
         )}
@@ -196,8 +202,9 @@ function ClipRow({
 }) {
   const { row } = clip;
   const heading = clip.title || t("exportScreen.clipHeading", { n });
-  const status = t(`exportScreen.status.${row.renderStatus}`);
-  const bad = row.renderStatus === "failed";
+  const state = clipStatus(clip);
+  const status = statusLabel(state);
+  const bad = state.kind === "failed";
   return (
     <li data-clip-id={clip.id} className="rounded-xl border border-border bg-white p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -233,34 +240,25 @@ function ClipRow({
         </div>
         <p
           role="status"
-          className={cn("inline-flex items-center gap-1 text-xs", bad ? "text-red-700" : row.renderOutOfDate ? "font-medium text-stone-900" : "text-muted-foreground")}
+          className={cn("inline-flex items-center gap-1 text-xs", bad ? "text-red-700" : state.kind === "stale" ? "font-medium text-stone-900" : state.kind === "rendered" ? "font-medium text-green-800" : "text-muted-foreground")}
         >
-          {row.renderOutOfDate && <WarningIcon className="size-3.5" />}
-          <Busy busy={row.renderStatus === "queued" || row.renderStatus === "rendering"}>{status}</Busy>
+          {state.kind === "stale" && <WarningIcon className="size-3.5" />}
+          <Busy busy={state.kind === "rendering"}>{status}</Busy>
         </p>
       </div>
 
-      {clip.failing.length > 0 ? (
-        <div className="mt-2 text-[13px]">
-          <p className="font-medium">{t("exportScreen.needsAttention")}</p>
-          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
-            {clip.failing.map((id) => (
-              <li key={id}>{t(`prepare.item.${id}`)}</li>
-            ))}
-          </ul>
-          <Link href={`/s/${sessionId}/prepare#clip-${clip.id}`} className="mt-1.5 inline-block text-foreground underline underline-offset-2">
+      {state.kind === "needs" ? (
+        <p className="mt-2 text-[13px]">
+          <Link href={`/s/${sessionId}/prepare#clip-${clip.id}`} className="text-foreground underline underline-offset-2">
             {t("exportScreen.fixInPrepare")}
           </Link>
-        </div>
-      ) : clip.dismissed ? (
+        </p>
+      ) : state.kind === "dismissed" ? (
         <p className="mt-2 text-[13px] text-stone-700">{t("prepare.approvalDismissedHint")}</p>
-      ) : (
-        <p className="mt-2 text-[13px] text-green-800">{t("exportScreen.ready")}</p>
-      )}
+      ) : null}
 
       <div className="mt-3 border-t border-border pt-3">
         <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t("exportScreen.downloads")}</h3>
-        <p className="mb-2 text-xs text-muted-foreground">{t("exportScreen.explainer")}</p>
         {row.mp4 === null && row.languages.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">{t("exportScreen.noDownloads")}</p>
         ) : (

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { exportableIds, isExportReady, exportRows, inFlight, toMake } from "./exportRows";
+import type { ChecklistId } from "@digestor/core";
+import { clipStatus, exportableIds, isExportReady, exportRows, inFlight, renderedFirst, statusLabel, toMake, type ExportRow } from "./exportRows";
 
 const clip = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => ({
   id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", ...over,
@@ -132,5 +133,34 @@ describe("isExportReady", () => {
     expect(isExportReady({ dismissed: false, failing: [] })).toBe(true);
     expect(isExportReady({ dismissed: true, failing: [] })).toBe(false);
     expect(isExportReady({ dismissed: false, failing: ["speaker"] })).toBe(false);
+  });
+});
+
+describe("clipStatus", () => {
+  const row = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => exportRows([clip(over)], [])[0]!;
+  const c = (over: { dismissed?: boolean; failing?: ChecklistId[] } = {}, r = row()) => ({ dismissed: false, failing: [] as ChecklistId[], row: r, ...over });
+
+  it("one status per clip, rendering and rendered before anything else", () => {
+    expect(clipStatus(c())).toEqual({ kind: "rendered" });
+    expect(clipStatus(c({ failing: ["credit"] }))).toEqual({ kind: "rendered" });
+    expect(clipStatus(c({}, row({ renderStatus: "queued" })))).toEqual({ kind: "rendering" });
+    expect(clipStatus(c({}, row({ renderStatus: "rendering" })))).toEqual({ kind: "rendering" });
+  });
+  it("an unrendered clip needs its to-dos, is ready, failed, stale or dismissed", () => {
+    const none = row({ renderStatus: "none", renderKey: null });
+    expect(clipStatus(c({ failing: ["credit", "context"] }, none))).toEqual({ kind: "needs", actions: ["credit", "context"] });
+    expect(clipStatus(c({}, none))).toEqual({ kind: "ready" });
+    expect(clipStatus(c({ dismissed: true }, none))).toEqual({ kind: "dismissed" });
+    expect(clipStatus(c({}, row({ renderStatus: "failed", renderKey: null })))).toEqual({ kind: "failed" });
+    expect(clipStatus(c({}, row({ renderStatus: "stale" })))).toEqual({ kind: "stale" });
+  });
+  it("labels: Rendered, Rendering, Needs with actions", () => {
+    expect(statusLabel({ kind: "rendered" })).toBe("Rendered · download below");
+    expect(statusLabel({ kind: "rendering" })).toBe("Rendering…");
+    expect(statusLabel({ kind: "needs", actions: ["credit", "context"] })).toBe("Needs: Add a credit line; Tick 'I've read these warnings'");
+  });
+  it("renderedFirst keeps the order inside each group", () => {
+    const mk = (id: string, mp4: string | null) => ({ id, row: { mp4 } as ExportRow });
+    expect(renderedFirst([mk("a", null), mk("b", "x"), mk("c", null), mk("d", "y")]).map((x) => x.id)).toEqual(["b", "d", "a", "c"]);
   });
 });
