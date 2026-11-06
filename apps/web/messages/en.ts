@@ -340,6 +340,7 @@ export const en = {
     sendFailed: "The question couldn't be sent. Try again in a moment.",
     toolCall: "Tool call",
     sources: "Sources ({n})",
+    source: { transcript: "Transcript {text}", speech: "Speech {text}", moment: "Moment: {text}", topic: "Topic: {text}", note: "{text}" },
     sourcesLabel: "What this answer looked at",
     undo: "Undo",
     undoing: "Undoing…",

@@ -100,17 +100,26 @@ export function cutAtWord(text: string, max: number): string {
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const SPAN = /^\[(\d{1,3}:\d{2}(?::\d{2})?)(?:–(\d{1,3}:\d{2}(?::\d{2})?))?\]/;
 
+/** One source line: `text` is a time range (transcript, speech) or text from the recording (moment, topic, note). */
+export interface SourceLine {
+  kind: "transcript" | "speech" | "moment" | "topic" | "note";
+  text: string;
+}
+
 /**
- * What a tool call looked at, in plain words for the "Sources" list: "Transcript 00:12:04–00:13:10",
- * "Moment: <title>", "Topic: <title>". Calls that changed something (they have Undo) are not sources. No id or tag
+ * What a tool call looked at, for the "Sources" list; the drawer words each kind with `t("ask.source.<kind>")`.
+ * Calls that changed something (they have Undo) are not sources. No id or tag
  * survives, and no title is cut mid-word.
  */
-export function sourceLines(call: AskToolCallRecord): string[] {
+export function sourceLines(call: AskToolCallRecord): SourceLine[] {
   if (call.ok && (call.clipId !== undefined || call.undo !== undefined)) return [];
   const stored = call.result.length >= STORED_RESULT_CHARS;
   const raw = call.result.replace(/<\/?transcript>/gi, "").replace(UUID, "").replace(/[<>]/g, "");
   const rows = raw.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (!call.ok) return [cutAtWord(raw.replace(/^Error:\s*/i, ""), 120)].filter((l) => l.length > 0);
+  if (!call.ok) {
+    const text = cutAtWord(raw.replace(/^Error:\s*/i, ""), 120);
+    return text ? [{ kind: "note", text }] : [];
+  }
 
   const title = (rest: string, last: boolean) => {
     const [head = "", ...why] = rest.split(" — ");
@@ -118,7 +127,7 @@ export function sourceLines(call: AskToolCallRecord): string[] {
     const cut = last && stored && why.length === 0 ? `${head.slice(0, Math.max(0, head.lastIndexOf(" ")))}…` : head;
     return cutAtWord(cut, MAX_SOURCE_TITLE);
   };
-  const lines: string[] = [];
+  const lines: SourceLine[] = [];
   const stamps: string[] = [];
   rows.forEach((row, i) => {
     const m = SPAN.exec(row);
@@ -129,14 +138,14 @@ export function sourceLines(call: AskToolCallRecord): string[] {
     else if (call.name === "list_moments") {
       // The meta ends with the selection status ("; proposed: Title — why"); a title may hold ": " itself.
       const after = /;\s*(?:proposed|approved|skipped):\s*(.*)$/.exec(rest);
-      if (after && m[2]) lines.push(`Moment: ${title(after[1]!, last)}`);
-    } else if (call.name === "list_topics") lines.push(`Topic: ${title(rest, last)}`);
-    else if (m[2]) lines.push(`${call.name === "list_speeches" ? "Speech" : "Transcript"} ${m[1]}–${m[2]}`);
+      if (after && m[2]) lines.push({ kind: "moment", text: title(after[1]!, last) });
+    } else if (call.name === "list_topics") lines.push({ kind: "topic", text: title(rest, last) });
+    else if (m[2]) lines.push({ kind: call.name === "list_speeches" ? "speech" : "transcript", text: `${m[1]}–${m[2]}` });
   });
-  if (stamps.length > 0) lines.push(stamps.length === 1 || stamps[0] === stamps.at(-1) ? `Transcript ${stamps[0]}` : `Transcript ${stamps[0]}–${stamps.at(-1)}`);
-  if (lines.length > 0) return [...new Set(lines)];
+  if (stamps.length > 0) lines.push({ kind: "transcript", text: stamps.length === 1 || stamps[0] === stamps.at(-1) ? stamps[0]! : `${stamps[0]}–${stamps.at(-1)}` });
+  if (lines.length > 0) return [...new Map(lines.map((l) => [`${l.kind}:${l.text}`, l])).values()];
   // Nothing recognisable (no match, a note from the tool): the note itself, in plain words.
-  return rows.length > 0 && !rows.some((r) => SPAN.test(r)) ? [cutAtWord(rows[0]!, 120)] : [];
+  return rows.length > 0 && !rows.some((r) => SPAN.test(r)) ? [{ kind: "note", text: cutAtWord(rows[0]!, 120) }] : [];
 }
 
 /** A pending bulk_selection action's payload: which moments, and the status to set (null clears). */

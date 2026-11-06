@@ -435,8 +435,8 @@ function MessageItem({
           </summary>
           <ul aria-label={t("ask.sourcesLabel")} className="mt-1 grid gap-0.5 pl-4">
             {sources.map((line, i) => (
-              <li key={i} lang={line.startsWith("Transcript") ? undefined : lang} className="break-words">
-                {line}
+              <li key={i} lang={line.kind === "transcript" || line.kind === "speech" ? undefined : lang} dir={line.kind === "transcript" || line.kind === "speech" ? undefined : "auto"} className="break-words">
+                {t(`ask.source.${line.kind}`, { text: line.text })}
               </li>
             ))}
           </ul>

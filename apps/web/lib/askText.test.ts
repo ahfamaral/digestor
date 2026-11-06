@@ -133,16 +133,18 @@ describe("sourceLines", () => {
   const rec = (name: string, result: string, extra: object = {}) => ({ name, args: {}, result, ok: true, ...extra });
   const id = "15b18bfa-9cb2-4f55-88db-bf3bbf49a477";
 
+  const flat = (call: ReturnType<typeof rec>) => sourceLines(call).map((l) => `${l.kind}|${l.text}`);
+
   it("turns tool steps into plain source lines", () => {
     const search = rec("search_transcript", "<transcript>\n[00:12:04–00:13:10] A, B: Rents rose by ten percent.\n\n[00:20:00–00:20:30] A: More.\n</transcript>");
-    expect(sourceLines(search)).toEqual(["Transcript 00:12:04–00:13:10", "Transcript 00:20:00–00:20:30"]);
+    expect(flat(search)).toEqual(["transcript|00:12:04–00:13:10", "transcript|00:20:00–00:20:30"]);
     const moments = rec("list_moments", `<transcript>\n${id} [00:10:00–00:10:40] exchange; relevance 90; highlights: Heated; speakers A; proposed: The clash — Sharp words.\n</transcript>`);
-    expect(sourceLines(moments)).toEqual(["Moment: The clash"]);
+    expect(flat(moments)).toEqual(["moment|The clash"]);
     const transcript = rec("get_transcript", "<transcript>\n[00:01:00] A: One.\n[00:01:05] B: Two.\n[00:01:30] A: Three.\n</transcript>");
-    expect(sourceLines(transcript)).toEqual(["Transcript 00:01:00–00:01:30"]);
+    expect(flat(transcript)).toEqual(["transcript|00:01:00–00:01:30"]);
     const topics = rec("list_topics", "[00:00:00–00:20:00] Housing — Rents.");
-    expect(sourceLines(topics)).toEqual(["Topic: Housing"]);
-    for (const line of [...sourceLines(search), ...sourceLines(moments), ...sourceLines(transcript)]) {
+    expect(flat(topics)).toEqual(["topic|Housing"]);
+    for (const line of [...flat(search), ...flat(moments), ...flat(transcript)]) {
       expect(line).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
       expect(line).not.toMatch(/[<>]/);
     }
@@ -152,9 +154,9 @@ describe("sourceLines", () => {
     expect(sourceLines(rec("set_selection", "Set 2 moments to approved.", { undo: { [id]: null } }))).toEqual([]);
     expect(sourceLines(rec("propose_clip", "Clip created.", { clipId: "c" }))).toEqual([]);
     const long = `${id} [00:10:00–00:10:40] passage; highlights: Key point; proposed: ${"extraordinarily ".repeat(12)}end — why`;
-    const [line] = sourceLines(rec("list_moments", `<transcript>\n${long}\n</transcript>`));
-    expect(line!.endsWith("…")).toBe(true);
-    expect(line!.slice(0, -1).trimEnd().split(" ").every((w, i) => i === 0 || w === "extraordinarily")).toBe(true);
+    const line = sourceLines(rec("list_moments", `<transcript>\n${long}\n</transcript>`))[0]!.text;
+    expect(line.endsWith("…")).toBe(true);
+    expect(line.slice(0, -1).trimEnd().split(" ").every((w, i) => i === 0 || w === "extraordinarily")).toBe(true);
     expect(cutAtWord("alpha beta gamma", 9)).toBe("alpha…");
     expect(cutAtWord("short", 9)).toBe("short");
   });
@@ -162,12 +164,12 @@ describe("sourceLines", () => {
   it("a result cut by storage at 300 characters loses only the broken end of its last title", () => {
     const line = (n: number) => `${id} [00:0${n}:00–00:0${n}:40] passage; relevance 5${n}; proposed: The mayor promised cheaper housing number ${n} — why`;
     const stored = `<transcript>\n${[1, 2, 3].map(line).join("\n")}`.slice(0, 300);
-    const lines = sourceLines(rec("list_moments", stored));
-    expect(lines.slice(0, 2)).toEqual(["Moment: The mayor promised cheaper housing number 1", "Moment: The mayor promised cheaper housing number 2"]);
-    for (const l of lines.slice(2)) expect(l).toMatch(/^Moment: The mayor promised( cheaper)?( housing)?…?$/);
+    const lines = flat(rec("list_moments", stored));
+    expect(lines.slice(0, 2)).toEqual(["moment|The mayor promised cheaper housing number 1", "moment|The mayor promised cheaper housing number 2"]);
+    for (const l of lines.slice(2)) expect(l).toMatch(/^moment\|The mayor promised( cheaper)?( housing)?…?$/);
   });
 
   it("falls back to plain text for an error result", () => {
-    expect(sourceLines({ name: "get_transcript", args: {}, result: "Error: Ask for at most 10 minutes at a time.", ok: false })).toEqual(["Ask for at most 10 minutes at a time."]);
+    expect(sourceLines({ name: "get_transcript", args: {}, result: "Error: Ask for at most 10 minutes at a time.", ok: false })).toEqual([{ kind: "note", text: "Ask for at most 10 minutes at a time." }]);
   });
 });
