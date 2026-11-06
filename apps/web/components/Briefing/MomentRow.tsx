@@ -8,6 +8,7 @@ import { HighlightChip } from "@/components/HighlightChip";
 import { PersonalMarker } from "./PersonalMarker";
 import { SpeakerName } from "@/components/Names/SpeakerName";
 import type { NamesData, Voice } from "@/lib/names";
+import { insideApproved } from "@/lib/briefingData";
 import type { MomentView } from "@/lib/briefingFilters";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -44,6 +45,9 @@ export interface RowContext {
   voices: Record<string, Voice[]>;
   sensitive: boolean;
   errors: Record<string, string>;
+  /** Approved moment ids and the shown tree, for "Inside an approved exchange". */
+  approvedIds: ReadonlySet<string>;
+  views: MomentView[];
   onStatus: (id: string, status: SelectionStatus) => void;
   onPlay: (id: string) => void;
 }
@@ -75,6 +79,7 @@ export function MomentRow({
   const src = `/api/files/${ctx.sessionId}/proxy.mp4#t=${(m.startMs / 1000).toFixed(1)},${(m.endMs / 1000).toFixed(1)}`;
   const playerLabel = t("preview.playerLabel", { title: m.title });
   const status = view.status ?? "proposed";
+  const inside = view.status === "approved" ? insideApproved(m.id, ctx.approvedIds, ctx.views) : null;
 
   return (
     <li
@@ -146,6 +151,9 @@ export function MomentRow({
               {t(STATUS_TEXT[status])}
             </span>
           </div>
+          {inside && (
+            <p className="mt-1 text-xs font-medium text-green-800">{t(inside === "exchange" ? "briefing.insideApprovedExchange" : "briefing.insideApprovedPassage")}</p>
+          )}
           {m.why && <p className="mt-1 text-xs text-muted-foreground">{t("preview.why", { why: m.why })}</p>}
           {excerpt && (
             <>

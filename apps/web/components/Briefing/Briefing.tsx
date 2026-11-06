@@ -145,6 +145,7 @@ export function Briefing(props: BriefingProps) {
   const shown = useMemo(() => flattenViews(views).length, [views]);
   const titleOf = useMemo(() => new Map(moments.map((m) => [m.id, m.title])), [moments]);
   const approved = useMemo(() => approvedMomentIds(moments, statuses), [moments, statuses]);
+  const approvedSet = useMemo(() => new Set(approved), [approved]);
   const hiddenApproved = useMemo(() => hiddenApprovedCount(views, approved), [views, approved]);
   const levelCounts = useMemo(
     () => Object.fromEntries(LEVELS.map((g) => [g, moments.filter((m) => m.granularity === g).length])) as Record<Granularity, number>,
@@ -210,6 +211,8 @@ export function Briefing(props: BriefingProps) {
     voices,
     sensitive,
     errors,
+    approvedIds: approvedSet,
+    views,
     onStatus: setStatus,
     onPlay: (id) => setPlaying((p) => (p === id ? null : id)),
   };

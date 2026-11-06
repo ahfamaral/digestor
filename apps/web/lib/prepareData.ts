@@ -212,3 +212,28 @@ export function applyToAll(clips: SharedClip[], key: SharedKey, shared: string |
 export function languageTargets(clips: { id: string; languages: string[]; frozen?: boolean }[], code: string): string[] {
   return clips.filter((c) => !c.frozen && !c.languages.includes(code)).map((c) => c.id);
 }
+
+/** A clip's state from its export checklist (the same items Export uses): ready, or how many are still to do. */
+export type ClipStatus = { ready: true } | { ready: false; todo: number };
+
+export function clipStatus(items: readonly { id?: string; ok: boolean }[]): ClipStatus {
+  const todo = items.filter((i) => !i.ok).length;
+  return todo === 0 ? { ready: true } : { ready: false, todo };
+}
+
+/**
+ * For clips in Prepare order: the number (1-based) of the tightest other clip that fully contains each clip
+ * (an equal range counts for the earlier clip only), or null.
+ */
+export function insideClip(clips: { startMs: number; endMs: number }[]): (number | null)[] {
+  return clips.map((c, i) => {
+    let best: number | null = null;
+    clips.forEach((o, j) => {
+      if (j === i || o.startMs > c.startMs || o.endMs < c.endMs) return;
+      const same = o.startMs === c.startMs && o.endMs === c.endMs;
+      if (same && j > i) return;
+      if (best === null || o.endMs - o.startMs < clips[best]!.endMs - clips[best]!.startMs) best = j;
+    });
+    return best === null ? null : best + 1;
+  });
+}

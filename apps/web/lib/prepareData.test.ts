@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll, sharedValue, applyToAll, languageTargets } from "./prepareData";
+import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll, sharedValue, applyToAll, languageTargets, clipStatus, insideClip } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -196,5 +196,40 @@ describe("For all clips", () => {
       { id: "d", languages: [] },
     ];
     expect(languageTargets(clips, "pt")).toEqual(["a", "d"]);
+  });
+});
+
+describe("clipStatus", () => {
+  it("is ready when every checklist item holds", () => {
+    expect(clipStatus([{ id: "checks", ok: true }, { id: "speaker", ok: true }])).toEqual({ ready: true });
+  });
+  it("counts the items still to do", () => {
+    expect(clipStatus([{ id: "checks", ok: false }, { id: "speaker", ok: true }, { id: "credit", ok: false }])).toEqual({ ready: false, todo: 2 });
+  });
+  it("is ready for an empty checklist", () => {
+    expect(clipStatus([])).toEqual({ ready: true });
+  });
+});
+
+describe("insideClip", () => {
+  it("gives the number (1-based, list order) of the clip that fully contains each clip", () => {
+    const clips = [
+      { startMs: 0, endMs: 100_000 },
+      { startMs: 10_000, endMs: 20_000 },
+      { startMs: 90_000, endMs: 120_000 },
+      { startMs: 200_000, endMs: 210_000 },
+    ];
+    expect(insideClip(clips)).toEqual([null, 1, null, null]);
+  });
+  it("takes the tightest container", () => {
+    const clips = [
+      { startMs: 0, endMs: 100_000 },
+      { startMs: 10_000, endMs: 50_000 },
+      { startMs: 20_000, endMs: 30_000 },
+    ];
+    expect(insideClip(clips)).toEqual([null, 1, 2]);
+  });
+  it("a clip sharing an edge counts as inside; partial overlap does not", () => {
+    expect(insideClip([{ startMs: 0, endMs: 50_000 }, { startMs: 0, endMs: 20_000 }, { startMs: 40_000, endMs: 60_000 }])).toEqual([null, 1, null]);
   });
 });

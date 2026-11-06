@@ -83,3 +83,24 @@ export function earlierSelections(
   if (other.length === 0) return null;
   return { count: other.reduce((n, r) => n + r.count, 0), version: Math.max(...other.map((r) => r.version)) };
 }
+
+/**
+ * The granularity of the nearest approved moment above `momentId` in the shown tree (null: none, or the moment isn't
+ * shown). The moment's own approval doesn't count.
+ */
+export function insideApproved(
+  momentId: string,
+  approvedIds: ReadonlySet<string>,
+  tree: { moment: { id: string; granularity: string }; children: unknown[] }[],
+): string | null {
+  type Node = (typeof tree)[number];
+  const walk = (nodes: Node[], nearest: string | null): string | null | undefined => {
+    for (const n of nodes) {
+      if (n.moment.id === momentId) return nearest;
+      const found = walk(n.children as Node[], approvedIds.has(n.moment.id) ? n.moment.granularity : nearest);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  return walk(tree, null) ?? null;
+}

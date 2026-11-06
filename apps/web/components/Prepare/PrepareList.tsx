@@ -14,7 +14,7 @@ import { BackLink } from "@/components/BackLink";
 import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { addTrack, fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
-import { checksToPoll, mergePairs, sharedValue, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
+import { checksToPoll, clipStatus, insideClip, mergePairs, sharedValue, type ClipStatus, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
 import { runForAll } from "@/lib/forAllRun";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,9 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ApprovalDismissed } from "@/components/ApprovalDismissed";
 import { ChecksPanel } from "./ChecksPanel";
 import { Checklist } from "./Checklist";
+import { ClipIndex } from "./ClipIndex";
+import { ClipStatusBadge } from "./ClipStatusBadge";
+import { ChevronRightIcon } from "lucide-react";
 import { FormatPicker, cropPosition } from "./FormatPicker";
 import { ForAllClips, type ForAllRun } from "./ForAllClips";
 import { SubtitlesPanel } from "./SubtitlesPanel";
@@ -199,6 +202,11 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     return outcome.failed;
   }
 
+  /** Cards the journalist opened or closed; a card without an entry is open unless it was ready when the page loaded. */
+  const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
+  /** After a merge: the surviving card's heading takes focus once the absorbed card is gone. */
+  const pendingFocus = useRef<{ id: string; gone: string } | null>(null);
+
   /** The two clip ids the open merge dialog is about (never an index: the list can change under it). */
   const [mergeIds, setMergeIds] = useState<[string, string] | null>(null);
   const pairs = session.videoRemoved ? new Map<number, number>() : mergePairs(items.map((i) => i.clip));
@@ -220,6 +228,8 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
       end: formatTimestamp(Math.max(mergeA.clip.endMs, mergeB.clip.endMs), { tenths: true }),
     }));
     setMergeIds(null);
+    setOpenOverride((o) => ({ ...o, [mergeA.clip.id]: true }));
+    pendingFocus.current = { id: mergeA.clip.id, gone: mergeB.clip.id };
     router.refresh();
   }
 
@@ -343,6 +353,51 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     isExportReady({ dismissed: i.dismissed, failing: checklists.get(i.clip.id)!.filter((x) => !x.ok).map((x) => x.id) }),
   ).length;
 
+  const statusOf = (id: string): ClipStatus => clipStatus(checklists.get(id)!);
+  // Ready cards start collapsed to one line; later readiness changes don't move cards under the journalist's hands.
+  const [initiallyReady] = useState(() => new Set(items.filter((i) => statusOf(i.clip.id).ready && !i.dismissed).map((i) => i.clip.id)));
+  const isOpen = (id: string) => openOverride[id] ?? !initiallyReady.has(id);
+  const insideOf = insideClip(items.map((i) => i.clip));
+
+  const focusHeading = (id: string, scroll: boolean) => {
+    const h = document.getElementById(`clip-h-${id}`);
+    if (!h) return;
+    if (scroll) document.getElementById(`clip-${id}`)?.scrollIntoView({ block: "start" });
+    h.focus({ preventScroll: true });
+  };
+
+  // `#clip-<id>` (an index link, or Export's "Fix in Prepare clips"): the hash never reaches the server, so read it here.
+  // The card opens, then scrolls into view and its heading takes focus.
+  const hashTarget = useRef<string | null>(null);
+  useEffect(() => {
+    const read = () => {
+      const m = /^#clip-(.+)$/.exec(window.location.hash);
+      if (!m) return;
+      hashTarget.current = m[1]!;
+      setOpenOverride((o) => ({ ...o, [m[1]!]: true }));
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  useEffect(() => {
+    const id = hashTarget.current;
+    if (!id) return;
+    hashTarget.current = null;
+    requestAnimationFrame(() => focusHeading(id, true));
+  });
+
+  useEffect(() => {
+    const p = pendingFocus.current;
+    if (!p || mergeIds || items.some((i) => i.clip.id === p.gone)) return;
+    // Wait for the dialog to hand focus back before taking it.
+    const timer = setTimeout(() => {
+      pendingFocus.current = null;
+      focusHeading(p.id, false);
+    }, 200);
+    return () => clearTimeout(timer);
+  });
+
   return (
     <>
       <AppBar current="Prepare" session={{ id: session.id, ready: true }} facts={{ hasClips: items.length > 0, allReadyRendered: false }} />
@@ -386,12 +441,21 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
             </Link>
           </div>
         ) : (
+          <div className="lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start lg:gap-5">
+          <ClipIndex
+            language={lang}
+            entries={items.map((i, n) => ({ id: i.clip.id, n: n + 1, title: i.title, startMs: i.clip.startMs, status: statusOf(i.clip.id), dismissed: i.dismissed }))}
+          />
           <ol className="grid gap-4">
             {items.map((item, n) => (
               <Fragment key={item.clip.id}>
               <ClipCard
                 n={n + 1}
                 item={item}
+                status2={statusOf(item.clip.id)}
+                inside={insideOf[n] ?? null}
+                open={isOpen(item.clip.id)}
+                onToggle={() => setOpenOverride((o) => ({ ...o, [item.clip.id]: !isOpen(item.clip.id) }))}
                 session={session}
                 defaultCredit={defaultCredit}
                 names={names}
@@ -427,6 +491,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
               </Fragment>
             ))}
           </ol>
+          </div>
         )}
 
         {mergeIds && mergeA && mergeB && (
@@ -463,12 +528,24 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
         <footer className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
             <span className="text-sm font-medium text-muted-foreground">{t("prepare.readyCount", { n: readyCount, total: items.length })}</span>
-            <Link
-              href={`/s/${session.id}/export`}
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
-            >
-              {t("prepare.exportReady")}
-            </Link>
+            {readyCount === 0 ? (
+              <button
+                type="button"
+                aria-disabled="true"
+                title={t("prepare.exportNone")}
+                onClick={(e) => e.preventDefault()}
+                className="inline-flex h-9 cursor-not-allowed items-center rounded-lg bg-disabled px-4 text-sm font-semibold text-disabled-foreground outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
+              >
+                {t("prepare.exportReady")}
+              </button>
+            ) : (
+              <Link
+                href={`/s/${session.id}/export`}
+                className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
+              >
+                {t("prepare.exportReady")}
+              </Link>
+            )}
           </div>
         </footer>
       </main>
@@ -479,6 +556,11 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
 interface ClipCardProps {
   n: number;
   item: Item;
+  status2: ClipStatus;
+  /** The number of the clip that contains this one, if any. */
+  inside: number | null;
+  open: boolean;
+  onToggle: () => void;
   session: PrepareListProps["session"];
   defaultCredit: string;
   names: NamesData;
@@ -496,7 +578,7 @@ interface ClipCardProps {
 }
 
 function ClipCard({
-  n, item, session, defaultCredit, names, creditDiffers, formatDiffers, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
+  n, item, status2, inside, open, onToggle, session, defaultCredit, names, creditDiffers, formatDiffers, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
 }: ClipCardProps) {
   const { clip, title } = item;
   // R30: once the video is removed the clip is frozen; only the acknowledgements can change.
@@ -506,6 +588,7 @@ function ClipCard({
   const [cropDraft, setCropDraft] = useState<number | null>(null);
   const cropOffset = cropDraft ?? clip.cropOffset;
   const headingId = `clip-h-${clip.id}`;
+  const bodyId = `clip-body-${clip.id}`;
 
   const commitBounds = (r: Range, opts: { free: boolean }) =>
     onChange(
@@ -533,18 +616,35 @@ function ClipCard({
   useEffect(() => () => crop.cancel(), [crop]);
 
   return (
-    <li>
+    <li id={`clip-${clip.id}`} className="scroll-mt-20">
       <article aria-labelledby={headingId} className="rounded-xl border border-border bg-white p-3 sm:p-4">
-        <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
+        <header className={cn("flex flex-wrap items-start justify-between gap-2", open && "mb-3")}>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-controls={bodyId}
+            aria-label={open ? t("prepare.collapseClip", { n }) : t("prepare.expandClip", { n })}
+            className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md border border-border bg-white outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <ChevronRightIcon aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+          </button>
+          <div className="min-w-0 flex-1">
             <p className="font-mono text-xs text-muted-foreground">
               {t("prepare.clipHeading", { n })} ·{" "}
               {t("prepare.clipLength", { start: formatTimestamp(clip.startMs), length: formatLength(clip.endMs - clip.startMs) })}
             </p>
-            <h2 id={headingId} lang={lang} dir="auto" className="text-[15px] font-bold break-words">
+            <h2
+              id={headingId}
+              tabIndex={-1}
+              lang={lang}
+              dir="auto"
+              className="rounded-sm text-[15px] font-bold break-words outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
               {title || t("prepare.clipHeading", { n })}
             </h2>
-            {item.mergedCount > 1 && (
+            {inside !== null && <p className="font-mono text-xs text-muted-foreground">{t("prepare.insideClip", { n: inside })}</p>}
+            {open && item.mergedCount > 1 && (
               <p className="font-mono text-xs text-muted-foreground">{t("prepare.mergedFrom", { n: item.mergedCount })}</p>
             )}
             {item.dismissed && (
@@ -552,7 +652,7 @@ function ClipCard({
                 <ApprovalDismissed id={`${headingId}-dismissed`} />
               </p>
             )}
-            {item.voices.length > 0 && (
+            {open && item.voices.length > 0 && (
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                 <span className="sr-only">{t("briefing.speakers")}: </span>
                 {item.voices.map((v) => (
@@ -570,7 +670,8 @@ function ClipCard({
               </p>
             )}
           </div>
-          <button
+          <ClipStatusBadge status={status2} dismissed={item.dismissed} className="mt-1" />
+          {open && <button
             type="button"
             onClick={onUndo}
             disabled={!item.undo || busy || frozen}
@@ -579,10 +680,11 @@ function ClipCard({
             className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
           >
             {undoLabel(item.undo)}
-          </button>
+          </button>}
         </header>
 
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <div id={bodyId} hidden={!open}>
+        {open && <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           <div className="grid content-start gap-3">
             <ClipPlayer
               sessionId={session.id}
@@ -682,6 +784,7 @@ function ClipCard({
               onProtected={(v) => void onChange({ protectedAck: v })}
             />
           </div>
+        </div>}
         </div>
       </article>
     </li>

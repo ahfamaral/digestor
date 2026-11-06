@@ -238,7 +238,7 @@ function ClipRow({
               ),
             )}
           </ul>
-          <Link href={`/s/${sessionId}/prepare`} className="mt-1.5 inline-block text-foreground underline underline-offset-2">
+          <Link href={`/s/${sessionId}/prepare#clip-${clip.id}`} className="mt-1.5 inline-block text-foreground underline underline-offset-2">
             {t("exportScreen.fixInPrepare")}
           </Link>
         </div>

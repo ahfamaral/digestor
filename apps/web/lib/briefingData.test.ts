@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Word } from "@digestor/core";
-import { earlierSelections, focusOptions, momentExcerpt } from "./briefingData";
+import { earlierSelections, focusOptions, insideApproved, momentExcerpt } from "./briefingData";
 import type { Attribution, Person } from "@digestor/core";
 
 const w = (text: string, startS: number, speaker = "A"): Word => ({
@@ -92,5 +92,23 @@ describe("earlierSelections", () => {
     expect(earlierSelections(rows, "v3")).toEqual({ count: 5, version: 2 });
     expect(earlierSelections(rows.slice(2), "v3")).toBeNull();
     expect(earlierSelections([], "v3")).toBeNull();
+  });
+});
+
+describe("insideApproved", () => {
+  const v = (id: string, granularity: "exchange" | "passage" | "punchline", children: unknown[] = []) => ({
+    moment: { id, granularity }, children,
+  });
+  const tree = [v("e1", "exchange", [v("p1", "passage", [v("k1", "punchline")]), v("p2", "passage")]), v("e2", "exchange")];
+
+  it("is the granularity of the nearest approved ancestor", () => {
+    expect(insideApproved("k1", new Set(["e1", "p1"]), tree)).toBe("passage");
+    expect(insideApproved("k1", new Set(["e1"]), tree)).toBe("exchange");
+    expect(insideApproved("p2", new Set(["e1", "p2"]), tree)).toBe("exchange");
+  });
+  it("is null with no approved ancestor (the moment's own approval does not count)", () => {
+    expect(insideApproved("k1", new Set(["k1", "e2"]), tree)).toBeNull();
+    expect(insideApproved("e1", new Set(["e1"]), tree)).toBeNull();
+    expect(insideApproved("missing", new Set(["e1"]), tree)).toBeNull();
   });
 });
