@@ -44,8 +44,13 @@ export interface FocusContext {
   peopleByMoment: Map<string, Set<string>>;
 }
 
-/** Every filter except the levels (speaker, person, relevance, types, status). `sticky` skips the status filter only. */
+/**
+ * Every filter except the levels (speaker, person, relevance, types, status). `sticky` skips the status filter only.
+ * An approved moment skips the content filters too: approved work is never hidden by a filter (only by the status tab).
+ */
 function passesContent(m: MomentWithHighlights, status: SelectionStatus | null, f: BriefingFilters, ctx: FocusContext, sticky: boolean): boolean {
+  const approved: boolean = status === "approved";
+  if (approved) return sticky || f.show !== "skipped";
   if (f.person !== null && !ctx.peopleByMoment.get(m.id)?.has(f.person)) return false;
   if (f.speaker !== null && !m.speakers.includes(f.speaker)) return false;
   // Counted values aren't AI judgments, and Ask/user moments carry no score: the relevance floor is for model-scored picks.

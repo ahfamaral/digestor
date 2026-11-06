@@ -1,6 +1,6 @@
 import { HIGHLIGHT_TYPES, formatTimestamp, type HighlightTypeId } from "@digestor/core";
 import { TONE_DOT } from "@/components/HighlightChip";
-import type { TimelineBand, TimelinePin } from "@/lib/timeline";
+import { PIN_PX, type TimelineBand, type TimelinePin } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
@@ -55,7 +55,7 @@ export function Timeline({
               );
             })}
           </div>
-          <div className="relative mt-0.5 h-5">
+          <div className="relative mt-0.5" style={{ height: `${(Math.max(0, ...pins.map((p) => p.row), 0) + 1) * PIN_PX}px` }}>
             {pins.map((p) => (
               <button
                 key={`${p.momentId}:${p.type}`}
@@ -63,8 +63,8 @@ export function Timeline({
                 onClick={() => onPin(p.momentId)}
                 aria-label={t("preview.timelinePin", { type: t(`highlight.${p.type}`), title: p.title, time: formatTimestamp(p.startMs) })}
                 title={[t(`highlight.${p.type}`), formatTimestamp(p.startMs), ...(p.people.length > 0 ? [p.people.join(", ")] : [])].join(" · ")}
-                style={{ left: `${p.leftPct}%` }}
-                className={cn("absolute top-0 grid size-5 -translate-x-1/2 place-items-center rounded-full", FOCUS)}
+                style={{ left: `${p.leftPct}%`, top: `${p.row * PIN_PX}px` }}
+                className={cn("absolute grid size-5 -translate-x-1/2 place-items-center rounded-full", FOCUS)}
               >
                 <span aria-hidden className={cn("size-3 rounded-full border-2 border-white shadow-[0_0_0_1px_var(--border)]", TONE_DOT[HIGHLIGHT_TYPES[p.type].tone])} />
               </button>

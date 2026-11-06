@@ -104,10 +104,12 @@ export function attributionsAt(history: Attribution[], at: Date): Attribution[] 
     .map((a) => ({ ...a, supersededAt: null }));
 }
 
-/** What a resolution means for AI text: a person, "no name", or nothing usable (unnamed or a conflict). Confirming does not change it. */
+/**
+ * What a resolution means for AI text: a person, or no name. "No name" (anonymous), unnamed and a conflict all read
+ * the same to the text, which had no name to use, so choosing "No name" for an unnamed voice is no change.
+ */
 function textKey(res: Resolution): string {
-  if (res.kind === "named") return `person:${res.personId}`;
-  return res.kind === "anonymous" ? "anonymous" : "none";
+  return res.kind === "named" ? `person:${res.personId}` : "none";
 }
 
 /**

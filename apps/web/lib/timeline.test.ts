@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MIN_BAND_PCT, buildTimeline } from "./timeline";
+import { MIN_BAND_PCT, PIN_PX, TRACK_PX, buildTimeline } from "./timeline";
 
 const topic = (id: string, startMs: number, endMs: number) => ({ id, title: id, startMs, endMs });
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -39,10 +39,11 @@ describe("buildTimeline", () => {
       ],
       600_000,
     );
+    const half = (PIN_PX / 2 / TRACK_PX) * 100; // the end pins are pulled in so they stay whole
     expect(pins).toEqual([
-      { momentId: "m1", type: "heated", leftPct: 25 },
-      { momentId: "m2", type: "key_point", leftPct: 0 },
-      { momentId: "m3", type: "light", leftPct: 100 },
+      { momentId: "m1", type: "heated", leftPct: 25, row: 0 },
+      { momentId: "m2", type: "key_point", leftPct: half, row: 0 },
+      { momentId: "m3", type: "light", leftPct: 100 - half, row: 0 },
     ]);
   });
 
@@ -65,6 +66,28 @@ describe("buildTimeline", () => {
     expect(pins[1]!.leftPct).toBeCloseTo(c!.leftPct + c!.widthPct / 2, 9);
     // outside every topic: falls back to start / duration
     expect(pins[2]!.leftPct).toBeCloseTo(((2 * hour + 300_000) / (5 * hour)) * 100, 9);
+  });
+
+  it("keeps pins inside the track and spreads pins that would overlap", () => {
+    const hour = 3_600_000;
+    const halfPct = (PIN_PX / 2 / TRACK_PX) * 100;
+    const { pins } = buildTimeline(
+      [topic("a", 0, 2 * hour)],
+      [
+        { type: "heated", moment: { id: "m0", startMs: 0 } },
+        { type: "light", moment: { id: "m1", startMs: 1_000 } },
+        { type: "key_point", moment: { id: "m2", startMs: 2 * hour - 1 } },
+      ],
+      2 * hour,
+    );
+    for (const p of pins) {
+      expect(p.leftPct).toBeGreaterThanOrEqual(halfPct - 1e-9);
+      expect(p.leftPct).toBeLessThanOrEqual(100 - halfPct + 1e-9);
+    }
+    const [a, b] = pins;
+    const apart = Math.abs(a!.leftPct - b!.leftPct) >= (PIN_PX / TRACK_PX) * 100 - 1e-9;
+    expect(apart || a!.row !== b!.row).toBe(true);
+    expect(pins[2]!.row).toBe(0);
   });
 });
 

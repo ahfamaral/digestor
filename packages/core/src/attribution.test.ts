@@ -171,6 +171,13 @@ describe("namesChangedSince", () => {
     const anon = row({ id: "h", speakerId: "A", personId: null, source: "human", status: "anonymous", createdAt: t(40) });
     expect(namesChangedSince([proposal, anon], at)).toBe(true);
   });
+  it("a 'No name' choice is not a name change", () => {
+    const anonA = row({ id: "h", speakerId: "A", personId: null, source: "human", status: "anonymous", createdAt: t(40) });
+    const anonB = row({ id: "h2", speakerId: "B", personId: null, source: "human", status: "anonymous", createdAt: t(41) });
+    expect(namesChangedSince([anonA, anonB], at)).toBe(false); // nobody was named then, nobody is named now
+    const typed = row({ id: "h3", speakerId: "B", personId: "P3", source: "human", status: "confirmed", createdAt: t(42) });
+    expect(namesChangedSince([anonA, typed], at)).toBe(true);
+  });
   it("a change made before the analysis is no change", () => {
     const rename = row({ id: "h", speakerId: "A", personId: "P2", source: "human", status: "confirmed", createdAt: t(10) });
     expect(namesChangedSince([proposal, rename], at)).toBe(false);

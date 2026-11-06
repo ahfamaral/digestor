@@ -213,10 +213,13 @@ describe("approved work is never invisible (Ruling R23)", () => {
     ]);
   });
 
-  it("other filters still apply to approved moments", () => {
+  it("focus, type and relevance filters do not hide approved moments either", () => {
     const sel: Record<string, SelectionStatus> = { pu1: "approved" };
-    // pu1 is Speaker B only: Focus A hides it, and that is what the hidden count is for
-    expect(shape(filterMoments(all, sel, f({ levels: ["passage"], speaker: "A" }), topics)).map(([id]) => id)).not.toContain("pu1");
+    // pu1 is Speaker B only, a quotable at 70: Focus A still lists it
+    const ids = (fl: Partial<BriefingFilters>) => shape(filterMoments(all, sel, f({ levels: ["passage"], ...fl }), topics)).flatMap(function walk([id, kids]): string[] { return [id, ...(kids as typeof kids).flatMap(walk)]; });
+    expect(ids({ speaker: "A" })).toContain("pu1");
+    expect(ids({ types: ["heated"] })).toContain("pu1");
+    expect(ids({ minRelevance: 95 })).toContain("pu1");
   });
 
   it("show=approved lists the approved moments, nested under approved ancestors, by topic then start", () => {
@@ -233,8 +236,8 @@ describe("approved work is never invisible (Ruling R23)", () => {
     const sel: Record<string, SelectionStatus> = { pa1: "approved", pu1: "approved", ex2: "approved" };
     const ids = ["pa1", "pu1", "ex2"];
     expect(hiddenApprovedCount(filterMoments(all, sel, f(), topics), ids)).toBe(0);
-    expect(hiddenApprovedCount(filterMoments(all, sel, f({ speaker: "A" }), topics), ids)).toBe(1); // pu1 (B)
-    expect(hiddenApprovedCount(filterMoments(all, sel, f({ types: ["light"] }), topics), ids)).toBe(3);
+    expect(hiddenApprovedCount(filterMoments(all, sel, f({ speaker: "A" }), topics), ids)).toBe(0); // pu1 (B) stays
+    expect(hiddenApprovedCount(filterMoments(all, sel, f({ types: ["light"] }), topics), ids)).toBe(0);
     expect(hiddenApprovedCount(filterMoments(all, sel, f({ show: "skipped" }), topics), ids)).toBe(3);
     expect(SHOW_HIDDEN_FILTERS).toEqual({ ...DEFAULT_FILTERS, show: "approved" });
     expect(hiddenApprovedCount(filterMoments(all, sel, SHOW_HIDDEN_FILTERS, topics), ids)).toBe(0);
@@ -355,5 +358,15 @@ describe("person focus", () => {
     const both = fromSearchParams(new URLSearchParams("p=P&s=B"), { persons: ["P"] });
     expect(both.person).toBe("P");
     expect(both.speaker).toBeNull();
+  });
+
+  it("never hides an approved moment, whatever the type, level, focus or relevance filters", () => {
+    const all = [ex1, pa2];
+    const sel: Record<string, SelectionStatus> = { pa2: "approved" }; // pa2: dodge, relevance 30, speaker A, passage
+    const f: BriefingFilters = { ...DEFAULT_FILTERS, types: ["key_point"], levels: ["exchange"], minRelevance: 70, speaker: "B" };
+    const views = filterMoments(all, sel, f, topics);
+    const ids = views.flatMap((v) => [v.moment.id, ...v.children.map((c) => c.moment.id)]);
+    expect(ids).toContain("pa2");
+    expect(hiddenApprovedCount(views, ["pa2"])).toBe(0);
   });
 });
