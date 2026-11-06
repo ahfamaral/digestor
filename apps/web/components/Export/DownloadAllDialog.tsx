@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Busy } from "@/components/ui/spinner";
 import { t } from "@/lib/i18n";
 import { zipClipOf, zipEntries, ZIP_CHOICES, type ZipChoice } from "@/lib/zipNames";
 import type { ExportClipData } from "@/components/ExportList";
@@ -17,13 +18,61 @@ export function DownloadAllDialog({ sessionId, clips }: { sessionId: string; cli
   const first = ZIP_CHOICES.find((c) => plans[c].entries.length > 0) ?? null;
   const [picked, setPicked] = useState<ZipChoice | null>(null);
   const choice = picked && plans[picked].entries.length > 0 ? picked : first;
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function onOpenChange(next: boolean) {
+    if (starting && !next) return;
+    setOpen(next);
+    if (!next) setError(null);
+  }
+
+  /** Asks the server first (same checks, nothing streamed), so a failure shows here and not as a raw page; then a normal browser download. */
+  async function download() {
+    if (choice === null || starting) return;
+    const href = `/api/sessions/${sessionId}/download?choice=${choice}`;
+    setStarting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${href}&check=1`, { cache: "no-store" });
+      if (!res.ok) {
+        setError(res.status === 409 ? t("exportScreen.nothingToDownload") : t("exportScreen.zipFailed"));
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = "";
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setOpen(false);
+    } catch {
+      setError(t("exportScreen.zipFailed"));
+    } finally {
+      setStarting(false);
+    }
+  }
 
   return (
     <>
-      <Button type="button" variant="outline" className="h-9 px-4 font-semibold" disabled={first === null} onClick={() => setOpen(true)}>
-        {t("exportScreen.downloadAll")}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <div className="flex flex-col items-start gap-1 sm:items-end">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 px-4 font-semibold"
+          disabled={first === null}
+          aria-describedby={first === null ? "download-all-hint" : undefined}
+          onClick={() => setOpen(true)}
+        >
+          {t("exportScreen.downloadAll")}
+        </Button>
+        {first === null && (
+          <p id="download-all-hint" className="text-xs text-muted-foreground">
+            {t("exportScreen.nothingToDownload")}
+          </p>
+        )}
+      </div>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>{t("exportScreen.downloadAllTitle")}</DialogTitle>
@@ -61,18 +110,19 @@ export function DownloadAllDialog({ sessionId, clips }: { sessionId: string; cli
               </ul>
             </div>
           )}
+          {error && (
+            <p role="alert" className="text-xs text-red-700">
+              {error}
+            </p>
+          )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" disabled={starting} onClick={() => onOpenChange(false)}>
               {t("exportScreen.cancel")}
             </Button>
             {choice !== null && (
-              <a
-                href={`/api/sessions/${sessionId}/download?choice=${choice}`}
-                onClick={() => setOpen(false)}
-                className="inline-flex h-8 items-center justify-center rounded-lg bg-brand px-2.5 text-sm font-medium text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                {t("exportScreen.downloadZip")}
-              </a>
+              <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90" disabled={starting} onClick={() => void download()}>
+                <Busy busy={starting}>{starting ? t("exportScreen.downloadingZip") : t("exportScreen.downloadZip")}</Busy>
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>

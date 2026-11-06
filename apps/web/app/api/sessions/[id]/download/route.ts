@@ -77,18 +77,8 @@ function zipStream(sources: Source[]): ReadableStream<Uint8Array> {
 
 const exists = (p: string) => stat(p).then((s) => s.isFile(), () => false);
 
-/**
- * GET /api/sessions/[id]/download?choice=burned|files|plain — a zip of files that are already stored: `burned` the
- * subtitle videos (one per language), `files` the plain videos plus SRT/VTT rendered from the cues, `plain` the plain
- * videos. Nothing is rendered here. 409 "Nothing to download yet." when the zip would be empty. Kept clips of a
- * session whose video was removed still download (R30).
- */
-export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { id } = await ctx.params;
-  if (!isUuid(id)) return errorResponse(404, "Session not found.");
-  const choice = new URL(req.url).searchParams.get("choice");
-  if (!isZipChoice(choice)) return errorResponse(400, "Choose what to download.");
-
+/** Resolves what the zip would hold (stored files that exist, SRT/VTT text), or the error response. */
+async function plan(id: string, choice: ZipChoice): Promise<{ sources: Source[]; title: string } | Response> {
   const { db, storage } = getServer();
   const session = await getSession(db, id);
   if (!session) return errorResponse(404, "Session not found.");
@@ -115,12 +105,32 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     }
   }
   if (sources.length === 0) return errorResponse(409, "Nothing to download yet.");
+  return { sources, title: session.title };
+}
 
-  return new Response(zipStream(sources), {
+/**
+ * GET /api/sessions/[id]/download?choice=burned|files|plain — a zip of files that are already stored: `burned` the
+ * subtitle videos (one per language), `files` the plain videos plus SRT/VTT rendered from the cues, `plain` the plain
+ * videos. Nothing is rendered here. 409 "Nothing to download yet." when the zip would be empty. With `check=1` it runs
+ * the same checks and answers `{ files }` as JSON without streaming, so the page can show a failure in its dialog
+ * before starting a normal browser download. Kept clips of a session whose video was removed still download (R30).
+ */
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+  const { id } = await ctx.params;
+  if (!isUuid(id)) return errorResponse(404, "Session not found.");
+  const url = new URL(req.url);
+  const choice = url.searchParams.get("choice");
+  if (!isZipChoice(choice)) return errorResponse(400, "Choose what to download.");
+
+  const planned = await plan(id, choice);
+  if (planned instanceof Response) return planned;
+  if (url.searchParams.get("check") === "1") return Response.json({ files: planned.sources.length }, { headers: { "Cache-Control": "no-store" } });
+
+  return new Response(zipStream(planned.sources), {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": contentDisposition(`${safeBaseName(session.title)} - clips ${SUFFIX[choice]}.zip`),
+      "Content-Disposition": contentDisposition(`${safeBaseName(planned.title)} - clips ${SUFFIX[choice]}.zip`),
       "Cache-Control": "no-store",
     },
   });

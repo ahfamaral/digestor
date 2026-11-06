@@ -78,7 +78,7 @@ describe("GET /api/sessions/[id]/download", () => {
     expect(strFromU8(files["01 Strasse uber Kase.pt.mp4"]!)).toBe("burned-1-pt");
   });
 
-  it("a file missing on disk is left out, not a broken zip", async () => {
+  it("a clip whose only file is missing on disk gives 409, not a broken zip", async () => {
     const s = await createSession(h.db, { title: "Gone", source: "upload" });
     await updateSession(h.db, s.id, { stage: "ready", language: "en", durationMs: 10_000 });
     const clip = await createClip(h.db, { sessionId: s.id, ownerId: "owner", startMs: 0, endMs: 5000, actor: "user" });
@@ -96,6 +96,21 @@ describe("GET /api/sessions/[id]/download", () => {
     expect((await call("not-a-uuid", "plain")).status).toBe(404);
     expect((await call(sessionId, "nope")).status).toBe(400);
     expect((await call(sessionId)).status).toBe(400);
+  });
+
+  it("check=1 runs the same checks without streaming: file count, 409, 404, 400", async () => {
+    const ok = await GET(new Request(`http://localhost/x?choice=files&check=1`), { params: Promise.resolve({ id: sessionId }) });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("Content-Type")).toContain("application/json");
+    expect(await ok.json()).toEqual({ files: 7 });
+    const s = await createSession(h.db, { title: "Empty check", source: "upload" });
+    const empty = await GET(new Request(`http://localhost/x?choice=plain&check=1`), { params: Promise.resolve({ id: s.id }) });
+    expect(empty.status).toBe(409);
+    expect((await empty.json()).error).toBe("Nothing to download yet.");
+    const gone = await GET(new Request(`http://localhost/x?choice=plain&check=1`), { params: Promise.resolve({ id: "22222222-2222-4222-8222-222222222222" }) });
+    expect(gone.status).toBe(404);
+    const bad = await GET(new Request(`http://localhost/x?choice=nope&check=1`), { params: Promise.resolve({ id: sessionId }) });
+    expect(bad.status).toBe(400);
   });
 
   it("still serves what is stored after the video was removed (R30)", async () => {

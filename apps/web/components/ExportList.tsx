@@ -105,13 +105,13 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
           <div className="min-w-0">
-          <BackLink href={`/s/${session.id}/prepare`} label={t("exportScreen.backToPrepare")} />
-          <h1 lang={lang} dir="auto" className="mt-1 text-xl font-bold tracking-tight break-words">
-            {session.title}
-          </h1>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">
-            {t("exportScreen.title")} · {clips.length === 1 ? t("exportScreen.clipsOne") : t("exportScreen.clipsMany", { n: clips.length })}
-          </p>
+            <BackLink href={`/s/${session.id}/prepare`} label={t("exportScreen.backToPrepare")} />
+            <h1 lang={lang} dir="auto" className="mt-1 text-xl font-bold tracking-tight break-words">
+              {session.title}
+            </h1>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              {t("exportScreen.title")} · {clips.length === 1 ? t("exportScreen.clipsOne") : t("exportScreen.clipsMany", { n: clips.length })}
+            </p>
           </div>
           <DownloadAllDialog sessionId={session.id} clips={clips} />
         </header>
