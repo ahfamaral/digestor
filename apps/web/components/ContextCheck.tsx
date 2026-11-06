@@ -240,7 +240,7 @@ export function ContextCheck({
             type="button"
             disabled={busy}
             onClick={onContinue}
-            className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white disabled:bg-disabled disabled:text-disabled-foreground"
           >
             {t("context.continue")}
           </button>

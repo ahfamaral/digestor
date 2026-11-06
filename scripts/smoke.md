@@ -10,7 +10,7 @@ Setup: `colima start --cpu 4 --memory 8`, `docker compose up -d --build`, `pnpm 
   - On a server IP, once without and once with `YTDLP_COOKIES_FILE` (docs/deploy.md): without, the bot-check sentence; with, the download works. Not yet verified with real cookies past a real bot check.
 - [ ] Processing: the stepper advances through download, ingest, transcribe, context.
 - [ ] Context check: answer one question (or skip) and continue; profile is detected or chosen.
-- [ ] Briefing: summary (lead, timeline, top highlights) and the topic cards appear; Play a moment; approve 2 moments and skip 1 (click one again to undo); untick a level, focus a speaker and pick a highlight type; "Prepare clips →".
+- [ ] Briefing: summary (lead, timeline, top highlights) and the topic cards appear; Play a moment; approve 2 moments and skip 1 (click one again to undo); untick a level, focus a speaker and pick a highlight type; "Prepare clips".
 - [ ] Prepare clips: trim one clip (handles snap to sentence pauses), switch one to 9:16 and move the crop, add a credit line, add the video's own subtitle language and approve it.
 - [ ] Export: "Export ready clips"; download the MP4, SRT and VTT.
 

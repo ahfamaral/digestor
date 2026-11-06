@@ -93,7 +93,11 @@ export function ExportList({ session, names, clips }: ExportListProps) {
 
   return (
     <>
-      <AppBar current="Export" session={{ id: session.id, ready: true }} />
+      <AppBar
+        current="Export"
+        session={{ id: session.id, ready: true }}
+        facts={{ hasClips: clips.length > 0, allReadyRendered: ready.length > 0 && ready.every((c) => c.row.renderStatus === "done") }}
+      />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
           <BackLink href={`/s/${session.id}/prepare`} label={t("exportScreen.backToPrepare")} />
@@ -153,7 +157,7 @@ export function ExportList({ session, names, clips }: ExportListProps) {
               onClick={() => void start()}
               disabled={busy || session.videoRemoved || ready.length === 0}
               aria-describedby={session.videoRemoved ? "video-removed" : undefined}
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
             >
               <Busy busy={busy}>{busy ? t("exportScreen.exporting") : t("exportScreen.exportReady")}</Busy>
             </button>

@@ -11,7 +11,7 @@ The UI concept was **agreed on 2026-10-30** and Plan 2 built it. The source of t
 
 - **The top bar** (`AppBar`): the logo and "Sessions" link go home; inside a ready session (`session={{ id, ready: true }}`) Briefing, Prepare and Export are links (`lib/stepLinks.ts`). No "→" in new copy (owner's taste).
 - **The flow and stepper:** Upload › Processing › Context › Briefing › Prepare › Export (`STEPS` in `components/AppBar.tsx`). Routes: `/` **Sessions** (`components/Home/`, logic in `lib/home.ts`: needs-you strip, type tabs, Status filters and toggles, a Body filter on the Parliament tab, search, filters kept in the URL query, a clips strip per row with a "+ N more" square), `/new` upload, `/s/[id]` (Processing, Context check, then the **Briefing** page once ready), `/s/[id]/prepare` (**Prepare clips**), `/s/[id]/export`, `/reports`. `/s/[id]/briefing` only redirects to `/s/[id]` (query string kept). "Preview" and "Full briefing" are no longer words in the UI. The v1 review inbox and `ClipCard` no longer exist.
-- **Briefing** (`components/Briefing/`, data from `lib/briefingPage.ts`): header (title, meta line with "N speakers · M named" → Who's who, "Analysis v<n>"), notices, then a **summary card** (lead, session timeline with neutral topic bands and highlight pins, top-highlight cards, Copy text / Export… / Share link / Read in, "Something's off"), the **filter row** (level checkboxes Exchanges · Passages · Punchlines with counts, Focus, min. relevance, highlight types, status All / Open / Approved / Skipped), and **one card per topic** (numbered title and time range, summary and key quote collapsed to the first sentence with "More", a lane-graph slot, and the moment tree: children nested under their nearest shown ancestor with connector lines and "N inside"). Rows: round ▶ / ■ play with an inline `MediaPlayer`, title, level tag, time · length, chips, speakers, "Why:" line, a collapsed "Transcript" disclosure, and Approve / Skip. Sticky bar: "N approved · M hidden by filters [Show hidden]" and "Prepare clips →". **Prepare** (`components/Prepare/`): trim, checks, format, credit, subtitles, checklist.
+- **Briefing** (`components/Briefing/`, data from `lib/briefingPage.ts`): header (title, meta line with "N speakers · M named" → Who's who, "Analysis v<n>"), notices, then a **summary card** (lead, session timeline with neutral topic bands and highlight pins, top-highlight cards, Copy text / Download .md / Share link / Read in, "Something's off"), the **filter row** (level checkboxes Exchanges · Passages · Punchlines with counts, Focus, min. relevance, highlight types, status All / Open / Approved / Skipped), and **one card per topic** (numbered title and time range, summary and key quote collapsed to the first sentence with "More", a lane-graph slot, and the moment tree: children nested under their nearest shown ancestor with connector lines and "N inside"). Rows: round ▶ / ■ play with an inline `MediaPlayer`, title, level tag, time · length, chips, speakers, "Why:" line, a collapsed "Transcript" disclosure, and Approve / Skip. Sticky bar: "N approved · M hidden by filters [Show hidden]" and "Prepare clips". **Prepare** (`components/Prepare/`): trim, checks, format, credit, subtitles, checklist.
 - Mockups in `docs/design/` (`ui-concept-overview.html`, `ui-concept-tracker.html`) are inspiration, not a pixel spec; the Tracker is Plan 4.
 - **Colour is reserved for highlight types**; topic bands are neutral greys. AI judgments carry an "AI" badge and a "Why:" line, counted values read "counted", and names show their source.
 - If a task needs a design decision the spec doesn't answer, propose 1–2 options with a quick screenshot or sketch and ask. Don't silently invent the concept.
@@ -24,9 +24,13 @@ Tokens live in `apps/web/app/globals.css` (`:root`) and match the mockups' palet
 |---|---|---|
 | Page background | `bg-background` | `#f6f5f2` (warm off-white) |
 | Ink | `text-foreground`, `bg-primary` | `#17181c` |
-| Muted text | `text-muted-foreground` | `#71727a` |
+| Muted text | `text-muted-foreground` | `#6b6c74` (4.8:1 on the page, 5.2:1 on white) |
 | Lines | `border-border` | `#e9e6df` |
-| Brand / primary action | `bg-brand text-brand-foreground` | `#ff5a36` |
+| Brand / primary action | `bg-brand text-brand-foreground` | `#c2410c` with white text (5.2:1; the old `#ff5a36` was 3.1:1). Hover is `hover:brightness-90`, never `bg-brand/90` |
+| Stepper | `text-step-upcoming`, `text-step-done` | `#6b6a64`, `#047857` (both at least 4.5:1 on white) |
+| Disabled buttons | `bg-disabled text-disabled-foreground` | `#e7e5e4` / `#5f5e58`: grey, never a faded brand colour (`ui/button.tsx` does it) |
+
+All text colours must stay at least 4.5:1: the values live in `apps/web/lib/contrast.ts` and `lib/contrast.test.ts` checks them and that `globals.css` repeats them. A ✓ in the stepper means done: `stepDone(step, facts)` in `lib/stepLinks.ts`.
 | Cards | `bg-white` / `bg-card`, `rounded-xl border border-border` | white |
 
 Font: Inter (`--font-inter`) for UI, Geist Mono for times/numbers where alignment matters. Radius base `0.625rem`.
@@ -52,14 +56,14 @@ Colour is never the only signal: every chip/badge carries text.
 
 - shadcn (style `base-nova`, on **Base UI**, not Radix) in `components/ui/` (badge, button, card, checkbox, dialog, input, progress, tabs, textarea, and the later additions: check `components/ui/`); add new primitives with `pnpm --filter @digestor/web exec shadcn add <name>` and keep `cn()` from `lib/utils.ts`. Icons: `lucide-react`.
 - Screen frame: `AppBar` with the stepper **Upload › Processing › Context › Briefing › Prepare › Export** (current step bold, done steps green with ✓), then `<main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">` with an `h1` title.
-- The Briefing page and Prepare have a sticky bottom bar with the primary action ("Prepare clips →", "Export ready clips →").
+- The Briefing page and Prepare have a sticky bottom bar with the primary action ("Prepare clips", "Export ready clips").
 - Primary action = brand button, right/bottom; secondary = text-style link or outline button ("Something's off").
 - Text comes from the typed catalogue `apps/web/messages/en.ts` via `t()` (`lib/i18n.ts`); add strings there, never inline.
 - Pages are server components; interactive parts are `"use client"` components that receive data as props (see `nextjs16-gotchas`).
 
 ## Copy
 
-- Spec-exact strings: each type's label from `HIGHLIGHT_TYPES` (e.g. "Heated", "Key point", "Light moment"); statuses Approve / Skip (Skip is stored as `rejected`; clicking the active one returns the moment to undecided, `nextStatus`); "Something's off", "Copy text", "Share link", "Export…", "Prepare clips →", "Report a problem", "More", "Transcript"; Export notice "You're responsible for how you use and share downloaded clips."
+- Spec-exact strings: each type's label from `HIGHLIGHT_TYPES` (e.g. "Heated", "Key point", "Light moment"); statuses Approve / Skip (Skip is stored as `rejected`; clicking the active one returns the moment to undecided, `nextStatus`); "Something's off", "Copy text", "Share link", "Download .md", "Prepare clips", "Report a problem", "More", "Transcript"; Export notice "You're responsible for how you use and share downloaded clips."
 - Footer of the Briefing page: "N approved · M hidden by filters" with a "Show hidden" button. Approved moments are never hidden. Approve / Skip keep one width in both states (both labels share one grid cell); a row decided during this visit stays in place (dimmed when skipped) until the filters change.
 - AI reasons start with "Why:". Questions say why they're asked.
 - Errors are friendly, specific sentences shown **inline** next to what failed (`role="alert"`); success/progress uses `role="status"`. Never show raw errors, stack traces or vendor messages the user can't act on.

@@ -58,7 +58,7 @@ export function LoginForm() {
               {error}
             </p>
           )}
-          <Button type="submit" className="h-9 bg-brand text-brand-foreground hover:bg-brand/90" disabled={pending || !password}>
+          <Button type="submit" className="h-9 bg-brand text-brand-foreground hover:brightness-90" disabled={pending || !password}>
             <Busy busy={pending}>{pending ? t("login.checking") : t("login.continue")}</Busy>
           </Button>
         </form>

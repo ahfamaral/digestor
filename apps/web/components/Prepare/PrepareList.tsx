@@ -124,7 +124,7 @@ function undoLabel(step: UndoStep | null): string {
 
 /**
  * Prepare clips: one card per confirmed clip with the trim strip, checks, format, credit, subtitles and the
- * pre-export checklist, and "Export ready clips →".
+ * pre-export checklist, and "Export ready clips".
  */
 export function PrepareList({ session, defaultCredit, names, clips }: PrepareListProps) {
   const router = useRouter();
@@ -322,7 +322,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
 
   return (
     <>
-      <AppBar current="Prepare" session={{ id: session.id, ready: true }} />
+      <AppBar current="Prepare" session={{ id: session.id, ready: true }} facts={{ hasClips: items.length > 0, allReadyRendered: false }} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
           <BackLink href={`/s/${session.id}`} label={t("prepare.backToBriefing")} />

@@ -14,3 +14,23 @@ export function stepHref(step: Step, session: { id: string; ready: boolean }): s
       return null;
   }
 }
+
+/** What the page knows about progress, so the stepper only ticks what is really done. */
+export interface StepFacts {
+  /** The session has at least one confirmed clip. */
+  hasClips: boolean;
+  /** At least one clip is ready to export and every ready clip is rendered. */
+  allReadyRendered: boolean;
+}
+
+/** Whether a step earns a ✓ in the stepper. Steps up to Briefing are done once the session is past them. */
+export function stepDone(step: Step, facts: StepFacts): boolean {
+  switch (step) {
+    case "Prepare":
+      return facts.hasClips;
+    case "Export":
+      return facts.hasClips && facts.allReadyRendered;
+    default:
+      return true;
+  }
+}

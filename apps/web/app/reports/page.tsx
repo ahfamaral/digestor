@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { OWNER_ID } from "@digestor/core";
 import { getSession, listProblemReports } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
+import { BackLink } from "@/components/BackLink";
 import { getServer } from "@/lib/server";
 import { formatDateTime, t } from "@/lib/i18n";
 
@@ -13,7 +14,8 @@ export default function ReportsPage() {
     <>
       <AppBar />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
-        <h1 className="mb-4 text-xl font-bold tracking-tight">{t("reports.title")}</h1>
+        <BackLink href="/" label={t("notFound.back")} />
+        <h1 className="mt-1 mb-4 text-xl font-bold tracking-tight">{t("reports.title")}</h1>
         <Suspense fallback={null}>
           <ReportList />
         </Suspense>

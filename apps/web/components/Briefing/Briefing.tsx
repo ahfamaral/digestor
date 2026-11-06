@@ -50,7 +50,7 @@ async function sendSelection(id: string, status: ClipStatus): Promise<void> {
 /**
  * The Briefing page (render it with `key={analysis.id}` so a new analysis version starts with fresh state): header and
  * notices, the summary card (lead, timeline, top highlights, document actions, "Something's off"), the filters (kept
- * in the URL), one card per topic with its moment tree and Approve / Skip, and the sticky "Prepare clips →" bar.
+ * in the URL), one card per topic with its moment tree and Approve / Skip, and the sticky "Prepare clips" bar.
  */
 export function Briefing(props: BriefingProps) {
   const { session, analysis, names, voices, topics, moments, choices, selections } = props;

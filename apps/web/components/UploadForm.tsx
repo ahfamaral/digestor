@@ -412,7 +412,7 @@ export function UploadForm() {
         <p className="my-3 text-sm text-muted-foreground">{estimate}</p>
         <Button
           size="lg"
-          className="h-10 w-full bg-brand text-brand-foreground hover:bg-brand/90"
+          className="h-10 w-full bg-brand text-brand-foreground hover:brightness-90"
           disabled={!canSubmit}
           onClick={() => void submit()}
         >
