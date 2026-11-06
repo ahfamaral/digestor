@@ -81,7 +81,7 @@ export function WhosWho({
   profile?: string;
   /** Retention removed the video (and its proxy): no ▶ samples. */
   videoRemoved?: boolean;
-  /** The 480p preview copy exists (always, once the session is `ready`); until then the samples play from the audio. */
+  /** The 360p preview copy exists (always, once the session is `ready`); until then the samples play from the audio. */
   proxyReady?: boolean;
   /**
    * Context check only: the agent's "Who is speaker B?" questions, by voice. Each is answered in the voice's own row

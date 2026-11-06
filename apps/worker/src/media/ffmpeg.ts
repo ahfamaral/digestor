@@ -91,13 +91,16 @@ export async function probe(path: string) {
 export const extractAudio = (input: string, output: string) =>
   ffmpeg(["-i", input, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "64k", output]);
 
-/** 480p H.264 proxy; audio-only sources get an AAC-only `proxy.mp4` (browsers play it in <audio>). */
+/**
+ * 360p H.264 preview copy (a smaller source keeps its height, never upscaled) with mono 64 kb/s voice audio; audio-only
+ * sources get an AAC-only `proxy.mp4` (browsers play it in <audio>). 360p keeps name captions and on-screen text readable.
+ */
 export const makeProxy = (input: string, output: string, opts: { hasVideo?: boolean } = {}) =>
-  ffmpeg(opts.hasVideo === false ? ["-i", input, "-vn", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", output] : [
+  ffmpeg(opts.hasVideo === false ? ["-i", input, "-vn", "-c:a", "aac", "-ac", "1", "-b:a", "64k", "-movflags", "+faststart", output] : [
     "-i", input,
-    "-vf", "scale=-2:480",
+    "-vf", "scale=-2:'trunc(min(360,ih)/2)*2'",
     "-c:v", "libx264", "-crf", "28", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "96k",
+    "-c:a", "aac", "-ac", "1", "-b:a", "64k",
     "-movflags", "+faststart",
     output,
   ]);

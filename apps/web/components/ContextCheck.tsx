@@ -68,7 +68,7 @@ function Row({ label, badge, audio, children }: { label: string; badge: keyof ty
 /** Context check screen: review what the agent understood, answer its questions, then continue or skip. */
 export function ContextCheck({
   sessionId, card, names, rows, proxyReady,
-}: { sessionId: string; card: ContextCard; names: NamesData; rows: WhosWhoRow[]; /** The 480p preview copy exists; until then the samples play from the audio. */ proxyReady: boolean }) {
+}: { sessionId: string; card: ContextCard; names: NamesData; rows: WhosWhoRow[]; /** The 360p preview copy exists; until then the samples play from the audio. */ proxyReady: boolean }) {
   const router = useRouter();
   const [original] = useState(() => toFields(card));
   const [edited, setEdited] = useState<ContextFields>(original);

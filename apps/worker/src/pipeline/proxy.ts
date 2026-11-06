@@ -5,7 +5,7 @@ import type * as ffmpeg from "../media/ffmpeg.js";
 export type ProxyDeps = { db: Db; storage: LocalStorage; media: Pick<typeof ffmpeg, "makeProxy"> };
 
 /**
- * Encodes the session's 480p preview copy in its own job, so the pipeline never waits for it. The row goes
+ * Encodes the session's 360p preview copy in its own job, so the pipeline never waits for it. The row goes
  * `pending` → `running` → `done` (with `proxyKey` in the same update); then `settlePreview` closes the join when the
  * analysis already ended. No claim means another job has it (or it is done): nothing to do. With `retrying` a
  * `running` row is taken over (the crashed or failed earlier attempt left it so). A video that is gone is

@@ -247,7 +247,7 @@ export const ingestNode =
       durationMs: info.durationMs,
       hasVideo: info.hasVideo,
     });
-    // The 480p preview copy is its own job: transcription starts now, and the session is `ready` once both are done.
+    // The 360p preview copy is its own job: transcription starts now, and the session is `ready` once both are done.
     if (!deps.enqueueProxy) throw new Error("enqueueProxy is not wired: the preview copy would never be made");
     await requestProxy(db, s.sessionId);
     await deps.enqueueProxy(s.sessionId); // a failed send throws: the node is retried

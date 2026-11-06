@@ -61,7 +61,7 @@ export type FindMoreJob = z.infer<typeof FindMoreJobSchema>;
 export const NamesJobSchema = z.object({ sessionId: z.string().uuid() });
 export type NamesJob = z.infer<typeof NamesJobSchema>;
 
-/** Encode the session's 480p preview copy (`proxy.mp4`) from its original; the pipeline does not wait for it. */
+/** Encode the session's 360p preview copy (`proxy.mp4`) from its original; the pipeline does not wait for it. */
 export const ProxyJobSchema = z.object({ sessionId: z.string().uuid() });
 export type ProxyJob = z.infer<typeof ProxyJobSchema>;
 

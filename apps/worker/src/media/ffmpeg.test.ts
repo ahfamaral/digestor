@@ -73,12 +73,28 @@ describe("ffmpeg wrappers", () => {
     expect(stdout.trim()).toBe("mp3,16000,1");
   });
 
-  it("makes a 480p proxy", async () => {
+  const audioChannels = async (file: string) =>
+    (await run("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels", "-of", "csv=p=0", file])).stdout.trim();
+
+  it("makes a 360p proxy with mono audio from a 480p source", async () => {
+    const src = join(outDir, "src480.mp4");
+    await run("ffmpeg", ["-y", "-f", "lavfi", "-i", "testsrc2=size=854x480:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+      "-filter_complex", "[1]pan=stereo|c0=c0|c1=c0[a]", "-map", "0:v", "-map", "[a]", "-t", "2", "-c:v", "libx264", "-c:a", "aac", src]);
+    expect(await audioChannels(src)).toBe("2");
     const out = join(outDir, "proxy.mp4");
-    await makeProxy(TEST_MP4, out);
+    await makeProxy(src, out);
     const p = await probe(out);
-    expect(p.height).toBe(480);
+    expect([p.width, p.height]).toEqual([640, 360]);
     expect(p.hasAudio).toBe(true);
+    expect(await audioChannels(out)).toBe("1");
+  });
+
+  it("makeProxy never upscales a small source", async () => {
+    const src = join(outDir, "src180.mp4");
+    await run("ffmpeg", ["-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", "sine", "-t", "2", "-c:v", "libx264", "-c:a", "aac", src]);
+    const out = join(outDir, "proxy-small.mp4");
+    await makeProxy(src, out);
+    expect((await probe(out)).height).toBe(180);
   });
 
   it("makeProxy writes an audio-only proxy for audio input", async () => {
@@ -87,6 +103,15 @@ describe("ffmpeg wrappers", () => {
     const p = await probe(out);
     expect(p).toMatchObject({ hasVideo: false, hasAudio: true });
     expect(Math.abs(p.durationMs - 6000)).toBeLessThan(200);
+  });
+
+  it("makeProxy makes the audio-only proxy mono", async () => {
+    const src = join(outDir, "stereo.m4a");
+    await run("ffmpeg", ["-y", "-f", "lavfi", "-i", "sine=sample_rate=48000", "-af", "pan=stereo|c0=c0|c1=c0", "-t", "2", "-c:a", "aac", src]);
+    expect(await audioChannels(src)).toBe("2");
+    const out = join(outDir, "stereo-proxy.mp4");
+    await makeProxy(src, out, { hasVideo: false });
+    expect(await audioChannels(out)).toBe("1");
   });
 
   it("creates a 640-wide jpg thumbnail", async () => {
