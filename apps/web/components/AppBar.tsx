@@ -9,10 +9,11 @@ export type Step = (typeof STEPS)[number];
 const FOCUS = "rounded outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 /**
+ * `signedOut` (the login page) leaves out the Sessions link: there is nowhere to go before signing in.
  * Top bar: "Digestor." logo, a "Sessions" link home, and the six-step indicator (done steps green with ✓, current step
  * bold). Inside a ready session (`session.ready`) Briefing, Prepare and Export are links to jump between them.
  */
-export function AppBar({ current, session, facts = { hasClips: false, allReadyRendered: false }, children }: { current?: Step; session?: { id: string; ready: boolean }; facts?: StepFacts; children?: React.ReactNode }) {
+export function AppBar({ current, session, facts = { hasClips: false, allReadyRendered: false }, signedOut = false, children }: { current?: Step; signedOut?: boolean; session?: { id: string; ready: boolean }; facts?: StepFacts; children?: React.ReactNode }) {
   const at = current ? STEPS.indexOf(current) : -1;
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-4 py-3">
@@ -20,9 +21,9 @@ export function AppBar({ current, session, facts = { hasClips: false, allReadyRe
         <Link href="/" className={cn("inline-flex h-8 items-center text-base font-extrabold tracking-tight", FOCUS)}>
           {t("app.name")}<span className="text-brand">.</span>
         </Link>
-        <Link href="/" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
+        {!signedOut && <Link href="/" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
           {t("appBar.sessions")}
-        </Link>
+        </Link>}
       </div>
       {current && (
         <nav aria-label={t("appBar.progress")} className="hidden items-center gap-1.5 text-xs text-step-upcoming sm:flex">

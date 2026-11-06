@@ -197,14 +197,14 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
         aria-label={t("prepare.trimStrip", { title, from: tenths(view.viewStart), to: tenths(view.viewEnd) })}
         onPointerMove={(e) => setHoverMs(msAt(e.clientX))}
         onPointerLeave={() => setHoverMs(null)}
-        className="relative mt-16 h-12 rounded-md bg-stone-100 select-none"
+        className="relative mt-9 h-12 rounded-md bg-stone-100 select-none"
       >
         {hoverMs !== null && (
           <>
             <span aria-hidden className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-foreground/60" style={{ left: `${view.toPct(hoverMs)}%` }} />
             <span
               aria-hidden
-              className="pointer-events-none absolute -top-14 z-20 -translate-x-1/2 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white"
+              className="pointer-events-none absolute top-full z-20 mt-1 -translate-x-1/2 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white"
               style={{ left: `${Math.min(92, Math.max(8, view.toPct(hoverMs)))}%` }}
             >
               {tenths(hoverMs)}
@@ -239,6 +239,8 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
       </p>
       <p id={`trim-help-${clipId}`} className="mt-1 text-xs text-muted-foreground">
         {t("prepare.trimHelp")}
+        {/* Alt needs a keyboard: left out on touch screens. */}
+        <span className="[@media(hover:none)]:hidden"> {t("prepare.trimHelpAlt")}</span>
       </p>
       <TimeFields key={revision} clipId={clipId} clip={shown} disabled={disabled} onCommit={onCommitText} />
     </div>

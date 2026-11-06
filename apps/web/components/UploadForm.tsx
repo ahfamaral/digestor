@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UploadIcon, XIcon } from "lucide-react";
+import { ChevronRightIcon, UploadIcon, XIcon } from "lucide-react";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
 import { Badge } from "@/components/ui/badge";
@@ -127,6 +127,9 @@ export function UploadForm() {
   const [hint, setHint] = useState("");
   const [record, setRecord] = useState("");
   const [house, pickHouse, showHouse] = useRecordHouse();
+  // Closed until asked for; a typed link or a picked house keeps it open.
+  const [recordOpenAsked, setRecordOpen] = useState(false);
+  const recordOpen = recordOpenAsked || record.trim() !== "" || house !== "";
   const [language, setLanguage] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -358,39 +361,48 @@ export function UploadForm() {
           onChange={(e) => setHint(e.target.value)}
           placeholder={t("upload.hintPlaceholder")}
         />
-        <label htmlFor="record" className="mt-4 font-semibold">
+        <button
+          type="button"
+          aria-expanded={recordOpen}
+          aria-controls="record-section"
+          onClick={() => setRecordOpen((o) => !o)}
+          className="mt-4 inline-flex items-center gap-1 self-start rounded-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronRightIcon aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", recordOpen && "rotate-90")} />
           {t("upload.recordLabel")} <span className="font-normal text-muted-foreground">{t("upload.recordOptional")}</span>
-        </label>
-        <div className="mt-2">
-          <RecordHouseSelect
-            id="record-house"
-            value={house}
+        </button>
+        <div id="record-section" hidden={!recordOpen} className="flex flex-col">
+          <div className="mt-2">
+            <RecordHouseSelect
+              id="record-house"
+              value={house}
+              disabled={busy}
+              describedBy="record-help"
+              onChange={(next) => {
+                pickHouse(next);
+                setSubmitError(null);
+              }}
+            />
+          </div>
+          <Input
+            id="record"
+            className="mt-2"
+            value={record}
             disabled={busy}
-            describedBy="record-help"
-            onChange={(next) => {
-              pickHouse(next);
+            dir="auto"
+            aria-invalid={recordError !== null}
+            aria-describedby="record-help"
+            onChange={(e) => {
+              setRecord(e.target.value);
+              if (holdsLink(e.target.value)) showHouse("");
               setSubmitError(null);
             }}
+            placeholder={t("upload.recordPlaceholder")}
           />
+          <p id="record-help" className={cn("mt-1 text-xs break-words", recordError ? "text-destructive" : "text-muted-foreground")} role={recordError ? "alert" : undefined}>
+            {recordError ?? recordHelpText(house)}
+          </p>
         </div>
-        <Input
-          id="record"
-          className="mt-2"
-          value={record}
-          disabled={busy}
-          dir="auto"
-          aria-invalid={recordError !== null}
-          aria-describedby="record-help"
-          onChange={(e) => {
-            setRecord(e.target.value);
-            if (holdsLink(e.target.value)) showHouse("");
-            setSubmitError(null);
-          }}
-          placeholder={t("upload.recordPlaceholder")}
-        />
-        <p id="record-help" className={cn("mt-1 text-xs break-words", recordError ? "text-destructive" : "text-muted-foreground")} role={recordError ? "alert" : undefined}>
-          {recordError ?? recordHelpText(house)}
-        </p>
         <label htmlFor="language" className="mt-4 font-semibold">
           {t("upload.languageLabel")} <span className="font-normal text-muted-foreground">{t("upload.languageOptional")}</span>
         </label>

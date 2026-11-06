@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   PROFILES, checksForClip, exportChecklist, formatLength, formatTimestamp, speakersInRange, type ClipFormat, type MomentChecks, type ProfileId, type Range,
 } from "@digestor/core";
-import { SpeakerName } from "@/components/Names/SpeakerName";
+import { SpeakerName, SpeakerSep } from "@/components/Names/SpeakerName";
 import { unconfirmedAcrossClips, type NamesData, type Voice, type WhosWhoRow } from "@/lib/names";
 import { UnconfirmedBanner } from "@/components/Names/UnconfirmedBanner";
 import { AppBar } from "@/components/AppBar";
@@ -676,31 +676,32 @@ function ClipCard({
               </p>
             )}
             {open && item.voices.length > 0 && (
-              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              <p className="mt-0.5 flex flex-wrap items-center text-xs text-muted-foreground">
                 <span className="sr-only">{t("briefing.speakers")}: </span>
-                {item.voices.map((v) => (
-                  <SpeakerName
-                    key={`${v.speakerId}:${v.atMs}`}
-                    speakerId={v.speakerId}
-                    atMs={v.atMs}
-                    names={names}
-                    sensitive={PROFILES[session.profile].sensitive}
-                    sessionId={session.id}
-                    range={{ startMs: clip.startMs, endMs: clip.endMs }}
-                    language={lang}
-                  />
+                {item.voices.map((v, i) => (
+                  <Fragment key={`${v.speakerId}:${v.atMs}`}>
+                    {i > 0 && <SpeakerSep />}
+                    <SpeakerName
+                      speakerId={v.speakerId}
+                      atMs={v.atMs}
+                      names={names}
+                      sensitive={PROFILES[session.profile].sensitive}
+                      sessionId={session.id}
+                      range={{ startMs: clip.startMs, endMs: clip.endMs }}
+                      language={lang}
+                    />
+                  </Fragment>
                 ))}
               </p>
             )}
           </div>
           <ClipStatusBadge status={clipState} dismissed={item.dismissed} className="mt-1" />
-          {open && (
+          {open && item.undo && !frozen && (
             <button
               type="button"
               onClick={onUndo}
-              disabled={!item.undo || busy || frozen}
+              disabled={busy}
               aria-label={t("prepare.undoLabel", { action: undoLabel(item.undo), title: title || t("prepare.clipHeading", { n }) })}
-              title={item.undo ? undefined : t("prepare.undoNothing")}
               className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
             >
               {undoLabel(item.undo)}
@@ -869,6 +870,7 @@ function ClipPlayer({
             autoPlay
             src={src}
             label={label}
+            poster={thumbUrl ?? undefined}
             className={fit}
             style={vertical ? { objectPosition: cropPosition(cropOffset) } : undefined}
           />

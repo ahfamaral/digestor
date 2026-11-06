@@ -152,6 +152,11 @@ export function addedDate(iso: string): string {
   return ADDED.format(new Date(iso));
 }
 
+/** The rows in the current tab and Body, whatever the other filters say: the scope the needs-you counts follow. */
+export function scopeRows(rows: HomeRow[], f: HomeFilters): HomeRow[] {
+  return filterRows(rows, { ...DEFAULT_FILTERS, type: f.type, body: f.body }, new Date(0));
+}
+
 const fold = (s: string): string => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 
 export function filterRows(rows: HomeRow[], f: HomeFilters, now: Date): HomeRow[] {

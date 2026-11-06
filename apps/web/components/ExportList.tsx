@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatLength, formatTimestamp, type ChecklistId } from "@digestor/core";
-import { SpeakerName } from "@/components/Names/SpeakerName";
+import { SpeakerName, SpeakerSep } from "@/components/Names/SpeakerName";
 import type { NamesData, Voice, WhosWhoRow } from "@/lib/names";
 import { UnconfirmedBanner } from "@/components/Names/UnconfirmedBanner";
 import { AppBar } from "@/components/AppBar";
@@ -221,19 +221,21 @@ function ClipRow({
             </p>
           )}
           {clip.voices.length > 0 && (
-            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            <p className="mt-0.5 flex flex-wrap items-center text-xs text-muted-foreground">
               <span className="sr-only">{t("briefing.speakers")}: </span>
-              {clip.voices.map((v) => (
-                <SpeakerName
-                  key={`${v.speakerId}:${v.atMs}`}
-                  speakerId={v.speakerId}
-                  atMs={v.atMs}
-                  names={names}
-                  sensitive={sensitive}
-                  sessionId={sessionId}
-                  range={{ startMs: clip.startMs, endMs: clip.endMs }}
-                  language={lang}
-                />
+              {clip.voices.map((v, i) => (
+                <Fragment key={`${v.speakerId}:${v.atMs}`}>
+                  {i > 0 && <SpeakerSep />}
+                  <SpeakerName
+                    speakerId={v.speakerId}
+                    atMs={v.atMs}
+                    names={names}
+                    sensitive={sensitive}
+                    sessionId={sessionId}
+                    range={{ startMs: clip.startMs, endMs: clip.endMs }}
+                    language={lang}
+                  />
+                </Fragment>
               ))}
             </p>
           )}

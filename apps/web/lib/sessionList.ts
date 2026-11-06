@@ -16,7 +16,3 @@ export function sessionStatus(s: Pick<SessionSummary, "stage" | "error"> & Parti
   const running = buildSteps(s.stage, s.source ?? "upload").find((x) => x.state === "running");
   return { text: running?.label ?? t("processing.uploading"), busy: true, tone: "normal" };
 }
-
-export function clipCountText(n: number): string {
-  return n === 1 ? t("home.clipOne") : t("home.clipMany", { n });
-}

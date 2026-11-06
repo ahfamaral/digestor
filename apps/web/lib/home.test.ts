@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addedDate, bodyChips, bucket, clipCellText, filterRows, filtersToQuery, goTo, needsYou, parseFilters, toExport, typeTabs, whereItIs,
+  addedDate, bodyChips, bucket, clipCellText, filterRows, filtersToQuery, goTo, needsYou, scopeRows, parseFilters, toExport, typeTabs, whereItIs,
   DEFAULT_FILTERS, type HomeRow,
 } from "./home";
 
@@ -65,6 +65,21 @@ describe("needsYou", () => {
       row({ id: "f", stage: "writing_briefing" }),
     ];
     expect(needsYou(rows)).toEqual({ needs_you: 1, to_export: 1, failed: 1, processing: 2 });
+  });
+});
+
+describe("scopeRows", () => {
+  it("narrows by the current tab and Body only, so the needs-you counts follow them", () => {
+    const rows = [
+      row({ id: "a", profile: "parliament", chamber: "camara", stage: "awaiting_context" }),
+      row({ id: "b", profile: "parliament", chamber: null, stage: "failed" }),
+      row({ id: "c", profile: "interview", stage: "failed" }),
+    ];
+    const f = { ...DEFAULT_FILTERS, status: "failed" as const, q: "zzz", clips: true, recent: true };
+    expect(scopeRows(rows, f).map((r) => r.id)).toEqual(["a", "b", "c"]);
+    expect(needsYou(scopeRows(rows, { ...f, type: "parliament" }))).toMatchObject({ needs_you: 1, failed: 1 });
+    expect(scopeRows(rows, { ...f, type: "parliament", body: "unlinked" }).map((r) => r.id)).toEqual(["b"]);
+    expect(needsYou(scopeRows(rows, { ...f, type: "interview" }))).toMatchObject({ needs_you: 0, failed: 1 });
   });
 });
 

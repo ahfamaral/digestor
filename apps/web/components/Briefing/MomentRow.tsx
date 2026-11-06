@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ChevronRightIcon, PlayIcon, SquareIcon } from "lucide-react";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { formatLength, formatTimestamp, type SelectionStatus } from "@digestor/core";
 import { HighlightChip } from "@/components/HighlightChip";
 import { PersonalMarker } from "./PersonalMarker";
-import { SpeakerName } from "@/components/Names/SpeakerName";
+import { SpeakerName, SpeakerSep } from "@/components/Names/SpeakerName";
 import type { NamesData, Voice } from "@/lib/names";
 import { insideApproved } from "@/lib/briefingData";
 import type { MomentView } from "@/lib/briefingFilters";
@@ -15,7 +15,7 @@ import { t, type MessageKey } from "@/lib/i18n";
 
 /** Approve / Skip: both labels share one grid cell, so a button keeps the width of its longer label in both states. */
 const STATUS_BTN =
-  "inline-grid justify-items-center rounded-md border border-border bg-white px-[7px] py-0.5 text-[11.5px] leading-[1.4] font-medium text-foreground hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-grid justify-items-center max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 rounded-md border border-border bg-white px-[7px] py-0.5 text-[11.5px] leading-[1.4] font-medium text-foreground hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const STATUS_BUTTONS: { status: SelectionStatus; text: MessageKey; done: MessageKey; label: MessageKey; on: string }[] = [
   { status: "approved", text: "briefing.approve", done: "briefing.approved", label: "briefing.approveLabel", on: "border-green-300 bg-green-100 text-green-800 hover:bg-green-100" },
   { status: "rejected", text: "briefing.skip", done: "briefing.skipped", label: "briefing.skipLabel", on: "border-stone-300 bg-stone-100 text-stone-900 hover:bg-stone-100" },
@@ -130,19 +130,21 @@ export function MomentRow({
             ))}
             <PersonalMarker origin={m.origin} />
             {voices.length > 0 && (
-              <span className="flex flex-wrap items-center gap-x-2">
+              <span className="flex flex-wrap items-center">
                 <span className="sr-only">{t("briefing.speakers")}: </span>
-                {voices.map((v) => (
-                  <SpeakerName
-                    key={`${v.speakerId}:${v.atMs}`}
-                    speakerId={v.speakerId}
-                    atMs={v.atMs}
-                    names={ctx.names}
-                    sensitive={ctx.sensitive}
-                    sessionId={ctx.sessionId}
-                    range={{ startMs: m.startMs, endMs: m.endMs }}
-                    language={ctx.language}
-                  />
+                {voices.map((v, i) => (
+                  <Fragment key={`${v.speakerId}:${v.atMs}`}>
+                    {i > 0 && <SpeakerSep />}
+                    <SpeakerName
+                      speakerId={v.speakerId}
+                      atMs={v.atMs}
+                      names={ctx.names}
+                      sensitive={ctx.sensitive}
+                      sessionId={ctx.sessionId}
+                      range={{ startMs: m.startMs, endMs: m.endMs }}
+                      language={ctx.language}
+                    />
+                  </Fragment>
                 ))}
               </span>
             )}
@@ -180,7 +182,7 @@ export function MomentRow({
           {playing && !ctx.videoRemoved && (
             <div className="mt-2">
               {ctx.hasVideo ? (
-                <MediaPlayer kind="video" autoPlay src={src} label={playerLabel} className="aspect-video w-full max-w-xl rounded-lg bg-black" />
+                <MediaPlayer kind="video" autoPlay src={src} label={playerLabel} poster={m.thumbKey ? `/api/files/${ctx.sessionId}/thumbs/${m.id}.jpg` : undefined} className="aspect-video w-full max-w-xl rounded-lg bg-black" />
               ) : (
                 <MediaPlayer kind="audio" autoPlay src={src} label={playerLabel} className="w-full max-w-xl" />
               )}

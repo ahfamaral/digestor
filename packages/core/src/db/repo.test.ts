@@ -112,4 +112,21 @@ describe("listSessionSummaries", () => {
     expect(row.createdAt).toBeInstanceOf(Date);
     expect(list.find((x) => x.id === s.id)).toMatchObject({ chamber: null, clipCount: 0, renderedClips: 0, durationMs: null, progress: 0 });
   });
+
+  it("counts only an accepted record as a linked body (suggested and failed are not linked)", async () => {
+    const mk = async (title: string, status: "suggested" | "pending" | "running" | "waiting" | "matched" | "failed") => {
+      const x = await createSession(db, { title, source: "youtube" });
+      await db.insert(sessionRecords).values({ sessionId: x.id, chamber: "camara", ref: dayRef("camara", "2026-06-30"), status });
+      return x.id;
+    };
+    const ids = {
+      suggested: await mk("a", "suggested"), pending: await mk("b", "pending"), running: await mk("c", "running"),
+      waiting: await mk("d", "waiting"), matched: await mk("e", "matched"), failed: await mk("f", "failed"),
+    };
+    const list = await listSessionSummaries(db, "owner");
+    const chamber = (id: string) => list.find((x) => x.id === id)!.chamber;
+    expect(chamber(ids.suggested)).toBeNull();
+    expect(chamber(ids.failed)).toBeNull();
+    for (const k of ["pending", "running", "waiting", "matched"] as const) expect(chamber(ids[k])).toBe("camara");
+  });
 });

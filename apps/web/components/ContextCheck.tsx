@@ -57,8 +57,8 @@ const inputCls = "h-8 min-w-0 flex-1 rounded-md border border-border bg-white px
 
 function Row({ label, badge, audio, children }: { label: string; badge: keyof typeof BADGES; audio?: boolean; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 border-b border-border py-2 last:border-b-0">
-      <span className="w-24 shrink-0 text-xs font-semibold text-muted-foreground">{label}</span>
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border py-2 last:border-b-0">
+      <span className="w-full shrink-0 text-xs font-semibold sm:w-24 text-muted-foreground">{label}</span>
       {children}
       <Badge kind={badge} audio={audio} />
     </div>
@@ -186,8 +186,8 @@ export function ContextCheck({
             <div key={p.speakerId} className="border-b border-border py-2 last:border-b-0">
               <div dir="auto" className="mb-1 text-xs font-semibold text-muted-foreground">{labelText(voiceLabel(names, p.speakerId, 0, PROFILES[edited.profile].sensitive))}</div>
               {(["role", "affiliation"] as const).map((k) => (
-                <div key={k} className="mb-1 flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(FIELD_LABEL[k])}</span>
+                <div key={k} className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="w-full shrink-0 sm:w-24 text-xs text-muted-foreground">{t(FIELD_LABEL[k])}</span>
                   <input
                     className={inputCls}
                     aria-label={t(FIELD_ARIA[k], { id: p.speakerId })}

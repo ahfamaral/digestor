@@ -9,6 +9,8 @@ import { filtersToQuery, parseFilters, type HomeRow } from "@/lib/home";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
 
+const SESSION_LIMIT = 200;
+
 /** Sessions: every ingested video, with where it is and its clips. Reads the DB per request (inside Suspense). */
 export default function SessionsPage({ searchParams }: PageProps<"/">) {
   return (
@@ -35,7 +37,7 @@ export default function SessionsPage({ searchParams }: PageProps<"/">) {
 async function Sessions({ searchParams }: { searchParams: PageProps<"/">["searchParams"] }) {
   await connection();
   const { db } = getServer();
-  const summaries = await listSessionSummaries(db, OWNER_ID);
+  const summaries = await listSessionSummaries(db, OWNER_ID, SESSION_LIMIT);
   const previews = await listClipPreviews(db, OWNER_ID, summaries.map((s) => s.id));
   const rows: HomeRow[] = summaries.map((s) => ({ ...s, createdAt: s.createdAt.toISOString(), lastActivityAt: s.lastActivityAt.toISOString() }));
   const clips: Record<string, ClipPreviewView[]> = {};
@@ -43,5 +45,5 @@ async function Sessions({ searchParams }: { searchParams: PageProps<"/">["search
     (clips[c.sessionId] ??= []).push({ ...c, thumbUrl: c.thumbKey && c.momentId ? `/api/files/${c.sessionId}/thumbs/${c.momentId}.jpg` : null });
   }
   const initial = parseFilters(await searchParams);
-  return <HomeTable key={filtersToQuery(initial)} rows={rows} clips={clips} now={new Date().toISOString()} initial={initial} />;
+  return <HomeTable key={filtersToQuery(initial)} rows={rows} clips={clips} now={new Date().toISOString()} initial={initial} limit={SESSION_LIMIT} />;
 }

@@ -468,11 +468,17 @@ export async function listClipPreviews(db: Db, ownerId: string, sessionIds: stri
         .select({ clipId: subtitleTracks.clipId, language: subtitleTracks.language })
         .from(subtitleTracks)
         .where(inArray(subtitleTracks.clipId, rows.map((r) => r.id)));
+  const languagesByClip = new Map<string, string[]>();
+  for (const t of tracks) {
+    const list = languagesByClip.get(t.clipId);
+    if (list) list.push(t.language);
+    else languagesByClip.set(t.clipId, [t.language]);
+  }
   return rows.map((r) => ({
     id: r.id, sessionId: r.sessionId, startMs: r.startMs, endMs: r.endMs, format: r.format,
     merged: r.mergedMomentIds.length > 0, rendered: r.renderStatus === "done",
     thumbKey: r.thumbKey ?? null, momentId: r.momentId,
-    languages: tracks.filter((t) => t.clipId === r.id).map((t) => t.language).sort(),
+    languages: (languagesByClip.get(r.id) ?? []).sort(),
   }));
 }
 

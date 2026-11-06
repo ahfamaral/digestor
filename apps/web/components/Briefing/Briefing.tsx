@@ -245,8 +245,6 @@ export function Briefing(props: BriefingProps) {
 
   return (
     <>
-      {props.card && <ContextBanner sessionId={session.id} card={props.card} />}
-
       <header className="mb-3">
         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
           <h1 lang={lang} dir="auto" className="min-w-0 basis-full text-xl font-bold tracking-tight break-words sm:flex-1 sm:basis-0">
@@ -265,6 +263,7 @@ export function Briefing(props: BriefingProps) {
               {m}
             </span>
           ))}
+          {props.card && <ContextBanner sessionId={session.id} card={props.card} sessionTitle={session.title} />}
           {analysis.note ? (
             <span tabIndex={0} title={analysis.note} className="cursor-help underline decoration-dotted underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
               {t("preview.analysisVersion", { n: analysis.version })}

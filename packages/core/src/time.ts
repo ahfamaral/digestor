@@ -26,6 +26,12 @@ export function formatLength(ms: number): string {
   return m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`;
 }
 
+/** A duration as "m:ss" ("0:05", "12:34", "72:05": minutes keep counting past an hour), rounded to the second. */
+export function formatMinSec(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+}
+
 const TIMESTAMP_RE = /^(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:\.(\d))?$/;
 
 export function parseTimestamp(s: string): number {

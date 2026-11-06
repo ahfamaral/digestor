@@ -8,7 +8,7 @@ import type { ClipPreview } from "@digestor/core/server";
 import { ClipStrip } from "@/components/Home/ClipStrip";
 import { Busy } from "@/components/ui/spinner";
 import {
-  DEFAULT_FILTERS, addedDate, bodyChips, clipCellText, filterRows, filtersToQuery, goTo, needsYou, typeTabs, whereItIs,
+  DEFAULT_FILTERS, addedDate, bodyChips, clipCellText, filterRows, filtersToQuery, goTo, needsYou, scopeRows, typeTabs, whereItIs,
   type HomeFilters, type HomeRow, type StatusFilter,
 } from "@/lib/home";
 import { t } from "@/lib/i18n";
@@ -30,16 +30,18 @@ const STATUS_CHIPS: { id: StatusFilter; key: Parameters<typeof t>[0] }[] = [
 ];
 
 /** The Sessions table: needs-you strip, type tabs, filters (kept in the URL), and one row per video with its clips. */
-export function HomeTable({ rows, clips, now, initial }: {
+export function HomeTable({ rows, clips, now, initial, limit }: {
   rows: HomeRow[];
   clips: Record<string, ClipPreviewView[]>;
   now: string;
   initial: HomeFilters;
+  /** The most videos the page loads; a list that hits it says so. */
+  limit: number;
 }) {
   const [f, setF] = useState<HomeFilters>(initial);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const shown = useMemo(() => filterRows(rows, f, new Date(now)), [rows, f, now]);
-  const counts = needsYou(rows);
+  const counts = useMemo(() => needsYou(scopeRows(rows, f)), [rows, f.type, f.body]); // eslint-disable-line react-hooks/exhaustive-deps
   const tabs = typeTabs(rows);
   const bodies = bodyChips(rows);
   const parliament = f.type === "parliament";
@@ -273,6 +275,7 @@ export function HomeTable({ rows, clips, now, initial }: {
           </ul>
         </>
       )}
+      {rows.length >= limit && <p className="text-center text-xs text-muted-foreground">{t("home.capped", { n: limit })}</p>}
     </div>
   );
 }

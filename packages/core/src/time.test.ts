@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatLength, formatTimestamp, InvalidTimestampError, parseTimestamp } from "./time.ts";
+import { formatLength, formatMinSec, formatTimestamp, InvalidTimestampError, parseTimestamp } from "./time.ts";
 
 describe("formatTimestamp", () => {
   it("formats hh:mm:ss with optional tenths", () => {
@@ -45,5 +45,15 @@ describe("parseTimestamp field ranges", () => {
     for (const bad of ["99:99:99", "01:60:00", "05:60", "00:00:99", "1:75:00"]) expect(() => parseTimestamp(bad)).toThrow(InvalidTimestampError);
     expect(parseTimestamp("59:59")).toBe(3_599_000);
     expect(parseTimestamp("100:59:59")).toBe(100 * 3_600_000 + 59 * 60_000 + 59_000);
+  });
+});
+
+describe("formatMinSec", () => {
+  it("shows m:ss, minutes running past an hour, rounded to the second", () => {
+    expect(formatMinSec(0)).toBe("0:00");
+    expect(formatMinSec(5_000)).toBe("0:05");
+    expect(formatMinSec(754_400)).toBe("12:34");
+    expect(formatMinSec(4_325_000)).toBe("72:05");
+    expect(formatMinSec(59_600)).toBe("1:00");
   });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatTimestamp } from "@digestor/core";
+import { formatMinSec, formatTimestamp } from "@digestor/core";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
 import { anonymousBody, conflictText, confirmBody, evidenceLine, personDetail, rowRange, rowRanges, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
@@ -213,7 +213,7 @@ export function WhosWho({
                       className="text-sm"
                     />
                     <span className="font-mono text-xs text-muted-foreground">
-                      {t("names.speaking", { time: formatTimestamp(row.ms), pct: Math.round((totalMs > 0 ? row.ms / totalMs : 0) * 100) })}
+                      {t("names.speaking", { time: formatMinSec(row.ms), pct: Math.round((totalMs > 0 ? row.ms / totalMs : 0) * 100) })}
                     </span>
                   </div>
                   {detail && (

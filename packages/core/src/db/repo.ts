@@ -128,7 +128,7 @@ export interface SessionSummary {
   createdAt: Date;
   durationMs: number | null;
   progress: number;
-  /** The house of the linked official record, if any. */
+  /** The house of the linked official record the journalist accepted (`pending`/`running`/`waiting`/`matched`); a `suggested` or `failed` record is not a link. */
   chamber: ChamberId | null;
   /** Live clips of this owner. */
   clipCount: number;
@@ -154,7 +154,7 @@ export async function listSessionSummaries(db: Db, ownerId: string, limit = 200)
       id: sessions.id, title: sessions.title, language: sessions.language, profile: sessions.profile,
       stage: sessions.stage, source: sessions.source, error: sessions.error, videoDeletedAt: sessions.videoDeletedAt,
       lastActivityAt: activity.mapWith(sessions.updatedAt), rendered: agg.rendered, total: agg.total,
-      createdAt: sessions.createdAt, durationMs: sessions.durationMs, progress: sessions.progress, chamber: sessionRecords.chamber,
+      createdAt: sessions.createdAt, durationMs: sessions.durationMs, progress: sessions.progress, chamber: sessionRecords.chamber, recordStatus: sessionRecords.status,
     })
     .from(sessions)
     .leftJoin(agg, eq(agg.sessionId, sessions.id))
@@ -164,6 +164,6 @@ export async function listSessionSummaries(db: Db, ownerId: string, limit = 200)
   return rows.map((r) => ({
     id: r.id, title: r.title, language: r.language, profile: r.profile, stage: r.stage, source: r.source, error: r.error,
     videoRemoved: r.videoDeletedAt !== null, lastActivityAt: r.lastActivityAt, createdAt: r.createdAt, durationMs: r.durationMs,
-    progress: r.progress, chamber: r.chamber ?? null, clipCount: r.total ?? 0, renderedClips: r.rendered ?? 0,
+    progress: r.progress, chamber: r.recordStatus === "suggested" || r.recordStatus === "failed" ? null : (r.chamber ?? null), clipCount: r.total ?? 0, renderedClips: r.rendered ?? 0,
   }));
 }
