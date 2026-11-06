@@ -8,6 +8,26 @@ const w = (text: string, startMs: number, endMs: number): Word => ({ text, start
 const words: Word[] = Array.from({ length: 35 }, (_, i) => w(`word${i}`, 8000 + i * 400, 8000 + i * 400 + 300));
 
 describe("buildCues", () => {
+  it("a sentence's last word is not left alone on a cue when the speech is continuous (real: \"können.\", \"abbauen.\")", () => {
+    const text = "und endlich ausreichend Geld vom Bund, damit die Kommunen das auch umsetzen können.".split(" ");
+    let t = 0;
+    const ws = text.map((x) => {
+      const word = w(x, t, t + 150);
+      t += 200;
+      return word;
+    });
+    const cues = buildCues(ws, { startMs: 0, endMs: t });
+    for (const c of cues) expect(c.lines.join(" ").split(" ").length).toBeGreaterThan(1);
+    expect(cues.map((c) => c.lines.join(" ")).join(" ")).toBe(text.join(" "));
+    expect(cues.at(-1)!.lines.join(" ")).toBe("umsetzen können.");
+  });
+
+  it("a one-word sentence after a pause or a finished sentence stays on its own cue", () => {
+    const ws = [w("Das", 0, 300), w("stimmt.", 350, 700), w("Warum?", 1500, 1900)];
+    const cues = buildCues(ws, { startMs: 0, endMs: 2000 });
+    expect(cues.map((c) => c.lines.join(" "))).toEqual(["Das stimmt.", "Warum?"]);
+  });
+
   it("cues are relative to the clip start and exclude outside words", () => {
     const cues = buildCues(words, { startMs: 10_000, endMs: 20_000 });
     expect(cues[0]!.startMs).toBeGreaterThanOrEqual(0);

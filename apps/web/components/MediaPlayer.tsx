@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type CSSProperties } from "react";
+import { useCallback, useRef, type CSSProperties, type RefObject } from "react";
 import { usePauseWhenHidden } from "@/lib/usePauseWhenHidden";
 
 export type MediaTrack = { src: string; srcLang: string; label: string };
@@ -14,6 +14,10 @@ export function MediaPlayer({
   className,
   style,
   tracks,
+  poster,
+  preload = "none",
+  mediaRef,
+  onTime,
 }: {
   kind: "video" | "audio";
   src: string | undefined;
@@ -22,17 +26,39 @@ export function MediaPlayer({
   className?: string;
   style?: CSSProperties;
   tracks?: MediaTrack[];
+  poster?: string;
+  preload?: "none" | "metadata";
+  /** The element, for a caller that seeks it. */
+  mediaRef?: RefObject<HTMLMediaElement | null>;
+  /** Called with `currentTime` in seconds while it plays or seeks. */
+  onTime?: (seconds: number) => void;
 }) {
   const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
+  const setRef = useCallback(
+    (el: (HTMLVideoElement & HTMLAudioElement) | null) => {
+      ref.current = el;
+      if (mediaRef) mediaRef.current = el;
+    },
+    [mediaRef],
+  );
   usePauseWhenHidden(ref);
   const children = tracks?.map((tr) => <track key={tr.srcLang} kind="subtitles" src={tr.src} srcLang={tr.srcLang} label={tr.label} />);
-  const common = { controls: true, autoPlay, preload: "none" as const, src, "aria-label": label, className, style };
+  const common = {
+    controls: true,
+    autoPlay,
+    preload,
+    src,
+    "aria-label": label,
+    className,
+    style,
+    onTimeUpdate: onTime ? (e: React.SyntheticEvent<HTMLMediaElement>) => onTime(e.currentTarget.currentTime) : undefined,
+  };
   return kind === "video" ? (
-    <video ref={ref} {...common}>
+    <video ref={setRef} poster={poster} {...common}>
       {children}
     </video>
   ) : (
-    <audio ref={ref} {...common}>
+    <audio ref={setRef} {...common}>
       {children}
     </audio>
   );

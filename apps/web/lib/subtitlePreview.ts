@@ -42,3 +42,20 @@ export function previewCss(look: SubtitleLook & { format: ClipFormat }, frameHei
   }
   return css;
 }
+
+/** Index of the cue playing at `clipMs` (clip-relative, like the cues), or -1 in a gap or outside the cues. */
+export function cueAt(cues: { startMs: number; endMs: number }[], clipMs: number): number {
+  return cues.findIndex((c) => clipMs >= c.startMs && clipMs < c.endMs);
+}
+
+/** Where to seek the preview copy (session time, in seconds) to show a cue: cues are relative to the clip start. */
+export function seekFor(cue: { startMs: number }, clip: { startMs: number }): number {
+  return (clip.startMs + cue.startMs) / 1000;
+}
+
+/** The review shows the "Original" column only when the track is in another language than the video's. */
+export function reviewColumns(trackLanguage: string, originalLanguage: string | null | undefined): 1 | 2 {
+  if (!originalLanguage) return 2;
+  const primary = (code: string) => code.toLowerCase().split(/[-_]/)[0];
+  return primary(trackLanguage) === primary(originalLanguage) ? 1 : 2;
+}

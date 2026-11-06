@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewCss } from "./subtitlePreview";
+import { cueAt, previewCss, reviewColumns, seekFor } from "./subtitlePreview";
 
 describe("previewCss", () => {
   it("draws yellow above the banner like the render", () => {
@@ -29,5 +29,33 @@ describe("previewCss", () => {
   it("9:16 uses a 4% font, 16:9 5.5%", () => {
     expect(previewCss({ style: "white", position: "bottom", format: "9:16" }, 400).fontSize).toBeCloseTo(16, 5);
     expect(previewCss({ style: "white", position: "bottom", format: "16:9" }, 400).fontSize).toBeCloseTo(22, 5);
+  });
+});
+
+describe("review with playback", () => {
+  const cues = [
+    { startMs: 100, endMs: 2000 },
+    { startMs: 2000, endMs: 3500 },
+    { startMs: 4000, endMs: 5000 },
+  ];
+  it("cueAt: the cue playing at a clip-relative time, -1 in a gap or outside", () => {
+    expect(cueAt(cues, 0)).toBe(-1);
+    expect(cueAt(cues, 100)).toBe(0);
+    expect(cueAt(cues, 1999)).toBe(0);
+    expect(cueAt(cues, 2000)).toBe(1);
+    expect(cueAt(cues, 3700)).toBe(-1);
+    expect(cueAt(cues, 4999)).toBe(2);
+    expect(cueAt(cues, 5000)).toBe(-1);
+  });
+  it("seekFor: cues are clip-relative, the proxy is session-absolute (seconds)", () => {
+    expect(seekFor(cues[1]!, { startMs: 60_000 })).toBe(62);
+    expect(seekFor(cues[0]!, { startMs: 0 })).toBe(0.1);
+  });
+  it("one column when the track is the video's own language", () => {
+    expect(reviewColumns("de", "de")).toBe(1);
+    expect(reviewColumns("pt", "pt-BR")).toBe(1);
+    expect(reviewColumns("en", "de")).toBe(2);
+    expect(reviewColumns("en", undefined)).toBe(2);
+    expect(reviewColumns("en", null)).toBe(2);
   });
 });

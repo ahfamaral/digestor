@@ -12,15 +12,10 @@ export function buildCues(words: Word[], range: { startMs: number; endMs: number
     .filter((w) => w.endMs > range.startMs && w.startMs < range.endMs)
     .map((w) => ({ ...w, startMs: Math.max(w.startMs, range.startMs), endMs: Math.min(w.endMs, range.endMs) }));
 
-  const cues: Cue[] = [];
+  const groups: Word[][] = [];
   let cur: Word[] = [];
   const flush = () => {
-    if (cur.length === 0) return;
-    cues.push({
-      startMs: cur[0]!.startMs - range.startMs,
-      endMs: cur.at(-1)!.endMs - range.startMs,
-      lines: layout(cur),
-    });
+    if (cur.length > 0) groups.push(cur);
     cur = [];
   };
 
@@ -35,7 +30,26 @@ export function buildCues(words: Word[], range: { startMs: number; endMs: number
     if (endsSentence(word.text)) flush();
   }
   flush();
-  return cues;
+
+  // A full cue can leave the last word of a sentence alone on the next one ("können."). When the speech runs on (no
+  // pause, the previous cue did not end its sentence), that word takes the previous cue's last word along.
+  for (let i = 1; i < groups.length; i++) {
+    const prev = groups[i - 1]!;
+    const g = groups[i]!;
+    if (g.length !== 1 || prev.length < 3) continue;
+    const last = prev.at(-1)!;
+    if (endsSentence(last.text) || g[0]!.startMs - last.endMs >= GAP_MS) continue;
+    const moved = [last, g[0]!];
+    if (layout(moved).length > MAX_LINES) continue;
+    prev.pop();
+    groups[i] = moved;
+  }
+
+  return groups.map((ws) => ({
+    startMs: ws[0]!.startMs - range.startMs,
+    endMs: ws.at(-1)!.endMs - range.startMs,
+    lines: layout(ws),
+  }));
 }
 
 const pad = (n: number, len = 2) => String(n).padStart(len, "0");

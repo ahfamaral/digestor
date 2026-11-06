@@ -19,12 +19,14 @@ export interface SubtitlesPanelProps {
   clip: ClipView;
   /** The session has a picture (false: audio only). */
   hasVideo: boolean;
+  /** The clip's poster frame, when there is one. */
+  thumbUrl: string | null;
   /** Saves the clip's subtitle style and position; resolves false when it failed. */
   onLook: (look: SubtitleLook) => Promise<boolean>;
   /** The video's spoken language, or null when unknown. */
   originalLanguage: string | null;
   tracks: TrackView[];
-  /** The video was removed (R30): lines can't be reviewed, approved or burned any more; adding a language still works. */
+  /** The video was removed (R30): lines show read-only (no player), and can't be edited, approved or burned any more; adding a language still works. */
   frozen: boolean;
   onTrack: (track: TrackView) => void;
 }
@@ -36,7 +38,7 @@ const ACT =
  * Subtitles per language: add a language, download drafts, review and approve lines, and ask for a burned-in version.
  * A track built for an older cut is "outdated" (R27): no downloads, and Rebuild replaces it.
  */
-export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, onLook, originalLanguage, tracks, frozen, onTrack }: SubtitlesPanelProps) {
+export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, onLook, originalLanguage, tracks, frozen, onTrack }: SubtitlesPanelProps) {
   const options = subtitleLanguages(originalLanguage, tracks.map((tr) => tr.language));
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
@@ -170,6 +172,11 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, onLook, orig
           track={editingTrack}
           languageLabel={label(editingTrack.language)}
           originalLanguage={originalLanguage ?? undefined}
+          clip={clip}
+          sessionId={sessionId}
+          hasVideo={hasVideo}
+          videoRemoved={frozen}
+          thumbUrl={thumbUrl}
           onSaved={onTrack}
         />
       )}
@@ -283,7 +290,7 @@ function TrackRow({
       )}
       {ready && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <button type="button" className={ACT} disabled={frozen} onClick={onReview} aria-label={t("prepare.reviewLabel", { language: label })}>
+          <button type="button" className={ACT} onClick={onReview} aria-label={t("prepare.reviewLabel", { language: label })}>
             {t("prepare.review")}
           </button>
           <label className="flex items-center gap-1.5 text-xs font-medium" title={!track.approved && !burnOn ? t("prepare.burnNeedsApproval") : undefined}>
