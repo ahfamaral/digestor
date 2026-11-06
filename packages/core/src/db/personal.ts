@@ -423,6 +423,48 @@ export async function listClips(db: Db, ownerId: string, sessionId: string): Pro
     .orderBy(asc(clips.startMs), asc(clips.createdAt), asc(clips.id));
 }
 
+/** A clip as the Sessions page shows it in a row's clips strip. */
+export interface ClipPreview {
+  id: string;
+  sessionId: string;
+  startMs: number;
+  endMs: number;
+  format: ClipFormat;
+  merged: boolean;
+  rendered: boolean;
+  /** The clip's moment thumbnail, when it has one. */
+  thumbKey: string | null;
+  momentId: string | null;
+  /** Its subtitle tracks' languages, sorted. */
+  languages: string[];
+}
+
+/** Live clips of these sessions, each session's in Prepare order (`listClips`). */
+export async function listClipPreviews(db: Db, ownerId: string, sessionIds: string[]): Promise<ClipPreview[]> {
+  if (sessionIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: clips.id, sessionId: clips.sessionId, startMs: clips.startMs, endMs: clips.endMs, format: clips.format,
+      mergedMomentIds: clips.mergedMomentIds, renderStatus: clips.renderStatus, momentId: clips.momentId, thumbKey: moments.thumbKey,
+    })
+    .from(clips)
+    .leftJoin(moments, eq(moments.id, clips.momentId))
+    .where(and(eq(clips.ownerId, ownerId), inArray(clips.sessionId, sessionIds), alive))
+    .orderBy(asc(clips.sessionId), asc(clips.startMs), asc(clips.createdAt), asc(clips.id));
+  const tracks = rows.length === 0
+    ? []
+    : await db
+        .select({ clipId: subtitleTracks.clipId, language: subtitleTracks.language })
+        .from(subtitleTracks)
+        .where(inArray(subtitleTracks.clipId, rows.map((r) => r.id)));
+  return rows.map((r) => ({
+    id: r.id, sessionId: r.sessionId, startMs: r.startMs, endMs: r.endMs, format: r.format,
+    merged: r.mergedMomentIds.length > 0, rendered: r.renderStatus === "done",
+    thumbKey: r.thumbKey ?? null, momentId: r.momentId,
+    languages: tracks.filter((t) => t.clipId === r.id).map((t) => t.language).sort(),
+  }));
+}
+
 /** Deleted clips are not returned. */
 export async function getClip(db: Db, id: string): Promise<Clip | null> {
   const [row] = await db.select().from(clips).where(and(eq(clips.id, id), alive));

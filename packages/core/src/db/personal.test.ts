@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  setClipRenderStatus, mergeClips, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
+  setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -772,5 +772,40 @@ describe("merging clips", () => {
       expect(out.map((c) => c.id)).toEqual([a.id]);
       expect((await listClips(db, OWNER, s.id)).map((c) => c.id)).toEqual([a.id]);
     });
+  });
+});
+
+describe("listClipPreviews", () => {
+  it("returns live clips per session in Prepare order with thumb, tracks and merged flag", async () => {
+    const [m] = await saveMoments(db, analysisId, [{
+      topicId: null, granularity: "passage", startMs: 10_000, endMs: 20_000, title: "M", why: "w", relevance: 50, speakers: [], evidence: [], origin: "ai", highlights: [],
+    }]);
+    await db.update(momentsTable).set({ thumbKey: `${s.id}/thumbs/${m!.id}.jpg` }).where(eq(momentsTable.id, m!.id));
+    const late = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: null, startMs: 30_000, endMs: 40_000, actor: "user" });
+    const early = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m!.id, startMs: 10_000, endMs: 20_000, actor: "user" });
+    const gone = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 5_000, endMs: 6_000, actor: "user" });
+    await deleteClip(db, gone.id, "user");
+    await createClip(db, { sessionId: s.id, ownerId: "someone-else", startMs: 1_000, endMs: 2_000, actor: "user" });
+    await createTrack(db, early.id, "en");
+    await createTrack(db, early.id, "de");
+    await setClipRenderStatus(db, late.id, "done");
+    await db.update(clips).set({ mergedMomentIds: [m!.id] }).where(eq(clips.id, late.id));
+    const s2 = await createSession(db, { title: "T2", source: "upload" });
+    const other = await createClip(db, { sessionId: s2.id, ownerId: OWNER, startMs: 0, endMs: 9_000, actor: "user" });
+
+    const out = await listClipPreviews(db, OWNER, [s.id, s2.id]);
+    expect(out.filter((c) => c.sessionId === s.id).map((c) => c.id)).toEqual([early.id, late.id]);
+    expect(out.find((c) => c.id === early.id)).toEqual({
+      id: early.id, sessionId: s.id, startMs: 10_000, endMs: 20_000, format: "16:9", merged: false, rendered: false,
+      thumbKey: `${s.id}/thumbs/${m!.id}.jpg`, momentId: m!.id, languages: ["de", "en"],
+    });
+    expect(out.find((c) => c.id === late.id)).toMatchObject({ merged: true, rendered: true, thumbKey: null, momentId: null, languages: [] });
+    expect(out.find((c) => c.id === other.id)).toMatchObject({ sessionId: s2.id });
+    expect(out).toHaveLength(3);
+  });
+
+  it("returns [] for no session ids", async () => {
+    await newClip();
+    expect(await listClipPreviews(db, OWNER, [])).toEqual([]);
   });
 });

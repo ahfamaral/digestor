@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createDb, type Db } from "./client.ts";
 import { eq } from "drizzle-orm";
-import { clips, sessions } from "./schema.ts";
+import { clips, sessionRecords, sessions } from "./schema.ts";
+import { dayRef } from "../recordRef.ts";
 import {
   createSession, deleteSession, getContextCard, getSession, getTranscript, listExpiredSessions, saveContextCard,
   listSessionSummaries, saveTranscript, setStage, transitionStage, updateSession, type Session,
@@ -91,5 +92,24 @@ describe("listSessionSummaries", () => {
     expect(list.map((x) => x.renderedClips)).toEqual([1, 0, 0]);
     expect(list[0]!.lastActivityAt).toEqual(at(5));
     expect(list[0]).toMatchObject({ id: a.id, stage: "uploaded", videoRemoved: false, profile: null });
+  });
+
+  it("carries createdAt, duration, progress, the linked chamber and the live clip count", async () => {
+    const p = await createSession(db, { title: "P", source: "youtube" });
+    await updateSession(db, p.id, { durationMs: 600_000 });
+    await setStage(db, p.id, "transcribing", 40);
+    await db.insert(sessionRecords).values({ sessionId: p.id, chamber: "camara", ref: dayRef("camara", "2026-06-30") });
+    const base = { startMs: 0, endMs: 1000, format: "16:9" as const };
+    await db.insert(clips).values([
+      { ...base, sessionId: p.id, ownerId: "owner" },
+      { ...base, sessionId: p.id, ownerId: "owner", renderStatus: "done" },
+      { ...base, sessionId: p.id, ownerId: "owner", deletedAt: new Date() },
+      { ...base, sessionId: p.id, ownerId: "other" },
+    ]);
+    const list = await listSessionSummaries(db, "owner");
+    const row = list.find((x) => x.id === p.id)!;
+    expect(row).toMatchObject({ chamber: "camara", clipCount: 2, renderedClips: 1, durationMs: 600_000, progress: 40 });
+    expect(row.createdAt).toBeInstanceOf(Date);
+    expect(list.find((x) => x.id === s.id)).toMatchObject({ chamber: null, clipCount: 0, renderedClips: 0, durationMs: null, progress: 0 });
   });
 });

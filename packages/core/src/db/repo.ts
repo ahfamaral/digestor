@@ -1,7 +1,8 @@
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { ContextCard, Transcript } from "../schemas.ts";
 import type { Db } from "./client.ts";
-import { clips, contextCards, sessions, transcripts, type Stage } from "./schema.ts";
+import { clips, contextCards, sessionRecords, sessions, transcripts, type Stage } from "./schema.ts";
+import type { ChamberId } from "../chambers.ts";
 
 export type Session = typeof sessions.$inferSelect;
 
@@ -124,16 +125,24 @@ export interface SessionSummary {
   error: string | null;
   videoRemoved: boolean;
   lastActivityAt: Date;
+  createdAt: Date;
+  durationMs: number | null;
+  progress: number;
+  /** The house of the linked official record, if any. */
+  chamber: ChamberId | null;
+  /** Live clips of this owner. */
+  clipCount: number;
   renderedClips: number;
 }
 
 /** The owner's sessions, newest activity first (the session's own update or its latest clip update). */
-export async function listSessionSummaries(db: Db, ownerId: string, limit = 50): Promise<SessionSummary[]> {
+export async function listSessionSummaries(db: Db, ownerId: string, limit = 200): Promise<SessionSummary[]> {
   const agg = db
     .select({
       sessionId: clips.sessionId,
       lastClipAt: sql<Date | null>`max(${clips.updatedAt})`.as("last_clip_at"),
       rendered: sql<number>`count(*) filter (where ${clips.renderStatus} = 'done')::int`.as("rendered"),
+      total: sql<number>`count(*)::int`.as("clip_count"),
     })
     .from(clips)
     .where(and(eq(clips.ownerId, ownerId), isNull(clips.deletedAt)))
@@ -144,14 +153,17 @@ export async function listSessionSummaries(db: Db, ownerId: string, limit = 50):
     .select({
       id: sessions.id, title: sessions.title, language: sessions.language, profile: sessions.profile,
       stage: sessions.stage, source: sessions.source, error: sessions.error, videoDeletedAt: sessions.videoDeletedAt,
-      lastActivityAt: activity.mapWith(sessions.updatedAt), rendered: agg.rendered,
+      lastActivityAt: activity.mapWith(sessions.updatedAt), rendered: agg.rendered, total: agg.total,
+      createdAt: sessions.createdAt, durationMs: sessions.durationMs, progress: sessions.progress, chamber: sessionRecords.chamber,
     })
     .from(sessions)
     .leftJoin(agg, eq(agg.sessionId, sessions.id))
+    .leftJoin(sessionRecords, eq(sessionRecords.sessionId, sessions.id))
     .orderBy(desc(activity))
     .limit(limit);
   return rows.map((r) => ({
     id: r.id, title: r.title, language: r.language, profile: r.profile, stage: r.stage, source: r.source, error: r.error,
-    videoRemoved: r.videoDeletedAt !== null, lastActivityAt: r.lastActivityAt, renderedClips: r.rendered ?? 0,
+    videoRemoved: r.videoDeletedAt !== null, lastActivityAt: r.lastActivityAt, createdAt: r.createdAt, durationMs: r.durationMs,
+    progress: r.progress, chamber: r.chamber ?? null, clipCount: r.total ?? 0, renderedClips: r.rendered ?? 0,
   }));
 }
