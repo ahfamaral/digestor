@@ -350,7 +350,9 @@ export async function confirmClips(
       .select()
       .from(clips)
       .where(and(eq(clips.ownerId, ownerId), eq(clips.sessionId, sessionId), alive));
-    const byMoment = new Map(live.flatMap((c) => (c.momentId ? [[c.momentId, c] as const] : [])));
+    const byMoment = new Map(
+      live.flatMap((c) => [...(c.momentId ? [c.momentId] : []), ...c.mergedMomentIds].map((id) => [id, c] as const)),
+    );
     const out: Clip[] = [];
     for (const m of wanted) {
       let clip = byMoment.get(m.id);
@@ -358,9 +360,50 @@ export async function confirmClips(
         clip = await insertClip(tx, { sessionId, ownerId, momentId: m.id, startMs: m.startMs, endMs: m.endMs, actor: "user" });
         byMoment.set(m.id, clip);
       }
-      out.push(clip);
+      if (!out.some((c) => c.id === clip.id)) out.push(clip);
     }
     return out;
+  });
+}
+
+export type MergeResult = { ok: true; clip: Clip; absorbedId: string } | { ok: false; reason: "not_found" | "not_touching" };
+
+/**
+ * Merges two touching or overlapping clips of one session into the earlier one (by start, then creation): it spans
+ * both, remembers the absorbed clip's moments, and the later clip is soft-deleted. Undoing the survivor's `merge`
+ * event restores both.
+ */
+export async function mergeClips(db: Db, ownerId: string, clipIds: [string, string], actor: ClipActor): Promise<MergeResult> {
+  return db.transaction(async (tx): Promise<MergeResult> => {
+    const [peek] = await tx.select({ sessionId: clips.sessionId }).from(clips).where(and(eq(clips.id, clipIds[0]), alive));
+    if (!peek) return { ok: false, reason: "not_found" };
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${peek.sessionId}))`);
+    const rows: Clip[] = [];
+    for (const id of [...clipIds].sort()) {
+      const row = await lockClip(tx, id);
+      if (!row || row.deletedAt || row.ownerId !== ownerId || row.sessionId !== peek.sessionId) return { ok: false, reason: "not_found" };
+      rows.push(row);
+    }
+    if (rows.length !== 2 || rows[0]!.id === rows[1]!.id) return { ok: false, reason: "not_found" };
+    const [first, second] = [...rows].sort((x, y) => x.startMs - y.startMs || x.createdAt.getTime() - y.createdAt.getTime()) as [Clip, Clip];
+    if (first.endMs < second.startMs) return { ok: false, reason: "not_touching" };
+    const bounds = { startMs: first.startMs, endMs: Math.max(first.endMs, second.endMs) };
+    const merged = [...new Set([...first.mergedMomentIds, ...(second.momentId ? [second.momentId] : []), ...second.mergedMomentIds])]
+      .filter((id) => id !== first.momentId);
+    const now = new Date();
+    await tx.update(clips).set({ ...bounds, mergedMomentIds: merged, updatedAt: now }).where(eq(clips.id, first.id));
+    await tx.update(clips).set({ deletedAt: now, updatedAt: now }).where(eq(clips.id, second.id));
+    await tx.insert(clipEvents).values({
+      clipId: first.id,
+      actor,
+      kind: "merge",
+      before: { startMs: first.startMs, endMs: first.endMs, mergedMomentIds: first.mergedMomentIds },
+      after: { ...bounds, mergedMomentIds: merged, absorbedClipId: second.id },
+    });
+    await afterBoundsChange(tx, first.id, bounds);
+    await staleIfDone(tx, first.id);
+    const [fresh] = await tx.select().from(clips).where(eq(clips.id, first.id));
+    return { ok: true, clip: fresh!, absorbedId: second.id };
   });
 }
 
@@ -476,14 +519,18 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
           inArray(selections.momentId, tx.select({ id: moments.id }).from(moments).where(and(eq(moments.id, clip.momentId), eq(moments.origin, "ask")))),
         ));
       }
+    } else if (ev.kind === "merge") {
+      set = { ...set, ...(ev.before as object) };
+      const { absorbedClipId } = ev.after as { absorbedClipId: string };
+      await tx.update(clips).set({ deletedAt: null, updatedAt: now }).where(eq(clips.id, absorbedClipId));
     } else {
       set = { ...set, deletedAt: null };
     }
     await tx.update(clips).set(set).where(eq(clips.id, clipId));
     await tx.update(clipEvents).set({ undoneAt: now }).where(eq(clipEvents.id, ev.id));
-    if (ev.kind === "bounds" || ev.kind === "format") await staleIfDone(tx, clipId);
+    if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "merge") await staleIfDone(tx, clipId);
     if (ev.kind === "style") await staleBurnsIfDone(tx, clipId);
-    if (ev.kind === "bounds") await afterBoundsChange(tx, clipId, ev.before as { startMs: number; endMs: number });
+    if (ev.kind === "bounds" || ev.kind === "merge") await afterBoundsChange(tx, clipId, ev.before as { startMs: number; endMs: number });
     const [fresh] = await tx.select().from(clips).where(eq(clips.id, clipId));
     return fresh!;
   });

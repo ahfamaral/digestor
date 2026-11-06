@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  setClipRenderStatus, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
+  setClipRenderStatus, mergeClips, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -619,5 +619,136 @@ describe("find more", () => {
     const r = (await requestFindMore(db, { ownerId: OWNER, analysisId, personId: p.id }))!;
     expect(await finishFindMore(db, r.id, [found("x")])).toBe(0);
     expect(await listPersonalMoments(db, OWNER, analysisId)).toEqual([]);
+  });
+});
+
+describe("merging clips", () => {
+  const mrow = (title: string, startMs: number, endMs: number): NewMoment => ({
+    topicId: null, granularity: "passage", startMs, endMs, title, why: "w", relevance: 50, speakers: [], evidence: [], origin: "ai", highlights: [],
+  });
+  const mk = async (title: string, startMs: number, endMs: number, withMoment = true) => {
+    const [m] = withMoment ? await saveMoments(db, analysisId, [mrow(title, startMs, endMs)]) : [undefined];
+    const c = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m?.id ?? null, startMs, endMs, actor: "user" });
+    return { c, m: m?.id as string };
+  };
+  const toWanted = (id: string, startMs: number, endMs: number) => ({ id, startMs, endMs });
+
+  describe("mergeClips", () => {
+    it("keeps the earlier clip, spans both, soft-deletes the later, remembers its moment", async () => {
+      const { c: a, m: mA } = await mk("A", 10_000, 30_000);
+      const { c: b, m: mB } = await mk("B", 25_000, 40_000);
+      const r = await mergeClips(db, OWNER, [b.id, a.id], "user");
+      expect(r).toMatchObject({ ok: true, absorbedId: b.id });
+      expect(r.ok && r.clip).toMatchObject({ id: a.id, startMs: 10_000, endMs: 40_000, momentId: mA, mergedMomentIds: [mB], warningsAck: false });
+      expect(await getClip(db, b.id)).toBeNull();
+      expect((await listClipEvents(db, a.id)).at(-1)).toMatchObject({ kind: "merge", actor: "user" });
+      expect((await listClipEvents(db, b.id)).map((e) => e.kind)).toEqual(["create"]);
+    });
+
+    it("allows touching clips (A.end === B.start) and refuses a 1 ms gap", async () => {
+      const { c: a } = await mk("A", 10_000, 20_000);
+      const { c: b } = await mk("B", 20_000, 30_000);
+      const { c: d } = await mk("D", 30_001, 40_000);
+      expect(await mergeClips(db, OWNER, [a.id, b.id], "user")).toMatchObject({ ok: true });
+      expect(await mergeClips(db, OWNER, [a.id, d.id], "user")).toEqual({ ok: false, reason: "not_touching" });
+    });
+
+    it("a later clip inside the earlier one keeps the earlier range", async () => {
+      const { c: a } = await mk("A", 10_000, 40_000);
+      const { c: b } = await mk("B", 20_000, 30_000);
+      const r = await mergeClips(db, OWNER, [a.id, b.id], "user");
+      expect(r.ok && r.clip).toMatchObject({ id: a.id, startMs: 10_000, endMs: 40_000 });
+    });
+
+    it("same start: the clip created first survives", async () => {
+      const { c: a } = await mk("A", 10_000, 20_000);
+      const { c: b } = await mk("B", 10_000, 30_000);
+      const r = await mergeClips(db, OWNER, [b.id, a.id], "user");
+      expect(r).toMatchObject({ ok: true, absorbedId: b.id });
+      expect(r.ok && r.clip).toMatchObject({ id: a.id, startMs: 10_000, endMs: 30_000 });
+    });
+
+    it("returns not_found for a deleted clip, another owner's or another session's clip, and on a second merge of the same pair", async () => {
+      const { c: a } = await mk("A", 10_000, 30_000);
+      const { c: b } = await mk("B", 20_000, 40_000);
+      const { c: gone } = await mk("G", 20_000, 40_000);
+      await deleteClip(db, gone.id, "user");
+      expect(await mergeClips(db, OWNER, [a.id, gone.id], "user")).toEqual({ ok: false, reason: "not_found" });
+      expect(await mergeClips(db, "someone-else", [a.id, b.id], "user")).toEqual({ ok: false, reason: "not_found" });
+      const s2 = await createSession(db, { title: "T2", source: "upload" });
+      const other = await createClip(db, { sessionId: s2.id, ownerId: OWNER, startMs: 20_000, endMs: 40_000, actor: "user" });
+      expect(await mergeClips(db, OWNER, [a.id, other.id], "user")).toEqual({ ok: false, reason: "not_found" });
+      expect(await mergeClips(db, OWNER, [a.id, b.id], "user")).toMatchObject({ ok: true });
+      expect(await mergeClips(db, OWNER, [a.id, b.id], "user")).toEqual({ ok: false, reason: "not_found" });
+    });
+
+    it("merging a merged clip again carries the absorbed moments along, without duplicates", async () => {
+      const { c: a } = await mk("A", 10_000, 30_000);
+      const { c: b, m: mB } = await mk("B", 25_000, 40_000);
+      const { c: c3, m: mC } = await mk("C", 38_000, 50_000);
+      await mergeClips(db, OWNER, [a.id, b.id], "user");
+      const r = await mergeClips(db, OWNER, [a.id, c3.id], "user");
+      expect(r.ok && r.clip.mergedMomentIds).toEqual([mB, mC]);
+      // absorbing a clip that itself holds merged moments carries them too, and never lists the survivor's own moment
+      const { c: x, m: mX } = await mk("X", 60_000, 70_000);
+      const { c: y, m: mY } = await mk("Y", 65_000, 80_000);
+      await mergeClips(db, OWNER, [x.id, y.id], "user");
+      const { c: z } = await mk("Z", 5_000, 62_000, false);
+      const r2 = await mergeClips(db, OWNER, [z.id, x.id], "user");
+      expect(r2.ok && r2.clip.mergedMomentIds).toEqual([mX, mY]);
+    });
+
+    it("outdates the survivor's tracks and stales its done render", async () => {
+      const { c: a } = await mk("A", 10_000, 30_000);
+      const { c: b } = await mk("B", 25_000, 40_000);
+      const t = (await createTrack(db, a.id, "pt"))!;
+      await setTrackCues(db, t.id, [cue("Oi")], "ready", { startMs: 10_000, endMs: 30_000 });
+      await setClipRenderStatus(db, a.id, "done");
+      await mergeClips(db, OWNER, [a.id, b.id], "user");
+      expect((await getTrack(db, t.id))!.status).toBe("outdated");
+      expect((await getClip(db, a.id))!.renderStatus).toBe("stale");
+    });
+  });
+
+  describe("undo of a merge", () => {
+    it("restores both clips exactly as they were", async () => {
+      const { c: a } = await mk("A", 10_000, 30_000);
+      const { c: b } = await mk("B", 25_000, 40_000);
+      const ta = (await createTrack(db, a.id, "pt"))!;
+      await setTrackCues(db, ta.id, [cue("Oi")], "ready", { startMs: 10_000, endMs: 30_000 });
+      const tb = (await createTrack(db, b.id, "en"))!;
+      await setTrackCues(db, tb.id, [cue("Hi")], "ready", { startMs: 25_000, endMs: 40_000 });
+      await mergeClips(db, OWNER, [a.id, b.id], "user");
+      expect((await getTrack(db, ta.id))!.status).toBe("outdated");
+      await undoLastEvent(db, a.id);
+      expect(await getClip(db, a.id)).toMatchObject({ startMs: 10_000, endMs: 30_000, mergedMomentIds: [] });
+      expect(await getClip(db, b.id)).toMatchObject({ startMs: 25_000, endMs: 40_000, deletedAt: null });
+      expect(await getTrack(db, ta.id)).toMatchObject({ status: "ready", approvedAt: null });
+      expect(await getTrack(db, tb.id)).toMatchObject({ status: "ready" });
+      expect((await listClipEvents(db, a.id)).at(-1)).toMatchObject({ kind: "merge", undoneAt: expect.any(Date) });
+    });
+
+    it("merge, trim, undo, undo: the trim goes first, then the merge", async () => {
+      const { c: a } = await mk("A", 10_000, 30_000);
+      const { c: b } = await mk("B", 25_000, 40_000);
+      await mergeClips(db, OWNER, [a.id, b.id], "user");
+      await updateClip(db, a.id, { endMs: 35_000 }, "user");
+      await undoLastEvent(db, a.id);
+      expect(await getClip(db, a.id)).toMatchObject({ startMs: 10_000, endMs: 40_000, mergedMomentIds: [expect.any(String)] });
+      await undoLastEvent(db, a.id);
+      expect(await getClip(db, a.id)).toMatchObject({ startMs: 10_000, endMs: 30_000, mergedMomentIds: [] });
+      expect(await getClip(db, b.id)).not.toBeNull();
+    });
+  });
+
+  describe("confirmClips after a merge", () => {
+    it("does not recreate the absorbed moment's clip and returns the merged clip once", async () => {
+      const { c: a, m: mA } = await mk("A", 10_000, 30_000);
+      const { c: b, m: mB } = await mk("B", 25_000, 40_000);
+      await mergeClips(db, OWNER, [a.id, b.id], "user");
+      const out = await confirmClips(db, OWNER, s.id, [toWanted(mA, 10_000, 30_000), toWanted(mB, 25_000, 40_000)]);
+      expect(out.map((c) => c.id)).toEqual([a.id]);
+      expect((await listClips(db, OWNER, s.id)).map((c) => c.id)).toEqual([a.id]);
+    });
   });
 });

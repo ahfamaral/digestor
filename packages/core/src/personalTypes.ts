@@ -5,7 +5,7 @@ export type SelectionStatus = "approved" | "rejected";
 export type ClipFormat = "16:9" | "9:16";
 export type RenderStatus = "none" | "queued" | "rendering" | "done" | "failed" | "stale";
 export type ClipActor = "user" | "ask";
-export type ClipEventKind = "create" | "bounds" | "format" | "style" | "delete";
+export type ClipEventKind = "create" | "bounds" | "format" | "style" | "delete" | "merge";
 /** `outdated`: built for clip bounds that have since changed (Rebuild replaces it). */
 export type TrackStatus = "preparing" | "ready" | "failed" | "outdated";
 export type AskRole = "user" | "assistant";
@@ -28,6 +28,8 @@ export interface Clip {
   sessionId: string;
   ownerId: string;
   momentId: string | null;
+  /** Moments absorbed by merges (not the clip's own `momentId`). */
+  mergedMomentIds: string[];
   startMs: number;
   endMs: number;
   format: ClipFormat;

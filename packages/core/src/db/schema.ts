@@ -190,6 +190,7 @@ export const clips = pgTable(
       .references(() => sessions.id, { onDelete: "cascade" }),
     ownerId: text("owner_id").notNull(),
     momentId: uuid("moment_id").references(() => moments.id, { onDelete: "set null" }),
+    mergedMomentIds: uuid("merged_moment_ids").array().notNull().default(sql`'{}'::uuid[]`),
     startMs: integer("start_ms").notNull(),
     endMs: integer("end_ms").notNull(),
     format: text("format").$type<ClipFormat>().notNull().default("16:9"),

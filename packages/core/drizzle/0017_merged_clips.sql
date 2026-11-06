@@ -1,0 +1,1 @@
+ALTER TABLE "clips" ADD COLUMN "merged_moment_ids" uuid[] DEFAULT '{}'::uuid[] NOT NULL;
