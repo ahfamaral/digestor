@@ -80,6 +80,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
           : [],
         thumbUrl: moment?.thumbKey ? `/api/files/${id}/thumbs/${moment.id}.jpg` : null,
         dismissed: approvalDismissed(clip, selections),
+        mergedCount: (clip.momentId ? 1 : 0) + clip.mergedMomentIds.length,
       };
     }),
   );

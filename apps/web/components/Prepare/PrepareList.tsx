@@ -1,7 +1,7 @@
 "use client";
 
 import { MediaPlayer } from "@/components/MediaPlayer";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,12 +13,13 @@ import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
 import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
-import { fetchChecks, fetchTracks, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
-import { checksToPoll, type ClipView, type TrackView } from "@/lib/prepareData";
+import { fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
+import { checksToPoll, mergePairs, type ClipView, type TrackView } from "@/lib/prepareData";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ApprovalDismissed } from "@/components/ApprovalDismissed";
 import { ChecksPanel } from "./ChecksPanel";
 import { Checklist } from "./Checklist";
@@ -47,6 +48,8 @@ export interface PrepareClipData {
   thumbUrl: string | null;
   /** The clip's moment is no longer approved on the Briefing. */
   dismissed: boolean;
+  /** How many moments the clip covers (more than one after a merge). */
+  mergedCount: number;
 }
 
 export interface PrepareListProps {
@@ -149,6 +152,18 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     }
     setBusy((b) => ({ ...b, [id]: false }));
     return false;
+  }
+
+  const [mergeAt, setMergeAt] = useState<number | null>(null);
+  const pairs = session.videoRemoved ? new Set<number>() : mergePairs(items.map((i) => i.clip));
+  const mergeA = mergeAt === null ? null : items[mergeAt];
+  const mergeB = mergeAt === null ? null : items[mergeAt + 1];
+
+  async function confirmMerge() {
+    if (!mergeA || !mergeB) return;
+    await mergeClipsApi([mergeA.clip.id, mergeB.clip.id]); // throws a friendly sentence; the dialog shows it
+    setMergeAt(null);
+    router.refresh();
   }
 
   async function undo(id: string) {
@@ -282,8 +297,8 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
         ) : (
           <ol className="grid gap-4">
             {items.map((item, n) => (
+              <Fragment key={item.clip.id}>
               <ClipCard
-                key={item.clip.id}
                 n={n + 1}
                 item={item}
                 session={session}
@@ -299,8 +314,36 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
                 onCheckAgain={() => void checkAgain(item.clip.id)}
                 onTrack={(tr) => setTrack(item.clip.id, tr)}
               />
+              {pairs.has(n) && (
+                <li role="none" className="-my-1 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setMergeAt(n)}
+                    className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+                  >
+                    {t("prepare.mergeButton", { a: n + 1, b: n + 2 })}
+                  </button>
+                </li>
+              )}
+              </Fragment>
             ))}
           </ol>
+        )}
+
+        {mergeAt !== null && mergeA && mergeB && (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => !o && setMergeAt(null)}
+            title={t("prepare.mergeTitle", { a: mergeAt + 1, b: mergeAt + 2 })}
+            description={t("prepare.mergeDescription", {
+              a: mergeAt + 1,
+              start: formatTimestamp(Math.min(mergeA.clip.startMs, mergeB.clip.startMs)),
+              end: formatTimestamp(Math.max(mergeA.clip.endMs, mergeB.clip.endMs)),
+            })}
+            actionLabel={t("prepare.mergeAction")}
+            busyLabel={t("prepare.merging")}
+            onConfirm={confirmMerge}
+          />
         )}
 
         <footer className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
@@ -385,6 +428,9 @@ function ClipCard({
             <h2 id={headingId} lang={lang} dir="auto" className="text-[15px] font-bold break-words">
               {title || t("prepare.clipHeading", { n })}
             </h2>
+            {item.mergedCount > 1 && (
+              <p className="font-mono text-xs text-muted-foreground">{t("prepare.mergedFrom", { n: item.mergedCount })}</p>
+            )}
             {item.dismissed && (
               <p className="mt-1">
                 <ApprovalDismissed id={`${headingId}-dismissed`} />

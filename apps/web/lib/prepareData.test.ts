@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { approvalDismissed, canUndo, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
+import { mergePairs, approvalDismissed, canUndo, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -122,4 +122,15 @@ describe("approvalDismissed", () => {
     expect(approvalDismissed(c("a", ["b"]), { a: "approved" })).toBe(true));
   it("looks at merged moments of a clip without its own moment", () =>
     expect(approvalDismissed(c(null, ["b"]), {})).toBe(true));
+});
+
+describe("mergePairs", () => {
+  const c = (startMs: number, endMs: number) => ({ id: `${startMs}`, startMs, endMs });
+  it("finds overlapping, touching, gapped and chained neighbours", () => {
+    expect([...mergePairs([c(0, 10), c(5, 20)])]).toEqual([0]);
+    expect([...mergePairs([c(0, 10), c(10, 20)])]).toEqual([0]);
+    expect([...mergePairs([c(0, 10), c(11, 20)])]).toEqual([]);
+    expect([...mergePairs([c(0, 10), c(5, 20), c(15, 30)])]).toEqual([0, 1]);
+    expect([...mergePairs([c(0, 10)])]).toEqual([]);
+  });
 });

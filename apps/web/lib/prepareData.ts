@@ -13,6 +13,13 @@ export function approvalDismissed(
   return ids.some((id) => selections[id] !== "approved");
 }
 
+/** Indexes `i` (clips sorted by start) where clip `i` and `i + 1` overlap or touch, so they can merge. */
+export function mergePairs(clips: { id: string; startMs: number; endMs: number }[]): Set<number> {
+  const out = new Set<number>();
+  for (let i = 0; i + 1 < clips.length; i++) if (clips[i]!.endMs >= clips[i + 1]!.startMs) out.add(i);
+  return out;
+}
+
 /** The credit line a clip starts with: the YouTube channel (or uploader); uploads have none. */
 export function defaultCredit(session: { source: string; metadata: Record<string, unknown> }): string {
   if (session.source !== "youtube") return "";
