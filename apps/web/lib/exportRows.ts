@@ -140,7 +140,7 @@ export function exportableIds(clips: { id: string; dismissed: boolean; failing: 
   return clips.filter(isExportReady).map((c) => c.id);
 }
 
-export type ClipStatus =
+export type ExportStatus =
   | { kind: "rendered" }
   | { kind: "rendering" }
   | { kind: "needs"; actions: ChecklistId[] }
@@ -153,19 +153,20 @@ export type ClipStatus =
  * The one status of an Export row. What exists comes first (a made file is always downloadable, even when the
  * checklist changed since); then what is missing, as actions. A dismissed approval keeps its own label.
  */
-export function clipStatus(c: { dismissed: boolean; failing: ChecklistId[]; row: ExportRow }): ClipStatus {
+export function exportStatus(c: { dismissed: boolean; failing: ChecklistId[]; row: ExportRow }): ExportStatus {
   const { row } = c;
   if (active(row.renderStatus)) return { kind: "rendering" };
   if (row.mp4 !== null) return { kind: "rendered" };
   if (c.dismissed) return { kind: "dismissed" };
+  // To-dos come first: a failed or stale render of a clip whose checklist fails can't be fixed by exporting again.
+  if (c.failing.length > 0) return { kind: "needs", actions: c.failing };
   if (row.renderStatus === "failed") return { kind: "failed" };
   if (row.renderStatus === "stale") return { kind: "stale" };
-  if (c.failing.length > 0) return { kind: "needs", actions: c.failing };
   return { kind: "ready" };
 }
 
 /** The status as one short sentence ("Needs: Add a credit line; ..."). */
-export function statusLabel(s: ClipStatus): string {
+export function statusLabel(s: ExportStatus): string {
   if (s.kind === "needs") return t("exportScreen.status.needs", { actions: s.actions.map((id) => t(`exportScreen.action.${id}`)).join("; ") });
   return t(`exportScreen.status.${s.kind}`);
 }
@@ -173,4 +174,13 @@ export function statusLabel(s: ClipStatus): string {
 /** Rendered clips first; the order inside each group is kept. */
 export function renderedFirst<T extends { row: ExportRow }>(clips: T[]): T[] {
   return [...clips.filter((c) => c.row.mp4 !== null), ...clips.filter((c) => c.row.mp4 === null)];
+}
+
+/** Keeps a fixed order (taken once on load) so rows don't jump while polling; unknown ids go last. */
+export function sortByOrder<T extends { id: string }>(clips: T[], order: string[]): T[] {
+  const at = (id: string) => {
+    const i = order.indexOf(id);
+    return i < 0 ? order.length : i;
+  };
+  return [...clips].sort((a, b) => at(a.id) - at(b.id));
 }

@@ -11,7 +11,7 @@ import type { ExportClipData } from "@/components/ExportList";
 const HELP: Record<ZipChoice, "burnedHelp" | "filesHelp" | "plainHelp"> = { burned: "burnedHelp", files: "filesHelp", plain: "plainHelp" };
 
 /** "Download all": three choices built from stored files; "burned" lists the clips it leaves out. Downloading is a plain link. */
-export function DownloadAllDialog({ sessionId, clips }: { sessionId: string; clips: ExportClipData[] }) {
+export function DownloadAllDialog({ sessionId, clips, language }: { sessionId: string; clips: ExportClipData[]; language?: string }) {
   const [open, setOpen] = useState(false);
   const zipClips = clips.map(zipClipOf);
   const plans = Object.fromEntries(ZIP_CHOICES.map((c) => [c, zipEntries(zipClips, c)])) as Record<ZipChoice, ReturnType<typeof zipEntries>>;
@@ -103,7 +103,7 @@ export function DownloadAllDialog({ sessionId, clips }: { sessionId: string; cli
               <p className="font-medium text-foreground">{t("exportScreen.skippedBurned")}</p>
               <ul className="mt-1 list-disc pl-5">
                 {plans.burned.skipped.map((s) => (
-                  <li key={s.n} dir="auto">
+                  <li key={s.n} lang={language} dir="auto">
                     {t("exportScreen.skippedItem", { n: s.n, title: s.title || t("exportScreen.clipHeading", { n: s.n }) })}
                   </li>
                 ))}

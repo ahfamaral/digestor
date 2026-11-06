@@ -12,7 +12,7 @@ import { BackLink } from "@/components/BackLink";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { WarningIcon } from "@/components/WarningNote";
 import { ApprovalDismissed } from "@/components/ApprovalDismissed";
-import { clipStatus, exportableIds, inFlight, languageLabel, renderedFirst, statusLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { exportStatus, exportableIds, inFlight, languageLabel, renderedFirst, sortByOrder, statusLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,7 @@ export interface ExportListProps {
   names: NamesData;
   /** Who's who rows of the whole session, and the voices that block clips (the banner). */
   whoRows: WhosWhoRow[];
-  unconfirmed: { voices: number; clips: number };
+  unconfirmed: { voices: number; clips: number; blocking: Record<string, number> };
   profile: string;
   clips: ExportClipData[];
 }
@@ -55,6 +55,8 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [watching, setWatching] = useState<string | null>(null);
+  // Rendered clips first, sorted once on load: the order stays put while renders finish.
+  const [order] = useState(() => renderedFirst(clips.map((c) => ({ id: c.id, row: c.row }))).map((c) => c.id));
   // Only errors and one-off answers are click-set; "rendering has started" is derived from live statuses.
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const lang = session.language ?? undefined;
@@ -113,7 +115,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
               {t("exportScreen.title")} · {clips.length === 1 ? t("exportScreen.clipsOne") : t("exportScreen.clipsMany", { n: clips.length })}
             </p>
           </div>
-          <DownloadAllDialog sessionId={session.id} clips={clips} />
+          <DownloadAllDialog sessionId={session.id} clips={clips} language={lang} />
         </header>
 
         <UnconfirmedBanner
@@ -157,7 +159,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
           </div>
         ) : (
           <ol className="grid gap-3">
-            {renderedFirst(clips.map((clip, i) => ({ clip, n: i + 1, row: clip.row }))).map(({ clip, n }) => (
+            {sortByOrder(clips.map((clip, i) => ({ clip, n: i + 1, id: clip.id })), order).map(({ clip, n }) => (
               <ClipRow key={clip.id} n={n} clip={clip} sessionId={session.id} lang={lang} names={names} sensitive={session.sensitive} watching={watching} setWatching={setWatching} />
             ))}
           </ol>
@@ -202,7 +204,7 @@ function ClipRow({
 }) {
   const { row } = clip;
   const heading = clip.title || t("exportScreen.clipHeading", { n });
-  const state = clipStatus(clip);
+  const state = exportStatus(clip);
   const status = statusLabel(state);
   const bad = state.kind === "failed";
   return (

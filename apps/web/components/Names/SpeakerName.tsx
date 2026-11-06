@@ -14,10 +14,6 @@ const BADGE_TONE: Record<string, string> = {
   metadata: "bg-stone-200 text-stone-800",
 };
 
-/**
- * A voice's name with its source badge, and a dotted underline while the name is only proposed. "Speaker C" when
- * there is no name to show. Clicking it opens the name popover; hovering or focusing the badge gives the evidence.
- */
 /** The ", " between two speakers in a list (every list of speakers uses it). */
 export function SpeakerSep() {
   return (
@@ -27,6 +23,10 @@ export function SpeakerSep() {
   );
 }
 
+/**
+ * A voice's name with its source badge, and a dotted underline while the name is only proposed. "Speaker C" when
+ * there is no name to show. Clicking it opens the name popover; hovering or focusing the badge gives the evidence.
+ */
 export function SpeakerName({
   speakerId,
   atMs,

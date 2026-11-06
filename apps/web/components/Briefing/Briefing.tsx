@@ -136,8 +136,6 @@ export function Briefing(props: BriefingProps) {
     return () => clearTimeout(timer);
   }, [flash]);
 
-  // Next can keep this page (and its state) alive after navigating away: re-enable the button for when it comes back.
-
   // Who speaks in each moment came from the server (it holds the words), so the person filter stays instant.
   const focusCtx = useMemo(() => ({ peopleByMoment: new Map(Object.entries(props.people).map(([id, ids]) => [id, new Set(ids)])) }), [props.people]);
   const views = useMemo(() => filterMoments(moments, statuses, filters, topics, focusCtx, sticky), [moments, statuses, filters, topics, focusCtx, sticky]);
@@ -263,7 +261,7 @@ export function Briefing(props: BriefingProps) {
               {m}
             </span>
           ))}
-          {props.card && <ContextBanner sessionId={session.id} card={props.card} sessionTitle={session.title} />}
+          {props.card && <ContextBanner sessionId={session.id} card={props.card} sessionTitle={session.title} language={lang} />}
           {analysis.note ? (
             <span tabIndex={0} title={analysis.note} className="cursor-help underline decoration-dotted underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
               {t("preview.analysisVersion", { n: analysis.version })}

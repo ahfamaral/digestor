@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { personAt, exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, personDetail, unconfirmedAcrossClips, splitSpeakerQuestions, unconfirmedBannerText, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, personDetail, unconfirmedAcrossClips, visibleWhoRows, splitSpeakerQuestions, unconfirmedBannerText, type NamesData, type WhosWhoRow } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -432,15 +432,15 @@ describe("unconfirmedAcrossClips", () => {
 
   it("counts the voices that block any clip, and the clips they block", () => {
     const clips = [clip(10_000, 20_000), clip(20_000, 30_000), clip(0, 10_000), clip(40_000, 50_000)];
-    expect(unconfirmedAcrossClips(clips, names, false)).toEqual({ voices: 2, clips: 3 });
+    expect(unconfirmedAcrossClips(clips, names, false)).toEqual({ voices: 2, clips: 3, blocking: { C: 2, D: 1 } });
   });
   it("counts a voice once however many clips it blocks", () => {
-    expect(unconfirmedAcrossClips([clip(10_000, 20_000), clip(40_000, 50_000)], names, false)).toEqual({ voices: 1, clips: 2 });
+    expect(unconfirmedAcrossClips([clip(10_000, 20_000), clip(40_000, 50_000)], names, false)).toEqual({ voices: 1, clips: 2, blocking: { C: 2 } });
   });
   it("is zero when every voice is confirmed, and ignores clips whose approval was dismissed", () => {
-    expect(unconfirmedAcrossClips([clip(0, 10_000)], names, false)).toEqual({ voices: 0, clips: 0 });
-    expect(unconfirmedAcrossClips([clip(10_000, 20_000, true)], names, false)).toEqual({ voices: 0, clips: 0 });
-    expect(unconfirmedAcrossClips([], names, false)).toEqual({ voices: 0, clips: 0 });
+    expect(unconfirmedAcrossClips([clip(0, 10_000)], names, false)).toEqual({ voices: 0, clips: 0, blocking: {} });
+    expect(unconfirmedAcrossClips([clip(10_000, 20_000, true)], names, false)).toEqual({ voices: 0, clips: 0, blocking: {} });
+    expect(unconfirmedAcrossClips([], names, false)).toEqual({ voices: 0, clips: 0, blocking: {} });
   });
 });
 
@@ -459,5 +459,20 @@ describe("unconfirmedBannerText", () => {
     expect(unconfirmedBannerText({ voices: 1, clips: 1 })).toBe("1 voice isn't confirmed — it blocks 1 clip.");
     expect(unconfirmedBannerText({ voices: 1, clips: 3 })).toBe("1 voice isn't confirmed — it blocks 3 clips.");
     expect(unconfirmedBannerText({ voices: 2, clips: 1 })).toBe("2 voices aren't confirmed — they block 1 clip.");
+  });
+});
+
+describe("visibleWhoRows", () => {
+  const r = (speakerId: string, main: boolean) => ({ speakerId, main }) as WhosWhoRow;
+  const rows = [r("A", true), r("B", true), r("C", false), r("D", false), r("E", false)];
+  it("shows main voices only, plus the ones that block clips (first) and the ones asked about", () => {
+    expect(visibleWhoRows(rows, { showAll: false, blocking: { D: 2 }, asked: new Set(["E"]) }).map((x) => x.speakerId)).toEqual(["D", "A", "B", "E"]);
+  });
+  it("without blockers keeps today's order, and show-all lists everything with blockers first", () => {
+    expect(visibleWhoRows(rows, { showAll: false }).map((x) => x.speakerId)).toEqual(["A", "B"]);
+    expect(visibleWhoRows(rows, { showAll: true, blocking: { D: 1 } }).map((x) => x.speakerId)).toEqual(["D", "A", "B", "C", "E"]);
+  });
+  it("shows every row when no voice is main", () => {
+    expect(visibleWhoRows([r("C", false), r("D", false)], { showAll: false }).map((x) => x.speakerId)).toEqual(["C", "D"]);
   });
 });

@@ -123,4 +123,19 @@ describe("GET /api/sessions/[id]/download", () => {
     const files = await unzip(await call(s.id, "plain"));
     expect(strFromU8(Object.values(files)[0]!)).toBe("kept");
   });
+
+  it("skips a track whose language code isn't a plain code instead of failing with a 500", async () => {
+    const s = await createSession(h.db, { title: "Odd language", source: "upload" });
+    await updateSession(h.db, s.id, { stage: "ready", language: "en", durationMs: 10_000 });
+    const clip = await createClip(h.db, { sessionId: s.id, ownerId: "owner", startMs: 0, endMs: 5000, actor: "user" });
+    mkdirSync(path.join(h.root, s.id, "clips"), { recursive: true });
+    writeFileSync(path.join(h.root, s.id, "clips", `${clip.id}.mp4`), "plain");
+    const tr = (await createTrack(h.db, clip.id, "../x"))!;
+    await setTrackCues(h.db, tr.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready");
+    await markRendered(h.db, s.id, clip.id, ["../x"]);
+    const res = await call(s.id, "burned");
+    expect(res.status).toBe(409);
+    const files = await unzip(await call(s.id, "files"));
+    expect(Object.keys(files)).toEqual([`01 clip.mp4`]);
+  });
 });

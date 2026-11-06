@@ -16,7 +16,7 @@ type Source = { name: string } & ({ path: string } | { text: string });
 const SUFFIX: Record<ZipChoice, string> = { burned: "with subtitles", files: "with subtitle files", plain: "videos" };
 
 /**
- * Streams a zip as it reads: each file is piped in 64 KiB chunks and stored, not deflated (MP4s don't compress), so a
+ * Streams a zip as it reads (fflate's Zip has no Zip64: archives over 4 GB are unsupported; clips are short): each file is piped in 64 KiB chunks and stored, not deflated (MP4s don't compress), so a
  * large clip is never held whole in memory. A client that drops the request cancels the read and closes the file.
  */
 function zipStream(sources: Source[]): ReadableStream<Uint8Array> {
@@ -75,6 +75,8 @@ function zipStream(sources: Source[]): ReadableStream<Uint8Array> {
   });
 }
 
+const LANGUAGE_CODE = /^[A-Za-z0-9-]+$/;
+
 const exists = (p: string) => stat(p).then((s) => s.isFile(), () => false);
 
 /** Resolves what the zip would hold (stored files that exist, SRT/VTT text), or the error response. */
@@ -94,6 +96,11 @@ async function plan(id: string, choice: ZipChoice): Promise<{ sources: Source[];
 
   const sources: Source[] = [];
   for (const e of zipEntries(rows.map((r) => r.zip), choice).entries) {
+    // A language code ends up in a storage path: only plain codes (en, pt-BR) are used; anything else is skipped.
+    if (e.language !== undefined && !LANGUAGE_CODE.test(e.language)) {
+      console.error("download: skipped a track with an unusable language code", e.clipId);
+      continue;
+    }
     const row = byId.get(e.clipId)!;
     if (e.kind === "mp4" || e.kind === "burned") {
       const rel = e.kind === "mp4" ? `clips/${e.clipId}.mp4` : `clips/${e.clipId}.${e.language}.burned.mp4`;

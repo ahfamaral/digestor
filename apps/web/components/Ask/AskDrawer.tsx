@@ -4,6 +4,7 @@ import { MediaPlayer } from "@/components/MediaPlayer";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus } from "@digestor/core";
+import { ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -429,8 +430,8 @@ function MessageItem({
       )}
       {sources.length > 0 && (
         <details className="group text-xs text-muted-foreground">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand">
-            <span aria-hidden className="transition-transform group-open:rotate-90">▸</span>
+          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand">
+            <ChevronRightIcon aria-hidden className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
             {t("ask.sources", { n: sources.length })}
           </summary>
           <ul aria-label={t("ask.sourcesLabel")} className="mt-1 grid gap-0.5 pl-4">

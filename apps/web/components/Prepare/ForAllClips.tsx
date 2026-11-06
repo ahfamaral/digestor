@@ -172,7 +172,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
           title={n === 1 ? t("prepare.allConfirmTitleOne") : t("prepare.allConfirmTitle", { n })}
           description={description}
           actionLabel={t("prepare.allAction")}
-          busyLabel={t("prepare.adding")}
+          busyLabel={t(pending.kind === "credit" ? "prepare.allBusyCredit" : pending.kind === "format" ? "prepare.allBusyFormat" : "prepare.adding")}
           onConfirm={confirm}
         />
       )}

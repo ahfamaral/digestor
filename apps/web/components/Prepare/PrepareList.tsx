@@ -208,7 +208,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
   /** Cards the journalist opened or closed; a card without an entry is open unless it was ready when the page loaded. */
   const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
   /** After a merge: the surviving card's heading takes focus once the absorbed card is gone. */
-  const pendingFocus = useRef<{ id: string; gone: string } | null>(null);
+  const pendingFocus = useRef<{ id: string; gone: string | null } | null>(null);
 
   /** The two clip ids the open merge dialog is about (never an index: the list can change under it). */
   const [mergeIds, setMergeIds] = useState<[string, string] | null>(null);
@@ -245,6 +245,8 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
       // The next step comes with the refresh; until then there is nothing known to undo.
       update(id, (i) => ({ ...i, clip, undo: null }));
       setFor(setStatuses, id, t("prepare.savedRange", { start: formatTimestamp(clip.startMs, { tenths: true }), end: formatTimestamp(clip.endMs, { tenths: true }) }));
+      // The Undo button unmounts once there is nothing left to undo: focus goes to the clip heading, as after a merge.
+      pendingFocus.current = { id, gone: null };
       router.refresh();
     } finally {
       setBusy((b) => ({ ...b, [id]: false }));
@@ -876,7 +878,7 @@ function ClipPlayer({
           />
         ) : thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- a same-origin API file, not a static asset
-          <img src={thumbUrl} alt="" className={cn(fit)} style={vertical ? { objectPosition: cropPosition(cropOffset) } : undefined} />
+          <img src={thumbUrl} alt="" loading="lazy" className={cn(fit)} style={vertical ? { objectPosition: cropPosition(cropOffset) } : undefined} />
         ) : (
           <span aria-hidden className={cn(vertical ? "aspect-[9/16] h-full border-x border-dashed border-stone-500" : "")} />
         )}

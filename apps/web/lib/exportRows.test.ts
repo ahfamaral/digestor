@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChecklistId } from "@digestor/core";
-import { clipStatus, exportableIds, isExportReady, exportRows, inFlight, renderedFirst, statusLabel, toMake, type ExportRow } from "./exportRows";
+import { exportStatus, exportableIds, isExportReady, exportRows, inFlight, renderedFirst, sortByOrder, statusLabel, toMake, type ExportRow } from "./exportRows";
 
 const clip = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => ({
   id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", ...over,
@@ -136,28 +136,38 @@ describe("isExportReady", () => {
   });
 });
 
-describe("clipStatus", () => {
+describe("exportStatus", () => {
   const row = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => exportRows([clip(over)], [])[0]!;
   const c = (over: { dismissed?: boolean; failing?: ChecklistId[] } = {}, r = row()) => ({ dismissed: false, failing: [] as ChecklistId[], row: r, ...over });
 
   it("one status per clip, rendering and rendered before anything else", () => {
-    expect(clipStatus(c())).toEqual({ kind: "rendered" });
-    expect(clipStatus(c({ failing: ["credit"] }))).toEqual({ kind: "rendered" });
-    expect(clipStatus(c({}, row({ renderStatus: "queued" })))).toEqual({ kind: "rendering" });
-    expect(clipStatus(c({}, row({ renderStatus: "rendering" })))).toEqual({ kind: "rendering" });
+    expect(exportStatus(c())).toEqual({ kind: "rendered" });
+    expect(exportStatus(c({ failing: ["credit"] }))).toEqual({ kind: "rendered" });
+    expect(exportStatus(c({}, row({ renderStatus: "queued" })))).toEqual({ kind: "rendering" });
+    expect(exportStatus(c({}, row({ renderStatus: "rendering" })))).toEqual({ kind: "rendering" });
   });
   it("an unrendered clip needs its to-dos, is ready, failed, stale or dismissed", () => {
     const none = row({ renderStatus: "none", renderKey: null });
-    expect(clipStatus(c({ failing: ["credit", "context"] }, none))).toEqual({ kind: "needs", actions: ["credit", "context"] });
-    expect(clipStatus(c({}, none))).toEqual({ kind: "ready" });
-    expect(clipStatus(c({ dismissed: true }, none))).toEqual({ kind: "dismissed" });
-    expect(clipStatus(c({}, row({ renderStatus: "failed", renderKey: null })))).toEqual({ kind: "failed" });
-    expect(clipStatus(c({}, row({ renderStatus: "stale" })))).toEqual({ kind: "stale" });
+    expect(exportStatus(c({ failing: ["credit", "context"] }, none))).toEqual({ kind: "needs", actions: ["credit", "context"] });
+    expect(exportStatus(c({}, none))).toEqual({ kind: "ready" });
+    expect(exportStatus(c({ dismissed: true }, none))).toEqual({ kind: "dismissed" });
+    expect(exportStatus(c({}, row({ renderStatus: "failed", renderKey: null })))).toEqual({ kind: "failed" });
+    expect(exportStatus(c({}, row({ renderStatus: "stale" })))).toEqual({ kind: "stale" });
+  });
+  it("a failing checklist shows the to-dos before failed or stale", () => {
+    const f: ChecklistId[] = ["credit"];
+    expect(exportStatus(c({ failing: f }, row({ renderStatus: "stale", renderKey: null })))).toEqual({ kind: "needs", actions: f });
+    expect(exportStatus(c({ failing: f }, row({ renderStatus: "failed", renderKey: null })))).toEqual({ kind: "needs", actions: f });
   });
   it("labels: Rendered, Rendering, Needs with actions", () => {
     expect(statusLabel({ kind: "rendered" })).toBe("Rendered · download below");
     expect(statusLabel({ kind: "rendering" })).toBe("Rendering…");
     expect(statusLabel({ kind: "needs", actions: ["credit", "context"] })).toBe("Needs: Add a credit line; Tick 'I've read these warnings'");
+  });
+  it("sortByOrder keeps a fixed order even when a render finishes", () => {
+    const mk = (id: string) => ({ id });
+    expect(sortByOrder([mk("a"), mk("b"), mk("c")], ["c", "a", "b"]).map((x) => x.id)).toEqual(["c", "a", "b"]);
+    expect(sortByOrder([mk("a"), mk("n")], ["a"]).map((x) => x.id)).toEqual(["a", "n"]);
   });
   it("renderedFirst keeps the order inside each group", () => {
     const mk = (id: string, mp4: string | null) => ({ id, row: { mp4 } as ExportRow });

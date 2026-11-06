@@ -216,17 +216,30 @@ export function unconfirmedAcrossClips(
   clips: { startMs: number; endMs: number; words: Pick<Word, "startMs" | "endMs" | "speaker">[]; dismissed?: boolean }[],
   names: NamesData,
   sensitive: boolean,
-): { voices: number; clips: number } {
-  const voices = new Set<string>();
+): { voices: number; clips: number; blocking: Record<string, number> } {
+  const blocking: Record<string, number> = {};
   let blocked = 0;
   for (const c of clips) {
     if (c.dismissed) continue;
     const own = unconfirmedVoices(names, c.words, c, sensitive);
     if (own.length === 0) continue;
     blocked++;
-    for (const v of own) voices.add(v.speakerId);
+    for (const id of new Set(own.map((v) => v.speakerId))) blocking[id] = (blocking[id] ?? 0) + 1;
   }
-  return { voices: voices.size, clips: blocked };
+  return { voices: Object.keys(blocking).length, clips: blocked, blocking };
+}
+
+/**
+ * The Who's who rows to list: main voices, plus the voices that block clips (listed first, however little they speak)
+ * and the ones a context question is asked about. `showAll` lists everything.
+ */
+export function visibleWhoRows(
+  rows: WhosWhoRow[],
+  o: { showAll: boolean; blocking?: Record<string, number>; asked?: Set<string> },
+): WhosWhoRow[] {
+  const blocks = (r: WhosWhoRow) => (o.blocking?.[r.speakerId] ?? 0) > 0;
+  const base = o.showAll || !rows.some((r) => r.main) ? rows : rows.filter((r) => r.main || blocks(r) || o.asked?.has(r.speakerId));
+  return [...base.filter(blocks), ...base.filter((r) => !blocks(r))];
 }
 
 /** The banner sentence for `unconfirmedAcrossClips` ("2 voices aren't confirmed — they block 4 clips."). */

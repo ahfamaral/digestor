@@ -21,7 +21,7 @@ export function UnconfirmedBanner({
   videoRemoved,
 }: {
   sessionId: string;
-  unconfirmed: { voices: number; clips: number };
+  unconfirmed: { voices: number; clips: number; blocking: Record<string, number> };
   rows: WhosWhoRow[];
   names: NamesData;
   sensitive: boolean;
@@ -58,6 +58,7 @@ export function UnconfirmedBanner({
         profile={profile}
         language={language}
         videoRemoved={videoRemoved}
+        blocking={unconfirmed.blocking}
       />
     </>
   );

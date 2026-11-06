@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatMinSec, formatTimestamp } from "@digestor/core";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/http";
-import { anonymousBody, conflictText, confirmBody, evidenceLine, personDetail, rowRange, rowRanges, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
+import { anonymousBody, conflictText, confirmBody, evidenceLine, personDetail, rowRange, rowRanges, visibleWhoRows, voiceLabel, type NamesData, type WhosWhoRow } from "@/lib/names";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { sampleSrc } from "@/lib/media";
@@ -69,6 +69,7 @@ export function WhosWho({
   speakerQuestions,
   answers,
   onAnswer,
+  blocking,
 }: {
   sessionId: string;
   rows: WhosWhoRow[];
@@ -89,6 +90,8 @@ export function WhosWho({
   speakerQuestions?: Record<string, { id: string; question: string; why: string }>;
   answers?: Record<string, string>;
   onAnswer?: (questionId: string, answer: string) => void;
+  /** The voices that block clips (speaker id to clips blocked): always listed, first, and marked. */
+  blocking?: Record<string, number>;
 }) {
   const router = useRouter();
   const [showAll, setShowAll] = useState(false);
@@ -143,8 +146,7 @@ export function WhosWho({
 
   const main = rows.filter((r) => r.main);
   const rest = rows.filter((r) => !r.main);
-  const asked = (r: WhosWhoRow) => speakerQuestions?.[r.speakerId] !== undefined;
-  const shown = showAll || main.length === 0 ? rows : rows.filter((r) => r.main || asked(r));
+  const shown = visibleWhoRows(rows, { showAll, blocking, asked: new Set(Object.keys(speakerQuestions ?? {})) });
   const questionShownFor = new Set<string>();
   const proposed = rows.some((r) => r.resolution.kind === "named" && !r.resolution.confirmed);
   const totalMs = rows.reduce((a, r) => a + r.ms, 0);
@@ -216,6 +218,11 @@ export function WhosWho({
                       {t("names.speaking", { time: formatMinSec(row.ms), pct: Math.round((totalMs > 0 ? row.ms / totalMs : 0) * 100) })}
                     </span>
                   </div>
+                  {(blocking?.[row.speakerId] ?? 0) > 0 && (
+                    <div className="mt-1 text-xs font-medium text-stone-900">
+                      {t(blocking![row.speakerId] === 1 ? "names.blocksOne" : "names.blocksMany", { n: blocking![row.speakerId]! })}
+                    </div>
+                  )}
                   {detail && (
                     <div dir="auto" className="mt-1 text-xs text-muted-foreground">
                       {detail}
