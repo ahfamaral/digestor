@@ -168,3 +168,47 @@ export function toTrackView(t: Jsonish<Track>): TrackView {
     error: t.error,
   };
 }
+
+/** A setting the "For all clips" strip can set. */
+export type SharedKey = "credit" | "format";
+
+type SharedClip = { id: string; credit: string | null; format: ClipFormat; noCreditNeeded: boolean; frozen?: boolean };
+
+/** A clip's value for a shared setting; a clip marked "No credit needed" has no credit value (it is never touched). */
+function valueOf(c: SharedClip, key: SharedKey): string | null {
+  if (key === "format") return c.format;
+  return c.noCreditNeeded ? null : (c.credit ?? "").trim();
+}
+
+/**
+ * The value most clips share for a setting (ties go to the earliest clip's, `clips` being in Prepare order), and the
+ * ids of the clips that differ from it. `value` is null only when there are no clips.
+ */
+export function sharedValue(clips: SharedClip[], key: SharedKey): { value: string | null; differs: string[] } {
+  const counts = new Map<string, number>();
+  for (const c of clips) {
+    const v = valueOf(c, key);
+    if (v !== null) counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  let value: string | null = null;
+  let best = 0;
+  for (const c of clips) {
+    const v = valueOf(c, key);
+    const n = v === null ? 0 : (counts.get(v) ?? 0);
+    if (n > best) {
+      best = n;
+      value = v;
+    }
+  }
+  return { value, differs: clips.filter((c) => valueOf(c, key) !== value).map((c) => c.id) };
+}
+
+/** The clips a change for all would touch: still on `shared` (the value before the change), not frozen. */
+export function applyToAll(clips: SharedClip[], key: SharedKey, shared: string | null): string[] {
+  return clips.filter((c) => !c.frozen && shared !== null && valueOf(c, key) === shared).map((c) => c.id);
+}
+
+/** Adding a subtitle language for all clips: only the clips without it (never frozen ones). Removing stays per clip. */
+export function languageTargets(clips: { id: string; languages: string[]; frozen?: boolean }[], code: string): string[] {
+  return clips.filter((c) => !c.frozen && !c.languages.includes(code)).map((c) => c.id);
+}

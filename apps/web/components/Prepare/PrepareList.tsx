@@ -13,8 +13,8 @@ import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
 import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
-import { fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
-import { checksToPoll, mergePairs, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
+import { addTrack, fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
+import { checksToPoll, mergePairs, sharedValue, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -24,6 +24,7 @@ import { ApprovalDismissed } from "@/components/ApprovalDismissed";
 import { ChecksPanel } from "./ChecksPanel";
 import { Checklist } from "./Checklist";
 import { FormatPicker, cropPosition } from "./FormatPicker";
+import { ForAllClips, type ForAllRun } from "./ForAllClips";
 import { SubtitlesPanel } from "./SubtitlesPanel";
 import { TrimStrip } from "./TrimStrip";
 import { Busy } from "@/components/ui/spinner";
@@ -179,6 +180,30 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     return false;
   }
 
+  /** "For all clips": one change per clip, in order. A failure shows on that clip's card and the rest go on; resolves the failed ids. */
+  async function runForAll(run: ForAllRun, progress: (done: number) => void): Promise<string[]> {
+    const failed: string[] = [];
+    let done = 0;
+    for (const id of run.ids) {
+      let ok = true;
+      if (run.kind === "language") {
+        setFor(setErrors, id, null);
+        try {
+          setTrack(id, await addTrack(id, run.value));
+        } catch (err) {
+          ok = false;
+          setFor(setErrors, id, err instanceof Error ? err.message : t("prepare.saveFailed"));
+        }
+      } else {
+        const body: ClipChange = run.kind === "credit" ? { credit: run.value === "" ? null : run.value } : { format: run.value };
+        ok = await change(id, body);
+      }
+      if (!ok) failed.push(id);
+      progress(++done);
+    }
+    return failed;
+  }
+
   /** The two clip ids the open merge dialog is about (never an index: the list can change under it). */
   const [mergeIds, setMergeIds] = useState<[string, string] | null>(null);
   const pairs = session.videoRemoved ? new Map<number, number>() : mergePairs(items.map((i) => i.clip));
@@ -316,6 +341,9 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
       }),
     ]),
   );
+  const sharedInput = items.map((i) => ({ id: i.clip.id, credit: i.clip.credit, format: i.clip.format, noCreditNeeded: i.clip.noCreditNeeded }));
+  const creditDiffers = new Set(items.length > 1 ? sharedValue(sharedInput, "credit").differs : []);
+  const formatDiffers = new Set(items.length > 1 ? sharedValue(sharedInput, "format").differs : []);
   const readyCount = items.filter((i) =>
     isExportReady({ dismissed: i.dismissed, failing: checklists.get(i.clip.id)!.filter((x) => !x.ok).map((x) => x.id) }),
   ).length;
@@ -340,6 +368,21 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
           </p>
         )}
 
+        {items.length > 1 && !session.videoRemoved && (
+          <ForAllClips
+            clips={items.map((i) => ({
+              id: i.clip.id,
+              credit: i.clip.credit,
+              format: i.clip.format,
+              noCreditNeeded: i.clip.noCreditNeeded,
+              languages: i.tracks.map((tr) => tr.language),
+              frozen: session.videoRemoved,
+            }))}
+            originalLanguage={session.language}
+            onRun={runForAll}
+          />
+        )}
+
         {items.length === 0 ? (
           <div className="rounded-xl border border-border bg-white p-6 text-sm text-muted-foreground">
             <p>{t("prepare.noClips")}</p>
@@ -357,6 +400,8 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
                 session={session}
                 defaultCredit={defaultCredit}
                 names={names}
+                creditDiffers={creditDiffers.has(item.clip.id)}
+                formatDiffers={formatDiffers.has(item.clip.id)}
                 timedOut={timedOut && !retrying[item.clip.id]}
                 busy={busy[item.clip.id] ?? false}
                 error={errors[item.clip.id] ?? null}
@@ -442,6 +487,8 @@ interface ClipCardProps {
   session: PrepareListProps["session"];
   defaultCredit: string;
   names: NamesData;
+  creditDiffers: boolean;
+  formatDiffers: boolean;
   timedOut: boolean;
   busy: boolean;
   error: string | null;
@@ -454,7 +501,7 @@ interface ClipCardProps {
 }
 
 function ClipCard({
-  n, item, session, defaultCredit, names, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
+  n, item, session, defaultCredit, names, creditDiffers, formatDiffers, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
 }: ClipCardProps) {
   const { clip, title } = item;
   // R30: once the video is removed the clip is frozen; only the acknowledgements can change.
@@ -596,6 +643,7 @@ function ClipCard({
               cropOffset={cropOffset}
               hasVideo={session.hasVideo}
               disabled={frozen}
+              differs={formatDiffers}
               onFormat={(format: ClipFormat) => void onChange({ format })}
               onCropInput={(v) => {
                 setCropDraft(v);
@@ -609,6 +657,7 @@ function ClipCard({
               credit={clip.credit}
               noCreditNeeded={clip.noCreditNeeded}
               defaultCredit={defaultCredit}
+              differs={creditDiffers}
               disabled={frozen}
               onCredit={(credit) => void onChange({ credit })}
               onNoCredit={(v) => void onChange({ noCreditNeeded: v })}
@@ -715,12 +764,13 @@ function ClipPlayer({
 
 /** The credit line (saved on blur or Enter) or "No credit needed". */
 function CreditField({
-  clipId, credit, noCreditNeeded, defaultCredit, disabled, onCredit, onNoCredit,
+  clipId, credit, noCreditNeeded, defaultCredit, differs, disabled, onCredit, onNoCredit,
 }: {
   clipId: string;
   credit: string | null;
   noCreditNeeded: boolean;
   defaultCredit: string;
+  differs: boolean;
   disabled: boolean;
   onCredit: (credit: string | null) => void;
   onNoCredit: (v: boolean) => void;
@@ -737,6 +787,7 @@ function CreditField({
     <section aria-labelledby={`${id}-h`}>
       <h3 id={`${id}-h`} className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         <label htmlFor={id}>{t("prepare.credit")}</label>
+        {differs && <span className="ml-1.5 font-normal tracking-normal normal-case">{t("prepare.differs")}</span>}
       </h3>
       <div className="flex flex-wrap items-center gap-2">
         <input

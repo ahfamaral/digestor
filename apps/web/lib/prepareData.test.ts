@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
+import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll, sharedValue, applyToAll, languageTargets } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -157,5 +157,41 @@ describe("mergePairs", () => {
     expect(pairs(c(0, 60), c(10, 20), c(15, 30))).toEqual([]);
     // after a gap the furthest-reaching clip starts over
     expect(pairs(c(0, 60), c(10, 20), c(70, 80), c(75, 90))).toEqual([[2, 2]]);
+  });
+});
+
+describe("For all clips", () => {
+  const c = (id: string, over: Partial<{ credit: string | null; format: "16:9" | "9:16"; noCreditNeeded: boolean; frozen: boolean }> = {}) => ({
+    id, credit: null as string | null, format: "16:9" as const, noCreditNeeded: false, ...over,
+  });
+
+  it("sharedValue: the value most clips share (ties: the earliest clip's) and who differs", () => {
+    const clips = [c("a", { credit: "X" }), c("b", { credit: "Y" }), c("c", { credit: "Y" }), c("d", { credit: "X" })];
+    expect(sharedValue(clips, "credit")).toEqual({ value: "X", differs: ["b", "c"] });
+    expect(sharedValue([c("a", { credit: "X" }), c("b", { credit: "Y" }), c("c", { credit: "Y" })], "credit")).toEqual({ value: "Y", differs: ["a"] });
+    expect(sharedValue([c("a"), c("b", { credit: "  " })], "credit")).toEqual({ value: "", differs: [] });
+    expect(sharedValue([c("a", { format: "9:16" }), c("b")], "format")).toEqual({ value: "9:16", differs: ["b"] });
+    expect(sharedValue([], "format")).toEqual({ value: null, differs: [] });
+  });
+
+  it("a clip marked 'no credit needed' counts as differing", () => {
+    expect(sharedValue([c("a", { credit: "X" }), c("b", { noCreditNeeded: true })], "credit")).toEqual({ value: "X", differs: ["b"] });
+  });
+
+  it("applyToAll: only clips on the old shared value, never frozen or no-credit clips", () => {
+    const clips = [c("a", { credit: "X" }), c("b", { credit: "Y" }), c("d", { credit: "X", frozen: true }), c("e", { credit: "X", noCreditNeeded: true })];
+    expect(applyToAll(clips, "credit", "X")).toEqual(["a"]);
+    expect(applyToAll([c("a"), c("b", { format: "9:16" })], "format", "16:9")).toEqual(["a"]);
+    expect(applyToAll([], "format", "16:9")).toEqual([]);
+  });
+
+  it("languageTargets: adding a language touches only clips without it (and not frozen ones)", () => {
+    const clips = [
+      { id: "a", languages: ["de"] },
+      { id: "b", languages: ["pt", "de"] },
+      { id: "c", languages: [], frozen: true },
+      { id: "d", languages: [] },
+    ];
+    expect(languageTargets(clips, "pt")).toEqual(["a", "d"]);
   });
 });

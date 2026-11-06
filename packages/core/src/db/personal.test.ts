@@ -775,6 +775,34 @@ describe("merging clips", () => {
   });
 });
 
+describe("confirmClips remembered credit", () => {
+  const wanted = (id: string, startMs: number, endMs: number) => ({ id, startMs, endMs });
+  const mom = async (title: string, startMs: number, endMs: number) =>
+    (await saveMoments(db, analysisId, [{
+      topicId: null, granularity: "passage", startMs, endMs, title, why: "w", relevance: 50, speakers: [], evidence: [], origin: "ai", highlights: [],
+    }]))[0]!.id;
+
+  it("gives a new clip the credit most recently typed on the session's clips", async () => {
+    const a = await mom("A", 1_000, 9_000);
+    const [first] = await confirmClips(db, OWNER, s.id, [wanted(a, 1_000, 9_000)]);
+    expect(first!.credit).toBeNull();
+    await updateClip(db, first!.id, { credit: "City Radio" }, "user");
+    const b = await mom("B", 20_000, 29_000);
+    const out = await confirmClips(db, OWNER, s.id, [wanted(a, 1_000, 9_000), wanted(b, 20_000, 29_000)]);
+    expect(out.find((c) => c.id !== first!.id)).toMatchObject({ credit: "City Radio", noCreditNeeded: false });
+    expect(out.find((c) => c.id === first!.id)!.credit).toBe("City Radio");
+  });
+
+  it("ignores other sessions and clips without a credit", async () => {
+    const s2 = await createSession(db, { title: "Other", source: "upload" });
+    const o = await createClip(db, { sessionId: s2.id, ownerId: OWNER, startMs: 0, endMs: 5_000, actor: "user" });
+    await updateClip(db, o.id, { credit: "Elsewhere" }, "user");
+    const a = await mom("A", 1_000, 9_000);
+    const [c] = await confirmClips(db, OWNER, s.id, [wanted(a, 1_000, 9_000)]);
+    expect(c!.credit).toBeNull();
+  });
+});
+
 describe("listClipPreviews", () => {
   it("returns live clips per session in Prepare order with thumb, tracks and merged flag", async () => {
     const [m] = await saveMoments(db, analysisId, [{

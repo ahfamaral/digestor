@@ -11,6 +11,8 @@ export interface FormatPickerProps {
   cropOffset: number;
   hasVideo: boolean;
   disabled: boolean;
+  /** Another format than most clips have (shown as "(differs)"). */
+  differs?: boolean;
   onFormat: (format: ClipFormat) => void;
   /** Every slider movement (the preview follows it). */
   onCropInput: (offset: number) => void;
@@ -30,12 +32,13 @@ export const cropPosition = (offset: number) => `${((offset + 1) * 50).toFixed(1
  * 16:9 or 9:16. For 9:16 the clip's player becomes the 9:16 preview box (the proxy cropped with `object-position`),
  * and a −1…1 slider sets the crop offset.
  */
-export function FormatPicker({ clipId, format, cropOffset, hasVideo, disabled, onFormat, onCropInput, onCropCommit }: FormatPickerProps) {
+export function FormatPicker({ clipId, format, cropOffset, hasVideo, disabled, differs, onFormat, onCropInput, onCropCommit }: FormatPickerProps) {
   const pct = Math.round((cropOffset + 1) * 50);
   return (
     <section aria-labelledby={`format-h-${clipId}`}>
       <h3 id={`format-h-${clipId}`} className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {t("prepare.format")}
+        {differs && <span className="ml-1.5 font-normal tracking-normal normal-case">{t("prepare.differs")}</span>}
       </h3>
       <div role="group" aria-labelledby={`format-h-${clipId}`} className="inline-flex rounded-lg border border-border bg-white p-0.5">
         {FORMATS.map((f) => (
