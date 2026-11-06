@@ -385,7 +385,13 @@ export async function mergeClips(db: Db, ownerId: string, clipIds: [string, stri
       rows.push(row);
     }
     if (rows.length !== 2 || rows[0]!.id === rows[1]!.id) return { ok: false, reason: "not_found" };
-    const [first, second] = [...rows].sort((x, y) => x.startMs - y.startMs || x.createdAt.getTime() - y.createdAt.getTime()) as [Clip, Clip];
+    // The survivor is chosen in SQL (microsecond created_at) by the same rule as `listClips`: (startMs, createdAt, id).
+    const order = await tx
+      .select({ id: clips.id })
+      .from(clips)
+      .where(inArray(clips.id, rows.map((r) => r.id)))
+      .orderBy(asc(clips.startMs), asc(clips.createdAt), asc(clips.id));
+    const [first, second] = order.map((o) => rows.find((r) => r.id === o.id)!) as [Clip, Clip];
     if (first.endMs < second.startMs) return { ok: false, reason: "not_touching" };
     const bounds = { startMs: first.startMs, endMs: Math.max(first.endMs, second.endMs) };
     const merged = [...new Set([...first.mergedMomentIds, ...(second.momentId ? [second.momentId] : []), ...second.mergedMomentIds])]
@@ -412,7 +418,7 @@ export async function listClips(db: Db, ownerId: string, sessionId: string): Pro
     .select()
     .from(clips)
     .where(and(eq(clips.ownerId, ownerId), eq(clips.sessionId, sessionId), alive))
-    .orderBy(asc(clips.startMs), asc(clips.createdAt));
+    .orderBy(asc(clips.startMs), asc(clips.createdAt), asc(clips.id));
 }
 
 /** Deleted clips are not returned. */
@@ -495,6 +501,10 @@ export async function deleteClip(db: Db, id: string, actor: ClipActor): Promise<
  */
 export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null> {
   return db.transaction(async (tx) => {
+    // Same session lock as confirmClips/mergeClips, taken before any row lock, so a merge of the same pair cannot deadlock.
+    const [peek] = await tx.select({ sessionId: clips.sessionId }).from(clips).where(eq(clips.id, clipId));
+    if (!peek) return null;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${peek.sessionId}))`);
     const clip = await lockClip(tx, clipId);
     if (!clip) return null;
     const [ev] = await tx

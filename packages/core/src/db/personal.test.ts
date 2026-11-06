@@ -637,6 +637,8 @@ describe("merging clips", () => {
     it("keeps the earlier clip, spans both, soft-deletes the later, remembers its moment", async () => {
       const { c: a, m: mA } = await mk("A", 10_000, 30_000);
       const { c: b, m: mB } = await mk("B", 25_000, 40_000);
+      await updateClip(db, a.id, { warningsAck: true }, "user");
+      expect((await getClip(db, a.id))!.warningsAck).toBe(true);
       const r = await mergeClips(db, OWNER, [b.id, a.id], "user");
       expect(r).toMatchObject({ ok: true, absorbedId: b.id });
       expect(r.ok && r.clip).toMatchObject({ id: a.id, startMs: 10_000, endMs: 40_000, momentId: mA, mergedMomentIds: [mB], warningsAck: false });
@@ -663,9 +665,21 @@ describe("merging clips", () => {
     it("same start: the clip created first survives", async () => {
       const { c: a } = await mk("A", 10_000, 20_000);
       const { c: b } = await mk("B", 10_000, 30_000);
+      await db.update(clips).set({ createdAt: new Date("2026-01-01T00:00:00Z") }).where(eq(clips.id, a.id));
+      await db.update(clips).set({ createdAt: new Date("2026-01-01T00:00:01Z") }).where(eq(clips.id, b.id));
       const r = await mergeClips(db, OWNER, [b.id, a.id], "user");
       expect(r).toMatchObject({ ok: true, absorbedId: b.id });
       expect(r.ok && r.clip).toMatchObject({ id: a.id, startMs: 10_000, endMs: 30_000 });
+    });
+
+    it("same start, one confirmClips call (equal createdAt): the survivor is the clip listClips lists first", async () => {
+      const ms = await saveMoments(db, analysisId, [mrow("P", 10_000, 20_000), mrow("Q", 10_000, 30_000), mrow("R", 10_000, 25_000)]);
+      const made = await confirmClips(db, OWNER, s.id, ms.map((m) => ({ id: m.id, startMs: m.startMs, endMs: m.endMs })));
+      const listed = (await listClips(db, OWNER, s.id)).filter((c) => made.some((m) => m.id === c.id));
+      expect(listed.map((c) => c.id)).toEqual([...made.map((c) => c.id)].sort());
+      const r = await mergeClips(db, OWNER, [listed[1]!.id, listed[0]!.id], "user");
+      expect(r).toMatchObject({ ok: true, absorbedId: listed[1]!.id });
+      expect(r.ok && r.clip.id).toBe(listed[0]!.id);
     });
 
     it("returns not_found for a deleted clip, another owner's or another session's clip, and on a second merge of the same pair", async () => {
