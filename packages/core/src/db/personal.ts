@@ -504,6 +504,8 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
       .orderBy(desc(clipEvents.id))
       .limit(1);
     if (!ev) return null;
+    // A deleted clip's only legitimate undo is its own delete (an absorbed clip returns with its merge's undo).
+    if (clip.deletedAt && ev.kind !== "delete") return null;
     const now = new Date();
     let set: Partial<typeof clips.$inferInsert> = { updatedAt: now };
     if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "style") {

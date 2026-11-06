@@ -741,6 +741,20 @@ describe("merging clips", () => {
     });
   });
 
+  describe("undo of an absorbed clip", () => {
+    it("does nothing on its own (create or bounds event), and the merge undo still restores it intact", async () => {
+      const { c: a } = await mk("A", 10_000, 30_000);
+      const { c: b } = await mk("B", 25_000, 40_000);
+      await updateClip(db, b.id, { endMs: 45_000 }, "ask");
+      await mergeClips(db, OWNER, [a.id, b.id], "user");
+      expect(await undoLastEvent(db, b.id)).toBeNull();
+      expect((await getClipAny(db, b.id))).toMatchObject({ endMs: 45_000 });
+      expect((await listClipEvents(db, b.id)).every((e) => e.undoneAt === null)).toBe(true);
+      await undoLastEvent(db, a.id);
+      expect(await getClip(db, b.id)).toMatchObject({ startMs: 25_000, endMs: 45_000, deletedAt: null });
+    });
+  });
+
   describe("confirmClips after a merge", () => {
     it("does not recreate the absorbed moment's clip and returns the merged clip once", async () => {
       const { c: a, m: mA } = await mk("A", 10_000, 30_000);
