@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ContextCard, Fact, Transcript, Word } from "@digestor/core";
 import {
@@ -272,13 +272,17 @@ describe("the join with the preview copy", () => {
     expect(await getSession(db, id)).toMatchObject({ stage: "ready", progress: 100, error: null });
   });
 
-  it("copy done first → analysis end → ready", async () => {
+  it("copy done first → analysis end → ready, and audio.mp3 goes", async () => {
     const id = await seedWithCopyPending();
+    await mkdir(path.join(root, id), { recursive: true });
+    await writeFile(storage.resolve(`${id}/audio.mp3`), "audio");
+    await updateSession(db, id, { audioKey: `${id}/audio.mp3` });
     await finishProxy(db, id, `${id}/proxy.mp4`);
     await settlePreview(db, id); // not preparing_preview yet: nothing
     expect((await getSession(db, id))!.stage).toBe("indexing");
     await analyse(id);
-    expect(await getSession(db, id)).toMatchObject({ stage: "ready", progress: 100 });
+    expect(await getSession(db, id)).toMatchObject({ stage: "ready", progress: 100, audioKey: null });
+    await expect(readFile(storage.resolve(`${id}/audio.mp3`))).rejects.toThrow();
   });
 
   it("copy failed → the session is failed with the line once the analysis ends", async () => {

@@ -22,6 +22,7 @@ import {
 } from "@digestor/core";
 import { LocalStorage, createDb } from "@digestor/core/server";
 import { CLEANUP_CRON, CLEANUP_QUEUE, runVideoRetention, videoRetentionDays } from "./cleanup.js";
+import { releaseReadyAudio } from "./pipeline/audio.js";
 import {
   handleAsk,
   handleCheckMoment,
@@ -140,6 +141,8 @@ async function main() {
   await register(QUEUES.names, NamesJobSchema, (j, attempt) => handleNames(ctx, j, attempt));
   await register(QUEUES.proxy, ProxyJobSchema, (j, attempt) => handleProxy({ db, storage, media }, j, attempt));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
+    const { released } = await releaseReadyAudio({ db, storage });
+    if (released > 0) console.log(`cleanup: released audio.mp3 of ${released} ready session(s)`);
     const days = videoRetentionDays();
     const { removed } = await runVideoRetention({ db, storage, checkpointer: saver, chroma }, days);
     console.log(`cleanup: removed the video of ${removed} session(s) older than ${days} day(s)`);

@@ -37,6 +37,7 @@ import { understandContext } from "../agents/context.js";
 import type { Embedder } from "../search/embed.js";
 import { indexSession } from "../search/index.js";
 import { runAnalysis } from "./analysis.js";
+import { releaseAudio } from "./audio.js";
 import { importContextNames, lockedParticipants, matchRecordNode, nameSpeakersNode, namedVoices } from "./naming.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
@@ -379,6 +380,7 @@ export const analyzeNode =
       if ((await requireSession(db, s.sessionId)).stage === "ready") return {}; // the join already closed it
       await setStage(db, s.sessionId, "preparing_preview", 96);
       await settlePreview(db, s.sessionId);
+      await releaseAudio({ db, storage: deps.storage }, s.sessionId);
       return {};
     }
     // The preview copy already gave up (during the context pause): fail now rather than after a paid analysis.

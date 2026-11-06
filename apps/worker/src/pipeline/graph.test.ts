@@ -237,8 +237,10 @@ describe("pipeline", () => {
     await resume({ action: "skip" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "preparing_preview", progress: 96, profile: "interview" });
     expect(await getCurrentAnalysis(db, sessionId)).not.toBeNull();
+    expect((await getSession(db, sessionId))!.audioKey).toBe(`${sessionId}/audio.mp3`); // still needed until ready
     await runProxy({ db, storage, media }, sessionId); // the job finishes last and closes it
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, proxyStatus: "done", proxyKey: `${sessionId}/proxy.mp4` });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, proxyStatus: "done", proxyKey: `${sessionId}/proxy.mp4`, audioKey: null });
+    await expect(access(storage.resolve(`${sessionId}/audio.mp3`))).rejects.toThrow();
   });
 
   it("a copy that failed during the context pause fails the session before the paid analysis", async () => {
@@ -268,7 +270,8 @@ describe("pipeline", () => {
     const { graph, cfg, sessionId, contextCalls, resume } = await setup({ context: [draft()] });
     await graph.invoke({ sessionId }, cfg);
     await resume({ action: "skip" });
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, audioKey: null });
+    await expect(access(storage.resolve(`${sessionId}/audio.mp3`))).rejects.toThrow();
     expect((await graph.getState(cfg)).next).toEqual([]);
     expect(contextCalls()).toHaveLength(1); // no second context round
     expect(await getCurrentAnalysis(db, sessionId)).toMatchObject({ version: { version: 1, reason: "initial", profile: "interview" } });

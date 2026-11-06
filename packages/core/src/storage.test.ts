@@ -55,6 +55,16 @@ describe("LocalStorage", () => {
     expect(existsSync(path.join(root, id, "original.mp4"))).toBe(false);
   });
 
+  it("removeAudio deletes only audio.mp3, and a missing file is fine", async () => {
+    for (const name of ["audio.mp3", "proxy.mp4", "original.mp4"]) await storage.saveStream(id, name, bodyOf(new Uint8Array(1)));
+    await storage.removeAudio(id);
+    expect(existsSync(path.join(root, id, "audio.mp3"))).toBe(false);
+    expect(existsSync(path.join(root, id, "proxy.mp4"))).toBe(true);
+    expect(existsSync(path.join(root, id, "original.mp4"))).toBe(true);
+    await expect(storage.removeAudio(id)).resolves.toBeUndefined();
+    await expect(storage.removeAudio("../x")).rejects.toThrow(UnsafePathError);
+  });
+
   it("removeSession deletes the session folder", async () => {
     await storage.saveStream(id, "original.mp4", bodyOf(new Uint8Array(1)));
     await storage.removeSession(id);

@@ -32,6 +32,7 @@ import { findMoments } from "../agents/moments.js";
 import { findTopics } from "../agents/topics.js";
 import { MissingApiKeyError } from "../errors.js";
 import { MODEL_IDS, type LLMModel, type StructuredLLM } from "../llm/structured.js";
+import { releaseAudio } from "./audio.js";
 import { promptCard } from "./naming.js";
 
 /** Bump a version when its prompt changes; every analysis version records the set it ran with. */
@@ -169,5 +170,8 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
     ...(initial ? { stage: "preparing_preview" as const, progress: 96, error: null } : {}),
   });
   // The first analysis waits for the preview copy (its own job): whichever of the two ends last makes the session ready.
-  if (initial) await settlePreview(db, sessionId);
+  if (initial) {
+    await settlePreview(db, sessionId);
+    await releaseAudio({ db, storage: deps.storage }, sessionId); // only once the join made it ready
+  }
 }

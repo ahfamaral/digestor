@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { clips, sessionRecords, sessions } from "./schema.ts";
 import { dayRef } from "../recordRef.ts";
 import {
-  createSession, deleteSession, getContextCard, getSession, getTranscript, listExpiredSessions, saveContextCard,
+  createSession, deleteSession, getContextCard, getSession, getTranscript, listExpiredSessions, listSessionsWithAudioToRelease, saveContextCard,
   listSessionSummaries, saveTranscript, setStage, transitionStage, updateSession, type Session,
 } from "./repo.ts";
 
@@ -128,5 +128,20 @@ describe("listSessionSummaries", () => {
     expect(chamber(ids.suggested)).toBeNull();
     expect(chamber(ids.failed)).toBeNull();
     for (const k of ["pending", "running", "waiting", "matched"] as const) expect(chamber(ids[k])).toBe("camara");
+  });
+});
+
+describe("listSessionsWithAudioToRelease", () => {
+  it("returns only ready sessions that still have an audio key", async () => {
+    const make = async (stage: Session["stage"], audio: boolean) => {
+      const row = await createSession(db, { title: stage, source: "upload" });
+      return updateSession(db, row.id, { stage, audioKey: audio ? `${row.id}/audio.mp3` : null });
+    };
+    const ready = await make("ready", true);
+    await make("ready", false);
+    await make("failed", true);
+    await make("preparing_preview", true);
+    await make("transcribing", true);
+    expect((await listSessionsWithAudioToRelease(db)).map((r) => r.id)).toEqual([ready.id]);
   });
 });

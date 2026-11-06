@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { ContextCard, Transcript } from "../schemas.ts";
 import type { Db } from "./client.ts";
 import { clips, contextCards, sessionRecords, sessions, transcripts, type Stage } from "./schema.ts";
@@ -44,6 +44,11 @@ export async function listExpiredSessions(db: Db, olderThanDays: number): Promis
 export async function listSessionsWithExpiredVideo(db: Db, olderThanDays: number): Promise<Session[]> {
   const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
   return db.select().from(sessions).where(and(lt(sessions.createdAt, cutoff), isNull(sessions.videoDeletedAt)));
+}
+
+/** `ready` sessions that still have their `audio.mp3` (the daily clean-up deletes it; nothing reads it after transcription). */
+export async function listSessionsWithAudioToRelease(db: Db): Promise<Session[]> {
+  return db.select().from(sessions).where(and(eq(sessions.stage, "ready"), isNotNull(sessions.audioKey)));
 }
 
 export async function deleteSession(db: Db, id: string): Promise<void> {

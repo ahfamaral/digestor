@@ -85,6 +85,12 @@ export class LocalStorage {
     await rm(path.join(this.root, sessionId), { recursive: true, force: true });
   }
 
+  /** Deletes the session's `audio.mp3` (only transcription reads it; a `ready` session no longer needs it). A missing file is fine. */
+  async removeAudio(sessionId: string): Promise<void> {
+    assertSafe(sessionId, false);
+    await rm(path.join(this.root, sessionId, "audio.mp3"), { force: true });
+  }
+
   /** Deletes the session's source media (`original.*`, `audio.mp3`, `proxy.mp4`); thumbnails and `clips/` stay. */
   async removeVideoFiles(sessionId: string): Promise<void> {
     assertSafe(sessionId, false);

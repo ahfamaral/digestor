@@ -703,18 +703,29 @@ d("handleProxy (the preview copy job)", () => {
     return s.id;
   }
 
-  it("handleProxy claims, encodes, finishes and settles", async () => {
+  /** `audio.mp3` on disk and in the row, as ingest leaves it. */
+  async function withAudio(id: string) {
+    await writeFile(storage.resolve(`${id}/audio.mp3`), "audio");
+    await updateSession(db, id, { audioKey: `${id}/audio.mp3` });
+  }
+  const hasAudioFile = (id: string) => readFile(storage.resolve(`${id}/audio.mp3`)).then(() => true, () => false);
+
+  it("handleProxy claims, encodes, finishes and settles; the ready session's audio.mp3 goes", async () => {
     const id = await seed();
+    await withAudio(id);
     const media = fakeMedia();
     await handleProxy({ db, storage, media }, { sessionId: id }, FIRST);
     expect(media.makeProxy).toHaveBeenCalledExactlyOnceWith(storage.resolve(`${id}/original.mp4`), storage.resolve(`${id}/proxy.mp4`), { hasVideo: true });
-    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", proxyKey: `${id}/proxy.mp4`, stage: "ready", progress: 100 });
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", proxyKey: `${id}/proxy.mp4`, stage: "ready", progress: 100, audioKey: null });
+    expect(await hasAudioFile(id)).toBe(false);
   });
 
-  it("finishing while the analysis is still running leaves the stage for the analysis end", async () => {
+  it("finishing while the analysis is still running leaves the stage for the analysis end (and keeps the audio)", async () => {
     const id = await seed({ stage: "awaiting_context" });
+    await withAudio(id);
     await handleProxy({ db, storage, media: fakeMedia() }, { sessionId: id }, FIRST);
-    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", proxyKey: `${id}/proxy.mp4`, stage: "awaiting_context" });
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", proxyKey: `${id}/proxy.mp4`, stage: "awaiting_context", audioKey: `${id}/audio.mp3` });
+    expect(await hasAudioFile(id)).toBe(true);
   });
 
   it("a second job finds nothing to claim", async () => {
