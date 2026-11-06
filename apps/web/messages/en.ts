@@ -460,6 +460,7 @@ export const en = {
     mergeDescription: "They become one clip from {start} to {end} with clip {a}'s settings. Its subtitles need rebuilding. You can undo this.",
     mergeAction: "Merge",
     merging: "Merging…",
+    merged: "Merged clips {a} and {b}: {start} to {end}.",
     mergedFrom: "Merged from {n} moments",
     approvalDismissed: "Approval dismissed",
     approvalDismissedHint: "You skipped this moment or undid its approval on the Briefing. The clip stays, but Export ready clips leaves it out.",

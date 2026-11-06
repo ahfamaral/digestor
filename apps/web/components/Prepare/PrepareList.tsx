@@ -154,15 +154,27 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     return false;
   }
 
-  const [mergeAt, setMergeAt] = useState<number | null>(null);
+  /** The two clip ids the open merge dialog is about (never an index: the list can change under it). */
+  const [mergeIds, setMergeIds] = useState<[string, string] | null>(null);
   const pairs = session.videoRemoved ? new Set<number>() : mergePairs(items.map((i) => i.clip));
-  const mergeA = mergeAt === null ? null : items[mergeAt];
-  const mergeB = mergeAt === null ? null : items[mergeAt + 1];
+  const mergeAt = mergeIds ? items.findIndex((i) => i.clip.id === mergeIds[0]) : -1;
+  const mergeA = mergeAt >= 0 ? items[mergeAt] : undefined;
+  const mergeB = mergeIds ? items.find((i) => i.clip.id === mergeIds[1]) : undefined;
+  const mergeBAt = mergeB ? items.indexOf(mergeB) : -1;
+  // Either clip gone (a refresh, another tab): the dialog closes.
+  if (mergeIds && (!mergeA || !mergeB)) setMergeIds(null);
 
   async function confirmMerge() {
     if (!mergeA || !mergeB) return;
     await mergeClipsApi([mergeA.clip.id, mergeB.clip.id]); // throws a friendly sentence; the dialog shows it
-    setMergeAt(null);
+    // The earlier clip survives: say so in its status line (the pill and the absorbed card are about to go).
+    setFor(setStatuses, mergeA.clip.id, t("prepare.merged", {
+      a: mergeAt + 1,
+      b: mergeBAt + 1,
+      start: formatTimestamp(Math.min(mergeA.clip.startMs, mergeB.clip.startMs), { tenths: true }),
+      end: formatTimestamp(Math.max(mergeA.clip.endMs, mergeB.clip.endMs), { tenths: true }),
+    }));
+    setMergeIds(null);
     router.refresh();
   }
 
@@ -318,8 +330,9 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
                 <li role="none" className="-my-1 flex justify-center">
                   <button
                     type="button"
-                    onClick={() => setMergeAt(n)}
-                    className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+                    onClick={() => setMergeIds([item.clip.id, items[n + 1]!.clip.id])}
+                    disabled={(busy[item.clip.id] ?? false) || (busy[items[n + 1]!.clip.id] ?? false)}
+                    className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {t("prepare.mergeButton", { a: n + 1, b: n + 2 })}
                   </button>
@@ -330,11 +343,11 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
           </ol>
         )}
 
-        {mergeAt !== null && mergeA && mergeB && (
+        {mergeIds && mergeA && mergeB && (
           <ConfirmDialog
             open
-            onOpenChange={(o) => !o && setMergeAt(null)}
-            title={t("prepare.mergeTitle", { a: mergeAt + 1, b: mergeAt + 2 })}
+            onOpenChange={(o) => !o && setMergeIds(null)}
+            title={t("prepare.mergeTitle", { a: mergeAt + 1, b: mergeBAt + 1 })}
             description={t("prepare.mergeDescription", {
               a: mergeAt + 1,
               start: formatTimestamp(Math.min(mergeA.clip.startMs, mergeB.clip.startMs)),
