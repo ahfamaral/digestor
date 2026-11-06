@@ -8,6 +8,7 @@ import { ContextBanner } from "@/components/ContextBanner";
 import { previewTargets } from "@/components/ReportProblem";
 import { WhosWhoDrawer } from "@/components/Names/WhosWho";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Busy } from "@/components/ui/spinner";
 import {
@@ -79,8 +80,7 @@ export function Briefing(props: BriefingProps) {
   const [playing, setPlaying] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [announcement, setAnnouncement] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
   const [whoOpen, setWhoOpen] = useState(false);
   const metaWhoRef = useRef<HTMLButtonElement>(null);
@@ -137,7 +137,6 @@ export function Briefing(props: BriefingProps) {
   }, [flash]);
 
   // Next can keep this page (and its state) alive after navigating away: re-enable the button for when it comes back.
-  useEffect(() => () => setBusy(false), []);
 
   // Who speaks in each moment came from the server (it holds the words), so the person filter stays instant.
   const focusCtx = useMemo(() => ({ peopleByMoment: new Map(Object.entries(props.people).map(([id, ids]) => [id, new Set(ids)])) }), [props.people]);
@@ -162,32 +161,24 @@ export function Briefing(props: BriefingProps) {
     setAnnouncement(t(next ? ANNOUNCE[next] : "briefing.announceUndecided", { title: titleOf.get(id) ?? "" }));
   }
 
+  /** Runs inside the ConfirmDialog: throws a friendly message to keep it open with the error shown. */
   async function confirm() {
     const momentIds = approved; // the optimistic statuses: what the queue is about to have saved
-    setBusy(true);
-    setConfirmError(null);
+    // Confirm exactly what was approved: let in-flight selection changes land first.
+    const { failed } = await queue.idle();
+    if (failed) throw new Error(t("briefing.someFailed"));
+    let res: Response;
     try {
-      // Confirm exactly what was approved: let in-flight selection changes land first.
-      const { failed } = await queue.idle();
-      if (failed) {
-        setConfirmError(t("briefing.someFailed"));
-        setBusy(false);
-        return;
-      }
-      const res = await fetch(`/api/sessions/${session.id}/clips`, {
+      res = await fetch(`/api/sessions/${session.id}/clips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ momentIds }),
       });
-      if (res.ok) {
-        router.push(`/s/${session.id}/prepare`);
-        return; // stay busy until Prepare clips takes over
-      }
-      setConfirmError(await errorMessage(res, t("briefing.confirmFailed")));
     } catch {
-      setConfirmError(t("briefing.confirmFailed"));
+      throw new Error(t("briefing.confirmFailed"));
     }
-    setBusy(false);
+    if (!res.ok) throw new Error(await errorMessage(res, t("briefing.confirmFailed")));
+    router.push(`/s/${session.id}/prepare`);
   }
 
   function scrollTo(el: Element | null | undefined, block: ScrollLogicalPosition) {
@@ -404,21 +395,26 @@ export function Briefing(props: BriefingProps) {
           <span title={approved.length === 0 ? t("briefing.confirmEmpty") : undefined}>
             <button
               type="button"
-              disabled={approved.length === 0 || busy || session.videoRemoved}
-              onClick={() => void confirm()}
+              disabled={approved.length === 0 || session.videoRemoved}
+              onClick={() => setConfirmOpen(true)}
               aria-describedby={session.videoRemoved ? "video-removed" : undefined}
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
             >
-              <Busy busy={busy}>{busy ? t("briefing.confirmBusy") : t("briefing.confirm")}</Busy>
+              {t("briefing.confirm")}
             </button>
           </span>
         </div>
-        {confirmError && (
-          <p role="alert" className="mt-2 text-right text-xs text-red-700">
-            {confirmError}
-          </p>
-        )}
       </footer>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={t("briefing.confirmTitle")}
+        description={approved.length === 1 ? t("briefing.confirmDescriptionOne") : t("briefing.confirmDescription", { n: approved.length })}
+        actionLabel={t("briefing.confirmAction")}
+        busyLabel={t("briefing.confirmBusy")}
+        onConfirm={confirm}
+      />
 
       <WhosWhoDrawer
         open={whoOpen}

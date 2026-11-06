@@ -157,7 +157,7 @@ function Body({
         <Button ref={cancelRef} type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
           {t("confirm.cancel")}
         </Button>
-        <Button type="button" className="bg-brand text-brand-foreground hover:bg-brand/90" disabled={busy} onClick={() => void use()}>
+        <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90" disabled={busy} onClick={() => void use()}>
           <Busy busy={busy}>{busy ? t("prepare.styleSaving") : t("prepare.styleUse")}</Busy>
         </Button>
       </DialogFooter>

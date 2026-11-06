@@ -14,7 +14,7 @@ export default function ReportsPage() {
     <>
       <AppBar />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
-        <BackLink href="/" label={t("notFound.back")} />
+        <BackLink href="/" label={t("common.backToSessions")} />
         <h1 className="mt-1 mb-4 text-xl font-bold tracking-tight">{t("reports.title")}</h1>
         <Suspense fallback={null}>
           <ReportList />

@@ -13,7 +13,7 @@ export default function NotFound() {
           href="/"
           className="mt-4 inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          {t("notFound.back")}
+          {t("common.backToSessions")}
         </Link>
       </main>
     </>

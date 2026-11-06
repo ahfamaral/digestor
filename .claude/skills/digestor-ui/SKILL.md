@@ -29,9 +29,9 @@ Tokens live in `apps/web/app/globals.css` (`:root`) and match the mockups' palet
 | Brand / primary action | `bg-brand text-brand-foreground` | `#c2410c` with white text (5.2:1; the old `#ff5a36` was 3.1:1). Hover is `hover:brightness-90`, never `bg-brand/90` |
 | Stepper | `text-step-upcoming`, `text-step-done` | `#6b6a64`, `#047857` (both at least 4.5:1 on white) |
 | Disabled buttons | `bg-disabled text-disabled-foreground` | `#e7e5e4` / `#5f5e58`: grey, never a faded brand colour (`ui/button.tsx` does it) |
+| Cards | `bg-white` / `bg-card`, `rounded-xl border border-border` | white |
 
 All text colours must stay at least 4.5:1: the values live in `apps/web/lib/contrast.ts` and `lib/contrast.test.ts` checks them and that `globals.css` repeats them. A ✓ in the stepper means done: `stepDone(step, facts)` in `lib/stepLinks.ts`.
-| Cards | `bg-white` / `bg-card`, `rounded-xl border border-border` | white |
 
 Font: Inter (`--font-inter`) for UI, Geist Mono for times/numbers where alignment matters. Radius base `0.625rem`.
 

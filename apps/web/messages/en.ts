@@ -23,9 +23,11 @@ export const en = {
   highlight,
   highlightCard,
   granularity,
+  common: {
+    backToSessions: "Back to Sessions",
+  },
   notFound: {
     title: "This page doesn't exist.",
-    back: "Back to Sessions",
   },
   appBar: {
     progress: "Progress",
@@ -502,6 +504,10 @@ export const en = {
     showHidden: "Show hidden",
     confirm: "Prepare clips",
     confirmBusy: "Confirming…",
+    confirmTitle: "Prepare clips?",
+    confirmDescriptionOne: "Your 1 approved moment becomes a clip, and you move on to Prepare clips to trim it and add subtitles.",
+    confirmDescription: "Your {n} approved moments become clips, and you move on to Prepare clips to trim them and add subtitles.",
+    confirmAction: "Prepare clips",
     confirmEmpty: "Approve at least one moment first.",
     saveFailed: "Couldn't save. Try again.",
     someFailed: "Some changes couldn't be saved. Check the moments marked in red, then try again.",
