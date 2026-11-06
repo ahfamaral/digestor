@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { mergePairs, approvalDismissed, canUndo, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
+import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -15,15 +15,24 @@ describe("defaultCredit", () => {
   });
 });
 
-describe("canUndo", () => {
-  const ev = (kind: "create" | "bounds" | "format" | "delete", undone = false) => ({ kind, undoneAt: undone ? new Date() : null });
+describe("undoStep", () => {
+  type Kind = "create" | "bounds" | "format" | "style" | "delete" | "merge";
+  const ev = (kind: Kind, undone = false, before: unknown = null) => ({ kind, undoneAt: undone ? new Date() : null, before });
 
-  it("is true only when the latest change still standing is an edit (never the clip's creation)", () => {
-    expect(canUndo([])).toBe(false);
-    expect(canUndo([ev("create")])).toBe(false);
-    expect(canUndo([ev("create"), ev("bounds")])).toBe(true);
-    expect(canUndo([ev("create"), ev("bounds", true)])).toBe(false);
-    expect(canUndo([ev("create"), ev("format"), ev("bounds", true)])).toBe(true);
+  it("names the latest change still standing, and never the clip's creation", () => {
+    expect(undoStep([])).toBeNull();
+    expect(undoStep([ev("create")])).toBeNull();
+    expect(undoStep([ev("create"), ev("bounds")])).toEqual({ kind: "bounds" });
+    expect(undoStep([ev("create"), ev("bounds", true)])).toBeNull();
+    expect(undoStep([ev("create"), ev("format"), ev("bounds", true)])).toEqual({ kind: "format" });
+    expect(undoStep([ev("create"), ev("style")])).toEqual({ kind: "style" });
+  });
+
+  it("a merge carries the range the clip goes back to", () => {
+    const merge = ev("merge", false, { startMs: 10_000, endMs: 30_000, mergedMomentIds: [] });
+    expect(undoStep([ev("create"), merge])).toEqual({ kind: "merge", range: { startMs: 10_000, endMs: 30_000 } });
+    expect(undoStep([ev("create"), merge, ev("bounds")])).toEqual({ kind: "bounds" });
+    expect(undoStep([ev("create"), merge, ev("bounds", true)])).toEqual({ kind: "merge", range: { startMs: 10_000, endMs: 30_000 } });
   });
 });
 

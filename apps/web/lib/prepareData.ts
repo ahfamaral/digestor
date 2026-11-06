@@ -1,6 +1,6 @@
 import {
   LANGUAGES, type SelectionStatus, type Clip, type ClipEventKind, type ClipFormat, type MomentChecks, type RenderStatus, type SubtitlePosition, type SubtitleStyle, type Track, type TrackCue,
-  type TrackStatus,
+  type TrackStatus, type Range,
 } from "@digestor/core";
 import { languageName } from "./i18n";
 
@@ -30,14 +30,28 @@ export function defaultCredit(session: { source: string; metadata: Record<string
   return "";
 }
 
+/** What Prepare's Undo would revert; a merge also says the range the clip goes back to. */
+export type UndoStep = { kind: "bounds" | "format" | "style" } | { kind: "merge"; range: Range };
+
 /**
- * Whether "Undo" has something to revert: the latest change still standing is an edit. Undoing a clip's creation
- * would delete it, so that never counts here. `events` are in order (oldest first).
+ * The change "Undo" would revert: the latest one still standing. Undoing a clip's creation would delete it, so that
+ * never counts here (null: nothing to undo). `events` are in order (oldest first).
  */
-export function canUndo(events: { kind: ClipEventKind; undoneAt: Date | string | null }[]): boolean {
-  const live = events.filter((e) => e.undoneAt === null);
-  const last = live[live.length - 1];
-  return last !== undefined && last.kind !== "create";
+export function undoStep(events: { kind: ClipEventKind; undoneAt: Date | string | null; before?: unknown }[]): UndoStep | null {
+  const last = events.filter((e) => e.undoneAt === null).at(-1);
+  if (!last) return null;
+  switch (last.kind) {
+    case "bounds":
+    case "format":
+    case "style":
+      return { kind: last.kind };
+    case "merge": {
+      const b = last.before as { startMs: number; endMs: number };
+      return { kind: "merge", range: { startMs: b.startMs, endMs: b.endMs } };
+    }
+    default:
+      return null;
+  }
 }
 
 export type CheckWarning = { kind: "argument" | "context" | "reportedSpeech" | "interpreter"; detail: string | null };

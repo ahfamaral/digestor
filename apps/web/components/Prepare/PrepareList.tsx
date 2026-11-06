@@ -14,7 +14,7 @@ import { BackLink } from "@/components/BackLink";
 import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
-import { checksToPoll, mergePairs, type ClipView, type TrackView } from "@/lib/prepareData";
+import { checksToPoll, mergePairs, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -40,7 +40,8 @@ export interface PrepareClipData {
   tracks: TrackView[];
   /** Cut positions inside the trim window (clip ± 30 s), computed server-side from the transcript. */
   points: { starts: number[]; ends: number[] };
-  canUndo: boolean;
+  /** What Undo would revert (null: nothing). */
+  undo: UndoStep | null;
   /** Who speaks in the clip's current range (longest first). */
   voices: Voice[];
   /** Who speaks where in the trim window (clip ± 30 s), the least the speaker check needs to follow a trim. */
@@ -97,6 +98,30 @@ function merge(local: Item[], server: Item[]): Item[] {
   });
 }
 
+/** The step a saved change adds to the clip's undo history (null: the change isn't undoable, the step stays). */
+function undoAfter(body: ClipChange): UndoStep | null {
+  if ("start" in body || "extend" in body) return { kind: "bounds" };
+  if ("format" in body || "cropOffset" in body) return { kind: "format" };
+  if ("subtitleStyle" in body || "subtitlePosition" in body) return { kind: "style" };
+  return null;
+}
+
+/** The Undo button names what it reverts. */
+function undoLabel(step: UndoStep | null): string {
+  switch (step?.kind) {
+    case "bounds":
+      return t("prepare.undoBounds");
+    case "format":
+      return t("prepare.undoFormat");
+    case "style":
+      return t("prepare.undoStyle");
+    case "merge":
+      return t("prepare.undoMerge");
+    default:
+      return t("prepare.undo");
+  }
+}
+
 /**
  * Prepare clips: one card per confirmed clip with the trim strip, checks, format, credit, subtitles and the
  * pre-export checklist, and "Export ready clips →".
@@ -135,7 +160,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const clip = await patchClip(id, body);
-      update(id, (i) => ({ ...i, clip, canUndo: i.canUndo || "start" in body || "extend" in body || "format" in body || "cropOffset" in body || "subtitleStyle" in body || "subtitlePosition" in body }));
+      update(id, (i) => ({ ...i, clip, undo: undoAfter(body) ?? i.undo }));
       if (opts.announce) {
         setFor(setStatuses, id, t("prepare.savedRange", { start: formatTimestamp(clip.startMs, { tenths: true }), end: formatTimestamp(clip.endMs, { tenths: true }) }));
       }
@@ -178,19 +203,35 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     router.refresh();
   }
 
-  async function undo(id: string) {
+  /** Reverts the clip's latest change; throws the friendly sentence when it failed. */
+  async function runUndo(id: string) {
     setFor(setErrors, id, null);
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const clip = await undoClip(id);
-      update(id, (i) => ({ ...i, clip }));
+      // The next step comes with the refresh; until then there is nothing known to undo.
+      update(id, (i) => ({ ...i, clip, undo: null }));
       setFor(setStatuses, id, t("prepare.savedRange", { start: formatTimestamp(clip.startMs, { tenths: true }), end: formatTimestamp(clip.endMs, { tenths: true }) }));
       router.refresh();
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }));
+    }
+  }
+
+  async function undo(id: string) {
+    try {
+      await runUndo(id);
     } catch (err) {
       setFor(setErrors, id, err instanceof Error ? err.message : t("prepare.saveFailed"));
     }
-    setBusy((b) => ({ ...b, [id]: false }));
   }
+
+  /** The clip whose merge Undo would split again: asked first (it brings a clip back and outdates subtitles). */
+  const [undoMergeId, setUndoMergeId] = useState<string | null>(null);
+  const undoMergeItem = undoMergeId ? items.find((i) => i.clip.id === undoMergeId) : undefined;
+  const undoMergeRange = undoMergeItem?.undo?.kind === "merge" ? undoMergeItem.undo.range : null;
+  // The clip is gone or its next undo is no longer the merge (a refresh, another tab): the dialog closes.
+  if (undoMergeId && !undoMergeRange) setUndoMergeId(null);
 
   const setTrack = (clipId: string, track: TrackView) =>
     update(clipId, (i) => {
@@ -322,7 +363,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
                 status={statuses[item.clip.id] ?? ""}
                 checklist={checklists.get(item.clip.id)!}
                 onChange={(body, opts) => change(item.clip.id, body, opts)}
-                onUndo={() => void undo(item.clip.id)}
+                onUndo={() => (item.undo?.kind === "merge" ? setUndoMergeId(item.clip.id) : void undo(item.clip.id))}
                 onCheckAgain={() => void checkAgain(item.clip.id)}
                 onTrack={(tr) => setTrack(item.clip.id, tr)}
               />
@@ -356,6 +397,21 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
             actionLabel={t("prepare.mergeAction")}
             busyLabel={t("prepare.merging")}
             onConfirm={confirmMerge}
+          />
+        )}
+
+        {undoMergeId && undoMergeRange && (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => !o && setUndoMergeId(null)}
+            title={t("prepare.undoMergeTitle")}
+            description={t("prepare.undoMergeDescription", {
+              start: formatTimestamp(undoMergeRange.startMs),
+              end: formatTimestamp(undoMergeRange.endMs),
+            })}
+            actionLabel={t("prepare.undoMerge")}
+            busyLabel={t("prepare.undoing")}
+            onConfirm={() => runUndo(undoMergeId)}
           />
         )}
 
@@ -470,12 +526,12 @@ function ClipCard({
           <button
             type="button"
             onClick={onUndo}
-            disabled={!item.canUndo || busy || frozen}
-            aria-label={t("prepare.undoLabel", { title: title || t("prepare.clipHeading", { n }) })}
-            title={item.canUndo ? undefined : t("prepare.undoNothing")}
+            disabled={!item.undo || busy || frozen}
+            aria-label={t("prepare.undoLabel", { action: undoLabel(item.undo), title: title || t("prepare.clipHeading", { n }) })}
+            title={item.undo ? undefined : t("prepare.undoNothing")}
             className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {t("prepare.undo")}
+            {undoLabel(item.undo)}
           </button>
         </header>
 

@@ -6,7 +6,7 @@ import { getMoment, getSession, getTranscript, listClipEvents, listClips, listSe
 import { AppBar } from "@/components/AppBar";
 import { PrepareList, type PrepareClipData } from "@/components/Prepare/PrepareList";
 import { isUuid } from "@/lib/ids";
-import { approvalDismissed, canUndo, defaultCredit, toClipView, toTrackView } from "@/lib/prepareData";
+import { approvalDismissed, undoStep, defaultCredit, toClipView, toTrackView } from "@/lib/prepareData";
 import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
 import { loadNames } from "@/lib/namesServer";
@@ -71,7 +71,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
         momentRange: moment ? { startMs: moment.startMs, endMs: moment.endMs } : null,
         tracks: tracks.map(toTrackView),
         points: cutPoints(boundaries, view.viewStart, view.viewEnd),
-        canUndo: canUndo(events),
+        undo: undoStep(events),
         voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
         speakerWords: transcript
           ? transcript.words
