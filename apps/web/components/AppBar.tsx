@@ -17,10 +17,10 @@ export function AppBar({ current, session, children }: { current?: Step; session
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-4 py-3">
       <div className="flex items-center gap-4">
-        <Link href="/" className={cn("text-base font-extrabold tracking-tight", FOCUS)}>
+        <Link href="/" className={cn("inline-flex h-8 items-center text-base font-extrabold tracking-tight", FOCUS)}>
           {t("app.name")}<span className="text-brand">.</span>
         </Link>
-        <Link href="/" className={cn("text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
+        <Link href="/" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
           {t("appBar.sessions")}
         </Link>
       </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  bodyChips, bucket, clipCellText, filterRows, filtersToQuery, goTo, needsYou, parseFilters, toExport, typeTabs, whereItIs,
+  addedDate, bodyChips, bucket, clipCellText, filterRows, filtersToQuery, goTo, needsYou, parseFilters, toExport, typeTabs, whereItIs,
   DEFAULT_FILTERS, type HomeRow,
 } from "./home";
 
@@ -141,5 +141,12 @@ describe("clipCellText", () => {
     expect(clipCellText(row())).toBe("none yet");
     expect(clipCellText(row({ clipCount: 8, renderedClips: 1 }))).toBe("8 · 1 rendered");
     expect(clipCellText(row({ clipCount: 1 }))).toBe("1");
+  });
+});
+
+describe("addedDate", () => {
+  it("formats the day in UTC, so server and browser agree near midnight", () => {
+    expect(addedDate("2026-11-04T23:30:00.000Z")).toBe("Nov 4");
+    expect(addedDate("2026-11-05T00:30:00.000Z")).toBe("Nov 5");
   });
 });

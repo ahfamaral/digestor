@@ -82,6 +82,7 @@ export const en = {
     clipTile: "Clip {n}",
     youtube: "YouTube",
     upload: "Upload",
+    colToggle: "Show clips",
     colVideo: "Video",
     colType: "Type",
     colBody: "Body",

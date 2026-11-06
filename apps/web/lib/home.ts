@@ -145,6 +145,13 @@ export function bodyChips(rows: HomeRow[]): { id: BodyFilter; label: string; cou
   return chips;
 }
 
+const ADDED = new Intl.DateTimeFormat("en", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** "Nov 4": the day a session was added, in UTC so the server render and the browser agree (no hydration mismatch). */
+export function addedDate(iso: string): string {
+  return ADDED.format(new Date(iso));
+}
+
 const fold = (s: string): string => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 
 export function filterRows(rows: HomeRow[], f: HomeFilters, now: Date): HomeRow[] {

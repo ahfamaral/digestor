@@ -5,7 +5,7 @@ import { OWNER_ID } from "@digestor/core";
 import { listClipPreviews, listSessionSummaries } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { HomeTable, type ClipPreviewView } from "@/components/Home/HomeTable";
-import { parseFilters, type HomeRow } from "@/lib/home";
+import { filtersToQuery, parseFilters, type HomeRow } from "@/lib/home";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
 
@@ -42,5 +42,6 @@ async function Sessions({ searchParams }: { searchParams: PageProps<"/">["search
   for (const c of previews) {
     (clips[c.sessionId] ??= []).push({ ...c, thumbUrl: c.thumbKey && c.momentId ? `/api/files/${c.sessionId}/thumbs/${c.momentId}.jpg` : null });
   }
-  return <HomeTable rows={rows} clips={clips} now={new Date().toISOString()} initial={parseFilters(await searchParams)} />;
+  const initial = parseFilters(await searchParams);
+  return <HomeTable key={filtersToQuery(initial)} rows={rows} clips={clips} now={new Date().toISOString()} initial={initial} />;
 }

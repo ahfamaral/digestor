@@ -8,7 +8,7 @@ import type { ClipPreview } from "@digestor/core/server";
 import { ClipStrip } from "@/components/Home/ClipStrip";
 import { Busy } from "@/components/ui/spinner";
 import {
-  DEFAULT_FILTERS, bodyChips, clipCellText, filterRows, filtersToQuery, goTo, needsYou, typeTabs, whereItIs,
+  DEFAULT_FILTERS, addedDate, bodyChips, clipCellText, filterRows, filtersToQuery, goTo, needsYou, typeTabs, whereItIs,
   type HomeFilters, type HomeRow, type StatusFilter,
 } from "@/lib/home";
 import { t } from "@/lib/i18n";
@@ -19,7 +19,6 @@ export type ClipPreviewView = ClipPreview & { thumbUrl: string | null };
 const CHIP = "inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const chip = (on: boolean) => cn(CHIP, on ? "border-foreground bg-foreground text-white" : "border-border bg-white text-foreground hover:bg-muted");
 const TONE = { normal: "text-foreground", busy: "text-foreground", waiting: "font-medium text-violet-700", failed: "font-medium text-destructive" } as const;
-const date = new Intl.DateTimeFormat("en", { day: "numeric", month: "short" });
 
 const STATUS_CHIPS: { id: StatusFilter; key: Parameters<typeof t>[0] }[] = [
   { id: "any", key: "home.statusAny" },
@@ -107,11 +106,11 @@ export function HomeTable({ rows, clips, now, initial }: {
     <span className="flex flex-wrap gap-1 md:flex-nowrap">
       {goTo(r).map((g) =>
         g.href ? (
-          <Link key={g.step} href={g.href} className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
+          <Link key={g.step} href={g.href} className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2 text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
             {t(`appBar.step.${g.step}`)}
           </Link>
         ) : (
-          <span key={g.step} aria-disabled="true" className="inline-flex h-7 items-center rounded-md border border-border px-2 text-xs text-muted-foreground/60">
+          <span key={g.step} aria-disabled="true" className="inline-flex h-8 items-center rounded-md border border-border px-2 text-xs text-muted-foreground/60">
             {t(`appBar.step.${g.step}`)}
           </span>
         ),
@@ -211,7 +210,7 @@ export function HomeTable({ rows, clips, now, initial }: {
           <table className="hidden w-full overflow-hidden rounded-xl border border-border bg-white text-sm md:table">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
-                <th scope="col" className="w-8 px-2 py-2"><span className="sr-only">{t("home.colClips")}</span></th>
+                <th scope="col" className="w-8 px-2 py-2"><span className="sr-only">{t("home.colToggle")}</span></th>
                 <th scope="col" className="px-2 py-2 font-medium">{t("home.colVideo")}</th>
                 <th scope="col" className="px-2 py-2 font-medium">{parliament ? t("home.colBody") : t("home.colType")}</th>
                 <th scope="col" className="px-2 py-2 font-medium">{t("home.colAdded")}</th>
@@ -225,14 +224,14 @@ export function HomeTable({ rows, clips, now, initial }: {
                 <Fragment key={r.id}>
                   <tr className="border-t border-border align-middle">
                     <td className="px-2 py-2">{toggle(r)}</td>
-                    <td className="max-w-64 px-2 py-2">
-                      <div className="truncate">{title(r)}</div>
+                    <td className="px-2 py-2">
+                      <div className="max-w-64 truncate lg:max-w-80">{title(r)}</div>
                       <div className="text-xs text-muted-foreground">{subLine(r)}</div>
                     </td>
                     <td className="px-2 py-2">
                       {typeLabel(r) && <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs whitespace-nowrap">{typeLabel(r)}</span>}
                     </td>
-                    <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{date.format(new Date(r.createdAt))}</td>
+                    <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{addedDate(r.createdAt)}</td>
                     <td className="px-2 py-2">{where(r)}</td>
                     <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{clipCellText(r)}</td>
                     <td className="px-2 py-2">{links(r)}</td>
@@ -258,7 +257,7 @@ export function HomeTable({ rows, clips, now, initial }: {
                   <div className="min-w-0">
                     <div className="break-words">{title(r)}</div>
                     <div className="text-xs text-muted-foreground">
-                      {[typeLabel(r), date.format(new Date(r.createdAt)), subLine(r)].filter(Boolean).join(" · ")}
+                      {[typeLabel(r), addedDate(r.createdAt), subLine(r)].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                   {toggle(r)}
