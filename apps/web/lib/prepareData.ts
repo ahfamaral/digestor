@@ -4,9 +4,13 @@ import {
 } from "@digestor/core";
 import { languageName } from "./i18n";
 
-/** A clip whose moment is no longer approved (skipped or undecided) keeps existing; clips without a moment are never labelled. */
-export function approvalDismissed(momentId: string | null, selections: Record<string, SelectionStatus>): boolean {
-  return momentId !== null && selections[momentId] !== "approved";
+/** A clip whose moment (or any moment merged into it) is no longer approved keeps existing; clips without moments are never labelled. */
+export function approvalDismissed(
+  clip: { momentId: string | null; mergedMomentIds: string[] },
+  selections: Record<string, SelectionStatus>,
+): boolean {
+  const ids = [clip.momentId, ...clip.mergedMomentIds].filter((id): id is string => id !== null);
+  return ids.some((id) => selections[id] !== "approved");
 }
 
 /** The credit line a clip starts with: the YouTube channel (or uploader); uploads have none. */

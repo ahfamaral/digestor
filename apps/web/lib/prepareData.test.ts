@@ -109,8 +109,17 @@ describe("checksToPoll", () => {
 });
 
 describe("approvalDismissed", () => {
-  it("never labels a clip without a moment", () => expect(approvalDismissed(null, {})).toBe(false));
-  it("is false while the moment is approved", () => expect(approvalDismissed("m1", { m1: "approved" })).toBe(false));
-  it("is true when the moment was skipped", () => expect(approvalDismissed("m1", { m1: "rejected" })).toBe(true));
-  it("is true when the moment is undecided", () => expect(approvalDismissed("m1", {})).toBe(true));
+  const c = (momentId: string | null, mergedMomentIds: string[] = []) => ({ momentId, mergedMomentIds });
+  it("never labels a clip without a moment", () => expect(approvalDismissed(c(null), {})).toBe(false));
+  it("is false while the moment is approved", () => expect(approvalDismissed(c("m1"), { m1: "approved" })).toBe(false));
+  it("is true when the moment was skipped", () => expect(approvalDismissed(c("m1"), { m1: "rejected" })).toBe(true));
+  it("is true when the moment is undecided", () => expect(approvalDismissed(c("m1"), {})).toBe(true));
+  it("is false while every merged moment is approved", () =>
+    expect(approvalDismissed(c("a", ["b"]), { a: "approved", b: "approved" })).toBe(false));
+  it("is true when a merged moment was skipped", () =>
+    expect(approvalDismissed(c("a", ["b"]), { a: "approved", b: "rejected" })).toBe(true));
+  it("is true when a merged moment is undecided", () =>
+    expect(approvalDismissed(c("a", ["b"]), { a: "approved" })).toBe(true));
+  it("looks at merged moments of a clip without its own moment", () =>
+    expect(approvalDismissed(c(null, ["b"]), {})).toBe(true));
 });

@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
-import { createClip, createTrack, deleteClip, setMomentChecks, updateSession } from "@digestor/core/server";
+import { confirmClips, createClip, createTrack, deleteClip, setMomentChecks, updateSession } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
+import { POST as mergeRoute } from "./clips/merge/route";
 import { GET as getChecks, POST as checkAgain } from "./clips/[id]/checks/route";
 import { GET as getTracks } from "./clips/[id]/tracks/route";
 
@@ -110,5 +111,56 @@ describe("GET /api/clips/[id]/tracks", () => {
     const { sessionId, clip } = await clipOf();
     await updateSession(h.db, sessionId, { stage: "failed" });
     expect((await getTracks(get(), ctx(clip.id))).status).toBe(409);
+  });
+});
+
+describe("POST /api/clips/merge", () => {
+  const post = (body: unknown) =>
+    mergeRoute(new Request("http://localhost/x", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }));
+  async function three() {
+    const { sessionId, moments } = await seedReadySession(h.db, [[10_000, 30_000], [25_000, 40_000], [60_000, 70_000]]);
+    const [a, b, c] = await confirmClips(h.db, OWNER_ID, sessionId, moments);
+    return { sessionId, a: a!, b: b!, c: c! };
+  }
+
+  it("merges two overlapping clips into the earlier one; a repeat answers 409", async () => {
+    const { a, b } = await three();
+    const res = await post({ clipIds: [a.id, b.id] });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: a.id, startMs: 10_000, endMs: 40_000 });
+    const again = await post({ clipIds: [a.id, b.id] });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: "One of these clips no longer exists. Reload the page and try again." });
+  });
+
+  it("refuses clips that do not touch", async () => {
+    const { a, c } = await three();
+    const res = await post({ clipIds: [a.id, c.id] });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Only clips that overlap or touch can be merged." });
+  });
+
+  it("answers 400 for a bad body", async () => {
+    const { a } = await three();
+    for (const body of [{ clipIds: [a.id] }, { clipIds: [a.id, a.id] }, { clipIds: ["x", "y"] }, null]) {
+      const res = await post(body);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Send the two clips to merge." });
+    }
+  });
+
+  it("answers 404 when the first clip does not exist", async () => {
+    const { b } = await three();
+    const res = await post({ clipIds: ["00000000-0000-4000-8000-000000000000", b.id] });
+    expect(res.status).toBe(404);
+  });
+
+  it("answers 409 VIDEO_REMOVED once the video is removed", async () => {
+    const { sessionId, a, b } = await three();
+    await updateSession(h.db, sessionId, { videoDeletedAt: new Date() });
+    const res = await post({ clipIds: [a.id, b.id] });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBeTruthy();
   });
 });

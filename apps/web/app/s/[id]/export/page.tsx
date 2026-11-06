@@ -45,7 +45,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         startMs: clip.startMs,
         endMs: clip.endMs,
         failing,
-        dismissed: approvalDismissed(clip.momentId, selections),
+        dismissed: approvalDismissed(clip, selections),
         unconfirmed: unconfirmedVoices(names, transcript?.words ?? [], clip, sensitive).map((v) => v.label.text),
         voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
         row: exportRows([clip], tracks)[0]!,

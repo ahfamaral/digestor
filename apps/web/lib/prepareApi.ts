@@ -34,6 +34,10 @@ export type ClipChange =
 export const patchClip = (id: string, change: ClipChange): Promise<ClipView> =>
   call(`/api/clips/${id}`, json("PATCH", change), toClipView);
 
+/** Joins two overlapping clips; resolves to the surviving (earlier) clip. */
+export const mergeClipsApi = (ids: [string, string]): Promise<ClipView> =>
+  call("/api/clips/merge", json("POST", { clipIds: ids }), toClipView);
+
 export const undoClip = (id: string): Promise<ClipView> => call(`/api/clips/${id}/undo`, json("POST"), toClipView);
 
 export const fetchChecks = (clipId: string): Promise<MomentChecks | null> =>

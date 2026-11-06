@@ -79,7 +79,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
               .map((w) => ({ startMs: w.startMs, endMs: w.endMs, speaker: w.speaker }))
           : [],
         thumbUrl: moment?.thumbKey ? `/api/files/${id}/thumbs/${moment.id}.jpg` : null,
-        dismissed: approvalDismissed(clip.momentId, selections),
+        dismissed: approvalDismissed(clip, selections),
       };
     }),
   );
