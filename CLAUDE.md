@@ -45,7 +45,7 @@ After adding a dependency: `pnpm install` on the host first (updates the lockfil
 ## Conventions that bite
 
 - `@digestor/core` is client-safe; DB, repo, storage and migrate come from `@digestor/core/server`. Never import `/server` from a client component.
-- Merge (`mergeClips`) keeps the earlier clip, soft-deletes the later one and stores its moments in `clips.merged_moment_ids`; Undo restores both; a clip is dismissed when any of its moments is not approved.
+- Merge (`mergeClips`) is only for clips that overlap partly or touch (never a gap, never one clip inside the other: `contained`); it keeps the earlier clip, soft-deletes the later one and stores its moments in `clips.merged_moment_ids`; Undo restores both; a clip is dismissed when any of its moments is not approved.
 - Relative imports inside `packages/core` use `.ts` extensions (Turbopack can't map `.js` → `.ts`); the worker uses `.js`. Keep each package's convention.
 - The DB stores storage-relative keys (`<sessionId>/original.mp4`), never absolute paths; each process resolves them against its own `DATA_DIR`.
 - Uploaded files are saved as `original.<ext>`; user filenames never reach ffmpeg.

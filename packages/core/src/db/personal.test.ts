@@ -655,31 +655,25 @@ describe("merging clips", () => {
       expect(await mergeClips(db, OWNER, [a.id, d.id], "user")).toEqual({ ok: false, reason: "not_touching" });
     });
 
-    it("a later clip inside the earlier one keeps the earlier range", async () => {
+    it("refuses a clip inside the other (later one inside, same end, same start) and leaves both untouched", async () => {
       const { c: a } = await mk("A", 10_000, 40_000);
       const { c: b } = await mk("B", 20_000, 30_000);
-      const r = await mergeClips(db, OWNER, [a.id, b.id], "user");
-      expect(r.ok && r.clip).toMatchObject({ id: a.id, startMs: 10_000, endMs: 40_000 });
+      const { c: e } = await mk("E", 25_000, 40_000);
+      const { c: f } = await mk("F", 10_000, 50_000);
+      expect(await mergeClips(db, OWNER, [a.id, b.id], "user")).toEqual({ ok: false, reason: "contained" });
+      expect(await mergeClips(db, OWNER, [e.id, a.id], "user")).toEqual({ ok: false, reason: "contained" });
+      expect(await mergeClips(db, OWNER, [f.id, a.id], "user")).toEqual({ ok: false, reason: "contained" });
+      expect(await getClip(db, a.id)).toMatchObject({ startMs: 10_000, endMs: 40_000, mergedMomentIds: [] });
+      expect(await getClip(db, b.id)).toMatchObject({ startMs: 20_000, endMs: 30_000 });
+      expect((await listClipEvents(db, a.id)).map((ev) => ev.kind)).toEqual(["create"]);
     });
 
-    it("same start: the clip created first survives", async () => {
-      const { c: a } = await mk("A", 10_000, 20_000);
-      const { c: b } = await mk("B", 10_000, 30_000);
-      await db.update(clips).set({ createdAt: new Date("2026-01-01T00:00:00Z") }).where(eq(clips.id, a.id));
-      await db.update(clips).set({ createdAt: new Date("2026-01-01T00:00:01Z") }).where(eq(clips.id, b.id));
-      const r = await mergeClips(db, OWNER, [b.id, a.id], "user");
-      expect(r).toMatchObject({ ok: true, absorbedId: b.id });
-      expect(r.ok && r.clip).toMatchObject({ id: a.id, startMs: 10_000, endMs: 30_000 });
-    });
-
-    it("same start, one confirmClips call (equal createdAt): the survivor is the clip listClips lists first", async () => {
+    it("same start, one confirmClips call (equal createdAt): listed by id, and never merged (one is inside the other)", async () => {
       const ms = await saveMoments(db, analysisId, [mrow("P", 10_000, 20_000), mrow("Q", 10_000, 30_000), mrow("R", 10_000, 25_000)]);
       const made = await confirmClips(db, OWNER, s.id, ms.map((m) => ({ id: m.id, startMs: m.startMs, endMs: m.endMs })));
       const listed = (await listClips(db, OWNER, s.id)).filter((c) => made.some((m) => m.id === c.id));
       expect(listed.map((c) => c.id)).toEqual([...made.map((c) => c.id)].sort());
-      const r = await mergeClips(db, OWNER, [listed[1]!.id, listed[0]!.id], "user");
-      expect(r).toMatchObject({ ok: true, absorbedId: listed[1]!.id });
-      expect(r.ok && r.clip.id).toBe(listed[0]!.id);
+      expect(await mergeClips(db, OWNER, [listed[1]!.id, listed[0]!.id], "user")).toEqual({ ok: false, reason: "contained" });
     });
 
     it("returns not_found for a deleted clip, another owner's or another session's clip, and on a second merge of the same pair", async () => {

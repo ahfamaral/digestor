@@ -366,11 +366,11 @@ export async function confirmClips(
   });
 }
 
-export type MergeResult = { ok: true; clip: Clip; absorbedId: string } | { ok: false; reason: "not_found" | "not_touching" };
+export type MergeResult = { ok: true; clip: Clip; absorbedId: string } | { ok: false; reason: "not_found" | "not_touching" | "contained" };
 
 /**
- * Merges two touching or overlapping clips of one session into the earlier one (by start, then creation): it spans
- * both, remembers the absorbed clip's moments, and the later clip is soft-deleted. Undoing the survivor's `merge`
+ * Merges two clips of one session that overlap partly or touch into the earlier one (by start, then creation): it
+ * spans both, remembers the absorbed clip's moments, and the later clip is soft-deleted. Undoing the survivor's `merge`
  * event restores both.
  */
 export async function mergeClips(db: Db, ownerId: string, clipIds: [string, string], actor: ClipActor): Promise<MergeResult> {
@@ -393,7 +393,9 @@ export async function mergeClips(db: Db, ownerId: string, clipIds: [string, stri
       .orderBy(asc(clips.startMs), asc(clips.createdAt), asc(clips.id));
     const [first, second] = order.map((o) => rows.find((r) => r.id === o.id)!) as [Clip, Clip];
     if (first.endMs < second.startMs) return { ok: false, reason: "not_touching" };
-    const bounds = { startMs: first.startMs, endMs: Math.max(first.endMs, second.endMs) };
+    // One clip inside the other (same start, or the later one ends no later): merging would add nothing.
+    if (first.startMs === second.startMs || second.endMs <= first.endMs) return { ok: false, reason: "contained" };
+    const bounds = { startMs: first.startMs, endMs: second.endMs };
     const merged = [...new Set([...first.mergedMomentIds, ...(second.momentId ? [second.momentId] : []), ...second.mergedMomentIds])]
       .filter((id) => id !== first.momentId);
     const now = new Date();

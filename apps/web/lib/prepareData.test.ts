@@ -134,12 +134,28 @@ describe("approvalDismissed", () => {
 });
 
 describe("mergePairs", () => {
-  const c = (startMs: number, endMs: number) => ({ id: `${startMs}`, startMs, endMs });
-  it("finds overlapping, touching, gapped and chained neighbours", () => {
-    expect([...mergePairs([c(0, 10), c(5, 20)])]).toEqual([0]);
-    expect([...mergePairs([c(0, 10), c(10, 20)])]).toEqual([0]);
-    expect([...mergePairs([c(0, 10), c(11, 20)])]).toEqual([]);
-    expect([...mergePairs([c(0, 10), c(5, 20), c(15, 30)])]).toEqual([0, 1]);
-    expect([...mergePairs([c(0, 10)])]).toEqual([]);
+  const c = (startMs: number, endMs: number) => ({ startMs, endMs });
+  const pairs = (...cs: { startMs: number; endMs: number }[]) => [...mergePairs(cs)];
+  it("offers partial overlaps and touching clips, never a gap", () => {
+    expect(pairs(c(0, 60), c(50, 90))).toEqual([[0, 0]]);
+    expect(pairs(c(0, 60), c(60, 90))).toEqual([[0, 0]]);
+    expect(pairs(c(0, 60), c(65, 90))).toEqual([]);
+    expect(pairs(c(0, 10), c(5, 20), c(15, 30))).toEqual([[0, 0], [1, 1]]);
+    expect(pairs(c(0, 10))).toEqual([]);
+    expect(pairs()).toEqual([]);
+  });
+  it("never offers a clip inside the other: later one inside, same end, same start", () => {
+    expect(pairs(c(0, 100), c(10, 20))).toEqual([]);
+    expect(pairs(c(0, 60), c(30, 60))).toEqual([]);
+    expect(pairs(c(0, 30), c(0, 60))).toEqual([]);
+    expect(pairs(c(0, 60), c(0, 60))).toEqual([]);
+  });
+  it("a clip nested inside an earlier one doesn't hide that one's pair with the next clip", () => {
+    // 1 (0–60) holds 2 (10–20); 3 (50–90) overlaps 1 partly: the button sits between 2 and 3 and merges 1 and 3
+    expect(pairs(c(0, 60), c(10, 20), c(50, 90))).toEqual([[1, 0]]);
+    // 2 and 3 overlap each other but both sit inside 1: merging them would still be inside 1
+    expect(pairs(c(0, 60), c(10, 20), c(15, 30))).toEqual([]);
+    // after a gap the furthest-reaching clip starts over
+    expect(pairs(c(0, 60), c(10, 20), c(70, 80), c(75, 90))).toEqual([[2, 2]]);
   });
 });

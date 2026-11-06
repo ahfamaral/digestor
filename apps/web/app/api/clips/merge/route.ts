@@ -9,7 +9,7 @@ import { getServer } from "@/lib/server";
 const Body = z.strictObject({ clipIds: z.tuple([z.string().refine(isUuid), z.string().refine(isUuid)]) });
 
 /**
- * POST /api/clips/merge — joins two overlapping or touching clips into the earlier one (the other is absorbed;
+ * POST /api/clips/merge — joins two clips that overlap partly or touch into the earlier one (the other is absorbed;
  * Undo on the survivor splits them again). 409 once the video is removed (R30).
  */
 export async function POST(request: Request): Promise<Response> {
@@ -23,9 +23,9 @@ export async function POST(request: Request): Promise<Response> {
   if (frozen) return frozen;
   const result = await mergeClips(db, OWNER_ID, ids, "user");
   if (!result.ok) {
-    return result.reason === "not_touching"
-      ? errorResponse(409, "Only clips that overlap or touch can be merged.")
-      : errorResponse(409, "One of these clips no longer exists. Reload the page and try again.");
+    if (result.reason === "not_touching") return errorResponse(409, "Only clips that overlap or touch can be merged.");
+    if (result.reason === "contained") return errorResponse(409, "One of these clips is already inside the other, so there's nothing to merge.");
+    return errorResponse(409, "One of these clips no longer exists. Reload the page and try again.");
   }
   return Response.json({ ...result.clip, midSentence: await midSentenceFor(db, found.session, result.clip) });
 }

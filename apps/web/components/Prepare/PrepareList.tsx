@@ -181,7 +181,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
 
   /** The two clip ids the open merge dialog is about (never an index: the list can change under it). */
   const [mergeIds, setMergeIds] = useState<[string, string] | null>(null);
-  const pairs = session.videoRemoved ? new Set<number>() : mergePairs(items.map((i) => i.clip));
+  const pairs = session.videoRemoved ? new Map<number, number>() : mergePairs(items.map((i) => i.clip));
   const mergeAt = mergeIds ? items.findIndex((i) => i.clip.id === mergeIds[0]) : -1;
   const mergeA = mergeAt >= 0 ? items[mergeAt] : undefined;
   const mergeB = mergeIds ? items.find((i) => i.clip.id === mergeIds[1]) : undefined;
@@ -367,18 +367,23 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
                 onCheckAgain={() => void checkAgain(item.clip.id)}
                 onTrack={(tr) => setTrack(item.clip.id, tr)}
               />
-              {pairs.has(n) && (
-                <li role="none" className="-my-1 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setMergeIds([item.clip.id, items[n + 1]!.clip.id])}
-                    disabled={(busy[item.clip.id] ?? false) || (busy[items[n + 1]!.clip.id] ?? false)}
-                    className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {t("prepare.mergeButton", { a: n + 1, b: n + 2 })}
-                  </button>
-                </li>
-              )}
+              {pairs.has(n) && (() => {
+                const k = pairs.get(n)!;
+                const earlier = items[k]!.clip.id;
+                const later = items[n + 1]!.clip.id;
+                return (
+                  <li role="none" className="-my-1 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setMergeIds([earlier, later])}
+                      disabled={(busy[earlier] ?? false) || (busy[later] ?? false)}
+                      className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {t("prepare.mergeButton", { a: k + 1, b: n + 2 })}
+                    </button>
+                  </li>
+                );
+              })()}
               </Fragment>
             ))}
           </ol>

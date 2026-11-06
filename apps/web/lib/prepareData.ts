@@ -13,10 +13,21 @@ export function approvalDismissed(
   return ids.some((id) => selections[id] !== "approved");
 }
 
-/** Indexes `i` (clips sorted by start) where clip `i` and `i + 1` overlap or touch, so they can merge. */
-export function mergePairs(clips: { id: string; startMs: number; endMs: number }[]): Set<number> {
-  const out = new Set<number>();
-  for (let i = 0; i + 1 < clips.length; i++) if (clips[i]!.endMs >= clips[i + 1]!.startMs) out.add(i);
+/**
+ * Where Prepare offers a merge, for clips sorted by start: gap index `i` (the button sits between clip `i` and `i + 1`)
+ * → the index of the earlier clip that clip `i + 1` merges with. That earlier clip is the one reaching furthest so far
+ * (a clip nested inside it never hides the pair). A merge is offered only when the two overlap partly or touch: never
+ * across a gap, and never when one clip lies inside the other (same start, or ending no later), which adds nothing.
+ */
+export function mergePairs(clips: { startMs: number; endMs: number }[]): Map<number, number> {
+  const out = new Map<number, number>();
+  let reach = 0;
+  for (let j = 1; j < clips.length; j++) {
+    const r = clips[reach]!;
+    const c = clips[j]!;
+    if (c.startMs > r.startMs && c.startMs <= r.endMs && c.endMs > r.endMs) out.set(j - 1, reach);
+    if (c.endMs > r.endMs) reach = j;
+  }
   return out;
 }
 
