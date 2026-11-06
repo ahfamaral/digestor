@@ -5,7 +5,7 @@
 //                  [--visit <path>]... [--upload <file>] [--keys <path>=<k1,k2,...>] [--mobile]
 //
 // --visit   screenshot a page, e.g. /  /s/<id> (Briefing once ready)  /s/<id>/prepare  /s/<id>/export  /reports
-// --upload  upload a file from the home page, follow the redirect to /s/<id>, screenshot it
+// --upload  upload a file from the upload page (/new), follow the redirect to /s/<id>, screenshot it
 // --keys    open a page, press keys in order (Playwright key names: ArrowDown, Escape, "/"),
 //           screenshot after each key: e.g. /s/<id>=/,Escape
 //           ("/" opens the Ask drawer on the Briefing page)
@@ -74,7 +74,7 @@ try {
   }
   const upload = one("--upload");
   if (upload) {
-    await go("/");
+    await go("/new");
     await page.locator('input[type="file"]').setInputFiles(path.resolve(upload));
     await page.getByRole("button", { name: /Digest this video/ }).click();
     await page.waitForURL(/\/s\/[0-9a-f-]{36}/, { timeout: 120_000 });

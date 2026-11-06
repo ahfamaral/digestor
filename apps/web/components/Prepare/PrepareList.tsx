@@ -322,7 +322,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
 
   return (
     <>
-      <AppBar current="Prepare" />
+      <AppBar current="Prepare" session={{ id: session.id, ready: true }} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
           <BackLink href={`/s/${session.id}`} label={t("prepare.backToBriefing")} />

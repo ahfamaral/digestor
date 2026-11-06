@@ -67,7 +67,7 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <>
-      <AppBar current={current} />
+      <AppBar current={current} session={{ id: session.id, ready: false }} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
         <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
         {body}
@@ -81,7 +81,7 @@ async function BriefingScreen({ session }: { session: Session }) {
   const props = await loadBriefingPage(getServer().db, session);
   return (
     <>
-      <AppBar current="Briefing" />
+      <AppBar current="Briefing" session={{ id: session.id, ready: true }} />
       <main className={props ? "mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6" : "mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6"}>
         {props ? (
           <Briefing key={props.analysis.id} {...props} />

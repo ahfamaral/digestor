@@ -33,7 +33,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
   if (session.stage !== "ready") {
     return (
       <>
-        <AppBar current="Prepare" />
+        <AppBar current="Prepare" session={{ id: session.id, ready: false }} />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
           <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
           <p role="alert" className="mb-3 text-sm text-red-700">
