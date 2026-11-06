@@ -36,7 +36,6 @@ export const en = {
     },
   },
   home: {
-    sessions: "Your sessions",
     waiting: "Waiting for you",
     failed: "Failed",
     ready: "Ready",

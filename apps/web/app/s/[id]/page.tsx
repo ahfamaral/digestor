@@ -49,7 +49,7 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
       <div className="mx-auto max-w-xl rounded-xl border border-border bg-white p-5">
         <h2 className="mb-1 text-base font-bold">{t("session.failedTitle")}</h2>
         <p className="mb-4 text-sm text-muted-foreground">{session.error ?? t("session.failedFallback")}</p>
-        <Link href="/" className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white">
+        <Link href="/new" className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white">
           {t("session.startOver")}
         </Link>
       </div>
