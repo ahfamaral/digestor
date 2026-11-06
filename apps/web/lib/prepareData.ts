@@ -237,3 +237,8 @@ export function insideClip(clips: { startMs: number; endMs: number }[]): (number
     return best === null ? null : best + 1;
   });
 }
+
+/** The cards' open/closed overrides after a jump to `id` (an index link, a hash): that card is open, whatever it was. */
+export function withOpen(overrides: Record<string, boolean>, id: string): Record<string, boolean> {
+  return { ...overrides, [id]: true };
+}

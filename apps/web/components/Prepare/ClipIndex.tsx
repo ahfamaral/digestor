@@ -21,7 +21,7 @@ export interface ClipIndexEntry {
  * The clip index: number, time and status per clip, each a link to its card (`#clip-<id>`). A sticky side column from
  * `lg` up; below that a "Clips (N)" bar that opens the same list.
  */
-export function ClipIndex({ entries, language }: { entries: ClipIndexEntry[]; language: string | undefined }) {
+export function ClipIndex({ entries, language, onJump }: { entries: ClipIndexEntry[]; language: string | undefined; onJump: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <nav aria-label={t("prepare.indexLabel")} className="mb-3 lg:sticky lg:top-20 lg:mb-0 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
@@ -35,12 +35,15 @@ export function ClipIndex({ entries, language }: { entries: ClipIndexEntry[]; la
         <ChevronRightIcon aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
         {t("prepare.indexTitle", { n: entries.length })}
       </button>
-      <p className="mb-1.5 hidden text-xs font-semibold tracking-wide text-muted-foreground uppercase lg:block">{t("prepare.indexTitle", { n: entries.length })}</p>
+      <p className="mb-1.5 hidden text-xs font-semibold tracking-wide text-muted-foreground uppercase lg:block">
+        {t("prepare.indexTitle", { n: entries.length })}
+      </p>
       <ol id="clip-index-list" className={cn("mt-1 grid gap-1 lg:mt-0 lg:grid", open ? "grid" : "hidden")}>
         {entries.map((e) => (
           <li key={e.id}>
             <a
               href={`#clip-${e.id}`}
+              onClick={() => onJump(e.id)}
               className="grid gap-0.5 rounded-lg border border-border bg-white px-2.5 py-1.5 text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
             >
               <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">

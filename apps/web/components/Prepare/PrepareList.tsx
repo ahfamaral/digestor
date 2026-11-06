@@ -14,7 +14,7 @@ import { BackLink } from "@/components/BackLink";
 import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { addTrack, fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
-import { checksToPoll, clipStatus, insideClip, mergePairs, sharedValue, type ClipStatus, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
+import { checksToPoll, clipStatus, withOpen, insideClip, mergePairs, sharedValue, type ClipStatus, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
 import { runForAll } from "@/lib/forAllRun";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -374,7 +374,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
       const m = /^#clip-(.+)$/.exec(window.location.hash);
       if (!m) return;
       hashTarget.current = m[1]!;
-      setOpenOverride((o) => ({ ...o, [m[1]!]: true }));
+      setOpenOverride((o) => withOpen(o, m[1]!));
     };
     read();
     window.addEventListener("hashchange", read);
@@ -442,55 +442,59 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
           </div>
         ) : (
           <div className="lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start lg:gap-5">
-          <ClipIndex
-            language={lang}
-            entries={items.map((i, n) => ({ id: i.clip.id, n: n + 1, title: i.title, startMs: i.clip.startMs, status: statusOf(i.clip.id), dismissed: i.dismissed }))}
-          />
-          <ol className="grid gap-4">
-            {items.map((item, n) => (
-              <Fragment key={item.clip.id}>
-              <ClipCard
-                n={n + 1}
-                item={item}
-                status2={statusOf(item.clip.id)}
-                inside={insideOf[n] ?? null}
-                open={isOpen(item.clip.id)}
-                onToggle={() => setOpenOverride((o) => ({ ...o, [item.clip.id]: !isOpen(item.clip.id) }))}
-                session={session}
-                defaultCredit={defaultCredit}
-                names={names}
-                creditDiffers={creditDiffers.has(item.clip.id)}
-                formatDiffers={formatDiffers.has(item.clip.id)}
-                timedOut={timedOut && !retrying[item.clip.id]}
-                busy={busy[item.clip.id] ?? false}
-                error={errors[item.clip.id] ?? null}
-                status={statuses[item.clip.id] ?? ""}
-                checklist={checklists.get(item.clip.id)!}
-                onChange={(body, opts) => change(item.clip.id, body, opts)}
-                onUndo={() => (item.undo?.kind === "merge" ? setUndoMergeId(item.clip.id) : void undo(item.clip.id))}
-                onCheckAgain={() => void checkAgain(item.clip.id)}
-                onTrack={(tr) => setTrack(item.clip.id, tr)}
-              />
-              {pairs.has(n) && (() => {
-                const k = pairs.get(n)!;
-                const earlier = items[k]!.clip.id;
-                const later = items[n + 1]!.clip.id;
-                return (
-                  <li role="none" className="-my-1 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setMergeIds([earlier, later])}
-                      disabled={(busy[earlier] ?? false) || (busy[later] ?? false)}
-                      className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {t("prepare.mergeButton", { a: k + 1, b: n + 2 })}
-                    </button>
-                  </li>
-                );
-              })()}
-              </Fragment>
-            ))}
-          </ol>
+            <ClipIndex
+              onJump={(id) => {
+                hashTarget.current = id;
+                setOpenOverride((o) => withOpen(o, id));
+              }}
+              language={lang}
+              entries={items.map((i, n) => ({ id: i.clip.id, n: n + 1, title: i.title, startMs: i.clip.startMs, status: statusOf(i.clip.id), dismissed: i.dismissed }))}
+            />
+            <ol className="grid gap-4">
+              {items.map((item, n) => (
+                <Fragment key={item.clip.id}>
+                  <ClipCard
+                    n={n + 1}
+                    item={item}
+                    clipState={statusOf(item.clip.id)}
+                    inside={insideOf[n] ?? null}
+                    open={isOpen(item.clip.id)}
+                    onToggle={() => setOpenOverride((o) => ({ ...o, [item.clip.id]: !isOpen(item.clip.id) }))}
+                    session={session}
+                    defaultCredit={defaultCredit}
+                    names={names}
+                    creditDiffers={creditDiffers.has(item.clip.id)}
+                    formatDiffers={formatDiffers.has(item.clip.id)}
+                    timedOut={timedOut && !retrying[item.clip.id]}
+                    busy={busy[item.clip.id] ?? false}
+                    error={errors[item.clip.id] ?? null}
+                    status={statuses[item.clip.id] ?? ""}
+                    checklist={checklists.get(item.clip.id)!}
+                    onChange={(body, opts) => change(item.clip.id, body, opts)}
+                    onUndo={() => (item.undo?.kind === "merge" ? setUndoMergeId(item.clip.id) : void undo(item.clip.id))}
+                    onCheckAgain={() => void checkAgain(item.clip.id)}
+                    onTrack={(tr) => setTrack(item.clip.id, tr)}
+                  />
+                  {pairs.has(n) && (() => {
+                    const k = pairs.get(n)!;
+                    const earlier = items[k]!.clip.id;
+                    const later = items[n + 1]!.clip.id;
+                    return (
+                      <li role="none" className="-my-1 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setMergeIds([earlier, later])}
+                          disabled={(busy[earlier] ?? false) || (busy[later] ?? false)}
+                          className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {t("prepare.mergeButton", { a: k + 1, b: n + 2 })}
+                        </button>
+                      </li>
+                    );
+                  })()}
+                </Fragment>
+              ))}
+            </ol>
           </div>
         )}
 
@@ -556,7 +560,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
 interface ClipCardProps {
   n: number;
   item: Item;
-  status2: ClipStatus;
+  clipState: ClipStatus;
   /** The number of the clip that contains this one, if any. */
   inside: number | null;
   open: boolean;
@@ -578,7 +582,7 @@ interface ClipCardProps {
 }
 
 function ClipCard({
-  n, item, status2, inside, open, onToggle, session, defaultCredit, names, creditDiffers, formatDiffers, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
+  n, item, clipState, inside, open, onToggle, session, defaultCredit, names, creditDiffers, formatDiffers, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
 }: ClipCardProps) {
   const { clip, title } = item;
   // R30: once the video is removed the clip is frozen; only the acknowledgements can change.
@@ -625,7 +629,7 @@ function ClipCard({
             aria-expanded={open}
             aria-controls={bodyId}
             aria-label={open ? t("prepare.collapseClip", { n }) : t("prepare.expandClip", { n })}
-            className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md border border-border bg-white outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+            className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md border border-border bg-white outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
           >
             <ChevronRightIcon aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
           </button>
@@ -670,121 +674,124 @@ function ClipCard({
               </p>
             )}
           </div>
-          <ClipStatusBadge status={status2} dismissed={item.dismissed} className="mt-1" />
-          {open && <button
-            type="button"
-            onClick={onUndo}
-            disabled={!item.undo || busy || frozen}
-            aria-label={t("prepare.undoLabel", { action: undoLabel(item.undo), title: title || t("prepare.clipHeading", { n }) })}
-            title={item.undo ? undefined : t("prepare.undoNothing")}
-            className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {undoLabel(item.undo)}
-          </button>}
+          <ClipStatusBadge status={clipState} dismissed={item.dismissed} className="mt-1" />
+          {open && (
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!item.undo || busy || frozen}
+              aria-label={t("prepare.undoLabel", { action: undoLabel(item.undo), title: title || t("prepare.clipHeading", { n }) })}
+              title={item.undo ? undefined : t("prepare.undoNothing")}
+              className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {undoLabel(item.undo)}
+            </button>
+          )}
         </header>
 
         <div id={bodyId} hidden={!open}>
-        {open && <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          <div className="grid content-start gap-3">
-            <ClipPlayer
-              sessionId={session.id}
-              clip={clip}
-              title={title}
-              format={clip.format}
-              cropOffset={cropOffset}
-              hasVideo={session.hasVideo}
-              videoRemoved={session.videoRemoved}
-              thumbUrl={item.thumbUrl}
-            />
-            <TrimStrip
-              clipId={clip.id}
-              title={title}
-              clip={clip}
-              revision={clip.updatedAt}
-              durationMs={session.durationMs}
-              points={item.points}
-              disabled={frozen}
-              onCommit={commitBounds}
-              onCommitText={(start, end) => onChange({ start, end }, { refresh: true, announce: true })}
-            />
-            <p role="status" className="flex min-h-4 items-center text-xs text-muted-foreground">
-              <Busy busy={busy}>{busy ? t("prepare.saving") : status}</Busy>
-            </p>
-            {error && (
-              <p role="alert" className="-mt-2 text-xs text-red-700">
-                {error}
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+            <div className="grid content-start gap-3">
+              <ClipPlayer
+                visible={open}
+                sessionId={session.id}
+                clip={clip}
+                title={title}
+                format={clip.format}
+                cropOffset={cropOffset}
+                hasVideo={session.hasVideo}
+                videoRemoved={session.videoRemoved}
+                thumbUrl={item.thumbUrl}
+              />
+              <TrimStrip
+                clipId={clip.id}
+                title={title}
+                clip={clip}
+                revision={clip.updatedAt}
+                durationMs={session.durationMs}
+                points={item.points}
+                disabled={frozen}
+                onCommit={commitBounds}
+                onCommitText={(start, end) => onChange({ start, end }, { refresh: true, announce: true })}
+              />
+              <p role="status" className="flex min-h-4 items-center text-xs text-muted-foreground">
+                <Busy busy={busy}>{busy ? t("prepare.saving") : status}</Busy>
               </p>
-            )}
-          </div>
+              {error && (
+                <p role="alert" className="-mt-2 text-xs text-red-700">
+                  {error}
+                </p>
+              )}
+            </div>
 
-          <div className="grid content-start gap-4">
-            <ChecksPanel
-              clipId={clip.id}
-              title={title}
-              language={lang}
-              checks={checks}
-              originalCut={originalCut}
-              timedOut={timedOut}
-              warningsAck={clip.warningsAck}
-              midSentence={clip.midSentence}
-              busy={busy}
-              frozen={frozen}
-              checkingAgain={busy}
-              onAck={(ack) => void onChange({ warningsAck: ack })}
-              onExtend={() => void onChange({ extend: "next" }, { refresh: true, announce: true })}
-              onCheckAgain={onCheckAgain}
-            />
-            <FormatPicker
-              clipId={clip.id}
-              format={clip.format}
-              cropOffset={cropOffset}
-              hasVideo={session.hasVideo}
-              disabled={frozen}
-              differs={formatDiffers}
-              onFormat={(format: ClipFormat) => void onChange({ format })}
-              onCropInput={(v) => {
-                setCropDraft(v);
-                crop.push(v);
-              }}
-              onCropCommit={crop.flush}
-            />
-            <CreditField
-              key={`${clip.credit ?? ""}|${clip.noCreditNeeded}`}
-              clipId={clip.id}
-              credit={clip.credit}
-              noCreditNeeded={clip.noCreditNeeded}
-              defaultCredit={defaultCredit}
-              differs={creditDiffers}
-              disabled={frozen}
-              onCredit={(credit) => void onChange({ credit })}
-              onNoCredit={(v) => void onChange({ noCreditNeeded: v })}
-            />
-            <SubtitlesPanel
-              sessionId={session.id}
-              clipId={clip.id}
-              clip={clip}
-              hasVideo={session.hasVideo}
-              onLook={(look) => onChange({ subtitleStyle: look.style, subtitlePosition: look.position })}
-              originalLanguage={session.language}
-              tracks={item.tracks}
-              frozen={frozen}
-              onTrack={onTrack}
-            />
-            <Checklist
-              clipId={clip.id}
-              items={checklist}
-              unconfirmed={unconfirmedVoices(names, item.speakerWords, clip, PROFILES[session.profile].sensitive)}
-              names={names}
-              sessionId={session.id}
-              range={{ startMs: clip.startMs, endMs: clip.endMs }}
-              language={lang}
-              frozen={frozen}
-              protectedAck={clip.protectedAck}
-              busy={busy}
-              onProtected={(v) => void onChange({ protectedAck: v })}
-            />
+            <div className="grid content-start gap-4">
+              <ChecksPanel
+                clipId={clip.id}
+                title={title}
+                language={lang}
+                checks={checks}
+                originalCut={originalCut}
+                timedOut={timedOut}
+                warningsAck={clip.warningsAck}
+                midSentence={clip.midSentence}
+                busy={busy}
+                frozen={frozen}
+                checkingAgain={busy}
+                onAck={(ack) => void onChange({ warningsAck: ack })}
+                onExtend={() => void onChange({ extend: "next" }, { refresh: true, announce: true })}
+                onCheckAgain={onCheckAgain}
+              />
+              <FormatPicker
+                clipId={clip.id}
+                format={clip.format}
+                cropOffset={cropOffset}
+                hasVideo={session.hasVideo}
+                disabled={frozen}
+                differs={formatDiffers}
+                onFormat={(format: ClipFormat) => void onChange({ format })}
+                onCropInput={(v) => {
+                  setCropDraft(v);
+                  crop.push(v);
+                }}
+                onCropCommit={crop.flush}
+              />
+              <CreditField
+                key={`${clip.credit ?? ""}|${clip.noCreditNeeded}`}
+                clipId={clip.id}
+                credit={clip.credit}
+                noCreditNeeded={clip.noCreditNeeded}
+                defaultCredit={defaultCredit}
+                differs={creditDiffers}
+                disabled={frozen}
+                onCredit={(credit) => void onChange({ credit })}
+                onNoCredit={(v) => void onChange({ noCreditNeeded: v })}
+              />
+              <SubtitlesPanel
+                sessionId={session.id}
+                clipId={clip.id}
+                clip={clip}
+                hasVideo={session.hasVideo}
+                onLook={(look) => onChange({ subtitleStyle: look.style, subtitlePosition: look.position })}
+                originalLanguage={session.language}
+                tracks={item.tracks}
+                frozen={frozen}
+                onTrack={onTrack}
+              />
+              <Checklist
+                clipId={clip.id}
+                items={checklist}
+                unconfirmed={unconfirmedVoices(names, item.speakerWords, clip, PROFILES[session.profile].sensitive)}
+                names={names}
+                sessionId={session.id}
+                range={{ startMs: clip.startMs, endMs: clip.endMs }}
+                language={lang}
+                frozen={frozen}
+                protectedAck={clip.protectedAck}
+                busy={busy}
+                onProtected={(v) => void onChange({ protectedAck: v })}
+              />
+            </div>
           </div>
-        </div>}
         </div>
       </article>
     </li>
@@ -793,8 +800,9 @@ function ClipCard({
 
 /** The clip on the proxy (never the original): `preload="none"` and `#t=start,end`; in 9:16 the frame shows the crop. */
 function ClipPlayer({
-  sessionId, clip, title, format, cropOffset, hasVideo, videoRemoved, thumbUrl,
+  visible, sessionId, clip, title, format, cropOffset, hasVideo, videoRemoved, thumbUrl,
 }: {
+  visible: boolean;
   sessionId: string;
   clip: Range;
   title: string;
@@ -805,6 +813,8 @@ function ClipPlayer({
   thumbUrl: string | null;
 }) {
   const [playing, setPlaying] = useState(false);
+  // A collapsed card stops its player (it unmounts) and starts again from the poster.
+  if (!visible && playing) setPlaying(false);
   const src = `/api/files/${sessionId}/proxy.mp4#t=${(clip.startMs / 1000).toFixed(1)},${(clip.endMs / 1000).toFixed(1)}`;
   const label = t("preview.playerLabel", { title });
   const vertical = format === "9:16";

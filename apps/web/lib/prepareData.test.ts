@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll, sharedValue, applyToAll, languageTargets, clipStatus, insideClip } from "./prepareData";
+import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll, sharedValue, applyToAll, languageTargets, clipStatus, insideClip, withOpen } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -231,5 +231,12 @@ describe("insideClip", () => {
   });
   it("a clip sharing an edge counts as inside; partial overlap does not", () => {
     expect(insideClip([{ startMs: 0, endMs: 50_000 }, { startMs: 0, endMs: 20_000 }, { startMs: 40_000, endMs: 60_000 }])).toEqual([null, 1, null]);
+  });
+});
+
+describe("withOpen", () => {
+  it("opens the card even when it was closed by hand, and leaves the others alone", () => {
+    expect(withOpen({ a: false, b: false }, "a")).toEqual({ a: true, b: false });
+    expect(withOpen({}, "c")).toEqual({ c: true });
   });
 });
