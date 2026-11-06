@@ -127,6 +127,13 @@
       "when": 1793956700991,
       "tag": "0017_merged_clips",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793957700991,
+      "tag": "0018_clip_credit_set_at",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { MomentWithHighlights } from "../analysisTypes.ts";
 import { saveMoments, type NewMoment } from "./analysis.ts";
 import type {
@@ -295,7 +295,7 @@ async function afterBoundsChange(tx: Tx, clipId: string, bounds: { startMs: numb
   await outdateTracks(tx, clipId, bounds);
 }
 
-type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor; credit?: string | null };
+type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor };
 
 async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
   // The style of the clip whose style was set (or that was created) last: render writes bump updated_at, so not that.
@@ -305,6 +305,16 @@ async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
     .innerJoin(clips, eq(clips.id, clipEvents.clipId))
     .where(and(eq(clips.ownerId, a.ownerId), alive, inArray(clipEvents.kind, ["style", "create"])))
     .orderBy(desc(clipEvents.at), desc(clipEvents.id))
+    .limit(1);
+  // The credit typed once is the session's default: the one saved last on a live clip here (`creditSetAt`).
+  const [remembered] = await tx
+    .select({ credit: clips.credit })
+    .from(clips)
+    .where(and(
+      eq(clips.ownerId, a.ownerId), eq(clips.sessionId, a.sessionId), alive,
+      isNotNull(clips.creditSetAt),
+    ))
+    .orderBy(desc(clips.creditSetAt), desc(clips.id))
     .limit(1);
   const [sess] = await tx.select({ profile: sessions.profile }).from(sessions).where(eq(sessions.id, a.sessionId));
   const profile = ProfileIdSchema.safeParse(sess?.profile);
@@ -318,7 +328,7 @@ async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
       endMs: a.endMs,
       subtitleStyle: last?.subtitleStyle ?? "yellow",
       subtitlePosition: profile.success ? defaultSubtitlePosition(profile.data) : "bottom",
-      credit: a.credit ?? null,
+      credit: remembered?.credit?.trim() ? remembered.credit : null, // a cleared line was the last word: no default
     })
     .returning();
   await tx.insert(clipEvents).values({
@@ -354,15 +364,11 @@ export async function confirmClips(
     const byMoment = new Map(
       live.flatMap((c) => [...(c.momentId ? [c.momentId] : []), ...c.mergedMomentIds].map((id) => [id, c] as const)),
     );
-    // The credit typed once is the session's default: a new clip starts with the one most recently saved here.
-    const remembered = live
-      .filter((c) => c.credit !== null && c.credit.trim() !== "" && !c.noCreditNeeded)
-      .sort((x, y) => y.updatedAt.getTime() - x.updatedAt.getTime())[0]?.credit ?? null;
     const out: Clip[] = [];
     for (const m of wanted) {
       let clip = byMoment.get(m.id);
       if (!clip) {
-        clip = await insertClip(tx, { sessionId, ownerId, momentId: m.id, startMs: m.startMs, endMs: m.endMs, actor: "user", credit: remembered });
+        clip = await insertClip(tx, { sessionId, ownerId, momentId: m.id, startMs: m.startMs, endMs: m.endMs, actor: "user" });
         byMoment.set(m.id, clip);
       }
       if (!out.some((c) => c.id === clip.id)) out.push(clip);
@@ -493,7 +499,7 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
     const creditChanged = changed("credit") || changed("noCreditNeeded");
     const [row] = await tx
       .update(clips)
-      .set({ ...patch, updatedAt: new Date() })
+      .set({ ...patch, updatedAt: new Date(), ...(changed("credit") ? { creditSetAt: new Date() } : {}) })
       .where(eq(clips.id, id))
       .returning();
     if (boundsChanged) {

@@ -203,9 +203,9 @@ export function sharedValue(clips: SharedClip[], key: SharedKey): { value: strin
   return { value, differs: clips.filter((c) => valueOf(c, key) !== value).map((c) => c.id) };
 }
 
-/** The clips a change for all would touch: still on `shared` (the value before the change), not frozen. */
-export function applyToAll(clips: SharedClip[], key: SharedKey, shared: string | null): string[] {
-  return clips.filter((c) => !c.frozen && shared !== null && valueOf(c, key) === shared).map((c) => c.id);
+/** The clips a change for all would touch: still on `shared` (the value before the change), not frozen, and not already on `next`. */
+export function applyToAll(clips: SharedClip[], key: SharedKey, shared: string | null, next?: string): string[] {
+  return clips.filter((c) => !c.frozen && shared !== null && valueOf(c, key) === shared && valueOf(c, key) !== next).map((c) => c.id);
 }
 
 /** Adding a subtitle language for all clips: only the clips without it (never frozen ones). Removing stays per clip. */

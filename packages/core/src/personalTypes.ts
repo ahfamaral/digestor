@@ -39,6 +39,8 @@ export interface Clip {
   subtitlePosition: SubtitlePosition;
   credit: string | null;
   noCreditNeeded: boolean;
+  /** When the credit line last changed. */
+  creditSetAt: Date | null;
   warningsAck: boolean;
   protectedAck: boolean;
   renderStatus: RenderStatus;

@@ -15,6 +15,7 @@ import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { addTrack, fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
 import { checksToPoll, mergePairs, sharedValue, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
+import { runForAll } from "@/lib/forAllRun";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -181,27 +182,21 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
   }
 
   /** "For all clips": one change per clip, in order. A failure shows on that clip's card and the rest go on; resolves the failed ids. */
-  async function runForAll(run: ForAllRun, progress: (done: number) => void): Promise<string[]> {
-    const failed: string[] = [];
-    let done = 0;
-    for (const id of run.ids) {
-      let ok = true;
+  async function runForAllClips(run: ForAllRun, progress: (done: number) => void): Promise<string[]> {
+    const outcome = await runForAll(run.ids, async (id) => {
       if (run.kind === "language") {
         setFor(setErrors, id, null);
         try {
           setTrack(id, await addTrack(id, run.value));
+          return true;
         } catch (err) {
-          ok = false;
           setFor(setErrors, id, err instanceof Error ? err.message : t("prepare.saveFailed"));
+          return false;
         }
-      } else {
-        const body: ClipChange = run.kind === "credit" ? { credit: run.value === "" ? null : run.value } : { format: run.value };
-        ok = await change(id, body);
       }
-      if (!ok) failed.push(id);
-      progress(++done);
-    }
-    return failed;
+      return change(id, run.kind === "credit" ? { credit: run.value === "" ? null : run.value } : { format: run.value });
+    }, progress);
+    return outcome.failed;
   }
 
   /** The two clip ids the open merge dialog is about (never an index: the list can change under it). */
@@ -379,7 +374,7 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
               frozen: session.videoRemoved,
             }))}
             originalLanguage={session.language}
-            onRun={runForAll}
+            onRun={runForAllClips}
           />
         )}
 

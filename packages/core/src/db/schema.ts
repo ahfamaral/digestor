@@ -198,6 +198,8 @@ export const clips = pgTable(
     subtitleStyle: text("subtitle_style").$type<SubtitleStyle>().notNull().default("yellow"),
     subtitlePosition: text("subtitle_position").$type<SubtitlePosition>().notNull().default("bottom"),
     credit: text("credit"),
+    /** When the credit line last changed (render writes bump updated_at, so that can't say which credit was typed last). */
+    creditSetAt: timestamp("credit_set_at", { withTimezone: true }),
     noCreditNeeded: boolean("no_credit_needed").notNull().default(false),
     warningsAck: boolean("warnings_ack").notNull().default(false),
     protectedAck: boolean("protected_ack").notNull().default(false),

@@ -1,0 +1,1 @@
+ALTER TABLE "clips" ADD COLUMN "credit_set_at" timestamp with time zone;

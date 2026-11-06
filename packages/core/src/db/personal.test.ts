@@ -793,6 +793,33 @@ describe("confirmClips remembered credit", () => {
     expect(out.find((c) => c.id === first!.id)!.credit).toBe("City Radio");
   });
 
+  it("is the credit typed last, not the clip a render touched last", async () => {
+    const a = await mom("A", 1_000, 9_000);
+    const b = await mom("B", 20_000, 29_000);
+    const [c1, c2] = await confirmClips(db, OWNER, s.id, [wanted(a, 1_000, 9_000), wanted(b, 20_000, 29_000)]);
+    await updateClip(db, c1!.id, { credit: "Old" }, "user");
+    await updateClip(db, c2!.id, { credit: "Typed last" }, "user");
+    await db.update(clips).set({ updatedAt: new Date(Date.now() + 60_000) }).where(eq(clips.id, c1!.id)); // a render write
+    const c = await mom("C", 40_000, 49_000);
+    const out = await confirmClips(db, OWNER, s.id, [wanted(c, 40_000, 49_000)]);
+    expect(out[0]!.credit).toBe("Typed last");
+  });
+
+  it("reaches clips made one by one too (Ask propose_clip uses createClip)", async () => {
+    const [c1] = await confirmClips(db, OWNER, s.id, [wanted(await mom("A", 1_000, 9_000), 1_000, 9_000)]);
+    await updateClip(db, c1!.id, { credit: "City Radio" }, "user");
+    const made = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 30_000, endMs: 40_000, actor: "ask" });
+    expect(made.credit).toBe("City Radio");
+  });
+
+  it("a credit cleared last means no default", async () => {
+    const [c1] = await confirmClips(db, OWNER, s.id, [wanted(await mom("A", 1_000, 9_000), 1_000, 9_000)]);
+    await updateClip(db, c1!.id, { credit: "City Radio" }, "user");
+    await updateClip(db, c1!.id, { credit: null }, "user");
+    const made = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 30_000, endMs: 40_000, actor: "user" });
+    expect(made.credit).toBeNull();
+  });
+
   it("ignores other sessions and clips without a credit", async () => {
     const s2 = await createSession(db, { title: "Other", source: "upload" });
     const o = await createClip(db, { sessionId: s2.id, ownerId: OWNER, startMs: 0, endMs: 5_000, actor: "user" });

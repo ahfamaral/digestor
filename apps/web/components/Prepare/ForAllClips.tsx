@@ -56,7 +56,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
     setSummary("");
     if (key === "language") return setPending({ kind: "language", value, ids: languageTargets(clips, value) });
     const shared = key === "credit" ? credit : format;
-    const ids = applyToAll(clips, key, shared.value);
+    const ids = applyToAll(clips, key, shared.value, key === "credit" ? value.trim() : value);
     if (ids.length === 0) return setSummary(t("prepare.allNothing"));
     setPending(key === "credit" ? { kind: "credit", value: value.trim(), ids } : { kind: "format", value: value as ClipFormat, ids });
   }
@@ -134,7 +134,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
                 aria-pressed={format.value === f && format.differs.length === 0}
                 onClick={() => ask("format", f)}
                 className={cn(
-                  "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                  "inline-flex h-8 min-w-12 items-center justify-center rounded-md px-2.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
                   format.value === f && format.differs.length === 0 ? "bg-foreground text-white" : "text-foreground hover:bg-muted",
                 )}
               >
