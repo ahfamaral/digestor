@@ -43,7 +43,7 @@ import {
 } from "./jobs.js";
 import * as media from "./media/ffmpeg.js";
 import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
-import { AssemblyAITranscriber, type Transcriber } from "./transcribe/assemblyai.js";
+import { AssemblyAITranscriber, deferredTranscriber } from "./transcribe/assemblyai.js";
 import { createAnthropicLLM, type StructuredLLM } from "./llm/structured.js";
 import { createAnthropicToolLLM, type ToolLLM } from "./llm/tools.js";
 import { createOpenRouterLLM, createOpenRouterToolLLM } from "./llm/openrouter.js";
@@ -80,7 +80,7 @@ async function main() {
   const storage = new LocalStorage(process.env.DATA_DIR ?? "./data");
 
   const getTranscriber = lazy("ASSEMBLYAI_API_KEY", (k) => new AssemblyAITranscriber(k));
-  const transcriber: Transcriber = { transcribe: (p, fallbackDurationMs) => getTranscriber().transcribe(p, fallbackDurationMs) };
+  const transcriber = deferredTranscriber(getTranscriber);
   const llmConfig = llmConfigFromEnv();
   const openRouter = llmConfig.provider === "openrouter";
   console.log(`LLM provider: ${llmConfig.provider} (reasoning ${llmConfig.models.reasoning}, fast ${llmConfig.models.fast})`);

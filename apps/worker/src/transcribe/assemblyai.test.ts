@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { TranscriptSchema } from "@digestor/core";
-import { FakeTranscriber, buildTranscribeParams, mapAssemblyAI, TranscriptionError, throwIfError } from "./assemblyai.js";
+import { TranscriptSchema, type Transcript } from "@digestor/core";
+import { FakeTranscriber, buildTranscribeParams, deferredTranscriber, mapAssemblyAI, TranscriptionError, throwIfError, type Transcriber } from "./assemblyai.js";
 
 const raw = JSON.parse(
   readFileSync(new URL("../../test/fixtures/assemblyai-raw.json", import.meta.url), "utf8"),
@@ -132,5 +132,22 @@ describe("buildTranscribeParams", () => {
       { audioPath: "/a.mp3", fallbackDurationMs: 1000, opts: { languageCode: "es" } },
       { audioPath: "/b.mp3", fallbackDurationMs: 1000, opts: undefined },
     ]);
+  });
+});
+
+describe("deferredTranscriber", () => {
+  it("passes the language picked at upload through to the real transcriber", async () => {
+    const calls: unknown[][] = [];
+    const inner: Transcriber = { transcribe: async (...args) => { calls.push(args); return { words: [], durationMs: 0, language: "pt" } as unknown as Transcript; } };
+    const t = deferredTranscriber(() => inner);
+    await t.transcribe("/data/s/audio.mp3", 5000, { languageCode: "pt" });
+    expect(calls).toEqual([["/data/s/audio.mp3", 5000, { languageCode: "pt" }]]);
+  });
+
+  it("builds the real transcriber only when first used (a missing key fails the job, not the worker start)", async () => {
+    const get = vi.fn(() => { throw new Error("ASSEMBLYAI_API_KEY is not set on the server."); });
+    const t = deferredTranscriber(get);
+    expect(get).not.toHaveBeenCalled();
+    await expect(t.transcribe("/a.mp3")).rejects.toThrow("ASSEMBLYAI_API_KEY");
   });
 });

@@ -9,6 +9,14 @@ export interface Transcriber {
 /** `languageCode`: the spoken language the user picked at upload; absent means detect it. */
 export type TranscribeOptions = { languageCode?: string };
 
+/**
+ * A transcriber built on first use (so a missing API key fails the job, not the worker start) that forwards every
+ * argument, the upload's language included.
+ */
+export function deferredTranscriber(get: () => Transcriber): Transcriber {
+  return { transcribe: async (audioPath, fallbackDurationMs, opts) => get().transcribe(audioPath, fallbackDurationMs, opts) };
+}
+
 /** The vendor rejected the file. `message` is the vendor's text: for logs and routing only, never shown to the user. */
 export class TranscriptionError extends Error {
   constructor(message: string) {
