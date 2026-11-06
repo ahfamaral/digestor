@@ -84,6 +84,61 @@ export function formatToolCall(call: AskToolCallRecord): string {
   return `${call.name}(${inner})`;
 }
 
+/** The worker stores this many characters of a tool's output (`AskToolCallRecord.result`). */
+const STORED_RESULT_CHARS = 300;
+const MAX_SOURCE_TITLE = 80;
+
+/** Cuts at the last word boundary within `max` characters and adds "…"; text that fits is returned as is. */
+export function cutAtWord(text: string, max: number): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const head = clean.slice(0, max);
+  const atSpace = clean[max] === " " ? head : head.slice(0, Math.max(0, head.lastIndexOf(" ")));
+  return `${(atSpace || head).trimEnd()}…`;
+}
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const SPAN = /^\[(\d{1,3}:\d{2}(?::\d{2})?)(?:–(\d{1,3}:\d{2}(?::\d{2})?))?\]/;
+
+/**
+ * What a tool call looked at, in plain words for the "Sources" list: "Transcript 00:12:04–00:13:10",
+ * "Moment: <title>", "Topic: <title>". Calls that changed something (they have Undo) are not sources. No id or tag
+ * survives, and no title is cut mid-word.
+ */
+export function sourceLines(call: AskToolCallRecord): string[] {
+  if (call.ok && (call.clipId !== undefined || call.undo !== undefined)) return [];
+  const stored = call.result.length >= STORED_RESULT_CHARS;
+  const raw = call.result.replace(/<\/?transcript>/gi, "").replace(UUID, "").replace(/[<>]/g, "");
+  const rows = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!call.ok) return [cutAtWord(raw.replace(/^Error:\s*/i, ""), 120)].filter((l) => l.length > 0);
+
+  const title = (rest: string, last: boolean) => {
+    const [head = "", ...why] = rest.split(" — ");
+    // A result cut by storage may end inside its title: drop the broken last word.
+    const cut = last && stored && why.length === 0 ? `${head.slice(0, Math.max(0, head.lastIndexOf(" ")))}…` : head;
+    return cutAtWord(cut, MAX_SOURCE_TITLE);
+  };
+  const lines: string[] = [];
+  const stamps: string[] = [];
+  rows.forEach((row, i) => {
+    const m = SPAN.exec(row);
+    if (!m) return;
+    const rest = row.slice(m[0].length).trim();
+    const last = i === rows.length - 1;
+    if (call.name === "get_transcript") stamps.push(m[1]!);
+    else if (call.name === "list_moments") {
+      // The meta ends with the selection status ("; proposed: Title — why"); a title may hold ": " itself.
+      const after = /;\s*(?:proposed|approved|skipped):\s*(.*)$/.exec(rest);
+      if (after && m[2]) lines.push(`Moment: ${title(after[1]!, last)}`);
+    } else if (call.name === "list_topics") lines.push(`Topic: ${title(rest, last)}`);
+    else if (m[2]) lines.push(`${call.name === "list_speeches" ? "Speech" : "Transcript"} ${m[1]}–${m[2]}`);
+  });
+  if (stamps.length > 0) lines.push(stamps.length === 1 || stamps[0] === stamps.at(-1) ? `Transcript ${stamps[0]}` : `Transcript ${stamps[0]}–${stamps.at(-1)}`);
+  if (lines.length > 0) return [...new Set(lines)];
+  // Nothing recognisable (no match, a note from the tool): the note itself, in plain words.
+  return rows.length > 0 && !rows.some((r) => SPAN.test(r)) ? [cutAtWord(rows[0]!, 120)] : [];
+}
+
 /** A pending bulk_selection action's payload: which moments, and the status to set (null clears). */
 export function parseBulkPayload(raw: unknown): { momentIds: string[]; status: SelectionStatus | null } | null {
   if (typeof raw !== "object" || raw === null) return null;

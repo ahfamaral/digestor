@@ -286,6 +286,24 @@ describe("runAsk tools", () => {
     expect(bad).toMatch(/^Error: .*walkout/);
   });
 
+  it("list_moments names each moment's highlight types by their labels, inside the evidence block", async () => {
+    const { s, analysisId } = await seed();
+    await saveMoments(db, analysisId!, [
+      {
+        topicId: null, granularity: "exchange" as const, startMs: 600_000, endMs: 640_000, title: "The clash", why: "Sharp words.", relevance: 90,
+        speakers: ["A", "B"], evidence: [], origin: "ai" as const,
+        highlights: [{ type: "heated" as const, method: "ai" as const, value: null }, { type: "light" as const, method: "ai" as const, value: null }],
+      },
+    ]);
+    const msg = await ask(s.id, "Which moments are Heated?");
+    const llm = new FakeToolLLM([toolStep(call("list_moments", {}), call("list_moments", { type: "heated" })), answer("One [00:10:00].")]);
+    await runAsk(depsFor(llm), msg.id);
+    const [all, onlyHeated] = toolResults(llm.calls[1]!);
+    expect(all).toMatch(/<transcript>\n[\s\S]*highlights: Heated, Light moment[\s\S]*\n<\/transcript>$/);
+    expect(onlyHeated).toContain("highlights: Heated, Light moment");
+    expect(onlyHeated).not.toContain("Moment 0");
+  });
+
   it("a session without an analysis answers tools with a readable message", async () => {
     const { s } = await seed({ analysis: false });
     const msg = await ask(s.id, "Topics?");

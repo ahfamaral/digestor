@@ -339,6 +339,8 @@ export const en = {
     loadFailed: "The conversation couldn't be loaded. Try again in a moment.",
     sendFailed: "The question couldn't be sent. Try again in a moment.",
     toolCall: "Tool call",
+    sources: "Sources ({n})",
+    sourcesLabel: "What this answer looked at",
     undo: "Undo",
     undoing: "Undoing…",
     undone: "Undone",

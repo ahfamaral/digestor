@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
+import { ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, cutAtWord, formatToolCall, sourceLines, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
 
 describe("linkifyTimestamps", () => {
   it("splits text and times", () => {
@@ -126,5 +126,48 @@ describe("isAnswering (T14)", () => {
     expect(isAnswering("running")).toBe(true);
     expect(isAnswering("done")).toBe(false);
     expect(isAnswering("failed")).toBe(false);
+  });
+});
+
+describe("sourceLines", () => {
+  const rec = (name: string, result: string, extra: object = {}) => ({ name, args: {}, result, ok: true, ...extra });
+  const id = "15b18bfa-9cb2-4f55-88db-bf3bbf49a477";
+
+  it("turns tool steps into plain source lines", () => {
+    const search = rec("search_transcript", "<transcript>\n[00:12:04–00:13:10] A, B: Rents rose by ten percent.\n\n[00:20:00–00:20:30] A: More.\n</transcript>");
+    expect(sourceLines(search)).toEqual(["Transcript 00:12:04–00:13:10", "Transcript 00:20:00–00:20:30"]);
+    const moments = rec("list_moments", `<transcript>\n${id} [00:10:00–00:10:40] exchange; relevance 90; highlights: Heated; speakers A; proposed: The clash — Sharp words.\n</transcript>`);
+    expect(sourceLines(moments)).toEqual(["Moment: The clash"]);
+    const transcript = rec("get_transcript", "<transcript>\n[00:01:00] A: One.\n[00:01:05] B: Two.\n[00:01:30] A: Three.\n</transcript>");
+    expect(sourceLines(transcript)).toEqual(["Transcript 00:01:00–00:01:30"]);
+    const topics = rec("list_topics", "[00:00:00–00:20:00] Housing — Rents.");
+    expect(sourceLines(topics)).toEqual(["Topic: Housing"]);
+    for (const line of [...sourceLines(search), ...sourceLines(moments), ...sourceLines(transcript)]) {
+      expect(line).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+      expect(line).not.toMatch(/[<>]/);
+    }
+  });
+
+  it("leaves out calls that changed something (they have Undo) and never cuts mid-word", () => {
+    expect(sourceLines(rec("set_selection", "Set 2 moments to approved.", { undo: { [id]: null } }))).toEqual([]);
+    expect(sourceLines(rec("propose_clip", "Clip created.", { clipId: "c" }))).toEqual([]);
+    const long = `${id} [00:10:00–00:10:40] passage; highlights: Key point; proposed: ${"extraordinarily ".repeat(12)}end — why`;
+    const [line] = sourceLines(rec("list_moments", `<transcript>\n${long}\n</transcript>`));
+    expect(line!.endsWith("…")).toBe(true);
+    expect(line!.slice(0, -1).trimEnd().split(" ").every((w, i) => i === 0 || w === "extraordinarily")).toBe(true);
+    expect(cutAtWord("alpha beta gamma", 9)).toBe("alpha…");
+    expect(cutAtWord("short", 9)).toBe("short");
+  });
+
+  it("a result cut by storage at 300 characters loses only the broken end of its last title", () => {
+    const line = (n: number) => `${id} [00:0${n}:00–00:0${n}:40] passage; relevance 5${n}; proposed: The mayor promised cheaper housing number ${n} — why`;
+    const stored = `<transcript>\n${[1, 2, 3].map(line).join("\n")}`.slice(0, 300);
+    const lines = sourceLines(rec("list_moments", stored));
+    expect(lines.slice(0, 2)).toEqual(["Moment: The mayor promised cheaper housing number 1", "Moment: The mayor promised cheaper housing number 2"]);
+    for (const l of lines.slice(2)) expect(l).toMatch(/^Moment: The mayor promised( cheaper)?( housing)?…?$/);
+  });
+
+  it("falls back to plain text for an error result", () => {
+    expect(sourceLines({ name: "get_transcript", args: {}, result: "Error: Ask for at most 10 minutes at a time.", ok: false })).toEqual(["Ask for at most 10 minutes at a time."]);
   });
 });

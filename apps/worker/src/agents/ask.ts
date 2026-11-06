@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  GRANULARITY, HIGHLIGHT_TYPES, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
+  GRANULARITY, HIGHLIGHT_TYPES, type HighlightTypeId, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
   normaliseName, parseTimestamp, personAt, renderTranscript, sliceWords, snapRange, toSentences, VIDEO_REMOVED,
   type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ContextCard, type Person, type SelectionStatus, type Transcript, type Word,
 } from "@digestor/core";
@@ -235,6 +235,11 @@ function evidence(body: string): string {
   return open + cap(safe, MAX_TOOL_OUTPUT - open.length - close.length) + close;
 }
 
+/** A highlight type as the model is told it: the label the journalist sees, with the id to filter by. */
+function typeName(id: HighlightTypeId): string {
+  return `${HIGHLIGHT_TYPES[id].label} (${id})`;
+}
+
 const TimeArg = z.union([z.string(), z.number()]).describe('Timestamp "hh:mm:ss" (or seconds as a number)');
 
 function toMs(v: string | number, field: string): number {
@@ -377,7 +382,7 @@ const tools: Tool[] = [
         "Moments found in the session (and the user's own), most relevant first, at most 30. Each line starts with the moment id.",
       schema: z.object({
         granularity: z.enum(["exchange", "passage", "punchline"]).optional(),
-        type: z.string().optional().describe("Highlight type id, e.g. key_point"),
+        type: z.string().optional().describe('Highlight type: its label or id, e.g. "Heated" or key_point'),
         speaker: z.string().optional().describe("Speaker id, e.g. A"),
         minRelevance: z.number().min(0).max(100).optional(),
       }),
@@ -386,8 +391,11 @@ const tools: Tool[] = [
       const analysis = requireAnalysis(ctx);
       const profile = ProfileIdSchema.safeParse(analysis.version.profile);
       const types = profile.success ? PROFILES[profile.data].highlightTypes : HighlightTypeIdSchema.options;
-      if (a.type !== undefined && !(types as string[]).includes(a.type)) {
-        throw new ToolInputError(`unknown type "${a.type}". Types for this video: ${types.join(", ")}.`);
+      // The model may pass the id ("heated") or the label shown to the journalist ("Heated", "Light moment").
+      const wanted = a.type?.trim().toLowerCase();
+      const type = wanted === undefined ? undefined : types.find((id) => id === wanted || HIGHLIGHT_TYPES[id].label.toLowerCase() === wanted);
+      if (a.type !== undefined && type === undefined) {
+        throw new ToolInputError(`unknown type "${a.type}". Types for this video: ${types.map(typeName).join(", ")}.`);
       }
       const [personal, selections] = await Promise.all([
         listPersonalMoments(ctx.db, ctx.ownerId, analysis.version.id),
@@ -397,14 +405,14 @@ const tools: Tool[] = [
       const all = [...analysis.moments, ...personal].filter(
         (m) =>
           (a.granularity === undefined || m.granularity === a.granularity) &&
-          (a.type === undefined || m.highlights.some((h) => h.type === a.type)) &&
+          (type === undefined || m.highlights.some((h) => h.type === type)) &&
           (speaker === null || m.speakers.some((s) => normSpeaker(s) === speaker)) &&
           (a.minRelevance === undefined || m.relevance >= a.minRelevance),
       );
       if (all.length === 0) return { text: "No moments match." };
       all.sort((x, y) => y.relevance - x.relevance || x.startMs - y.startMs);
       const lines = all.slice(0, MAX_MOMENTS_LISTED).map((m) => {
-        const labels = m.highlights.map((h) => HIGHLIGHT_TYPES[h.type]?.label ?? h.type).join(", ");
+        const labels = m.highlights.length ? `highlights: ${m.highlights.map((h) => HIGHLIGHT_TYPES[h.type]?.label ?? h.type).join(", ")}` : "no highlights";
         const meta = [
           m.granularity,
           m.ownerId ? `personal (${m.origin})` : `relevance ${m.relevance}`,
@@ -539,6 +547,7 @@ function buildSystem(session: Session, transcript: Transcript | null, analysis: 
     profile.success ? `Kind of video: ${PROFILES[profile.data].label}` : null,
     `Speakers: ${speakers.length ? speakers.join(", ") : "unknown"}`,
     known.length ? `Known participants: ${known.join("; ")}` : null,
+    profile.success ? `Highlight types in this kind of video: ${PROFILES[profile.data].highlightTypes.map(typeName).join(", ")}. list_moments shows them as "highlights: ..." on each moment, as the Briefing chips do.` : null,
     analysis ? null : "The analysis (topics, moments) isn't ready yet.",
   ].filter((x): x is string => x !== null);
 

@@ -1,13 +1,13 @@
 "use client";
 
 import { MediaPlayer } from "@/components/MediaPlayer";
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus } from "@digestor/core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "@/lib/askText";
+import { asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines } from "@/lib/askText";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { isTyping, opensAsk } from "@/lib/review";
@@ -18,6 +18,20 @@ const MAX_QUESTION = 500;
 const COUNTER_FROM = 400;
 const POLL_MS = 2000;
 const CHIP = "inline-flex h-6 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
+
+/** From this width the drawer is a side panel beside the Briefing (Tailwind `lg`); below it a modal sheet. */
+const DESKTOP = "(min-width: 1024px)";
+function useDesktop(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      const query = window.matchMedia(DESKTOP);
+      query.addEventListener("change", notify);
+      return () => query.removeEventListener("change", notify);
+    },
+    () => window.matchMedia(DESKTOP).matches,
+    () => false,
+  );
+}
 
 type Message = Omit<AskMessageWithActions, "createdAt"> & { createdAt: string };
 
@@ -37,6 +51,7 @@ export interface AskDrawerProps {
 export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDrawerProps) {
   const router = useRouter();
   const lang = language ?? undefined;
+  const desktop = useDesktop();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listEnd = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -62,6 +77,16 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Beside the page, not over it: the page makes room for the 28 rem panel (`sm:max-w-md`) so nothing hides under it.
+  useEffect(() => {
+    if (!open || !desktop) return;
+    const previous = document.body.style.paddingRight;
+    document.body.style.paddingRight = "28rem";
+    return () => {
+      document.body.style.paddingRight = previous;
+    };
+  }, [open, desktop]);
 
   const load = useCallback(async (quiet: boolean) => {
     try {
@@ -208,11 +233,12 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
         <kbd className="rounded border border-border bg-stone-50 px-1 font-mono text-[11px] text-muted-foreground">/</kbd>
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={setOpen} modal={!desktop} disablePointerDismissal={desktop}>
         <DialogContent
           finalFocus={triggerRef}
+          overlayClassName="lg:hidden"
           showCloseButton
-          className="top-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-md"
+          className="top-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-md lg:border-l lg:border-border lg:shadow-xl"
         >
           <div className="border-b border-border px-4 py-3 pr-12">
             <DialogTitle>{t("ask.title")}</DialogTitle>
@@ -336,6 +362,9 @@ function MessageItem({
     );
   }
   const calls = asToolCalls(message.toolCalls);
+  // Calls that changed something keep their Undo; everything else a call looked at goes under "Sources".
+  const changes = calls.flatMap((call, i) => (call.ok && (call.clipId !== undefined || call.undo !== undefined) ? [{ call, key: `${message.id}:${i}` }] : []));
+  const sources = calls.flatMap(sourceLines);
   return (
     <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
       <span className="sr-only">{t("ask.answer")}: </span>
@@ -372,24 +401,20 @@ function MessageItem({
           )}
         </p>
       )}
-      {calls.length > 0 && (
+      {changes.length > 0 && (
         <ul className="grid gap-1.5" aria-label={t("ask.toolCall")}>
-          {calls.map((call, i) => {
-            const key = `${message.id}:${i}`;
-            const mutating = call.ok && (call.clipId !== undefined || call.undo !== undefined);
+          {changes.map(({ call, key }) => {
             const label = formatToolCall(call);
             return (
               <li key={key} className="grid gap-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <code className="min-w-0 max-w-full break-all rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-stone-700">⚙ {label}</code>
-                  {mutating &&
-                    (undone.has(key) ? (
-                      <span className="text-xs text-muted-foreground">{t("ask.undone")}</span>
-                    ) : (
-                      <button type="button" className={CHIP} disabled={busy.has(key)} aria-label={t("ask.undoLabel", { call: label })} onClick={() => onUndo(key, call)}>
-                        <Busy busy={busy.has(key)}>{busy.has(key) ? t("ask.undoing") : t("ask.undo")}</Busy>
-                      </button>
-                    ))}
+                  {undone.has(key) ? (
+                    <span className="text-xs text-muted-foreground">{t("ask.undone")}</span>
+                  ) : (
+                    <button type="button" className={CHIP} disabled={busy.has(key)} aria-label={t("ask.undoLabel", { call: label })} onClick={() => onUndo(key, call)}>
+                      <Busy busy={busy.has(key)}>{busy.has(key) ? t("ask.undoing") : t("ask.undo")}</Busy>
+                    </button>
+                  )}
                 </div>
                 {call.result && <p className="break-words text-xs text-muted-foreground">{call.result}</p>}
                 {errors[key] && (
@@ -401,6 +426,21 @@ function MessageItem({
             );
           })}
         </ul>
+      )}
+      {sources.length > 0 && (
+        <details className="group text-xs text-muted-foreground">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand">
+            <span aria-hidden className="transition-transform group-open:rotate-90">▸</span>
+            {t("ask.sources", { n: sources.length })}
+          </summary>
+          <ul aria-label={t("ask.sourcesLabel")} className="mt-1 grid gap-0.5 pl-4">
+            {sources.map((line, i) => (
+              <li key={i} lang={line.startsWith("Transcript") ? undefined : lang} className="break-words">
+                {line}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {message.actions.map((action) => (
         <ActionItem key={action.id} action={action} busy={busy.has(`action:${action.id}`)} error={errors[`action:${action.id}`]} onDecide={onDecide} />
