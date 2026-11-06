@@ -8,7 +8,8 @@ import {
   PROFILES, checksForClip, exportChecklist, formatLength, formatTimestamp, speakersInRange, type ClipFormat, type MomentChecks, type ProfileId, type Range,
 } from "@digestor/core";
 import { SpeakerName } from "@/components/Names/SpeakerName";
-import { unconfirmedVoices, type NamesData, type Voice } from "@/lib/names";
+import { unconfirmedAcrossClips, type NamesData, type Voice, type WhosWhoRow } from "@/lib/names";
+import { UnconfirmedBanner } from "@/components/Names/UnconfirmedBanner";
 import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
 import { isExportReady } from "@/lib/exportRows";
@@ -71,6 +72,8 @@ export interface PrepareListProps {
   /** The credit a clip starts with (YouTube channel), or "" for uploads. */
   defaultCredit: string;
   names: NamesData;
+  /** Who's who rows of the whole session (the banner's "Confirm names" opens them). */
+  whoRows: WhosWhoRow[];
   clips: PrepareClipData[];
 }
 
@@ -131,7 +134,7 @@ function undoLabel(step: UndoStep | null): string {
  * Prepare clips: one card per confirmed clip with the trim strip, checks, format, credit, subtitles and the
  * pre-export checklist, and "Export ready clips".
  */
-export function PrepareList({ session, defaultCredit, names, clips }: PrepareListProps) {
+export function PrepareList({ session, defaultCredit, names, whoRows, clips }: PrepareListProps) {
   const router = useRouter();
   const [seen, setSeen] = useState(clips);
   const [items, setItems] = useState(clips);
@@ -353,6 +356,11 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
     isExportReady({ dismissed: i.dismissed, failing: checklists.get(i.clip.id)!.filter((x) => !x.ok).map((x) => x.id) }),
   ).length;
 
+  const unconfirmed = unconfirmedAcrossClips(
+    items.map((i) => ({ startMs: i.clip.startMs, endMs: i.clip.endMs, words: i.speakerWords, dismissed: i.dismissed })),
+    names,
+    PROFILES[session.profile].sensitive,
+  );
   const statusOf = (id: string): ClipStatus => clipStatus(checklists.get(id)!);
   // Ready cards start collapsed to one line; later readiness changes don't move cards under the journalist's hands.
   const [initiallyReady] = useState(() => new Set(items.filter((i) => statusOf(i.clip.id).ready && !i.dismissed).map((i) => i.clip.id)));
@@ -417,6 +425,17 @@ export function PrepareList({ session, defaultCredit, names, clips }: PrepareLis
             {t("preview.videoRemoved")}
           </p>
         )}
+
+        <UnconfirmedBanner
+          sessionId={session.id}
+          unconfirmed={unconfirmed}
+          rows={whoRows}
+          names={names}
+          sensitive={PROFILES[session.profile].sensitive}
+          profile={session.profile}
+          language={lang}
+          videoRemoved={session.videoRemoved}
+        />
 
         {items.length > 1 && !session.videoRemoved && (
           <ForAllClips
@@ -780,12 +799,6 @@ function ClipCard({
               <Checklist
                 clipId={clip.id}
                 items={checklist}
-                unconfirmed={unconfirmedVoices(names, item.speakerWords, clip, PROFILES[session.profile].sensitive)}
-                names={names}
-                sessionId={session.id}
-                range={{ startMs: clip.startMs, endMs: clip.endMs }}
-                language={lang}
-                frozen={frozen}
                 protectedAck={clip.protectedAck}
                 busy={busy}
                 onProtected={(v) => void onChange({ protectedAck: v })}

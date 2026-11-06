@@ -66,6 +66,9 @@ export function WhosWho({
   profile,
   videoRemoved = false,
   proxyReady = true,
+  speakerQuestions,
+  answers,
+  onAnswer,
 }: {
   sessionId: string;
   rows: WhosWhoRow[];
@@ -79,6 +82,13 @@ export function WhosWho({
   videoRemoved?: boolean;
   /** The 480p preview copy exists (always, once the session is `ready`); until then the samples play from the audio. */
   proxyReady?: boolean;
+  /**
+   * Context check only: the agent's "Who is speaker B?" questions, by voice. Each is answered in the voice's own row
+   * (its first one) and the answer goes with Continue like any other answer.
+   */
+  speakerQuestions?: Record<string, { id: string; question: string; why: string }>;
+  answers?: Record<string, string>;
+  onAnswer?: (questionId: string, answer: string) => void;
 }) {
   const router = useRouter();
   const [showAll, setShowAll] = useState(false);
@@ -133,7 +143,9 @@ export function WhosWho({
 
   const main = rows.filter((r) => r.main);
   const rest = rows.filter((r) => !r.main);
-  const shown = showAll || main.length === 0 ? rows : main;
+  const asked = (r: WhosWhoRow) => speakerQuestions?.[r.speakerId] !== undefined;
+  const shown = showAll || main.length === 0 ? rows : rows.filter((r) => r.main || asked(r));
+  const questionShownFor = new Set<string>();
   const proposed = rows.some((r) => r.resolution.kind === "named" && !r.resolution.confirmed);
   const totalMs = rows.reduce((a, r) => a + r.ms, 0);
   const noNameSpans = noName ? rowRanges(noName.row) : [];
@@ -171,6 +183,9 @@ export function WhosWho({
               const confirm = confirmBody(row);
               const conflict = conflictText(row, names);
               const detail = person ? personDetail(person, names.attributions) : "";
+              const question = speakerQuestions?.[row.speakerId];
+              const askHere = question !== undefined && !questionShownFor.has(row.speakerId);
+              if (askHere) questionShownFor.add(row.speakerId);
               return (
                 <li key={`${row.speakerId}-${res.kind === "named" ? res.personId : res.kind}`} className="py-3">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -214,6 +229,18 @@ export function WhosWho({
                   {res.kind === "unnamed" && <div className="mt-1 text-xs text-muted-foreground">{t("names.unnamedVoice")}</div>}
                   {res.kind === "anonymous" && <div className="mt-1 text-xs text-muted-foreground">{t("names.anonymousVoice")}</div>}
                   <Evidence sessionId={sessionId} row={row} />
+                  {askHere && (
+                    <label className="mt-2 block">
+                      <span className="block text-sm font-semibold">{question.question}</span>
+                      <span className="mb-1 block text-xs text-muted-foreground">{t("context.why", { why: question.why })}</span>
+                      <input
+                        aria-label={question.question}
+                        className="h-8 w-full min-w-0 rounded-md border border-border bg-white px-2 text-sm outline-none focus:border-brand"
+                        value={answers?.[question.id] ?? ""}
+                        onChange={(e) => onAnswer?.(question.id, e.target.value)}
+                      />
+                    </label>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {confirm && (
                       <button type="button" className={BTN} disabled={busy} onClick={() => void send(confirm)}>
@@ -246,14 +273,14 @@ export function WhosWho({
               );
             })}
           </ul>
-          {rest.length > 0 && main.length > 0 && (
+          {rest.length > 0 && main.length > 0 && (showAll || shown.length < rows.length) && (
             <button
               type="button"
               aria-expanded={showAll}
               className="mt-2 text-sm font-medium text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand"
               onClick={() => setShowAll((s) => !s)}
             >
-              {showAll ? t("names.showFewer") : t("names.showMore", { n: rest.length })}
+              {showAll ? t("names.showFewer") : t("names.showMore", { n: rows.length - shown.length })}
             </button>
           )}
         </>

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatLength, formatTimestamp, type ChecklistId } from "@digestor/core";
 import { SpeakerName } from "@/components/Names/SpeakerName";
-import type { NamesData, Voice } from "@/lib/names";
+import type { NamesData, Voice, WhosWhoRow } from "@/lib/names";
+import { UnconfirmedBanner } from "@/components/Names/UnconfirmedBanner";
 import { AppBar } from "@/components/AppBar";
 import { BackLink } from "@/components/BackLink";
 import { MediaPlayer } from "@/components/MediaPlayer";
@@ -29,8 +30,6 @@ export interface ExportClipData {
   failing: ChecklistId[];
   /** The clip's moment is no longer approved on the Briefing: shown with a label, left out of Export ready clips. */
   dismissed: boolean;
-  /** Voices of the clip whose name is not confirmed yet, as the screens show them ("Speaker C"). */
-  unconfirmed: string[];
   /** Who speaks in the clip (longest first). */
   voices: Voice[];
   row: ExportRow;
@@ -39,6 +38,10 @@ export interface ExportClipData {
 export interface ExportListProps {
   session: { id: string; title: string; language: string | null; videoRemoved: boolean; sensitive: boolean };
   names: NamesData;
+  /** Who's who rows of the whole session, and the voices that block clips (the banner). */
+  whoRows: WhosWhoRow[];
+  unconfirmed: { voices: number; clips: number };
+  profile: string;
   clips: ExportClipData[];
 }
 
@@ -47,7 +50,7 @@ const LINK =
 const NOTICE = "mb-3 rounded-lg border px-3 py-2 text-sm";
 
 /** Export: each prepared clip with its checklist, the Export button, and every download (MP4, SRT/VTT, MP4 with subtitles). */
-export function ExportList({ session, names, clips }: ExportListProps) {
+export function ExportList({ session, names, whoRows, unconfirmed, profile, clips }: ExportListProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [watching, setWatching] = useState<string | null>(null);
@@ -108,6 +111,17 @@ export function ExportList({ session, names, clips }: ExportListProps) {
             {t("exportScreen.title")} · {clips.length === 1 ? t("exportScreen.clipsOne") : t("exportScreen.clipsMany", { n: clips.length })}
           </p>
         </header>
+
+        <UnconfirmedBanner
+          sessionId={session.id}
+          unconfirmed={unconfirmed}
+          rows={whoRows}
+          names={names}
+          sensitive={session.sensitive}
+          profile={profile}
+          language={lang}
+          videoRemoved={session.videoRemoved}
+        />
 
         {session.videoRemoved && (
           <p id="video-removed" role="status" className={`${NOTICE} border-border bg-stone-100 text-stone-800`}>
@@ -230,13 +244,9 @@ function ClipRow({
         <div className="mt-2 text-[13px]">
           <p className="font-medium">{t("exportScreen.needsAttention")}</p>
           <ul className="mt-1 list-disc pl-5 text-muted-foreground">
-            {clip.failing.map((id) =>
-              id === "speaker" && clip.unconfirmed.length > 0 ? (
-                <li key={id}>{clip.unconfirmed.map((label) => t("prepare.speakerNotConfirmed", { label })).join(" · ")}</li>
-              ) : (
-                <li key={id}>{t(`prepare.item.${id}`)}</li>
-              ),
-            )}
+            {clip.failing.map((id) => (
+              <li key={id}>{t(`prepare.item.${id}`)}</li>
+            ))}
           </ul>
           <Link href={`/s/${sessionId}/prepare#clip-${clip.id}`} className="mt-1.5 inline-block text-foreground underline underline-offset-2">
             {t("exportScreen.fixInPrepare")}

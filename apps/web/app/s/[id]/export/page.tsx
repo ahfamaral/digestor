@@ -9,7 +9,7 @@ import { approvalDismissed } from "@/lib/prepareData";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
 import { loadNames } from "@/lib/namesServer";
-import { rangeVoices, unconfirmedVoices } from "@/lib/names";
+import { rangeVoices, unconfirmedAcrossClips, whosWhoRows } from "@/lib/names";
 import { getServer } from "@/lib/server";
 
 /** Export: checklist status, render start and downloads per clip. Reads the DB per request (inside Suspense). */
@@ -46,17 +46,26 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         endMs: clip.endMs,
         failing,
         dismissed: approvalDismissed(clip, selections),
-        unconfirmed: unconfirmedVoices(names, transcript?.words ?? [], clip, sensitive).map((v) => v.label.text),
         voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
         row: exportRows([clip], tracks)[0]!,
       };
     }),
   );
 
+  const words = transcript?.words ?? [];
+  const unconfirmed = unconfirmedAcrossClips(
+    clips.map((c, i) => ({ startMs: c.startMs, endMs: c.endMs, words, dismissed: data[i]!.dismissed })),
+    names,
+    sensitive,
+  );
+
   return (
     <ExportList
       session={{ id: session.id, title: session.title, language: session.language, videoRemoved: session.videoDeletedAt !== null, sensitive }}
       names={names}
+      whoRows={whosWhoRows(names, words)}
+      unconfirmed={unconfirmed}
+      profile={profile}
       clips={data}
     />
   );

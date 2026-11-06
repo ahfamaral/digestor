@@ -208,6 +208,43 @@ export function unconfirmedVoices(
   });
 }
 
+/**
+ * The voices that block any clip of the session, and how many clips they block: what the Prepare and Export banner says
+ * ("2 voices aren't confirmed — they block 4 clips"). A voice counts once; a clip whose approval was dismissed blocks nothing.
+ */
+export function unconfirmedAcrossClips(
+  clips: { startMs: number; endMs: number; words: Pick<Word, "startMs" | "endMs" | "speaker">[]; dismissed?: boolean }[],
+  names: NamesData,
+  sensitive: boolean,
+): { voices: number; clips: number } {
+  const voices = new Set<string>();
+  let blocked = 0;
+  for (const c of clips) {
+    if (c.dismissed) continue;
+    const own = unconfirmedVoices(names, c.words, c, sensitive);
+    if (own.length === 0) continue;
+    blocked++;
+    for (const v of own) voices.add(v.speakerId);
+  }
+  return { voices: voices.size, clips: blocked };
+}
+
+/** The banner sentence for `unconfirmedAcrossClips` ("2 voices aren't confirmed — they block 4 clips."). */
+export function unconfirmedBannerText(u: { voices: number; clips: number }): string {
+  const key = `names.banner.${u.voices === 1 ? "v1" : "vn"}${u.clips === 1 ? "c1" : "cn"}` as const;
+  return t(key, { voices: u.voices, clips: u.clips });
+}
+
+/**
+ * The context check's questions, split: a "Who is speaker B?" question whose voice has a Who's who row is answered in that
+ * row (`inline`); every other question (date, profile, other, a voice without a row) stays in the questions card (`rest`).
+ */
+export function splitSpeakerQuestions<Q extends { target: string; speakerId: string | null }>(questions: Q[], rowSpeakerIds: string[]): { inline: Q[]; rest: Q[] } {
+  const rows = new Set(rowSpeakerIds);
+  const inline = questions.filter((q) => q.target === "participant" && q.speakerId !== null && rows.has(q.speakerId));
+  return { inline, rest: questions.filter((q) => !inline.includes(q)) };
+}
+
 /** The exact badge copy for a source. */
 export function badgeText(source: AttributionSource): string {
   return t(`names.badge.${source}`);

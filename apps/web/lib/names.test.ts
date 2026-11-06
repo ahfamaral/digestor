@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { personAt, exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, personDetail, type NamesData } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, personDetail, unconfirmedAcrossClips, splitSpeakerQuestions, unconfirmedBannerText, type NamesData } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -422,5 +422,42 @@ describe("personDetail: the line under a name in Who's who", () => {
     expect(personDetail(who({ role: "Senador", party: "PL", state: "ES" }), [att({ source: "human" })])).toBe("Senador · PL · ES");
     expect(personDetail(who({ party: "SPD" }), [rec("bundestag", "https://x", { supersededAt: new Date(1) })])).toBe("SPD");
     expect(personDetail(who({ party: "SPD" }), [rec("bundestag", "https://x", { personId: "other" })])).toBe("SPD");
+  });
+});
+
+describe("unconfirmedAcrossClips", () => {
+  const names: NamesData = { persons, attributions: [att({ speakerId: "A", personId: "p1" })] };
+  const words = [word("A", 0, 10_000), word("C", 10_000, 20_000), word("D", 20_000, 30_000), word("A", 30_000, 40_000), word("C", 40_000, 50_000)];
+  const clip = (startMs: number, endMs: number, dismissed = false) => ({ startMs, endMs, words, dismissed });
+
+  it("counts the voices that block any clip, and the clips they block", () => {
+    const clips = [clip(10_000, 20_000), clip(20_000, 30_000), clip(0, 10_000), clip(40_000, 50_000)];
+    expect(unconfirmedAcrossClips(clips, names, false)).toEqual({ voices: 2, clips: 3 });
+  });
+  it("counts a voice once however many clips it blocks", () => {
+    expect(unconfirmedAcrossClips([clip(10_000, 20_000), clip(40_000, 50_000)], names, false)).toEqual({ voices: 1, clips: 2 });
+  });
+  it("is zero when every voice is confirmed, and ignores clips whose approval was dismissed", () => {
+    expect(unconfirmedAcrossClips([clip(0, 10_000)], names, false)).toEqual({ voices: 0, clips: 0 });
+    expect(unconfirmedAcrossClips([clip(10_000, 20_000, true)], names, false)).toEqual({ voices: 0, clips: 0 });
+    expect(unconfirmedAcrossClips([], names, false)).toEqual({ voices: 0, clips: 0 });
+  });
+});
+
+describe("splitSpeakerQuestions", () => {
+  const q = (id: string, target: "date" | "participant", speakerId: string | null) => ({ id, target, speakerId, question: "?", why: "w", sampleStartMs: null });
+  it("moves a participant question into the Who's who row of its voice; the rest stay questions", () => {
+    const out = splitSpeakerQuestions([q("participant:B", "participant", "B"), q("date", "date", null), q("participant:Z", "participant", "Z")], ["A", "B"]);
+    expect(out.inline.map((x) => x.id)).toEqual(["participant:B"]);
+    expect(out.rest.map((x) => x.id)).toEqual(["date", "participant:Z"]);
+  });
+});
+
+describe("unconfirmedBannerText", () => {
+  it("uses the spec copy with the right plural", () => {
+    expect(unconfirmedBannerText({ voices: 2, clips: 4 })).toBe("2 voices aren't confirmed — they block 4 clips.");
+    expect(unconfirmedBannerText({ voices: 1, clips: 1 })).toBe("1 voice isn't confirmed — it blocks 1 clip.");
+    expect(unconfirmedBannerText({ voices: 1, clips: 3 })).toBe("1 voice isn't confirmed — it blocks 3 clips.");
+    expect(unconfirmedBannerText({ voices: 2, clips: 1 })).toBe("2 voices aren't confirmed — they block 1 clip.");
   });
 });

@@ -6,7 +6,7 @@ import { LANGUAGES, PROFILES, type ContextCard, type ProfileId, type Fact } from
 import { RecordLink } from "@/components/Names/RecordLink";
 import { WhosWho } from "@/components/Names/WhosWho";
 import type { NamesData, WhosWhoRow } from "@/lib/names";
-import { labelText, voiceLabel } from "@/lib/names";
+import { labelText, splitSpeakerQuestions, voiceLabel } from "@/lib/names";
 import { factBadge, profileBadge } from "@/lib/contextBadge";
 import { buildContextPayload, buildSkipPayload, type ContextFields } from "@/lib/contextPayload";
 import { sampleSrc } from "@/lib/media";
@@ -124,7 +124,11 @@ export function ContextCheck({
     submit(buildContextPayload(original, edited, card.openQuestions.map((q) => ({ questionId: q.id, answer: answers[q.id] ?? "" }))));
   const onSkip = () => submit(buildSkipPayload(original, edited));
 
-  const n = card.openQuestions.length;
+  // "Who is speaker B?" is answered in B's Who's who row (above Continue); the other questions stay in their card.
+  const { inline, rest } = splitSpeakerQuestions(card.openQuestions, rows.map((r) => r.speakerId));
+  const speakerQuestions = Object.fromEntries(inline.map((q) => [q.speakerId as string, { id: q.id, question: q.question, why: q.why }]));
+  const n = rest.length;
+  const showQuestions = card.openQuestions.length === 0 || rest.length > 0;
   const textRow = (label: string, key: "title" | "setting" | "dateOrYear", fact: Fact) => (
     <Row label={label} badge={factBadge(fact, edited[key], original[key])}>
       <input
@@ -141,7 +145,7 @@ export function ContextCheck({
   return (
     <div className="flex flex-col gap-4">
     <RecordLink sessionId={sessionId} profile={edited.profile} suggestionOnly />
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className={cn("grid grid-cols-1 gap-4", showQuestions && "md:grid-cols-2")}>
       <section className="rounded-xl border border-border bg-white p-5">
         <h2 className="mb-2 text-base font-bold">{t("context.understood")}</h2>
         <Row
@@ -200,12 +204,13 @@ export function ContextCheck({
         })}
       </section>
 
+      {showQuestions && (
       <section className="flex flex-col rounded-xl border-2 border-purple-400 bg-white p-5">
         <h2 className="mb-2 text-base font-bold">
           {n === 0 ? t("context.noQuestions") : n === 1 ? t("context.questionsOne") : t("context.questionsMany", { n })}
         </h2>
         {n === 0 && <p className="text-sm text-muted-foreground">{t("context.allClear")}</p>}
-        {card.openQuestions.map((q) => (
+        {rest.map((q) => (
           <div key={q.id} className="mb-3 border-b border-border pb-3 last:border-b-0">
             <div className="text-sm font-semibold">{q.question}</div>
             <div className="mb-2 text-xs text-muted-foreground">{t("context.why", { why: q.why })}</div>
@@ -228,38 +233,38 @@ export function ContextCheck({
             </div>
           </div>
         ))}
-        <video ref={player} src={sampleSrc(sessionId, proxyReady)} preload="none" className="hidden" />
-
-        {error && (
-          <p role="alert" className="mb-2 rounded-md bg-red-50 p-2 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-        <div className="mt-auto flex flex-wrap items-center gap-3 pt-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onContinue}
-            className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white disabled:bg-disabled disabled:text-disabled-foreground"
-          >
-            {t("context.continue")}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onSkip}
-            className="text-sm font-medium text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
-          >
-            {t("context.skip")}
-          </button>
-        </div>
       </section>
+      )}
     </div>
       <section aria-labelledby="whos-who-title" className="rounded-xl border border-border bg-white p-5">
         <h2 id="whos-who-title" className="mb-1 text-base font-bold">{t("names.whoTitle")}</h2>
         <p className="mb-2 text-xs text-muted-foreground">{t("names.whoHint")}</p>
-        <WhosWho sessionId={sessionId} rows={rows} names={names} sensitive={PROFILES[edited.profile].sensitive} language={edited.language || undefined} profile={edited.profile} mode="context" proxyReady={proxyReady} />
+        <WhosWho sessionId={sessionId} rows={rows} names={names} sensitive={PROFILES[edited.profile].sensitive} language={edited.language || undefined} profile={edited.profile} mode="context" proxyReady={proxyReady} speakerQuestions={speakerQuestions} answers={answers} onAnswer={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
       </section>
+      <video ref={player} src={sampleSrc(sessionId, proxyReady)} preload="none" className="hidden" />
+      {error && (
+        <p role="alert" className="rounded-md bg-red-50 p-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onContinue}
+          className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white disabled:bg-disabled disabled:text-disabled-foreground"
+        >
+          {t("context.continue")}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onSkip}
+          className="text-sm font-medium text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          {t("context.skip")}
+        </button>
+      </div>
     </div>
   );
 }

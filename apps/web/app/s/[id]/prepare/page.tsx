@@ -10,7 +10,7 @@ import { approvalDismissed, undoStep, defaultCredit, toClipView, toTrackView } f
 import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
 import { loadNames } from "@/lib/namesServer";
-import { rangeVoices } from "@/lib/names";
+import { rangeVoices, whosWhoRows } from "@/lib/names";
 import { cutPoints, trimView } from "@/lib/trim";
 import { t } from "@/lib/i18n";
 
@@ -98,6 +98,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
       }}
       defaultCredit={defaultCredit(session)}
       names={names}
+      whoRows={whosWhoRows(names, transcript?.words ?? [])}
       clips={data}
     />
   );
