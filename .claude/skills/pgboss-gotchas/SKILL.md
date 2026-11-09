@@ -47,7 +47,7 @@ Every item below cost a review round on Plan 1. The code that implements each fi
 
 5. **The run row is user data.** It holds the human's answers. Retention deletes it (`runVideoRetention`: video files → run row → search index → `videoDeletedAt`, so a failure leaves the session for the next run; rows, thumbnails and `clips/` are kept).
 
-6. **A session with no row** (left by the old LangGraph worker, or seeded) gets one from `stepForStage(session.stage)`. A resume with no row starts at `ask_context`, round from the stored card. `ready`, `failed` and `done` are a logged no-op. `scripts/seed-demo.ts` writes a `done` row so a seeded session never runs paid steps.
+6. **A session with no row** (left by the old LangGraph worker, or seeded) gets one from `stepForStage(session.stage)`. A resume with no row starts at `ask_context` (round from the stored card) only when the stage is `awaiting_context`, `understanding` or `naming_speakers` (`ANSWERED_STAGES`); otherwise `stepForStage`. `ready`, `failed` and `done` are a logged no-op. `scripts/seed-demo.ts` writes a `done` row so a seeded session never runs paid steps.
 
 ## Testing these paths
 

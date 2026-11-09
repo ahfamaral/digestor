@@ -87,7 +87,7 @@ Configure `.env` (`cp .env.example .env`):
 | `OPENROUTER_MODEL_REASONING`, `OPENROUTER_MODEL_FAST` | Optional OpenRouter model ids; blank = `anthropic/claude-sonnet-5.5` and `anthropic/claude-haiku-5.5` |
 | `APP_PASSWORD` | Optional; leave empty to disable the password gate |
 | `MAX_UPLOAD_GB` | Upload size limit (default 5) |
-| `VIDEO_RETENTION_DAYS` | How long the source video is kept (default 14): `original.*`, `audio.mp3`, `proxy.mp4` and the pipeline checkpoint are deleted; analyses, selections and rendered clips stay |
+| `VIDEO_RETENTION_DAYS` | How long the source video is kept (default 14): `original.*`, `audio.mp3`, `proxy.mp4` and the pipeline run row are deleted; analyses, selections and rendered clips stay |
 
 Then:
 
@@ -240,7 +240,7 @@ The bundled `apps/worker/test/fixtures/golden-sample.json` is synthetic and only
 
 Carried over from the Plan 1 review ledger, still open (all small):
 
-- **Pipeline polish:** the checkpoint for an interrupted job waits up to the job expiry before a retry; thumbnails are orphaned if analysis re-runs; no CHECK constraints on enum columns or indexes on foreign keys.
+- **Pipeline polish:** an interrupted job waits up to the job expiry before a retry, which then continues from the run row's `next_step`; thumbnails are orphaned if analysis re-runs; no CHECK constraints on enum columns or indexes on foreign keys.
 - **Text edge cases:** subtitle line wrapping for very long CJK words and Latin-after-CJK spacing.
 - **Context screen:** "other" questions collapse into one.
 

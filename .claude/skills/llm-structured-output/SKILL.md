@@ -17,7 +17,7 @@ description: How to design LLM calls that return structured data in Digestor (La
 
 2. **Enforce business rules in code, per item.** Parse, clamp, snap, length-check each candidate and **drop** the bad ones (`normalizeCandidates`: invalid timestamp → skip; end ≤ start → skip; outside length limits → skip). Then sort by score and **cap with `slice`** so the best survive (`MAX_LONG_CLIPS`, `MAX_HOT_TAKES`, `MAX_QUESTIONS`). Nothing reaches the DB without passing through this.
 
-3. **Fail the smallest unit.** When a call fans out (one hot-take call per long clip), catch per call, log, and return an empty result for that unit (`findClips` pass 2). Only a failure that leaves *nothing usable* should fail the session — and then with a friendly message, via the job's attempt-aware error path (see `pgboss-langgraph-gotchas`).
+3. **Fail the smallest unit.** When a call fans out (one hot-take call per long clip), catch per call, log, and return an empty result for that unit (`findClips` pass 2). Only a failure that leaves *nothing usable* should fail the session — and then with a friendly message, via the job's attempt-aware error path (see `pgboss-gotchas`).
 
 4. **Ground facts; never let the model invent them.** The spec forbids guessing context. Every fact carries `source` (`video` | `metadata` | `human`) and `evidence`; code checks the evidence actually occurs in a source as whole words, and names must appear inside their evidence (`groundContext` in `agents/context.ts`). Unsupported → `null`, then ask the human. Self-reported confidence is capped when evidence is missing.
 
