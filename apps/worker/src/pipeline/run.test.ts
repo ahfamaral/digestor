@@ -848,6 +848,58 @@ describe("runner", () => {
     }
   });
 
+  it("a redelivered round-1 resume after round 2 was answered is ignored; round 2's resume applies", async () => {
+    const restore = quiet();
+    try {
+      const { start, resume, sessionId, contextCalls, deps, nextStep } = await setup({ context: [draft(), draft()] });
+      await start();
+      expect(await resume(dateAnswer)).toBe("paused"); // round 1 applied, round 2 waits
+      const before = await runOf(sessionId);
+      expect(before).toMatchObject({ nextStep: "ask_context", round: 2 });
+      // The journalist already answered round 2 (the web moved the stage on) when round 1's job is redelivered.
+      expect(await transitionStage(db, sessionId, "awaiting_context", "naming_speakers", 60)).toBe(true);
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer, round: 1 })).toBe("paused");
+      expect(await runOf(sessionId)).toEqual(before);
+      expect(await nextStep()).toBe("ask_context");
+      expect(contextCalls()).toHaveLength(2);
+      expect(await runPipeline(deps, sessionId, { resume: { action: "skip" }, round: 2 })).toBe("done");
+    } finally {
+      restore();
+    }
+  });
+
+  it("a round-1 resume retried after a crash inside ask_context still applies", async () => {
+    const restore = quiet();
+    try {
+      const { start, sessionId, contextCalls, deps } = await setup({ context: [draft(), draft()] });
+      await start();
+      // The first attempt died inside ask_context before its move: the row is still at ask_context, round 1, stage moved by the web.
+      expect(await transitionStage(db, sessionId, "awaiting_context", "understanding", 55)).toBe(true);
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer, round: 1 })).toBe("paused");
+      expect(contextCalls()).toHaveLength(2);
+      expect(await runOf(sessionId)).toMatchObject({ nextStep: "ask_context", round: 2 });
+      expect((await runOf(sessionId)).answers).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a resume without a round behaves as before (stage guard)", async () => {
+    const restore = quiet();
+    try {
+      const { start, sessionId, contextCalls, deps } = await setup({ context: [draft(), draft()] });
+      await start();
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer })).toBe("paused"); // still awaiting_context: stale
+      expect(contextCalls()).toHaveLength(1);
+      expect(await transitionStage(db, sessionId, "awaiting_context", "understanding", 55)).toBe(true);
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer })).toBe("paused");
+      expect(contextCalls()).toHaveLength(2);
+      expect(await runOf(sessionId)).toMatchObject({ round: 2 });
+    } finally {
+      restore();
+    }
+  });
+
   it("a resume retried after a crash in understand_context continues without the payload", async () => {
     const restore = quiet();
     try {

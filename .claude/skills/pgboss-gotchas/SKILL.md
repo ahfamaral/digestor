@@ -41,7 +41,7 @@ Every item below cost a review round on Plan 1. The code that implements each fi
 
 2. **The pause stage is written exactly once.** Advancing INTO `ask_context` writes `awaiting_context` (55) in the same transaction as the CAS (the optional stage patch is applied only when the CAS matched). A start or duplicate start that finds the row at `ask_context` writes nothing, so it can't overwrite the stage the API set.
 
-3. **Resume applies only at `ask_context`, and only once the web has moved the stage off `awaiting_context`** (stale-resume guard: a resume that arrives while the stage still says awaiting is stale). The payload is used for that one step only, never stored as a position.
+3. **Resume applies only at `ask_context`, and only to the round it answered.** The web route stamps the job with the stored card's round (`ResumeJob.round`); a resume whose round differs from the run's `round` is stale (a redelivered round-1 job after round 2 was answered) and returns `"paused"` without writing, while a retry inside the same round still applies (steps are idempotent). A job without `round` (queued before the deploy, or no card at the route) falls back to the stage guard: a resume that arrives while the stage still says `awaiting_context` is stale. The payload is used for that one step only, never stored as a position.
 
 4. **Every step must be safe to run twice.** A crash before the CAS re-runs that step only: `replaceAiClips` replaces instead of appending; `analyze` returns early when the analysis already exists.
 

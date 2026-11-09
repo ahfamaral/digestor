@@ -96,6 +96,13 @@ d("job handlers", () => {
     expect(runner).toHaveBeenCalledExactlyOnceWith(deps, id, { resume: payload });
   });
 
+  it("handleResume passes the job's round to runPipeline", async () => {
+    const id = await newSession();
+    const payload: ResumePayload = { action: "skip" };
+    await handleResume(ctx, { sessionId: id, payload, round: 2 }, FIRST);
+    expect(runner).toHaveBeenCalledExactlyOnceWith(deps, id, { resume: payload, round: 2 });
+  });
+
   it("a non-final attempt rethrows and leaves the stage untouched (pg-boss retries)", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     failRunner(new Error("ECONNRESET"));

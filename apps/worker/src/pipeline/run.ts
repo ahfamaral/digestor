@@ -449,14 +449,16 @@ async function loadRun(deps: PipelineDeps, session: Session, resume: ResumePaylo
  * Each step's move is compare-and-set on the run row (`advancePipelineRun`): a runner that loses it stops without
  * writing. A crash or throw leaves the row at the unfinished step, so a retried job re-runs only that step.
  *
- * `opts.resume` (the journalist's answer) is applied only when the run waits at `ask_context` and the web has moved the
- * stage off `awaiting_context` (its route does so before sending the job); a redelivered resume finds the next pause
- * still `awaiting_context` and does nothing. At any other step the run continues without it.
+ * `opts.resume` (the journalist's answer) is applied only when the run waits at `ask_context`. With `opts.round` (the
+ * round the answer belongs to) it applies only when that equals the run's round: a redelivered older round is ignored,
+ * and a retry inside the same round still applies. Without a round (jobs queued before the deploy) it applies only
+ * once the web has moved the stage off `awaiting_context` (its route does so before sending the job). At any other
+ * step the run continues without it.
  */
 export async function runPipeline(
   deps: PipelineDeps,
   sessionId: string,
-  opts: { resume?: ResumePayload } = {},
+  opts: { resume?: ResumePayload; round?: number } = {},
 ): Promise<"paused" | "done" | "stopped" | "ignored"> {
   const { db } = deps;
   const job = opts.resume ? "resume" : "start";
@@ -476,7 +478,11 @@ export async function runPipeline(
   }
   let resume = run.nextStep === "ask_context" ? opts.resume : undefined;
   if (opts.resume && !resume) console.log(`[pipeline] resume for ${sessionId}: the run is at ${run.nextStep}; continuing without the answer`);
-  if (resume && session.stage === "awaiting_context") {
+  if (resume && opts.round !== undefined && opts.round !== run.round) {
+    console.log(`[pipeline] ignoring resume for ${sessionId}: it answers round ${opts.round}, the run is at round ${run.round}`);
+    return "paused";
+  }
+  if (resume && opts.round === undefined && session.stage === "awaiting_context") {
     console.log(`[pipeline] ignoring resume for ${sessionId}: the context check is waiting for a new answer`);
     return "paused";
   }

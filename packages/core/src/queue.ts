@@ -20,7 +20,12 @@ export const QUEUES = {
 export const StartJobSchema = z.object({ sessionId: z.string().uuid() });
 export type StartJob = z.infer<typeof StartJobSchema>;
 
-export const ResumeJobSchema = z.object({ sessionId: z.string().uuid(), payload: ResumePayloadSchema });
+export const ResumeJobSchema = z.object({
+  sessionId: z.string().uuid(),
+  payload: ResumePayloadSchema,
+  /** The context round the answer belongs to (the stored card's round when the web sent it); absent in jobs queued before the deploy. */
+  round: z.number().int().positive().optional(),
+});
 export type ResumeJob = z.infer<typeof ResumeJobSchema>;
 
 /** A new analysis version of a `ready` session, e.g. with a corrected profile. */

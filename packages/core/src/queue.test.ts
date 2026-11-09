@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   AskJobSchema, BurnTrackJobSchema, CheckMomentJobSchema, JOB_OPTIONS, PrepareTrackJobSchema, ProxyJobSchema, QUEUES, ReanalyzeJobSchema,
-  RenderClipJobSchema, TranslateBriefingJobSchema,
+  RenderClipJobSchema, ResumeJobSchema, TranslateBriefingJobSchema,
 } from "./queue.ts";
 
 const ID = "6f1c1d1e-2b8a-4c55-9a3e-0c4a2f6b8d10";
+
+describe("ResumeJobSchema", () => {
+  const base = { sessionId: ID, payload: { action: "skip" } };
+  it("accepts a round and accepts a job without one; rejects round 0", () => {
+    expect(ResumeJobSchema.parse({ ...base, round: 2 }).round).toBe(2);
+    expect(ResumeJobSchema.parse(base).round).toBeUndefined();
+    expect(ResumeJobSchema.safeParse({ ...base, round: 0 }).success).toBe(false);
+    expect(ResumeJobSchema.safeParse({ ...base, round: 1.5 }).success).toBe(false);
+  });
+});
 
 describe("JOB_OPTIONS", () => {
   it("ReanalyzeJobSchema takes an optional analysisId", () => {

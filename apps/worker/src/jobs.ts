@@ -127,7 +127,7 @@ export async function handleStart(ctx: JobContext, job: StartJob, attempt: Attem
 /** Idempotent: the answer is applied only at a pending context check, so a retried or duplicated resume never answers a later one. */
 export async function handleResume(ctx: JobContext, job: ResumeJob, attempt: Attempt): Promise<void> {
   try {
-    await runPipeline(ctx.deps, job.sessionId, { resume: job.payload });
+    await runPipeline(ctx.deps, job.sessionId, { resume: job.payload, round: job.round });
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
   }

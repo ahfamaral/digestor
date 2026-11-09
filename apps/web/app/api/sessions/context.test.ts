@@ -62,6 +62,26 @@ describe("POST /api/sessions/[id]/context", () => {
     expect([s?.stage, s?.progress]).toEqual(["understanding", 55]);
     expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload }, { ...JOB_OPTIONS, singletonKey: id });
   });
+  it("continue sends session.resume with the stored card's round", async () => {
+    const id = await session("awaiting_context");
+    await saveContextCard(h.db, id, card, 2);
+    const payload = { action: "continue", answers: [], cardEdits: {} };
+    expect((await post(id, payload)).status).toBe(200);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload, round: 2 }, { ...JOB_OPTIONS, singletonKey: id });
+  });
+  it("skip sends the round too", async () => {
+    const id = await session("awaiting_context");
+    await saveContextCard(h.db, id, card, 1);
+    expect((await post(id, { action: "skip" })).status).toBe(200);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload: { action: "skip" }, round: 1 }, { ...JOB_OPTIONS, singletonKey: id });
+  });
+  it("a missing context card sends the resume without a round (the stage guard applies) and does not fail", async () => {
+    const id = await session("awaiting_context");
+    expect((await post(id, { action: "skip" })).status).toBe(200);
+    const job = h.send.mock.calls[0]![1] as Record<string, unknown>;
+    expect(job).toEqual({ sessionId: id, payload: { action: "skip" } });
+    expect("round" in job).toBe(false);
+  });
   it("404s for a valid uuid with no session", async () => {
     expect((await post("00000000-0000-4000-8000-000000000000", { action: "skip" })).status).toBe(404);
   });

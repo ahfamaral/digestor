@@ -39,8 +39,10 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   if (!(await transitionStage(db, id, "awaiting_context", next.stage, next.progress))) {
     return errorResponse(409, "This video isn't waiting for context.");
   }
+  // The round the answer belongs to, so a redelivered job can't answer a later round. Missing card: no round (the runner's stage guard applies).
+  const round = (await getContextCard(db, id))?.round;
   try {
-    await boss.send(QUEUES.resume, { sessionId: id, payload }, { ...JOB_OPTIONS, singletonKey: id });
+    await boss.send(QUEUES.resume, { sessionId: id, payload, ...(round !== undefined ? { round } : {}) }, { ...JOB_OPTIONS, singletonKey: id });
   } catch (err) {
     console.error("context: enqueue failed", err);
     await transitionStage(db, id, next.stage, "awaiting_context", 55);
