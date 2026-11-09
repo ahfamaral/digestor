@@ -407,6 +407,33 @@ describe("runRecordStep through a connector", () => {
     expect((await getPersons(db, [a.personId!]))[0]).toMatchObject({ displayName: "Anna Muster", party: "SPD", state: "BY", officialIds: { bundestag: "bt-524179" } });
   });
 
+  it("a non-evaluated house (US Senate): a transcript name and the record person of the same name name the voice, no conflict", async () => {
+    const s = await createSession(db, { source: "upload", title: "US Senate" });
+    await saveTranscript(db, s.id, transcriptOfSpeeches());
+    await linkRecord(db, s.id, { chamber: "us_senate", date: "2026-10-16", url: "https://www.senate.gov/x" });
+    const name = `Anna Muster ${Math.random().toString(36).slice(2, 8)}`;
+    const custom = await createCustomPerson(db, { displayName: name, createdBy: "owner" });
+    await replaceAiAttributions(db, s.id, "transcript", [{ speakerId: "A", startMs: 0, endMs: 1_000_000, personId: custom.id, status: "proposed", confidence: 0.7, evidence: { kind: "transcript", quote: "Senator Muster", startMs: 0 } as never }]);
+    const br = connectorFor("senado");
+    const senate: RecordConnector = {
+      chamber: "us_senate", stopWords: br.stopWords, speechText: br.speechText,
+      async fetchRecord() {
+        const speeches: RecordSpeech[] = FIXTURE_SPEECHES.map((sp, i) => ({
+          id: sp.id, order: i + 1, officialId: i === 1 ? null : `bg-${sp.id}`, name: `Sen ${i}`, party: "D", state: null, text: fixtureTexts[sp.id]!, textSource: "full" as const,
+        }));
+        return { speeches, date: "2026-10-16", url: "https://www.senate.gov/record", members: { [`bg-${FIXTURE_SPEECHES[0]!.id}`]: { displayName: name, party: "D", state: "NY" } } };
+      },
+    };
+    await runRecordStep({ db, storage: new LocalStorage(root), connectors: { us_senate: senate } }, s.id);
+    const atts = await listAttributions(db, s.id);
+    const rec = atts.find((a) => a.source === "record" && a.speakerId === "A")!;
+    expect(rec.personId).toBeTruthy();
+    expect(rec.personId).not.toBe(custom.id); // the record person is the official row
+    expect(personAt(atts, "A", 1000)).toMatchObject({ kind: "named", personId: rec.personId, confirmed: false });
+    const same = (await getPersons(db, [rec.personId!, custom.id])).filter((p) => p.displayName === name);
+    expect(same).toHaveLength(1);
+  });
+
   it("a house without a connector fails its row with a friendly line and does not throw", async () => {
     const s = await createSession(db, { source: "upload", title: "No connector" });
     await saveTranscript(db, s.id, transcriptOfSpeeches());

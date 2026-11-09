@@ -38,6 +38,7 @@ Spec: `docs/superpowers/specs/2026-10-28-video-digestor-design.md` (v1) and `doc
 | Evaluation table | `docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval.ts <sessionId> <golden.json>` (golden path relative to `apps/worker`) |
 | Migrations | `pnpm db:migrate` (wait for postgres healthy) |
 | Import old sessions' card names as proposals (once, idempotent) | `docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/import-names.ts` |
+| Merge duplicate persons (once, idempotent) | `docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/merge-persons.ts` |
 | Prod build (one VPS) | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` |
 
 After adding a dependency: `pnpm install` on the host first (updates the lockfile); the worker entrypoint syncs on restart.

@@ -116,6 +116,12 @@ Sessions analysed before speaker names existed keep their names only in the cont
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/import-names.ts
 ```
 
+If the same person shows twice in Who's who (a custom name next to the official record person), fold the duplicates together. It merges only same-name pairs where one row is official, and a second run changes nothing:
+
+```
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/merge-persons.ts
+```
+
 ## Backups
 
 The database lives in the `pgdata` volume and files in the `appdata` volume (volume names are prefixed with the compose project name, usually the folder name, for example `digestor_pgdata`).
