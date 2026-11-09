@@ -451,9 +451,10 @@ async function loadRun(deps: PipelineDeps, session: Session, resume: ResumePaylo
  *
  * `opts.resume` (the journalist's answer) is applied only when the run waits at `ask_context`. With `opts.round` (the
  * round the answer belongs to) it applies only when that equals the run's round: a redelivered older round is ignored,
- * and a retry inside the same round still applies. Without a round (jobs queued before the deploy) it applies only
- * once the web has moved the stage off `awaiting_context` (its route does so before sending the job). At any other
- * step the run continues without it.
+ * and a retry inside the same round still applies. A matching round is applied even while the stage is still
+ * `awaiting_context` (deliberate: it covers a send that committed but threw). Without a round (jobs queued before the
+ * deploy, or sent by the route when there was no card) it applies only once the web has moved the stage off
+ * `awaiting_context` (its route does so before sending the job). At any other step the run continues without it.
  */
 export async function runPipeline(
   deps: PipelineDeps,

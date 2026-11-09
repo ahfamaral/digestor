@@ -54,9 +54,9 @@ describe("pipeline runs", () => {
   it("the database refuses an unknown next_step", async () => {
     const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
     try {
-      await expect(pool.query("INSERT INTO pipeline_runs (session_id, next_step) VALUES ($1, 'bogus')", [s.id])).rejects.toThrow(/check/i);
+      await expect(pool.query("INSERT INTO pipeline_runs (session_id, next_step) VALUES ($1, 'bogus')", [s.id])).rejects.toThrow(/pipeline_runs_next_step_check/);
       await ensurePipelineRun(db, s.id, "download");
-      await expect(pool.query("UPDATE pipeline_runs SET next_step = 'bogus' WHERE session_id = $1", [s.id])).rejects.toThrow(/check/i);
+      await expect(pool.query("UPDATE pipeline_runs SET next_step = 'bogus' WHERE session_id = $1", [s.id])).rejects.toThrow(/pipeline_runs_next_step_check/);
     } finally {
       await pool.end();
     }

@@ -130,6 +130,14 @@ The pipeline no longer uses LangGraph; its position is the `pipeline_runs` table
   DROP TABLE IF EXISTS "checkpoint_writes", "checkpoint_blobs", "checkpoints", "checkpoint_migrations";
   ```
 
+### Once, when updating to the resume round (migration 0020)
+
+Migration 0020 adds a CHECK on `pipeline_runs.next_step`. Before updating, this must return no rows (otherwise the one-shot `migrate` fails and `web` and `worker` don't start):
+
+```
+select next_step, count(*) from pipeline_runs where next_step not in ('download','ingest','transcribe','match_record','understand_context','ask_context','match_record_late','name_speakers','index','analyze','done') group by 1;
+```
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:

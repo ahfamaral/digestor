@@ -393,6 +393,6 @@ export const pipelineRuns = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check("pipeline_runs_next_step_check", sql`${t.nextStep} IN (${sql.join(PIPELINE_STEPS.map((s) => sql`${sql.raw(`'${s}'`)}`), sql`, `)})`),
+    check("pipeline_runs_next_step_check", sql`${t.nextStep} IN (${sql.join(PIPELINE_STEPS.map((s) => sql.raw(`'${s}'`)), sql`, `)})`),
   ],
 );

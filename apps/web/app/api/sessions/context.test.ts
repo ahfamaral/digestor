@@ -1,8 +1,24 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { JOB_OPTIONS, QUEUES, type ContextCard } from "@digestor/core";
 import { createSession, getSession, saveContextCard, setStage } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { GET, POST } from "./[id]/context/route";
+
+const cardFailure = vi.hoisted(() => ({ next: null as Error | null }));
+vi.mock("@digestor/core/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@digestor/core/server")>();
+  return {
+    ...actual,
+    getContextCard: (...args: Parameters<typeof actual.getContextCard>) => {
+      if (cardFailure.next) {
+        const err = cardFailure.next;
+        cardFailure.next = null;
+        throw err;
+      }
+      return actual.getContextCard(...args);
+    },
+  };
+});
 
 let h: Harness;
 beforeAll(() => {
@@ -81,6 +97,15 @@ describe("POST /api/sessions/[id]/context", () => {
     const job = h.send.mock.calls[0]![1] as Record<string, unknown>;
     expect(job).toEqual({ sessionId: id, payload: { action: "skip" } });
     expect("round" in job).toBe(false);
+  });
+  it("503s and restores awaiting_context when reading the round fails, sending no job", async () => {
+    const id = await session("awaiting_context");
+    cardFailure.next = new Error("db down");
+    const res = await post(id, { action: "skip" });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "Couldn't queue the job. Please try again." });
+    expect((await getSession(h.db, id))?.stage).toBe("awaiting_context");
+    expect(h.send).not.toHaveBeenCalled();
   });
   it("404s for a valid uuid with no session", async () => {
     expect((await post("00000000-0000-4000-8000-000000000000", { action: "skip" })).status).toBe(404);

@@ -884,6 +884,21 @@ describe("runner", () => {
     }
   });
 
+  it("a resume with the matching round is applied even while the stage is still awaiting_context", async () => {
+    const restore = quiet();
+    try {
+      const { start, sessionId, contextCalls, deps } = await setup({ context: [draft(), draft()] });
+      await start();
+      expect((await getSession(db, sessionId))!.stage).toBe("awaiting_context"); // a send that committed but threw never moved it on
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer, round: 1 })).toBe("paused");
+      expect(contextCalls()).toHaveLength(2);
+      expect(await runOf(sessionId)).toMatchObject({ nextStep: "ask_context", round: 2 });
+      expect((await runOf(sessionId)).answers).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
   it("a resume without a round behaves as before (stage guard)", async () => {
     const restore = quiet();
     try {
