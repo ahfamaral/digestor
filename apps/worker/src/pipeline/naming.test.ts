@@ -413,15 +413,15 @@ describe("runRecordStep through a connector", () => {
     await linkRecord(db, s.id, { chamber: "us_senate", date: "2026-10-16", url: "https://www.senate.gov/x" });
     const name = `Anna Muster ${Math.random().toString(36).slice(2, 8)}`;
     const custom = await createCustomPerson(db, { displayName: name, createdBy: "owner" });
-    await replaceAiAttributions(db, s.id, "transcript", [{ speakerId: "A", startMs: 0, endMs: 1_000_000, personId: custom.id, status: "proposed", confidence: 0.7, evidence: { kind: "transcript", quote: "Senator Muster", startMs: 0 } as never }]);
+    await replaceAiAttributions(db, s.id, "transcript", [{ speakerId: "A", startMs: 0, endMs: 1_000_000, personId: custom.id, status: "proposed", confidence: 0.7, evidence: { kind: "quote", quote: "Senator Muster" } }]);
     const br = connectorFor("senado");
     const senate: RecordConnector = {
       chamber: "us_senate", stopWords: br.stopWords, speechText: br.speechText,
       async fetchRecord() {
         const speeches: RecordSpeech[] = FIXTURE_SPEECHES.map((sp, i) => ({
-          id: sp.id, order: i + 1, officialId: i === 1 ? null : `bg-${sp.id}`, name: `Sen ${i}`, party: "D", state: null, text: fixtureTexts[sp.id]!, textSource: "full" as const,
+          id: sp.id, order: i + 1, officialId: i === 1 ? null : `bg-${sp.id}-${name}`, name: `Sen ${i}`, party: "D", state: null, text: fixtureTexts[sp.id]!, textSource: "full" as const,
         }));
-        return { speeches, date: "2026-10-16", url: "https://www.senate.gov/record", members: { [`bg-${FIXTURE_SPEECHES[0]!.id}`]: { displayName: name, party: "D", state: "NY" } } };
+        return { speeches, date: "2026-10-16", url: "https://www.senate.gov/record", members: { [`bg-${FIXTURE_SPEECHES[0]!.id}-${name}`]: { displayName: name, party: "D", state: "NY" } } };
       },
     };
     await runRecordStep({ db, storage: new LocalStorage(root), connectors: { us_senate: senate } }, s.id);

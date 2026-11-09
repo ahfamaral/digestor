@@ -7,7 +7,7 @@ Copied from the Plan 4 SDD ledger (git-ignored) on 2026-11-05, after Task 12 mer
 - Task 1: ⚠️ US congress.gov URL shape unverified (403 to curl) — accepted as given; evidence URL only, not fetched
 - Task 10: ⚠️ dismissed suggestion protected only because download runs once — note for Task 11/final review.
 - Task 9: ⚠️ Senate labels/chamber S unverified (pro forma day only) → add to scripts/smoke.md in Task 12; package-partial publication assumption unverified
-- Task 12: ⚠️ follow-up: for a non-evaluated house, transcript-proposed and record persons of the same name are separate rows → conflict → unnamed (Bundestag scored 0% before evaluated:true). Merge by name in the record step; affects US Senate now.
+- Task 12: ⚠️ follow-up: for a non-evaluated house, transcript-proposed and record persons of the same name are separate rows → conflict → unnamed (Bundestag scored 0% before evaluated:true). Merge by name in the record step; affects US Senate now. FIXED (branch fix-duplicate-persons).
 - Task 12: deferred: US connector matches the reading clerk's bill-title reading to the sponsor; chair (Bundestag Vizepräsident, no MdB id) never named.
 
 ## Minor (deferred)

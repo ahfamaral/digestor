@@ -4,7 +4,7 @@ import { personAt } from "../attribution.ts";
 import { createDb, type Db } from "./client.ts";
 import { startAnalysisVersion } from "./analysis.ts";
 import { createSession, saveContextCard, type Session } from "./repo.ts";
-import { analysisVersions, attributions, findMoreRequests, persons } from "./schema.ts";
+import { analysisVersions, attributions, findMoreRequests, moments, persons, selections } from "./schema.ts";
 import { eq } from "drizzle-orm";
 import {
   createCustomPerson, findPersonByName, getPersons, listAttributionHistory, listAttributions, mergePersonInto, mergeSameNamePersons,
@@ -215,6 +215,45 @@ describe("persons", () => {
     const reqs = await db.select().from(findMoreRequests);
     expect(reqs).toHaveLength(1);
     expect(reqs[0]!.personId).toBe(o!.id);
+  });
+
+  it("a dropped find_more request's moments and selections move to the kept request, not deleted", async () => {
+    const c = await createCustomPerson(db, { displayName: "Anna Muster", createdBy: "owner" });
+    const [o] = await db.insert(persons).values({
+      displayName: "Anna Muster", kind: "official", officialIds: { bundestag: "9" }, nameNorm: "anna muster", createdBy: "record",
+    }).returning();
+    const v = await startAnalysisVersion(db, s.id, { profile: "interview", reason: "r", models: {}, promptVersions: {} });
+    const [dropReq, keepReq] = await db.insert(findMoreRequests).values([
+      { ownerId: "owner", analysisId: v.id, personId: c.id },
+      { ownerId: "owner", analysisId: v.id, personId: o!.id },
+    ]).returning();
+    const [m] = await db.insert(moments).values({
+      analysisId: v.id, granularity: "exchange", startMs: 0, endMs: 1000, title: "t", why: "w", relevance: 1,
+      ownerId: "owner", origin: "find_more", findMoreRequestId: dropReq!.id,
+    }).returning();
+    await db.insert(selections).values({ ownerId: "owner", momentId: m!.id, status: "approved" });
+    expect(await mergeSameNamePersons(db)).toEqual({ merged: 1 });
+    const ms = await db.select().from(moments).where(eq(moments.id, m!.id));
+    expect(ms).toHaveLength(1);
+    expect(ms[0]!.findMoreRequestId).toBe(keepReq!.id);
+    expect(await db.select().from(selections).where(eq(selections.momentId, m!.id))).toHaveLength(1);
+  });
+
+  it("a custom row newer than the official row of the same name is a deliberate choice and stays", async () => {
+    const o = await official("Dirk Vöpel", "77");
+    const c = await createCustomPerson(db, { displayName: "Dirk Vöpel", createdBy: "owner" });
+    await official("Dirk Vöpel", "77"); // upsert again: folds only older custom rows
+    expect(await mergeSameNamePersons(db)).toEqual({ merged: 0 });
+    expect(await db.select().from(persons)).toHaveLength(2);
+    // findPersonByName still prefers the official one, whatever the insertion order
+    expect((await findPersonByName(db, "dirk vopel"))?.id).toBe(o.id);
+    expect(c.id).not.toBe(o.id);
+  });
+
+  it("mergePersonInto refuses to merge a row into itself", async () => {
+    const c = await createCustomPerson(db, { displayName: "Solo", createdBy: "owner" });
+    await expect(mergePersonInto(db, c.id, c.id)).rejects.toThrow();
+    expect(await db.select().from(persons)).toHaveLength(1);
   });
 
   it("mergeSameNamePersons is idempotent", async () => {

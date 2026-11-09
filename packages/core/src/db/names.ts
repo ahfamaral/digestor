@@ -2,7 +2,7 @@ import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { normaliseName, type Attribution, type AttributionSource, type Person } from "../attribution.ts";
 import type { IdSystem } from "../chambers.ts";
 import type { Db } from "./client.ts";
-import { attributions, contextCards, findMoreRequests, persons } from "./schema.ts";
+import { attributions, contextCards, findMoreRequests, moments, persons } from "./schema.ts";
 
 /** What the AI sources may write: never `human`, and never a human-only status shape. */
 export type NewAiAttribution = Pick<Attribution, "speakerId" | "startMs" | "endMs" | "personId" | "status" | "confidence" | "evidence">;
@@ -66,21 +66,27 @@ export async function upsertOfficialPerson(
 
 /**
  * Moves everything that points at `dropId` to `keepId` and deletes `dropId`. Only a custom row may be dropped. A drop
- * "find more" request that would collide with a keep request (same owner and analysis) is deleted instead. Run it in a
+ * "find more" request that would collide with a keep request (same owner and analysis) is deleted instead, after its
+ * moments move to the keep request. Throws when `keepId === dropId`. Run it in a
  * transaction (`tx`).
  */
 export async function mergePersonInto(tx: Db, keepId: string, dropId: string): Promise<void> {
+  if (keepId === dropId) throw new Error("A person cannot be merged into itself.");
   const [drop] = await tx.select().from(persons).where(eq(persons.id, dropId));
   if (!drop) return;
   if (drop.kind !== "custom") throw new Error("Only a custom person can be merged into another.");
   await tx.update(attributions).set({ personId: keepId }).where(eq(attributions.personId, dropId));
-  await tx.delete(findMoreRequests).where(
-    and(
-      eq(findMoreRequests.personId, dropId),
-      sql`exists (select 1 from ${findMoreRequests} k where k.owner_id = ${findMoreRequests.ownerId}
-        and k.analysis_id = ${findMoreRequests.analysisId} and k.person_id = ${keepId})`,
-    ),
-  );
+  // A colliding request is deleted, but its found moments (and so the selections on them) move to the kept request first.
+  const colliding = await tx
+    .select({ dropReq: findMoreRequests.id, keepReq: sql<string>`k.id` })
+    .from(findMoreRequests)
+    .innerJoin(sql`${findMoreRequests} k`, sql`k.owner_id = ${findMoreRequests.ownerId}
+      and k.analysis_id = ${findMoreRequests.analysisId} and k.person_id = ${keepId}`)
+    .where(eq(findMoreRequests.personId, dropId));
+  for (const r of colliding) {
+    await tx.update(moments).set({ findMoreRequestId: r.keepReq }).where(eq(moments.findMoreRequestId, r.dropReq));
+    await tx.delete(findMoreRequests).where(eq(findMoreRequests.id, r.dropReq));
+  }
   await tx.update(findMoreRequests).set({ personId: keepId }).where(eq(findMoreRequests.personId, dropId));
   await tx.delete(persons).where(eq(persons.id, dropId));
 }
@@ -97,6 +103,8 @@ async function foldSameName(tx: Db, names?: (string | null)[]): Promise<number> 
     if (!n || (only && !only.has(n))) continue;
     const hits = officials.filter((o) => normaliseName(o.displayName) === n || (o.fullName !== null && normaliseName(o.fullName) === n));
     if (hits.length !== 1) continue;
+    // A custom row made after the official one was a deliberate "New person": never folded.
+    if (c.createdAt.getTime() >= hits[0]!.createdAt.getTime()) continue;
     await mergePersonInto(tx, hits[0]!.id, c.id);
     merged++;
   }
