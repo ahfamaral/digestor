@@ -2,7 +2,7 @@ import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { normaliseName, type Attribution, type AttributionSource, type Person } from "../attribution.ts";
 import type { IdSystem } from "../chambers.ts";
 import type { Db } from "./client.ts";
-import { attributions, contextCards, persons } from "./schema.ts";
+import { attributions, contextCards, findMoreRequests, persons } from "./schema.ts";
 
 /** What the AI sources may write: never `human`, and never a human-only status shape. */
 export type NewAiAttribution = Pick<Attribution, "speakerId" | "startMs" | "endMs" | "personId" | "status" | "confidence" | "evidence">;
@@ -48,6 +48,7 @@ export async function upsertOfficialPerson(
         nameNorm: nameNorm(p.displayName, p.fullName === undefined ? existing.fullName : p.fullName),
       };
       const [row] = await tx.update(persons).set(set).where(eq(persons.id, existing.id)).returning();
+      await foldSameName(tx, [row!.displayName, row!.fullName]);
       return toPerson(row!);
     }
     const fields = {
@@ -58,16 +59,62 @@ export async function upsertOfficialPerson(
       .insert(persons)
       .values({ ...fields, kind: "official", officialIds: { [p.idSystem]: p.officialId }, createdBy: "record" })
       .returning();
+    await foldSameName(tx, [row!.displayName, row!.fullName]);
     return toPerson(row!);
   });
+}
+
+/**
+ * Moves everything that points at `dropId` to `keepId` and deletes `dropId`. Only a custom row may be dropped. A drop
+ * "find more" request that would collide with a keep request (same owner and analysis) is deleted instead. Run it in a
+ * transaction (`tx`).
+ */
+export async function mergePersonInto(tx: Db, keepId: string, dropId: string): Promise<void> {
+  const [drop] = await tx.select().from(persons).where(eq(persons.id, dropId));
+  if (!drop) return;
+  if (drop.kind !== "custom") throw new Error("Only a custom person can be merged into another.");
+  await tx.update(attributions).set({ personId: keepId }).where(eq(attributions.personId, dropId));
+  await tx.delete(findMoreRequests).where(
+    and(
+      eq(findMoreRequests.personId, dropId),
+      sql`exists (select 1 from ${findMoreRequests} k where k.owner_id = ${findMoreRequests.ownerId}
+        and k.analysis_id = ${findMoreRequests.analysisId} and k.person_id = ${keepId})`,
+    ),
+  );
+  await tx.update(findMoreRequests).set({ personId: keepId }).where(eq(findMoreRequests.personId, dropId));
+  await tx.delete(persons).where(eq(persons.id, dropId));
+}
+
+/** The merge itself, inside the caller's transaction (which holds the `persons:merge` lock). */
+async function foldSameName(tx: Db, names?: (string | null)[]): Promise<number> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('persons:merge'))`);
+  const only = names ? new Set(names.filter((x): x is string => !!x).map(normaliseName).filter(Boolean)) : null;
+  const rows = await tx.select().from(persons).orderBy(persons.createdAt);
+  const officials = rows.filter((r) => r.kind === "official");
+  let merged = 0;
+  for (const c of rows.filter((r) => r.kind === "custom")) {
+    const n = normaliseName(c.displayName);
+    if (!n || (only && !only.has(n))) continue;
+    const hits = officials.filter((o) => normaliseName(o.displayName) === n || (o.fullName !== null && normaliseName(o.fullName) === n));
+    if (hits.length !== 1) continue;
+    await mergePersonInto(tx, hits[0]!.id, c.id);
+    merged++;
+  }
+  return merged;
+}
+
+/** Folds each custom person into the one official person that carries the same normalised name (never a short form). */
+export async function mergeSameNamePersons(db: Db, opts?: { names?: string[] }): Promise<{ merged: number }> {
+  return db.transaction(async (tx) => ({ merged: await foldSameName(tx, opts?.names) }));
 }
 
 export async function findPersonByName(db: Db, name: string): Promise<Person | null> {
   const n = normaliseName(name);
   if (!n) return null;
   const rows = await db.select().from(persons);
-  const hit = rows.find((r) => normaliseName(r.displayName) === n || (r.fullName !== null && normaliseName(r.fullName) === n));
-  return hit ? toPerson(hit) : null;
+  const hits = rows.filter((r) => normaliseName(r.displayName) === n || (r.fullName !== null && normaliseName(r.fullName) === n));
+  hits.sort((a, b) => Number(b.kind === "official") - Number(a.kind === "official") || a.createdAt.getTime() - b.createdAt.getTime());
+  return hits[0] ? toPerson(hits[0]) : null;
 }
 
 export async function searchPersons(db: Db, q: string, limit = 10): Promise<Person[]> {

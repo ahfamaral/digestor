@@ -4,10 +4,11 @@ import { personAt } from "../attribution.ts";
 import { createDb, type Db } from "./client.ts";
 import { startAnalysisVersion } from "./analysis.ts";
 import { createSession, saveContextCard, type Session } from "./repo.ts";
-import { analysisVersions, attributions } from "./schema.ts";
+import { analysisVersions, attributions, findMoreRequests, persons } from "./schema.ts";
 import { eq } from "drizzle-orm";
 import {
-  createCustomPerson, findPersonByName, getPersons, listAttributionHistory, listAttributions, replaceAiAttributions, searchPersons,
+  createCustomPerson, findPersonByName, getPersons, listAttributionHistory, listAttributions, mergePersonInto, mergeSameNamePersons,
+  replaceAiAttributions, searchPersons,
   sessionsWithoutNames, setHumanAttribution, upsertOfficialPerson,
 } from "./names.ts";
 
@@ -153,6 +154,82 @@ describe("persons", () => {
     expect((await searchPersons(db, "Claudia")).map((x) => x.id)).toEqual([p.id]);
     expect(await searchPersons(db, "zzz")).toEqual([]);
     expect((await getPersons(db, [p.id])).length).toBe(1);
+  });
+
+  const official = (name: string, id = "11004433", idSystem: "bundestag" | "bioguide" = "bundestag") =>
+    upsertOfficialPerson(db, { idSystem, officialId: id, displayName: name, fullName: name });
+
+  it("findPersonByName prefers the official row over an older custom row of the same name", async () => {
+    await createCustomPerson(db, { displayName: "Dirk Vöpel", createdBy: "owner" });
+    await official("Dirk Vöpel");
+    expect((await findPersonByName(db, "dirk vopel"))?.officialIds.bundestag).toBe("11004433");
+  });
+
+  it("upsertOfficialPerson folds a same-name custom row into the official one", async () => {
+    const c = await createCustomPerson(db, { displayName: "Steffen Bilger", createdBy: "owner" });
+    await replaceAiAttributions(db, s.id, "transcript", [ai(c.id)]);
+    await setHumanAttribution(db, human(c.id, { speakerId: "C" }));
+    const o = await official("Steffen Bilger", "42");
+    const rows = await db.select().from(persons);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).toBe(o.id);
+    const cur = await listAttributions(db, s.id);
+    expect(cur.every((a) => a.personId === o.id)).toBe(true);
+    expect(cur.find((a) => a.source === "human")).toMatchObject({ status: "confirmed" });
+    expect(personAt(cur, "C", 0)).toMatchObject({ kind: "named", personId: o.id });
+  });
+
+  it("a short form is not merged", async () => {
+    await createCustomPerson(db, { displayName: "Bilger", createdBy: "owner" });
+    await official("Steffen Bilger", "42");
+    expect(await db.select().from(persons)).toHaveLength(2);
+  });
+
+  it("no merge when two official persons share the name", async () => {
+    await official("Max Muster", "1");
+    await official("Max Muster", "N1", "bioguide");
+    const c = await createCustomPerson(db, { displayName: "Max Muster", createdBy: "owner" });
+    expect(await mergeSameNamePersons(db)).toEqual({ merged: 0 });
+    expect((await db.select().from(persons).where(eq(persons.id, c.id))).length).toBe(1);
+  });
+
+  it("two custom rows of the same name and no official row stay", async () => {
+    await createCustomPerson(db, { displayName: "Eva Klein", createdBy: "owner" });
+    await createCustomPerson(db, { displayName: "Eva Klein", createdBy: "owner" });
+    expect(await mergeSameNamePersons(db)).toEqual({ merged: 0 });
+    expect(await db.select().from(persons)).toHaveLength(2);
+  });
+
+  it("a colliding find_more request is dropped, not duplicated", async () => {
+    const c = await createCustomPerson(db, { displayName: "Anna Muster", createdBy: "owner" });
+    // Insert the official row without the upsert so the merge has not run yet.
+    const [o] = await db.insert(persons).values({
+      displayName: "Anna Muster", kind: "official", officialIds: { bundestag: "9" }, nameNorm: "anna muster", createdBy: "record",
+    }).returning();
+    const v = await startAnalysisVersion(db, s.id, { profile: "interview", reason: "r", models: {}, promptVersions: {} });
+    await db.insert(findMoreRequests).values([
+      { ownerId: "owner", analysisId: v.id, personId: c.id },
+      { ownerId: "owner", analysisId: v.id, personId: o!.id },
+    ]);
+    expect(await mergeSameNamePersons(db)).toEqual({ merged: 1 });
+    const reqs = await db.select().from(findMoreRequests);
+    expect(reqs).toHaveLength(1);
+    expect(reqs[0]!.personId).toBe(o!.id);
+  });
+
+  it("mergeSameNamePersons is idempotent", async () => {
+    await createCustomPerson(db, { displayName: "Anna Muster", createdBy: "owner" });
+    await db.insert(persons).values({
+      displayName: "Anna Muster", kind: "official", officialIds: { bundestag: "9" }, nameNorm: "anna muster", createdBy: "record",
+    });
+    expect(await mergeSameNamePersons(db)).toEqual({ merged: 1 });
+    expect(await mergeSameNamePersons(db)).toEqual({ merged: 0 });
+  });
+
+  it("mergePersonInto refuses to delete an official row", async () => {
+    const a = await official("A One", "1");
+    const b = await official("B Two", "2");
+    await expect(mergePersonInto(db, a.id, b.id)).rejects.toThrow();
   });
 });
 
