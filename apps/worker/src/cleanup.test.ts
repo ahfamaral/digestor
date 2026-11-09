@@ -3,9 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import { LocalStorage, createDb, createSession, getSession, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
+import { LocalStorage, createDb, createSession, ensurePipelineRun, getPipelineRun, getSession, pipelineRuns, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
 import type { ChromaClient } from "chromadb";
 import { collectionName } from "./search/index.js";
 import { runVideoRetention, videoRetentionDays } from "./cleanup.js";
@@ -29,34 +27,37 @@ d("runVideoRetention", () => {
   let close: () => Promise<void>;
   let root: string;
   let storage: LocalStorage;
-  let saver: PostgresSaver;
 
   beforeAll(async () => {
     ({ db, close } = createDb(url!));
     root = await mkdtemp(path.join(os.tmpdir(), "digestor-cleanup-"));
     storage = new LocalStorage(root);
-    saver = PostgresSaver.fromConnString(url!);
-    await saver.setup();
   });
   afterAll(async () => {
-    await saver.end();
     await close();
     await rm(root, { recursive: true, force: true });
   });
 
-  const deps = () => ({ db, storage, checkpointer: saver });
+  const deps = () => ({ db, storage });
 
-  async function checkpoint(sessionId: string): Promise<void> {
-    const State = Annotation.Root({ answer: Annotation<string> });
-    const graph = new StateGraph(State)
-      .addNode("ask", async () => ({ answer: "the minister's name" }))
-      .addEdge(START, "ask")
-      .addEdge("ask", END)
-      .compile({ checkpointer: saver });
-    await graph.invoke({ answer: "" }, { configurable: { thread_id: sessionId } });
-  }
-  const hasCheckpoint = async (sessionId: string) =>
-    (await saver.getTuple({ configurable: { thread_id: sessionId } })) !== undefined;
+  /** A pipeline run row: it holds the journalist's context answers. */
+  const runRow = async (sessionId: string) => void (await ensurePipelineRun(db, sessionId, "done"));
+  const hasRunRow = async (sessionId: string) => (await getPipelineRun(db, sessionId)) !== null;
+
+  /** A database whose deletes from `pipeline_runs` fail. */
+  const failingRunDelete = (): Db =>
+    new Proxy(db, {
+      get(obj, prop, receiver) {
+        if (prop === "delete") {
+          return (t: Parameters<Db["delete"]>[0]) => {
+            if (t === pipelineRuns) throw new Error("db down");
+            return obj.delete(t);
+          };
+        }
+        const v: unknown = Reflect.get(obj, prop, receiver);
+        return typeof v === "function" ? v.bind(obj) : v;
+      },
+    });
 
   /** A session created `ageDays` ago in `stage`, with video files, a thumbnail and a render on disk. */
   async function seed(ageDays: number, stage: Stage) {
@@ -70,19 +71,22 @@ d("runVideoRetention", () => {
 
   it("runVideoRetention keeps rows and renders", async () => {
     const old = await seed(15, "ready");
-    await checkpoint(old.id);
-    const calls: string[] = [];
-    const spy = { deleteThread: async (id: string) => { calls.push(id); await saver.deleteThread(id); } };
-    const { removed } = await runVideoRetention({ db, storage, checkpointer: spy }, 14);
+    const { removed } = await runVideoRetention(deps(), 14);
     expect(removed).toBe(1);
-    expect(calls).toEqual([old.id]);
     expect(old.at("original.mp4")).toBe(false);
     expect(old.at("audio.mp3")).toBe(false);
     expect(old.at("proxy.mp4")).toBe(false);
     expect(old.at("clips/x.mp4")).toBe(true);
     expect(old.at("thumbs/t.jpg")).toBe(true);
     expect((await getSession(db, old.id))?.videoDeletedAt).toBeInstanceOf(Date);
-    expect(await hasCheckpoint(old.id)).toBe(false);
+  });
+
+  it("retention deletes the pipeline_runs row", async () => {
+    const old = await seed(15, "ready");
+    await runRow(old.id);
+    expect(await hasRunRow(old.id)).toBe(true);
+    expect((await runVideoRetention(deps(), 14)).removed).toBe(1);
+    expect(await hasRunRow(old.id)).toBe(false); // it holds the journalist's answers
   });
 
   it("deletes the session's search collection, and a Chroma failure does not block the retention", async () => {
@@ -111,34 +115,39 @@ d("runVideoRetention", () => {
     expect(old.at("clips/x.mp4")).toBe(true);
   });
 
-  it("leaves videoDeletedAt unset when the checkpoints can't be deleted, so the next run retries", async () => {
+  it("leaves videoDeletedAt unset when the pipeline run row can't be deleted, so the next run retries", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const old = await seed(21, "ready");
-      const failing = { deleteThread: async () => Promise.reject(new Error("db down")) };
-      expect((await runVideoRetention({ db, storage, checkpointer: failing }, 14)).removed).toBe(0);
+      await runRow(old.id);
+      const deleted: string[] = [];
+      const chroma = { deleteCollection: async ({ name }: { name: string }) => void deleted.push(name) } as unknown as ChromaClient;
+      expect((await runVideoRetention({ db: failingRunDelete(), storage, chroma }, 14)).removed).toBe(0);
+      expect(deleted).toEqual([]); // files, then the run row, then the index
+      expect(old.at("original.mp4")).toBe(false);
       expect((await getSession(db, old.id))?.videoDeletedAt).toBeNull();
       expect(log).toHaveBeenCalled();
       expect((await runVideoRetention(deps(), 14)).removed).toBe(1);
+      expect(await hasRunRow(old.id)).toBe(false);
     } finally {
       log.mockRestore();
     }
   });
 
-  it("keeps recent sessions' videos and checkpoints", async () => {
+  it("keeps recent sessions' videos and run rows", async () => {
     const recent = await seed(2, "ready");
-    await checkpoint(recent.id);
+    await runRow(recent.id);
     expect((await runVideoRetention(deps(), 14)).removed).toBe(0);
     expect(recent.at("original.mp4")).toBe(true);
-    expect(await hasCheckpoint(recent.id)).toBe(true);
+    expect(await hasRunRow(recent.id)).toBe(true);
   });
 
   it("skips awaiting_context so the human pause can still be resumed", async () => {
     const waiting = await seed(30, "awaiting_context");
-    await checkpoint(waiting.id);
+    await runRow(waiting.id);
     expect((await runVideoRetention(deps(), 14)).removed).toBe(0);
     expect(waiting.at("original.mp4")).toBe(true);
-    expect(await hasCheckpoint(waiting.id)).toBe(true);
+    expect(await hasRunRow(waiting.id)).toBe(true);
   });
 
   it("skips a session whose re-analysis is running", async () => {
@@ -151,9 +160,9 @@ d("runVideoRetention", () => {
 
   it("never touches a session that is still processing", async () => {
     const busy = await seed(30, "transcribing");
-    await checkpoint(busy.id);
+    await runRow(busy.id);
     expect((await runVideoRetention(deps(), 14)).removed).toBe(0);
     expect(busy.at("original.mp4")).toBe(true);
-    expect(await hasCheckpoint(busy.id)).toBe(true);
+    expect(await hasRunRow(busy.id)).toBe(true);
   });
 });

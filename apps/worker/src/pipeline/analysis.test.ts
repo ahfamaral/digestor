@@ -33,7 +33,7 @@ import { handleCheckMoment, handleReanalyze, type JobContext } from "../jobs.js"
 import { FakeLLM, type FakeCall, type StructuredLLM } from "../llm/structured.js";
 import { PROMPT_VERSIONS, runAnalysis, type AnalysisDeps } from "./analysis.js";
 import { CHECKS_OK, analysisResponses, crashOnInsert } from "./fakeAnalysis.js";
-import type { PipelineDeps } from "./graph.js";
+import type { PipelineDeps } from "./run.js";
 
 // 200 sentences, one every 3 s ("Sentence number N."), speakers alternating every 10 sentences: 600 s.
 function mkWords(sentences: number): Word[] {
@@ -307,7 +307,6 @@ describe("re-analysis and check jobs", () => {
   const ctxFor = (deps: AnalysisDeps): JobContext => ({
     db,
     deps: deps as PipelineDeps,
-    graph: {} as JobContext["graph"],
   });
 
   it("reanalysis keeps the session ready and the old version readable until complete", async () => {

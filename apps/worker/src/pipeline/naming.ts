@@ -32,7 +32,7 @@ import { readCaptions, captionFramePlan, captionVotes, titleCaseName, type Capti
 import { ApiKeyRejectedError, MissingApiKeyError } from "../errors.js";
 import { RECORD_RETRY_HOURS } from "../records/retry.js";
 import { alignTurns, recordAttributions, similarityMatrix, tieOrder } from "../records/align.js";
-import type { PipelineDeps } from "./graph.js";
+import type { PipelineDeps } from "./run.js";
 
 const NULL_FACT: Fact = { value: null, source: null, evidence: null };
 const wholeVoice = (a: Attribution) => a.startMs === null && a.endMs === null;
@@ -419,7 +419,7 @@ export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & {
 
 /**
  * Matches the session's linked official record against its transcript (the `record` source). One code path for the
- * graph node (`match_record`) and the `session.names` job. Claims the row (`pending` → `running`; with `retrying` a
+ * pipeline step (`match_record`) and the `session.names` job. Claims the row (`pending` → `running`; with `retrying` a
  * `running` row is taken over, since a retry finds its own claim), fetches the speeches, aligns them to the voice turns,
  * upserts the senators or deputies and replaces only the `record` rows (human rows are never touched and always win). Stores the
  * raw payload at `<sessionId>/names/record.json`, then marks the row `matched`.
@@ -453,7 +453,7 @@ async function runClaimed(deps: RecordStepDeps, sessionId: string, ref: RecordRe
   const { db, storage } = deps;
   const transcript = await getTranscript(db, sessionId);
   if (!transcript) {
-    await linkRecord(db, sessionId, ref); // nothing to match yet: back to `pending` for the graph step
+    await linkRecord(db, sessionId, ref); // nothing to match yet: back to `pending` for the pipeline step
     return;
   }
   const connector = deps.connectors && ref.chamber in deps.connectors ? deps.connectors[ref.chamber] : findConnector(ref.chamber);
@@ -543,7 +543,7 @@ const sortKeys = (o: object) => Object.fromEntries(Object.entries(o).sort(([x], 
 const httpsPhoto = (url: string) => url.replace(/^http:\/\//i, "https://");
 
 /**
- * The graph's record step (before the context check, so the pause already shows official names): a no-op unless a record
+ * The pipeline's record step (before the context check, so the pause already shows official names): a no-op unless a record
  * is linked. It never fails the session: any error is logged. A transient one (5xx, network) hands the row back to
  * `pending` and sends `session.names` (the job retries it with backoff and fails the row on its last attempt); when
  * that send is impossible or fails, the row is marked failed.

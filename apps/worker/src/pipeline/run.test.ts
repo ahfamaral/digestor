@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChromaClient } from "chromadb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { Command, MemorySaver } from "@langchain/langgraph";
 import { personAt, type RecordRef, type ContextCard, type Fact, type ResumePayload, type Transcript, type Word } from "@digestor/core";
 import {
   LocalStorage,
@@ -27,6 +26,10 @@ import {
   createCustomPerson,
   setHumanAttribution,
   updateSession,
+  getPipelineRun,
+  deletePipelineRun,
+  setStage,
+  transitionStage,
   claimProxy,
   failProxy,
   sessionRecords,
@@ -44,7 +47,7 @@ import { analysisResponses, captionOf, crashOnInsert, emptyAnalysisResponses } f
 import { nameSpeakersNode } from "./naming.js";
 import { FIXTURE_DATE, fakeSenadoFetch, transcriptOfSpeeches } from "../records/fakeSenado.js";
 import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
-import { analyzeNode, buildPipeline, type PipelineDeps } from "./graph.js";
+import { STEPS, runPipeline, type PipelineDeps } from "./run.js";
 import { runProxy } from "./proxy.js";
 
 const TMP = fileURLToPath(new URL("../../test/tmp/", import.meta.url));
@@ -95,7 +98,7 @@ let storage: LocalStorage;
 
 beforeAll(async () => {
   ({ db, close } = createDb(process.env.TEST_DATABASE_URL!));
-  root = await mkdtemp(path.join(os.tmpdir(), "digestor-graph-"));
+  root = await mkdtemp(path.join(os.tmpdir(), "digestor-run-"));
   storage = new LocalStorage(root);
 });
 afterAll(async () => {
@@ -116,9 +119,9 @@ type Setup = {
   youtube?: typeof downloadYouTube;
   media?: PipelineDeps["media"];
   search?: PipelineDeps["search"];
-  /** The graph's way to send `session.names` (a transient record failure hands the row back to the job). */
+  /** The pipeline's way to send `session.names` (a transient record failure hands the row back to the job). */
   enqueueNames?: PipelineDeps["enqueueNames"];
-  /** The graph's way to request the preview copy; default: the copy is made at once, as the job would. */
+  /** The pipeline's way to request the preview copy; default: the copy is made at once, as the job would. */
   enqueueProxy?: PipelineDeps["enqueueProxy"];
   /** A record linked at upload (its fetches go through `fetch`). */
   record?: RecordRef;
@@ -155,11 +158,17 @@ async function setup(o: Setup = {}) {
     ...(o.enqueueNames ? { enqueueNames: o.enqueueNames } : {}),
   };
   deps.enqueueProxy = o.enqueueProxy ?? (async (id) => runProxy({ db: deps.db, storage, media: deps.media }, id));
-  const graph = buildPipeline(deps, new MemorySaver());
-  const cfg = { configurable: { thread_id: session.id } };
-  const resume = (payload: ResumePayload) => graph.invoke(new Command({ resume: payload }), cfg);
-  const interruptValue = async () => (await graph.getState(cfg)).tasks[0]?.interrupts[0]?.value;
-  return { sessionId: session.id, llm, contextCalls, deps, graph, cfg, resume, interruptValue };
+  const start = () => runPipeline(deps, session.id);
+  /** The answer as the web's context route sends it: the stage leaves the pause first, then `session.resume` runs. */
+  const resume = async (payload: ResumePayload) => {
+    const next = payload.action === "continue" ? { stage: "understanding", progress: 55 } as const : { stage: "naming_speakers", progress: 60 } as const;
+    await transitionStage(db, session.id, "awaiting_context", next.stage, next.progress);
+    return runPipeline(deps, session.id, { resume: payload });
+  };
+  const nextStep = async () => (await getPipelineRun(db, session.id))?.nextStep;
+  /** Paused at the context check: the run waits at ask_context and the session shows the pause. */
+  const paused = async () => (await nextStep()) === "ask_context" && (await getSession(db, session.id))?.stage === "awaiting_context";
+  return { sessionId: session.id, llm, contextCalls, deps, start, resume, nextStep, paused };
 }
 
 /** A database whose inserts into `session_records` throw (the suggester's write). */
@@ -188,11 +197,10 @@ const youtubeStub =
 describe("pipeline", () => {
   it("pauses for context when the date is missing", async () => {
     const enqueueProxy = vi.fn(async (_id: string) => {});
-    const { graph, cfg, sessionId, llm, interruptValue } = await setup({ context: [draft()], enqueueProxy });
-    await graph.invoke({ sessionId }, cfg);
-    const st = await graph.getState(cfg);
-    expect(st.tasks[0]!.interrupts[0]!.value).toEqual({ type: "context" });
-    expect(await interruptValue()).toEqual({ type: "context" });
+    const { start, sessionId, llm, nextStep, paused } = await setup({ context: [draft()], enqueueProxy });
+    expect(await start()).toBe("paused");
+    expect(await nextStep()).toBe("ask_context");
+    expect(await paused()).toBe(true);
 
     const s = (await getSession(db, sessionId))!;
     expect(s).toMatchObject({ stage: "awaiting_context", progress: 55, language: "en", profile: "interview" });
@@ -214,8 +222,8 @@ describe("pipeline", () => {
   it("the transcript is saved before the preview copy exists", async () => {
     const makeProxy = vi.fn(async (_i: string, _o: string) => undefined);
     const enqueueProxy = vi.fn(async (_id: string) => {});
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], media: { ...media, makeProxy }, enqueueProxy });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [draft()], media: { ...media, makeProxy }, enqueueProxy });
+    await start();
     expect(await getTranscript(db, sessionId)).not.toBeNull();
     expect(makeProxy).not.toHaveBeenCalled();
     expect(enqueueProxy).toHaveBeenCalledExactlyOnceWith(sessionId);
@@ -224,15 +232,15 @@ describe("pipeline", () => {
 
   it("a failed send of the copy's job throws, so the node is retried", async () => {
     const enqueueProxy = vi.fn(async () => { throw new Error("queue down"); });
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], enqueueProxy });
-    await expect(graph.invoke({ sessionId }, cfg)).rejects.toThrow("queue down");
+    const { start, sessionId } = await setup({ context: [draft()], enqueueProxy });
+    await expect(start()).rejects.toThrow("queue down");
     expect(await getTranscript(db, sessionId)).toBeNull();
   });
 
   it("the context check pauses with the copy still pending; the analysis then waits for it", async () => {
     const enqueueProxy = vi.fn(async (_id: string) => {});
-    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], enqueueProxy });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, resume } = await setup({ context: [draft()], enqueueProxy });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", proxyStatus: "pending", proxyKey: null });
     await resume({ action: "skip" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "preparing_preview", progress: 96, profile: "interview" });
@@ -245,8 +253,8 @@ describe("pipeline", () => {
 
   it("a copy that failed during the context pause fails the session before the paid analysis", async () => {
     const enqueueProxy = vi.fn(async (_id: string) => {});
-    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()], enqueueProxy });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm, resume } = await setup({ context: [draft()], enqueueProxy });
+    await start();
     await claimProxy(db, sessionId);
     await failProxy(db, sessionId); // the job's last attempt (or the sweep) gave up meanwhile
     await resume({ action: "skip" });
@@ -256,30 +264,30 @@ describe("pipeline", () => {
   });
 
   it("re-running the analysis step on a ready session leaves it ready and untouched", async () => {
-    const { graph, cfg, sessionId, deps } = await setup({ context: [sufficientDraft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, deps } = await setup({ context: [sufficientDraft()] });
+    await start();
     const before = await getSession(db, sessionId);
     expect(before).toMatchObject({ stage: "ready" });
-    await analyzeNode(deps)({ sessionId } as Parameters<ReturnType<typeof analyzeNode>>[0]); // a replay after a crash before the checkpoint
+    await STEPS.analyze(deps, (await getPipelineRun(db, sessionId))!); // a replay after a crash before the run advanced
     const after = await getSession(db, sessionId);
     expect(after).toMatchObject({ stage: "ready", progress: 100 });
     expect(after!.updatedAt.getTime()).toBe(before!.updatedAt.getTime());
   });
 
   it("skip goes on to the analysis and ready after the single context pause", async () => {
-    const { graph, cfg, sessionId, contextCalls, resume } = await setup({ context: [draft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, contextCalls, resume, nextStep } = await setup({ context: [draft()] });
+    await start();
     await resume({ action: "skip" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, audioKey: null });
     await expect(access(storage.resolve(`${sessionId}/audio.mp3`))).rejects.toThrow();
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await nextStep()).toBe("done");
     expect(contextCalls()).toHaveLength(1); // no second context round
     expect(await getCurrentAnalysis(db, sessionId)).toMatchObject({ version: { version: 1, reason: "initial", profile: "interview" } });
   });
 
   it("asks one follow-up round with the new questions, then finishes (never a third round)", async () => {
-    const { graph, cfg, sessionId, llm, contextCalls, resume, interruptValue } = await setup({ context: [draft(), draft(), draft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm, contextCalls, resume, nextStep, paused } = await setup({ context: [draft(), draft(), draft()] });
+    await start();
     await resume({
       action: "continue",
       answers: [
@@ -289,7 +297,7 @@ describe("pipeline", () => {
       cardEdits: { title: "Budget hearing", profile: "supreme_court", participants: [{ speakerId: "A", name: "Maria Silva" }] },
     });
     // Still insufficient after round 1's answers: the follow-up round pauses with its own questions.
-    expect(await interruptValue()).toEqual({ type: "context" });
+    expect(await paused()).toBe(true);
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", progress: 55 });
     expect(modelCalls(llm).map((c) => c.name)).toEqual(["context_card", "context_card"]);
     expect(modelCalls(llm)[1]!.user).toContain("Q: When was this recorded or first aired?\nA: Maybe last spring");
@@ -317,7 +325,7 @@ describe("pipeline", () => {
 
     // The second round's answers are folded into the card, then the pipeline finishes even though it is still insufficient.
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "Sometime in 2025" }], cardEdits: {} });
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await nextStep()).toBe("done");
     expect(contextCalls()).toHaveLength(3);
     expect(modelCalls(llm)[2]!.user).toContain("A: Maybe last spring");
     expect(modelCalls(llm)[2]!.user).toContain("Q: When was this recorded or first aired?\nA: Sometime in 2025");
@@ -326,8 +334,8 @@ describe("pipeline", () => {
   });
 
   it("a confirmed human name survives a second context round", async () => {
-    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft(), draft(), draft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm, resume } = await setup({ context: [draft(), draft(), draft()] });
+    await start();
     const p = await createCustomPerson(db, { displayName: "Joana Confirmada", createdBy: "owner" });
     await setHumanAttribution(db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "Maybe last spring" }], cardEdits: {} });
@@ -341,8 +349,8 @@ describe("pipeline", () => {
   });
 
   it("skip after a rename in Who's who: the analysis prompts carry the human name", async () => {
-    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm, resume } = await setup({ context: [draft()] });
+    await start();
     const p = await createCustomPerson(db, { displayName: "Renomeada Na Pausa", createdBy: "owner" });
     await setHumanAttribution(db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: p.id, ownerId: "owner" });
     await resume({ action: "skip" });
@@ -353,43 +361,43 @@ describe("pipeline", () => {
   });
 
   it("skipping the follow-up round goes on to ready", async () => {
-    const { graph, cfg, sessionId, contextCalls, resume, interruptValue } = await setup({ context: [draft(), draft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, contextCalls, resume, paused } = await setup({ context: [draft(), draft()] });
+    await start();
     await resume({ action: "continue", answers: [{ questionId: "date", answer: "no idea" }], cardEdits: {} });
-    expect(await interruptValue()).toEqual({ type: "context" });
+    expect(await paused()).toBe(true);
     await resume({ action: "skip" });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
     expect(contextCalls()).toHaveLength(2);
   });
 
   it("sufficient context never pauses for context", async () => {
-    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [sufficientDraft()] });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
     expect((await getContextCard(db, sessionId))!).toMatchObject({ round: 1, card: { sufficient: true } });
   });
 
   it("fails cleanly on a video without audio", async () => {
-    const { graph, cfg, sessionId, llm } = await setup({ fixture: SILENT });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm } = await setup({ fixture: SILENT });
+    expect(await start()).toBe("stopped");
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "This video has no audio track." });
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await start()).toBe("ignored"); // nothing left to run
     expect(llm.calls.length).toBe(0);
   });
 
   it("audio-only without acknowledgement fails with the copy", async () => {
-    const { graph, cfg, sessionId, llm } = await setup({ fixture: AUDIO });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm } = await setup({ fixture: AUDIO });
+    expect(await start()).toBe("stopped");
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "This file has no video." });
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await start()).toBe("ignored"); // nothing left to run
     expect(llm.calls.length).toBe(0);
   });
 
   it("with acknowledgement continues and sets hasVideo false", async () => {
-    const { graph, cfg, sessionId } = await setup({ fixture: AUDIO, audioOnlyAck: true, context: [draft()] });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, paused } = await setup({ fixture: AUDIO, audioOnlyAck: true, context: [draft()] });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ hasVideo: false, stage: "awaiting_context", proxyKey: `${sessionId}/proxy.mp4` });
-    expect((await graph.getState(cfg)).tasks[0]!.interrupts[0]!.value).toEqual({ type: "context" });
+    expect(await paused()).toBe(true);
   });
 
   it("youtube upload date answers the date question", async () => {
@@ -402,11 +410,11 @@ describe("pipeline", () => {
       durationS: 100,
     };
     const llmDraft = draft(fact("2026-03-14", "metadata", "2026-03-14"));
-    const { graph, cfg, sessionId, llm } = await setup({
+    const { start, sessionId, llm } = await setup({
       youtube: youtubeStub(metadata),
       context: [llmDraft],
     });
-    await graph.invoke({ sessionId }, cfg);
+    await start();
     expect((await getSession(db, sessionId))!.stage).toBe("ready");
 
     const s = (await getSession(db, sessionId))!;
@@ -435,30 +443,30 @@ describe("pipeline", () => {
     const bundestag: RecordRef = { chamber: "bundestag", period: 21, sitting: 92, date: "2026-09-09", url: "https://www.bundestag.de/services/opendata" };
 
     it("a Bundestag title gets a suggested row, and the analysis goes on", async () => {
-      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()] });
-      await graph.invoke({ sessionId }, cfg);
+      const { start, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()] });
+      await start();
       expect(await getSessionRecord(db, sessionId)).toMatchObject({ chamber: "bundestag", status: "suggested", ref: bundestag });
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     });
 
     it("a video that points to no sitting gets none", async () => {
-      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta({ channel: "phoenix", title: "US-Zwischenwahlen | 04.11.26" })), context: [draft()] });
-      await graph.invoke({ sessionId }, cfg);
+      const { start, sessionId } = await setup({ youtube: youtubeStub(meta({ channel: "phoenix", title: "US-Zwischenwahlen | 04.11.26" })), context: [draft()] });
+      await start();
       expect(await getSessionRecord(db, sessionId)).toBeNull();
     });
 
     it("a record linked at upload keeps its row untouched", async () => {
       const linked: RecordRef = { chamber: "senado", date: FIXTURE_DATE, sessionCode: null, url: "https://example/record" };
       const { f } = fakeSenadoFetch();
-      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()], transcript: transcriptOfSpeeches(), record: linked, fetch: f });
-      await graph.invoke({ sessionId }, cfg);
+      const { start, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()], transcript: transcriptOfSpeeches(), record: linked, fetch: f });
+      await start();
       expect(await getSessionRecord(db, sessionId)).toMatchObject({ chamber: "senado", status: "matched", ref: linked });
     });
 
     it("a failing suggester never fails the session", async () => {
       const log = vi.spyOn(console, "error").mockImplementation(() => {});
-      const { graph, cfg, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()], db: failingSuggestDb() });
-      await graph.invoke({ sessionId }, cfg);
+      const { start, sessionId } = await setup({ youtube: youtubeStub(meta()), context: [draft()], db: failingSuggestDb() });
+      await start();
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
       expect(await getSessionRecord(db, sessionId)).toBeNull();
       expect(log).toHaveBeenCalled();
@@ -466,39 +474,39 @@ describe("pipeline", () => {
     });
 
     it("an uploaded file gets none", async () => {
-      const { graph, cfg, sessionId } = await setup({ context: [draft()] });
+      const { start, sessionId } = await setup({ context: [draft()] });
       await updateSession(db, sessionId, { title: "92. Sitzung vom 09.09.2026", metadata: { channel: "Deutscher Bundestag", title: "92. Sitzung vom 09.09.2026" } });
-      await graph.invoke({ sessionId }, cfg);
+      await start();
       expect(await getSessionRecord(db, sessionId)).toBeNull();
     });
   });
 
   it("youtube download failure ends with the friendly message", async () => {
     const stderr = "ERROR: [youtube] abc: Sign in to confirm you're not a bot. Use --cookies-from-browser";
-    const { graph, cfg, sessionId, llm } = await setup({
+    const { start, sessionId, llm } = await setup({
       youtube: async () => {
         throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
       },
     });
-    await graph.invoke({ sessionId }, cfg);
+    expect(await start()).toBe("stopped");
     const s = (await getSession(db, sessionId))!;
     expect(s.stage).toBe("failed");
     expect(s.error).toContain("upload the file");
     expect(s.error).not.toContain("ERROR:");
     expect(s.originalKey).toBeNull();
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await start()).toBe("ignored"); // nothing left to run
     expect(llm.calls.length).toBe(0);
   });
 
   it("an unexpected download error ends with the generic message", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const { graph, cfg, sessionId, llm } = await setup({
+      const { start, sessionId, llm } = await setup({
         youtube: async () => {
           throw new Error("ENOENT: no such file or directory, open '/data/x/original.info.json'");
         },
       });
-      await graph.invoke({ sessionId }, cfg);
+      await start();
       expect(await getSession(db, sessionId)).toMatchObject({
         stage: "failed",
         error: "Couldn't download this video from YouTube.",
@@ -511,10 +519,10 @@ describe("pipeline", () => {
   });
 
   it("fails cleanly when no speech is detected", async () => {
-    const { graph, cfg, sessionId, llm } = await setup({ transcript: { ...transcript, words: [] } });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm } = await setup({ transcript: { ...transcript, words: [] } });
+    expect(await start()).toBe("stopped");
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "No speech was detected in this video." });
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await start()).toBe("ignored"); // nothing left to run
     expect(llm.calls.length).toBe(0);
   });
 
@@ -525,10 +533,10 @@ describe("pipeline", () => {
         throw new TranscriptionError("language_detection cannot be performed on files with no spoken audio.");
       },
     };
-    const { graph, cfg, sessionId, llm } = await setup({ transcriber: silent });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm } = await setup({ transcriber: silent });
+    expect(await start()).toBe("stopped");
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "No speech was detected in this video." });
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await start()).toBe("ignored"); // nothing left to run
     expect(llm.calls.length).toBe(0);
   });
 
@@ -538,9 +546,9 @@ describe("pipeline", () => {
         throw new TranscriptionError("Audio file is corrupt");
       },
     };
-    const { graph, cfg, sessionId } = await setup({ transcriber: broken });
-    await expect(graph.invoke({ sessionId }, cfg)).rejects.toThrow("Audio file is corrupt");
-    await expect(graph.invoke({ sessionId }, cfg)).rejects.toBeInstanceOf(TranscriptionError); // jobs.ts relies on instanceof
+    const { start, sessionId } = await setup({ transcriber: broken });
+    await expect(start()).rejects.toThrow("Audio file is corrupt");
+    await expect(start()).rejects.toBeInstanceOf(TranscriptionError); // jobs.ts relies on instanceof
   });
 
   it("passes the probed duration to the transcriber", async () => {
@@ -551,8 +559,8 @@ describe("pipeline", () => {
         return { ...transcript, words: [] };
       },
     };
-    const { graph, cfg, sessionId } = await setup({ transcriber: recording });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ transcriber: recording });
+    await start();
     expect(seen).toHaveLength(1);
     expect(Math.abs(seen[0]! - 100_000)).toBeLessThan(500);
   });
@@ -567,9 +575,9 @@ describe("pipeline", () => {
     };
     const a = await setup({ transcriber: recording });
     await updateSession(db, a.sessionId, { languageOverride: "fr" });
-    await a.graph.invoke({ sessionId: a.sessionId }, a.cfg);
+    await a.start();
     const b = await setup({ transcriber: recording });
-    await b.graph.invoke({ sessionId: b.sessionId }, b.cfg);
+    await b.start();
     expect(seen).toEqual(["fr", undefined]);
   });
 
@@ -581,10 +589,10 @@ describe("pipeline", () => {
     try {
       const fixture = path.join(root, `unreadable-${Math.random().toString(36).slice(2)}.mp4`);
       await writeFile(fixture, content);
-      const { graph, cfg, sessionId, llm } = await setup({ fixture });
-      await graph.invoke({ sessionId }, cfg);
+      const { start, sessionId, llm } = await setup({ fixture });
+      expect(await start()).toBe("stopped");
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "We couldn't read this video file." });
-      expect((await graph.getState(cfg)).next).toEqual([]);
+      expect(await start()).toBe("ignored"); // nothing left to run
       expect(llm.calls.length).toBe(0);
     } finally {
       log.mockRestore();
@@ -596,13 +604,13 @@ const ONE_TOPIC = [{ title: "Interview", startMs: 0, endMs: 100_000 }];
 
 describe("analysis", () => {
   it("graph runs to ready and stores one complete version", async () => {
-    const { graph, cfg, sessionId, llm } = await setup({
+    const { start, sessionId, llm, nextStep } = await setup({
       context: [sufficientDraft()],
       analysis: analysisResponses({ topics: ONE_TOPIC }),
     });
-    await graph.invoke({ sessionId }, cfg);
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100, profile: "interview" });
-    expect((await graph.getState(cfg)).next).toEqual([]);
+    expect(await nextStep()).toBe("done");
     expect(modelCalls(llm).map((c) => c.name)).toEqual([
       "context_card", "topics", "moments", "punchlines", "briefing", "checks", "checks", "checks",
     ]);
@@ -620,8 +628,8 @@ describe("analysis", () => {
   });
 
   it("index node indexes the transcript into the session's collection", async () => {
-    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: analysisResponses({ topics: ONE_TOPIC }) });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [sufficientDraft()], analysis: analysisResponses({ topics: ONE_TOPIC }) });
+    await start();
     const col = await testChroma.getCollection({ name: collectionName(sessionId) });
     expect(await col.count()).toBeGreaterThan(0);
     await deleteSessionIndex(testChroma, sessionId);
@@ -631,8 +639,8 @@ describe("analysis", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const search = { chroma: testChroma, embedder: { embed: async () => Promise.reject(new Error("model download failed")) } };
-      const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: analysisResponses({ topics: ONE_TOPIC }), search });
-      await graph.invoke({ sessionId }, cfg);
+      const { start, sessionId } = await setup({ context: [sufficientDraft()], analysis: analysisResponses({ topics: ONE_TOPIC }), search });
+      await start();
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
       expect(log).toHaveBeenCalled();
     } finally {
@@ -643,14 +651,14 @@ describe("analysis", () => {
   it("a duplicate start after ready is a no-op", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const { graph, cfg, sessionId, llm, deps } = await setup({
+      const { start, sessionId, llm, deps } = await setup({
         context: [sufficientDraft()],
         analysis: analysisResponses({ topics: ONE_TOPIC, runs: 2 }),
       });
-      await graph.invoke({ sessionId }, cfg);
+      await start();
       expect((await getSession(db, sessionId))!.stage).toBe("ready");
       const calls = modelCalls(llm).length;
-      const ctx: JobContext = { db, deps, graph };
+      const ctx: JobContext = { db, deps };
       await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
       expect(modelCalls(llm)).toHaveLength(calls);
       expect(await listAnalysisVersions(db, sessionId)).toHaveLength(1);
@@ -662,7 +670,7 @@ describe("analysis", () => {
 });
 
 describe("crash and resume", () => {
-  it("a retried start job resumes from the checkpoint without re-running finished nodes", async () => {
+  it("a retried start job resumes from the stored step without re-running finished steps", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       let transcribeCalls = 0;
@@ -680,22 +688,22 @@ describe("crash and resume", () => {
           return media.extractAudio(input, output);
         },
       };
-      const { graph, cfg, sessionId, llm, deps } = await setup({
+      const { sessionId, llm, deps, nextStep } = await setup({
         transcriber: flaky,
         media: counting,
         context: [draft()],
       });
-      const ctx: JobContext = { db, deps, graph };
+      const ctx: JobContext = { db, deps };
 
       // First attempt fails in transcribe: not final, so the job is retried and the stage is left as it was.
       await expect(handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow("socket hang up");
       expect((await getSession(db, sessionId))!.stage).toBe("transcribing");
-      expect((await graph.getState(cfg)).next).toEqual(["transcribe"]);
+      expect(await nextStep()).toBe("transcribe");
 
-      // pg-boss retries the job: the run continues from the checkpoint.
+      // pg-boss retries the job: the run continues from its stored step.
       await handleStart(ctx, { sessionId }, { retryCount: 1, retryLimit: 2 });
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", progress: 55 });
-      expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
+      expect(await nextStep()).toBe("ask_context");
       expect(extracted).toHaveLength(1); // ingest ran once
       expect(transcribeCalls).toBe(2);
       expect(modelCalls(llm).map((c) => c.name)).toEqual(["context_card"]);
@@ -703,6 +711,8 @@ describe("crash and resume", () => {
       // A duplicate start job for the same session (e.g. redelivered after the pause) changes nothing.
       await handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 });
       expect(modelCalls(llm)).toHaveLength(1);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", progress: 55 });
+      expect(await nextStep()).toBe("ask_context");
     } finally {
       log.mockRestore();
     }
@@ -712,16 +722,16 @@ describe("crash and resume", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       // writeBriefing degrades on a model error, so the "crash" is the worker dying while it saves the briefing.
-      const { graph, cfg, sessionId, llm, deps, contextCalls } = await setup({
+      const { sessionId, llm, deps, contextCalls, nextStep } = await setup({
         context: [sufficientDraft()],
         analysis: analysisResponses({ topics: ONE_TOPIC, runs: 2 }),
         db: crashOnInsert(db, "briefings"),
       });
-      const ctx: JobContext = { db, deps, graph };
+      const ctx: JobContext = { db, deps };
 
       await expect(handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow("worker crashed");
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "writing_briefing", progress: 92 });
-      expect((await graph.getState(cfg)).next).toEqual(["analyze"]);
+      expect(await nextStep()).toBe("analyze");
       // The unfinished version stays running so the retry reuses its number.
       expect((await listAnalysisVersions(db, sessionId)).map((v) => [v.version, v.status])).toEqual([[1, "running"]]);
       expect(await getCurrentAnalysis(db, sessionId)).toBeNull();
@@ -741,14 +751,168 @@ describe("crash and resume", () => {
   });
 });
 
+describe("runner", () => {
+  const dateAnswer: ResumePayload = { action: "continue", answers: [{ questionId: "date", answer: "Maybe last spring" }], cardEdits: {} };
+  const runOf = async (id: string) => (await getPipelineRun(db, id))!;
+  const quiet = () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    return () => (log.mockRestore(), err.mockRestore());
+  };
+
+  it("a duplicate start while the web has moved the stage to understanding leaves the stage alone and runs nothing", async () => {
+    const restore = quiet();
+    try {
+      const { start, sessionId, contextCalls, nextStep, deps } = await setup({ context: [draft(), draft()] });
+      expect(await start()).toBe("paused");
+      expect(await transitionStage(db, sessionId, "awaiting_context", "understanding", 55)).toBe(true); // the web's Continue
+      expect(await start()).toBe("paused"); // a redelivered start job
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "understanding", progress: 55 });
+      expect(await nextStep()).toBe("ask_context");
+      expect(contextCalls()).toHaveLength(1);
+      // The resume the web sent is still answered.
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer })).toBe("paused");
+      expect(contextCalls()).toHaveLength(2);
+      expect((await runOf(sessionId)).answers).toEqual([{ question: "When was this recorded or first aired?", answer: "Maybe last spring" }]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a retried resume after the answers were applied does not append them again", async () => {
+    const restore = quiet();
+    try {
+      const { start, resume, sessionId, contextCalls, deps, paused } = await setup({ context: [draft(), draft(), draft()] });
+      await start();
+      expect(await resume(dateAnswer)).toBe("paused"); // round 2 is waiting
+      expect(contextCalls()).toHaveLength(2);
+      const before = await runOf(sessionId);
+      expect(before).toMatchObject({ nextStep: "ask_context", round: 2 });
+      expect(before.answers).toHaveLength(1);
+      // pg-boss redelivers the same resume job: the new pause is not answered with the old payload.
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer })).toBe("paused");
+      expect(contextCalls()).toHaveLength(2); // one context_card call per round
+      expect((await runOf(sessionId)).answers).toEqual(before.answers);
+      expect(await paused()).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a resume retried after a crash in understand_context continues without the payload", async () => {
+    const restore = quiet();
+    try {
+      const crash = () => {
+        throw new Error("socket hang up");
+      };
+      const { start, resume, sessionId, contextCalls, deps, llm, paused } = await setup({ context: [draft(), crash, draft()] });
+      await start();
+      await expect(resume(dateAnswer)).rejects.toThrow("socket hang up");
+      expect(await runOf(sessionId)).toMatchObject({ nextStep: "understand_context", round: 1 });
+      expect((await runOf(sessionId)).answers).toHaveLength(1);
+      expect(await runPipeline(deps, sessionId, { resume: dateAnswer })).toBe("paused"); // the job's retry
+      expect(contextCalls()).toHaveLength(3); // round 1, the crashed call, round 2
+      expect((await runOf(sessionId)).answers).toHaveLength(1);
+      expect(modelCalls(llm)[2]!.user.match(/A: Maybe last spring/g)).toHaveLength(1);
+      expect(await runOf(sessionId)).toMatchObject({ nextStep: "ask_context", round: 2 });
+      expect(await paused()).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a session left mid-pipeline by the old graph (no run row, stage transcribing) continues from transcribe", async () => {
+    const restore = quiet();
+    try {
+      let transcribeCalls = 0;
+      const flaky: Transcriber = {
+        transcribe: async () => {
+          if (++transcribeCalls === 1) throw new Error("socket hang up");
+          return transcript;
+        },
+      };
+      const extracted: string[] = [];
+      const counting = { ...media, extractAudio: async (i: string, o: string) => (extracted.push(o), media.extractAudio(i, o)) };
+      const { start, sessionId, contextCalls, nextStep } = await setup({ transcriber: flaky, media: counting, context: [draft()] });
+      await expect(start()).rejects.toThrow("socket hang up");
+      await deletePipelineRun(db, sessionId); // the old graph's checkpoint is gone; the stage is what remains
+      expect((await getSession(db, sessionId))!.stage).toBe("transcribing");
+      expect(await start()).toBe("paused");
+      expect(extracted).toHaveLength(1); // ingest did not run again
+      expect(transcribeCalls).toBe(2);
+      expect(contextCalls()).toHaveLength(1);
+      expect(await nextStep()).toBe("ask_context");
+    } finally {
+      restore();
+    }
+  });
+
+  it("a session left mid-pipeline by the old graph (stage awaiting_context) pauses, and a resume continues", async () => {
+    const restore = quiet();
+    try {
+      const { start, resume, sessionId, contextCalls, paused } = await setup({ context: [draft()] });
+      await start();
+      await deletePipelineRun(db, sessionId);
+      expect(await start()).toBe("paused"); // the retried start finds the pause
+      expect(await paused()).toBe(true);
+      expect(contextCalls()).toHaveLength(1);
+      expect((await runOf(sessionId)).round).toBe(1); // the round of the stored card
+      expect(await resume({ action: "skip" })).toBe("done");
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+    } finally {
+      restore();
+    }
+  });
+
+  it("a session left mid-pipeline by the old graph (no row, web already moved the stage to understanding) a resume applies the answers", async () => {
+    const restore = quiet();
+    try {
+      const { start, resume, sessionId, llm, paused } = await setup({ context: [draft(), draft()] });
+      await start();
+      await deletePipelineRun(db, sessionId); // paused under LangGraph, answered after the deploy
+      expect(await resume(dateAnswer)).toBe("paused");
+      expect(modelCalls(llm)[1]!.user).toContain("Q: When was this recorded or first aired?\nA: Maybe last spring");
+      expect((await getContextCard(db, sessionId))!.round).toBe(2);
+      expect(await paused()).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a start job for a ready or failed session is ignored", async () => {
+    const restore = quiet();
+    try {
+      const ready = await setup({ context: [sufficientDraft()] });
+      await setStage(db, ready.sessionId, "ready", 100); // finished under the old graph: no run row
+      expect(await ready.start()).toBe("ignored");
+      expect(await ready.resume({ action: "skip" })).toBe("ignored");
+      const failed = await setup({ context: [sufficientDraft()] });
+      await setStage(db, failed.sessionId, "failed", 20, "No speech was detected in this video.");
+      expect(await failed.start()).toBe("ignored");
+      expect(await getPipelineRun(db, failed.sessionId)).toBeNull();
+      expect(ready.llm.calls.length + failed.llm.calls.length).toBe(0);
+      expect(await getSession(db, ready.sessionId)).toMatchObject({ stage: "ready", progress: 100 });
+      expect(await getSession(db, failed.sessionId)).toMatchObject({ stage: "failed", error: "No speech was detected in this video." });
+      // A run that finished is not started again either.
+      const done = await setup({ context: [sufficientDraft()] });
+      expect(await done.start()).toBe("done");
+      const calls = done.llm.calls.length;
+      expect(await done.start()).toBe("ignored");
+      expect(done.llm.calls).toHaveLength(calls);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe("match_record", () => {
   const record: RecordRef = { chamber: "senado", date: FIXTURE_DATE, sessionCode: null, url: "https://example/record" };
   const recordRows = async (id: string) => (await listAttributions(db, id)).filter((a) => a.source === "record" && a.supersededAt === null);
 
   it("graph: name_speakers runs the record step when a record is linked at upload (matched before the context pause)", async () => {
     const { f } = fakeSenadoFetch();
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
+    await start();
     // Paused for context, and the official names are already there.
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "matched" });
@@ -761,8 +925,8 @@ describe("match_record", () => {
   it("a record that can't be fetched never fails the session", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const { f } = fakeSenadoFetch({ list: () => new Response("boom", { status: 503 }) });
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" }); // went on to the context check
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
     log.mockRestore();
@@ -772,8 +936,8 @@ describe("match_record", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const enqueueNames = vi.fn(async (_id: string) => {});
     const { f } = fakeSenadoFetch({ list: () => new Response("boom", { status: 503 }) });
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f, enqueueNames });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f, enqueueNames });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "pending", error: null });
     expect(enqueueNames).toHaveBeenCalledExactlyOnceWith(sessionId);
@@ -784,8 +948,8 @@ describe("match_record", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const enqueueNames = vi.fn(async () => { throw new Error("queue down"); });
     const { f } = fakeSenadoFetch({ list: () => new Response("boom", { status: 503 }) });
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f, enqueueNames });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f, enqueueNames });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "failed", error: "The Senado record couldn't be fetched. Please try again." });
     log.mockRestore();
@@ -793,21 +957,21 @@ describe("match_record", () => {
 
   it("a record row left running by a crashed attempt is taken over and matched", async () => {
     const { f } = fakeSenadoFetch();
-    const { graph, cfg, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
+    const { start, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
     await claimRecordFetch(db, sessionId); // the crashed attempt's claim
     expect((await getSessionRecord(db, sessionId))?.status).toBe("running");
-    await graph.invoke({ sessionId }, cfg);
+    await start();
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "matched" });
     expect(await recordRows(sessionId)).toHaveLength(5);
   });
 
   it("the raw record payload survives name_speakers' frame clean-up", async () => {
     const { f } = fakeSenadoFetch();
-    const { graph, cfg, sessionId, resume } = await setup({
+    const { start, sessionId, resume } = await setup({
       context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f,
       analysis: { ...emptyAnalysisResponses(), captions: Array.from({ length: 30 }, () => captionOf("Fulano Quimby", "PL")) },
     });
-    await graph.invoke({ sessionId }, cfg);
+    await start();
     await resume({ action: "skip" }); // name_speakers runs, then the analysis
     const rec = (await getSessionRecord(db, sessionId))!;
     expect(rec).toMatchObject({ status: "matched", rawKey: `${sessionId}/names/record.json` });
@@ -816,8 +980,8 @@ describe("match_record", () => {
 
   it("a suggestion accepted at the context check is matched by match_record_late on Continue, before the analysis", async () => {
     const { f } = fakeSenadoFetch();
-    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), fetch: f });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, resume } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), fetch: f });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     expect(await getSessionRecord(db, sessionId)).toBeNull();
     expect(await suggestRecordRow(db, sessionId, record)).toBe(true);
@@ -831,8 +995,8 @@ describe("match_record", () => {
 
   it("a suggestion nobody accepted stays suggested and the graph goes on", async () => {
     const { f, calls } = fakeSenadoFetch();
-    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), fetch: f });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, resume } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), fetch: f });
+    await start();
     await suggestRecordRow(db, sessionId, record);
     await resume({ action: "skip" });
     expect(calls).toEqual([]);
@@ -842,27 +1006,29 @@ describe("match_record", () => {
 
   it("match_record_late with no record is a no-op", async () => {
     const { f, calls } = fakeSenadoFetch();
-    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], fetch: f });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, resume } = await setup({ context: [draft()], fetch: f });
+    await start();
     await resume({ action: "skip" });
     expect(calls).toEqual([]);
     expect(await getSessionRecord(db, sessionId)).toBeNull();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
   });
 
-  it("an old checkpoint whose next is name_speakers still resumes", async () => {
-    const { graph, cfg, sessionId } = await setup({ context: [draft()] });
-    await graph.invoke({ sessionId }, cfg);
-    await graph.updateState(cfg, { sessionId }, "match_record_late"); // the old graph's edge led straight to name_speakers
-    expect((await graph.getState(cfg)).next).toEqual(["name_speakers"]);
-    await graph.invoke(null, cfg);
+  it("a session left mid-pipeline by the old graph (no run row, stage naming_speakers) continues from name_speakers", async () => {
+    const { start, sessionId, nextStep } = await setup({ context: [draft()] });
+    await start();
+    // What a LangGraph checkpoint at name_speakers looks like after the deploy: no run row, the stage of that step.
+    await deletePipelineRun(db, sessionId);
+    await setStage(db, sessionId, "naming_speakers", 60);
+    expect(await start()).toBe("done");
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
+    expect(await nextStep()).toBe("done");
   });
 
   it("without a linked record the step does nothing", async () => {
     const { f, calls } = fakeSenadoFetch();
-    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], fetch: f });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId } = await setup({ context: [sufficientDraft()], fetch: f });
+    await start();
     expect(calls).toEqual([]);
     expect(await getSessionRecord(db, sessionId)).toBeNull();
   });
@@ -877,11 +1043,11 @@ describe("name_speakers", () => {
   it("graph: name_speakers writes caption proposals and is idempotent", async () => {
     const first = unique();
     const name = `${first} Quimby`;
-    const { graph, cfg, sessionId, deps, llm } = await setup({
+    const { start, sessionId, deps, llm } = await setup({
       context: [sufficientDraft()],
       analysis: withCaptions(Array.from({ length: 4 }, () => captionOf(name, "PL"))),
     });
-    await graph.invoke({ sessionId }, cfg);
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
     expect(llm.calls.filter((c) => c.name === "captions")).toMatchObject([{ model: "fast", images: 1 }, { model: "fast", images: 1 }]);
     const [row, ...rest] = await captionRows(sessionId);
@@ -914,7 +1080,7 @@ describe("name_speakers", () => {
 
   it("graph: audio-only or a deleted original skips captions", async () => {
     const audio = await setup({ fixture: AUDIO, audioOnlyAck: true, context: [sufficientDraft()] });
-    await audio.graph.invoke({ sessionId: audio.sessionId }, audio.cfg);
+    await audio.start();
     expect(audio.llm.calls.filter((c) => c.name === "captions")).toEqual([]);
     expect(await captionRows(audio.sessionId)).toEqual([]);
 
@@ -935,8 +1101,8 @@ describe("name_speakers", () => {
       const boom = () => {
         throw new Error("vision is down");
       };
-      const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: withCaptions(Array.from({ length: 4 }, () => boom)) });
-      await graph.invoke({ sessionId }, cfg);
+      const { start, sessionId } = await setup({ context: [sufficientDraft()], analysis: withCaptions(Array.from({ length: 4 }, () => boom)) });
+      await start();
       expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null });
       expect(await captionRows(sessionId)).toEqual([]);
       expect(log).toHaveBeenCalled();
@@ -948,8 +1114,8 @@ describe("name_speakers", () => {
   it("graph: a trial session reads no captions", async () => {
     const first = unique();
     const trial = { ...sufficientDraft(), profile: { value: "trial" as const, confidence: 0.9, evidence: "Sentence number 2." } };
-    const { graph, cfg, sessionId, llm } = await setup({ context: [trial], analysis: withCaptions([captionOf(first), captionOf(first)]) });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm } = await setup({ context: [trial], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null });
     expect(llm.calls.filter((c) => c.name === "captions")).toEqual([]);
     expect(await captionRows(sessionId)).toEqual([]);
@@ -957,8 +1123,8 @@ describe("name_speakers", () => {
 
   it("graph: a profile set to trial at the context check reads no captions", async () => {
     const first = unique();
-    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft(), draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm, resume } = await setup({ context: [draft(), draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     await resume({ action: "continue", answers: [], cardEdits: { profile: "trial", dateOrYear: "2026" } });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null });
@@ -969,8 +1135,8 @@ describe("name_speakers", () => {
 
   it("graph: Skip keeps a profile set to trial at the context check (no captions, analysed as trial)", async () => {
     const first = unique();
-    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm, resume } = await setup({ context: [draft()], analysis: withCaptions([captionOf(first), captionOf(first)]) });
+    await start();
     await resume({ action: "skip", cardEdits: { profile: "trial" } });
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", error: null, profile: "trial" });
     expect((await getContextCard(db, sessionId))!.card.profile.value).toBe("trial");
@@ -980,8 +1146,8 @@ describe("name_speakers", () => {
 
   it("graph: captions run after the context check", async () => {
     const first = unique();
-    const { graph, cfg, sessionId, llm, resume } = await setup({ context: [draft()], analysis: withCaptions(Array.from({ length: 4 }, () => captionOf(first))) });
-    await graph.invoke({ sessionId }, cfg);
+    const { start, sessionId, llm, resume } = await setup({ context: [draft()], analysis: withCaptions(Array.from({ length: 4 }, () => captionOf(first))) });
+    await start();
     expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
     expect(llm.calls.filter((c) => c.name === "captions")).toEqual([]);
     expect(await captionRows(sessionId)).toEqual([]);
@@ -991,27 +1157,12 @@ describe("name_speakers", () => {
     expect(await captionRows(sessionId)).toHaveLength(1);
   });
 
-  it("an old checkpoint at name_speakers (no context card yet) still gets the context check", async () => {
-    const { graph, cfg, sessionId, resume } = await setup({ context: [draft()], analysis: withCaptions([]) });
-    await updateSession(db, sessionId, { hasVideo: true, proxyKey: `${sessionId}/proxy.mp4` }); // an old session: its copy was made at ingest
-    await saveTranscript(db, sessionId, transcript);
-    // The state the old graph left: name_speakers done, no context card.
-    await graph.updateState(cfg, { sessionId }, "name_speakers");
-    expect((await graph.getState(cfg)).next).toEqual(["understand_context"]);
-    await graph.invoke(null, cfg);
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
-    expect((await graph.getState(cfg)).next).toEqual(["ask_context"]);
-    expect(await getContextCard(db, sessionId)).not.toBeNull();
-    await resume({ action: "skip" });
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready" });
-  });
-
   it("a missing API key escapes the node (the job fails the session, Ruling R8)", async () => {
     const missing = () => {
       throw new MissingApiKeyError("OPENROUTER_API_KEY");
     };
-    const { graph, cfg, sessionId } = await setup({ context: [sufficientDraft()], analysis: withCaptions([missing, missing]) });
-    await expect(graph.invoke({ sessionId }, cfg)).rejects.toBeInstanceOf(MissingApiKeyError);
+    const { start, sessionId } = await setup({ context: [sufficientDraft()], analysis: withCaptions([missing, missing]) });
+    await expect(start()).rejects.toBeInstanceOf(MissingApiKeyError);
   });
 
   it("a human-rejected caption row survives a re-run and that person is not proposed again", async () => {
@@ -1077,12 +1228,12 @@ describe("name_speakers", () => {
 
   it("real order (context first, captions second): a short caption reuses the fuller context person (no conflict)", async () => {
     const first = unique();
-    const { graph, cfg, sessionId, resume } = await setup({
+    const { start, sessionId, resume } = await setup({
       transcript: saidName(first),
       context: [namedDraft(first, `${first} Quimby`)],
       analysis: withCaptions([captionOf(first.toUpperCase()), captionOf(first.toUpperCase())]),
     });
-    await graph.invoke({ sessionId }, cfg);
+    await start();
     await resume({ action: "skip" }); // the pause comes first; captions are read after it
     const atts = (await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null);
     const caption = atts.find((a) => a.source === "caption")!;
@@ -1095,12 +1246,12 @@ describe("name_speakers", () => {
 
   it("real order, mirrored: a full caption name is reused for a short context name (the context row follows it)", async () => {
     const first = unique();
-    const { graph, cfg, sessionId, resume } = await setup({
+    const { start, sessionId, resume } = await setup({
       transcript: saidName(first),
       context: [namedDraft(first, first)],
       analysis: withCaptions([captionOf(`${first} Quimby`), captionOf(`${first} Quimby`)]),
     });
-    await graph.invoke({ sessionId }, cfg);
+    await start();
     await resume({ action: "skip" }); // the pause comes first; captions are read after it
     const atts = (await listAttributions(db, sessionId)).filter((a) => a.supersededAt === null);
     const caption = atts.find((a) => a.source === "caption")!;

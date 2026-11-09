@@ -128,7 +128,7 @@ export async function sweepStaleJobRows(
   const records = await db.execute(sql`
     update session_records r set status = 'failed', error = ${STUCK_MESSAGE}, updated_at = now()
     where r.status in ('pending', 'running') and r.updated_at < ${cutoff}
-      -- an accepted suggestion waiting at the context check: the graph's match_record_late owns it, no job is meant to exist
+      -- an accepted suggestion waiting at the context check: the pipeline's match_record_late owns it, no job is meant to exist
       and not (r.status = 'pending' and exists (select 1 from sessions s where s.id = r.session_id and s.stage = 'awaiting_context'))
       and not ${hasLiveJobFor(QUEUES.names, { sessionId: "r.session_id" })}
       and not ${hasLiveJobFor(QUEUES.start, { sessionId: "r.session_id" })}

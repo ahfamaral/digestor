@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ChromaClient } from "chromadb";
-import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { PgBoss } from "pg-boss";
 import type { z } from "zod";
 import {
@@ -42,7 +41,7 @@ import {
   type JobContext,
 } from "./jobs.js";
 import * as media from "./media/ffmpeg.js";
-import { buildPipeline, type PipelineDeps } from "./pipeline/graph.js";
+import type { PipelineDeps } from "./pipeline/run.js";
 import { AssemblyAITranscriber, deferredTranscriber } from "./transcribe/assemblyai.js";
 import { createAnthropicLLM, type StructuredLLM } from "./llm/structured.js";
 import { createAnthropicToolLLM, type ToolLLM } from "./llm/tools.js";
@@ -100,10 +99,7 @@ async function main() {
   const deps: PipelineDeps = { db, storage, transcriber, llm, media, youtube: { downloadYouTube }, search: { chroma, embedder } };
 
   // `enqueueNames` and `enqueueProxy` are wired once the queue exists (below).
-  const saver = PostgresSaver.fromConnString(databaseUrl);
-  await saver.setup();
-  const graph = buildPipeline(deps, saver);
-  const ctx: JobContext = { db, deps, graph };
+  const ctx: JobContext = { db, deps };
 
   const boss = new PgBoss(databaseUrl);
   boss.on("error", console.error);
@@ -144,7 +140,7 @@ async function main() {
     const { released } = await releaseReadyAudio({ db, storage });
     if (released > 0) console.log(`cleanup: released audio.mp3 of ${released} ready session(s)`);
     const days = videoRetentionDays();
-    const { removed } = await runVideoRetention({ db, storage, checkpointer: saver, chroma }, days);
+    const { removed } = await runVideoRetention({ db, storage, chroma }, days);
     console.log(`cleanup: removed the video of ${removed} session(s) older than ${days} day(s)`);
   });
   await boss.work(SWEEP_QUEUE, { batchSize: 1 }, async () => {

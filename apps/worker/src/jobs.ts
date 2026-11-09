@@ -1,4 +1,3 @@
-import { Command } from "@langchain/langgraph";
 import { PROFILES, ProfileIdSchema, type AskJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ProxyJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   claimFindMore,
@@ -46,7 +45,7 @@ import { prepareTrack } from "./pipeline/tracks.js";
 import { runAnalysis, withProfile } from "./pipeline/analysis.js";
 import { recordFetchFailed, RecordStepError, promptCard, runRecordStep } from "./pipeline/naming.js";
 import type { BurnTrackJob, RenderClipJob } from "@digestor/core";
-import type { PipelineDeps, buildPipeline } from "./pipeline/graph.js";
+import { runPipeline, type PipelineDeps } from "./pipeline/run.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
 
 import { MissingApiKeyError, VideoRemovedError } from "./errors.js";
@@ -60,13 +59,12 @@ export { MissingApiKeyError };
 export type JobContext = {
   db: Db;
   deps: PipelineDeps;
-  graph: Pick<ReturnType<typeof buildPipeline>, "invoke" | "getState">;
 };
 
 export const TRANSCRIPTION_FAILED = "Transcription failed. Please try again.";
 
 /**
- * User-facing message for an error that escaped the graph. Vendor text (AssemblyAI's error) and unknown errors are
+ * User-facing message for an error that escaped the pipeline. Vendor text (AssemblyAI's error) and unknown errors are
  * logged, never shown.
  */
 export function failureMessage(err: unknown): string {
@@ -78,8 +76,6 @@ export function failureMessage(err: unknown): string {
   console.error(err);
   return "Something went wrong while processing this video. Please try again.";
 }
-
-const threadConfig = (sessionId: string) => ({ configurable: { thread_id: sessionId } });
 
 /** Which pg-boss attempt is running (from the job metadata): retryCount 0 is the first try. */
 export type Attempt = { retryCount: number; retryLimit: number };
@@ -116,39 +112,22 @@ async function onJobError(ctx: JobContext, sessionId: string, err: unknown, atte
 }
 
 /**
- * Start (or continue) the pipeline. Idempotent: a checkpoint mid-run (crash/retry) continues from it; a finished
- * thread, or a session that is already `ready`, is left alone — a duplicate start job must not re-run (and re-pay)
- * the whole pipeline. `invoke(input)` on an existing thread would start over from START.
+ * Start (or continue) the pipeline. Idempotent: the run continues from its stored step after a crash or retry; a
+ * finished run, a failed session or one paused at the context check is left alone (`runPipeline`), so a duplicate start
+ * job never re-runs (and re-pays) the pipeline.
  */
 export async function handleStart(ctx: JobContext, job: StartJob, attempt: Attempt): Promise<void> {
-  const cfg = threadConfig(job.sessionId);
   try {
-    const state = await ctx.graph.getState(cfg);
-    if (state.next.length > 0) {
-      await ctx.graph.invoke(null, cfg);
-    } else if (state.createdAt !== undefined || (await getSession(ctx.db, job.sessionId))?.stage === "ready") {
-      // LangGraph only sets createdAt when the thread has a checkpoint: this run already happened.
-      console.log(`Ignoring start for ${job.sessionId}: already finished`);
-    } else {
-      await ctx.graph.invoke({ sessionId: job.sessionId }, cfg);
-    }
+    await runPipeline(ctx.deps, job.sessionId);
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
   }
 }
 
-/** Idempotent: a retried or duplicated resume must not pre-answer a later interrupt or restart a finished thread. */
+/** Idempotent: the answer is applied only at a pending context check, so a retried or duplicated resume never answers a later one. */
 export async function handleResume(ctx: JobContext, job: ResumeJob, attempt: Attempt): Promise<void> {
-  const cfg = threadConfig(job.sessionId);
   try {
-    const state = await ctx.graph.getState(cfg);
-    if (state.tasks.some((t) => (t.interrupts?.length ?? 0) > 0)) {
-      await ctx.graph.invoke(new Command({ resume: job.payload }), cfg);
-    } else if (state.next.length > 0) {
-      await ctx.graph.invoke(null, cfg);
-    } else {
-      console.log(`Ignoring resume for ${job.sessionId}: nothing is waiting for an answer`);
-    }
+    await runPipeline(ctx.deps, job.sessionId, { resume: job.payload });
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
   }
@@ -390,7 +369,7 @@ export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: 
 
 /**
  * Matches the session's linked official record (`session.names`: a record linked at the context pause or later; at
- * upload the graph's `match_record` node does it). `runRecordStep` fails the row itself for a deterministic result (no
+ * upload the pipeline's `match_record` step does it). `runRecordStep` fails the row itself for a deterministic result (no
  * speeches for the date or event) and returns. Any other error (5xx, network) is rethrown for pg-boss to
  * retry (the retry takes over its own `running` row), and only the final attempt marks the row failed.
  */

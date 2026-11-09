@@ -11,8 +11,8 @@
  *   `--suggest bundestag` (with `--stage awaiting_context`) makes it a parliament session carrying a suggested
  *   Bundestag sitting ("This looks like the Bundestag sitting of 04/11/2026."), as the YouTube suggester leaves it.
  *
- * Transcript, card and analysis are synthetic. There is no LangGraph checkpoint, so Continue/Skip on a seeded
- * session are ignored by the worker (the stage stays where the web moved it).
+ * Transcript, card and analysis are synthetic. The pipeline run is stored as finished, so Continue/Skip on a seeded
+ * session are ignored by the worker (the stage stays where the web moved it) and never call a paid API.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -33,6 +33,7 @@ import {
   completeAnalysisVersion,
   createDb,
   createSession,
+  ensurePipelineRun,
   saveBriefing,
   saveContextCard,
   saveMoments,
@@ -276,6 +277,8 @@ try {
   await updateSession(db, id, { proxyKey: `${id}/proxy.mp4`, durationMs, language: "en", profile: suggest ? "parliament" : "interview" });
   await saveTranscript(db, id, transcript);
   await saveContextCard(db, id, buildCard(stage === "awaiting_context", sentences[2]!.startMs), 1);
+  // Without a run row the worker would treat an answer as one for a paused session and run the pipeline on synthetic data.
+  await ensurePipelineRun(db, id, "done");
 
   if (suggest) {
     await suggestRecordRow(db, id, { chamber: "bundestag", period: 21, sitting: 104, date: "2026-11-04", url: "https://www.bundestag.de/services/opendata" });
