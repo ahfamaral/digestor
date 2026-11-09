@@ -115,6 +115,18 @@ describe("attributions", () => {
 });
 
 describe("persons", () => {
+  it("findPersonByName returns the official row when an older unfolded custom row has the same name", async () => {
+    // Two officials of the name, then a custom row backdated to be older: the homonym guard leaves it unfolded.
+    const a = await upsertOfficialPerson(db, { idSystem: "bundestag", officialId: "1", displayName: "Maria Silva" });
+    const b = await upsertOfficialPerson(db, { idSystem: "bioguide", officialId: "S000001", displayName: "Maria Silva" });
+    const custom = await createCustomPerson(db, { displayName: "Maria Silva", createdBy: "owner" });
+    await db.update(persons).set({ createdAt: new Date("2020-01-01T00:00:00Z") }).where(eq(persons.id, custom.id));
+    expect((await getPersons(db, [custom.id])).length).toBe(1);
+    const found = await findPersonByName(db, "Maria Silva");
+    expect(found?.kind).toBe("official");
+    expect([a.id, b.id]).toContain(found!.id);
+  });
+
   it("upsertOfficialPerson updates by official id", async () => {
     const base = { idSystem: "senado" as const, officialId: "5894", displayName: "Fulano" };
     const a = await upsertOfficialPerson(db, { ...base, party: "AA" });

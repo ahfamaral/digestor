@@ -19,7 +19,9 @@ export async function getPipelineRun(db: Db, sessionId: string): Promise<Pipelin
 /** Creates the run at `firstStep` if the session has none, then returns it (an existing run keeps its position). */
 export async function ensurePipelineRun(db: Db, sessionId: string, firstStep: PipelineStep): Promise<PipelineRun> {
   await db.insert(pipelineRuns).values({ sessionId, nextStep: firstStep }).onConflictDoNothing();
-  return (await getPipelineRun(db, sessionId))!;
+  const run = await getPipelineRun(db, sessionId);
+  if (!run) throw new Error(`Pipeline run for session ${sessionId} is gone right after it was created (the session was probably deleted).`);
+  return run;
 }
 
 /**

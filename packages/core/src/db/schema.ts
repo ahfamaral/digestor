@@ -1,5 +1,5 @@
 import {
-  boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid,
+  boolean, check, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { AttributionEvidence, AttributionSource, AttributionStatus } from "../attribution.ts";
@@ -11,7 +11,7 @@ import type {
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
 import type { SubtitlePosition, SubtitleStyle } from "../subtitleStyle.ts";
-import type { ContextCard, PipelineStep, ProxyStatus, Stage, Word } from "../schemas.ts";
+import { PIPELINE_STEPS, type ContextCard, type PipelineStep, type ProxyStatus, type Stage, type Word } from "../schemas.ts";
 
 export type { Stage };
 
@@ -381,12 +381,18 @@ export const sessionRecords = pgTable("session_records", {
 });
 
 /** Where a session's upload pipeline stands: the step still to run, the context-check round and the journalist's answers. */
-export const pipelineRuns = pgTable("pipeline_runs", {
-  sessionId: uuid("session_id")
-    .primaryKey()
-    .references(() => sessions.id, { onDelete: "cascade" }),
-  nextStep: text("next_step").$type<PipelineStep>().notNull(),
-  round: integer("round").notNull().default(0),
-  answers: jsonb("answers").$type<{ question: string; answer: string }[]>().notNull().default([]),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const pipelineRuns = pgTable(
+  "pipeline_runs",
+  {
+    sessionId: uuid("session_id")
+      .primaryKey()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    nextStep: text("next_step").$type<PipelineStep>().notNull(),
+    round: integer("round").notNull().default(0),
+    answers: jsonb("answers").$type<{ question: string; answer: string }[]>().notNull().default([]),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("pipeline_runs_next_step_check", sql`${t.nextStep} IN (${sql.join(PIPELINE_STEPS.map((s) => sql`${sql.raw(`'${s}'`)}`), sql`, `)})`),
+  ],
+);

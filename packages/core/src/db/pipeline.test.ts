@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createDb, type Db } from "./client.ts";
 import { createSession, getSession, setStage, type Session } from "./repo.ts";
 import { pipelineRuns } from "./schema.ts";
+import { PIPELINE_STEPS } from "../schemas.ts";
 import { advancePipelineRun, deletePipelineRun, ensurePipelineRun, getPipelineRun } from "./pipeline.ts";
 
 let db: Db;
@@ -40,6 +41,48 @@ describe("pipeline runs", () => {
     expect((await getSession(db, s.id))!.stage).toBe("uploaded");
   });
 
+  it("a CAS from the wrong step leaves round and answers untouched even with a patch", async () => {
+    await ensurePipelineRun(db, s.id, "ask_context");
+    const ok = await advancePipelineRun(db, s.id, "download", "ingest", {
+      round: 5, answers: [{ question: "Q", answer: "A" }], stage: { stage: "preparing", progress: 10 },
+    });
+    expect(ok).toBe(false);
+    expect(await getPipelineRun(db, s.id)).toMatchObject({ nextStep: "ask_context", round: 0, answers: [] });
+    expect((await getSession(db, s.id))!.stage).toBe("uploaded");
+  });
+
+  it("the database refuses an unknown next_step", async () => {
+    const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
+    try {
+      await expect(pool.query("INSERT INTO pipeline_runs (session_id, next_step) VALUES ($1, 'bogus')", [s.id])).rejects.toThrow(/check/i);
+      await ensurePipelineRun(db, s.id, "download");
+      await expect(pool.query("UPDATE pipeline_runs SET next_step = 'bogus' WHERE session_id = $1", [s.id])).rejects.toThrow(/check/i);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("the CHECK's allowed values equal PIPELINE_STEPS", async () => {
+    const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
+    try {
+      const { rows } = await pool.query(
+        "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'pipeline_runs'::regclass AND contype = 'c'",
+      );
+      const allowed = rows.flatMap((r) => [...String(r.def).matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+      expect([...allowed].sort()).toEqual([...PIPELINE_STEPS].sort());
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("ensurePipelineRun throws a clear error when the row is gone after the insert", async () => {
+    const gone = {
+      insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
+      select: () => ({ from: () => ({ where: async () => [] }) }),
+    } as unknown as Db;
+    await expect(ensurePipelineRun(gone, s.id, "download")).rejects.toThrow(/pipeline run .* vanished|no longer exists|is gone/i);
+  });
+
   it("advance with a patch sets round and answers in the same update", async () => {
     await ensurePipelineRun(db, s.id, "ask_context");
     const answers = [{ question: "Who?", answer: "Ana" }];
@@ -47,7 +90,7 @@ describe("pipeline runs", () => {
     expect(await getPipelineRun(db, s.id)).toMatchObject({ nextStep: "match_record_late", round: 2, answers });
   });
 
-  it("advance with a stage patch sets the session stage only when the step moved", async () => {
+  it("advance with a stage patch sets the session stage when the step moved", async () => {
     await ensurePipelineRun(db, s.id, "download");
     expect(await advancePipelineRun(db, s.id, "download", "ingest", { stage: { stage: "preparing", progress: 10 } })).toBe(true);
     const after = await getSession(db, s.id);

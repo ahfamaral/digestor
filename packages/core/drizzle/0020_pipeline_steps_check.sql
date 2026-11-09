@@ -1,0 +1,1 @@
+ALTER TABLE "pipeline_runs" ADD CONSTRAINT "pipeline_runs_next_step_check" CHECK ("pipeline_runs"."next_step" IN ('download', 'ingest', 'transcribe', 'match_record', 'understand_context', 'ask_context', 'match_record_late', 'name_speakers', 'index', 'analyze', 'done'));
