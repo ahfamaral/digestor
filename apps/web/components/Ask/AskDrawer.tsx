@@ -68,17 +68,6 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const onKey = useEffectEvent((e: KeyboardEvent) => {
-    const dialogOpen = document.querySelector("[role='dialog']") !== null;
-    if (!opensAsk(e, { typing: isTyping(e.target), dialogOpen })) return;
-    e.preventDefault();
-    setOpen(true);
-  });
-  useEffect(() => {
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   // Beside the page, not over it: the page makes room for the 28 rem panel (`sm:max-w-md`) so nothing hides under it.
   useEffect(() => {
     if (!open || !desktop) return;
@@ -102,9 +91,26 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     }
   }, [sessionId]);
 
+  /** Opens the drawer and loads the conversation (an event, not an effect: the fetch belongs to the action). */
+  function openAsk() {
+    setOpen(true);
+    void load(false);
+  }
+  function onOpenChange(next: boolean) {
+    if (next) openAsk();
+    else setOpen(false);
+  }
+
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    const dialogOpen = document.querySelector("[role='dialog']") !== null;
+    if (!opensAsk(e, { typing: isTyping(e.target), dialogOpen })) return;
+    e.preventDefault();
+    openAsk();
+  });
   useEffect(() => {
-    if (open) void load(false);
-  }, [open, load]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const isWaiting = (m: Message) => m.role === "assistant" && isAnswering(m.status) && !isStalePending(m.createdAt, now);
   const hasPending = messages.some(isWaiting);
@@ -132,7 +138,8 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
   function setError(key: string, message: string | null) {
     setErrors((e) => {
       if (message) return { ...e, [key]: message };
-      const { [key]: _gone, ...rest } = e;
+      const rest = { ...e };
+      delete rest[key];
       return rest;
     });
   }
@@ -229,12 +236,12 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
 
   return (
     <>
-      <Button ref={triggerRef} type="button" variant="outline" size="sm" onClick={() => setOpen(true)} aria-keyshortcuts="/">
+      <Button ref={triggerRef} type="button" variant="outline" size="sm" onClick={openAsk} aria-keyshortcuts="/">
         {t("ask.open")}
         <kbd className="rounded border border-border bg-stone-50 px-1 font-mono text-[11px] text-muted-foreground">/</kbd>
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen} modal={!desktop} disablePointerDismissal={desktop}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal={!desktop} disablePointerDismissal={desktop}>
         <DialogContent
           finalFocus={triggerRef}
           overlayClassName="lg:hidden"

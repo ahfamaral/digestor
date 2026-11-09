@@ -339,7 +339,11 @@ const analyze: Step = async (deps, s) => {
   const { db } = deps;
   // Completed before a crash that kept the run from advancing: don't analyse (and pay) again.
   if (await getCurrentAnalysis(db, s.sessionId)) {
-    if ((await requireSession(db, s.sessionId)).stage === "ready") return { next: "done" }; // the join already closed it
+    if ((await requireSession(db, s.sessionId)).stage === "ready") {
+      // The join already closed it; a crash between the join and the release may have left audio.mp3 behind.
+      await releaseAudio({ db, storage: deps.storage }, s.sessionId);
+      return { next: "done" };
+    }
     await setStage(db, s.sessionId, "preparing_preview", 96);
     await settlePreview(db, s.sessionId);
     await releaseAudio({ db, storage: deps.storage }, s.sessionId);

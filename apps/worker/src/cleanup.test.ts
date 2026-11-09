@@ -6,11 +6,48 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { LocalStorage, createDb, createSession, ensurePipelineRun, getPipelineRun, getSession, pipelineRuns, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
 import type { ChromaClient } from "chromadb";
 import { collectionName } from "./search/index.js";
-import { runVideoRetention, videoRetentionDays } from "./cleanup.js";
+import { runDailyCleanup, runVideoRetention, videoRetentionDays, type DailyCleanupDeps } from "./cleanup.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
 const DAY = 86_400_000;
+
+describe("runDailyCleanup", () => {
+  const deps = {} as DailyCleanupDeps; // the parts are fakes; nothing reads deps
+  const quiet = () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  };
+
+  it("runs the retention even when releasing the audio fails, then reports the failure", async () => {
+    quiet();
+    const runVideoRetention = vi.fn(async () => ({ removed: 2 }));
+    const releaseReadyAudio = vi.fn(async () => {
+      throw new Error("db down");
+    });
+    await expect(runDailyCleanup(deps, 14, { releaseReadyAudio, runVideoRetention })).rejects.toThrow(AggregateError);
+    expect(runVideoRetention).toHaveBeenCalledWith(deps, 14);
+    vi.restoreAllMocks();
+  });
+
+  it("releases the audio even when the retention fails", async () => {
+    quiet();
+    const releaseReadyAudio = vi.fn(async () => ({ released: 1 }));
+    const runVideoRetention = vi.fn(async () => {
+      throw new Error("db down");
+    });
+    await expect(runDailyCleanup(deps, 14, { releaseReadyAudio, runVideoRetention })).rejects.toThrow(AggregateError);
+    expect(releaseReadyAudio).toHaveBeenCalledOnce();
+    vi.restoreAllMocks();
+  });
+
+  it("answers both counts when both parts succeed", async () => {
+    quiet();
+    const out = await runDailyCleanup(deps, 7, { releaseReadyAudio: async () => ({ released: 1 }), runVideoRetention: async () => ({ removed: 3 }) });
+    expect(out).toEqual({ released: 1, removed: 3 });
+    vi.restoreAllMocks();
+  });
+});
 
 describe("videoRetentionDays", () => {
   it("reads VIDEO_RETENTION_DAYS and falls back to 14", () => {

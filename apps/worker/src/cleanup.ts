@@ -1,5 +1,6 @@
 import type { ChromaClient } from "chromadb";
 import { deleteSessionIndex } from "./search/index.js";
+import { releaseReadyAudio, type AudioDeps } from "./pipeline/audio.js";
 import { deletePipelineRun, getRunningAnalysis, listSessionsWithExpiredVideo, updateSession, type Db, type LocalStorage, type Stage } from "@digestor/core/server";
 
 /** pg-boss queue for the daily video retention clean-up (scheduled 03:00 UTC in main.ts). */
@@ -61,4 +62,37 @@ export async function runVideoRetention(deps: CleanupDeps, days: number): Promis
 export function videoRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
   const n = Number(env.VIDEO_RETENTION_DAYS);
   return Number.isFinite(n) && n > 0 ? n : 14;
+}
+
+export type DailyCleanupDeps = CleanupDeps & { storage: CleanupDeps["storage"] & AudioDeps["storage"] };
+
+/**
+ * The daily `maintenance.cleanup` job: releases leftover `audio.mp3` of ready sessions, then the video retention. Each
+ * part runs even when the other failed (a DB error in one never skips the other); a failure is rethrown afterwards so
+ * the job shows as failed (both parts are safe to repeat).
+ */
+export async function runDailyCleanup(
+  deps: DailyCleanupDeps,
+  days: number,
+  parts = { releaseReadyAudio, runVideoRetention },
+): Promise<{ released: number; removed: number }> {
+  const failures: unknown[] = [];
+  let released = 0;
+  let removed = 0;
+  try {
+    released = (await parts.releaseReadyAudio(deps)).released;
+    if (released > 0) console.log(`cleanup: released audio.mp3 of ${released} ready session(s)`);
+  } catch (err) {
+    console.error("cleanup: could not release the audio of ready sessions", err);
+    failures.push(err);
+  }
+  try {
+    removed = (await parts.runVideoRetention(deps, days)).removed;
+    console.log(`cleanup: removed the video of ${removed} session(s) older than ${days} day(s)`);
+  } catch (err) {
+    console.error("cleanup: the video retention failed", err);
+    failures.push(err);
+  }
+  if (failures.length > 0) throw new AggregateError(failures, "maintenance.cleanup: a part failed (see the log)");
+  return { released, removed };
 }

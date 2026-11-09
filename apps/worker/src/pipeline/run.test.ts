@@ -282,6 +282,17 @@ describe("pipeline", () => {
     expect(after!.updatedAt.getTime()).toBe(before!.updatedAt.getTime());
   });
 
+  it("re-running the analysis step on a ready session releases audio.mp3 a crash left behind", async () => {
+    const { start, sessionId, deps } = await setup({ context: [sufficientDraft()] });
+    await start();
+    // A crash between closing the join and releasing the audio: the session is ready but still has audio.mp3.
+    await writeFile(storage.resolve(`${sessionId}/audio.mp3`), "audio");
+    await updateSession(db, sessionId, { audioKey: `${sessionId}/audio.mp3` });
+    await STEPS.analyze(deps, (await getPipelineRun(db, sessionId))!);
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "ready", audioKey: null });
+    await expect(access(storage.resolve(`${sessionId}/audio.mp3`))).rejects.toThrow();
+  });
+
   it("skip goes on to the analysis and ready after the single context pause", async () => {
     const { start, sessionId, contextCalls, resume, nextStep } = await setup({ context: [draft()] });
     await start();
