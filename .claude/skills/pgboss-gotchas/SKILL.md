@@ -1,11 +1,11 @@
 ---
-name: pgboss-langgraph-gotchas
-description: Version-pinned pitfalls of pg-boss 12 and LangGraph JS 1.x (StateGraph, interrupt/Command, Postgres checkpointer) as used in Digestor's worker, with the patterns that fixed them. Read this before writing or changing anything that sends or handles jobs, creates queues, schedules work, retries, resumes a paused pipeline, adds a graph node or interrupt, deletes session data, or tests crash/restart behaviour — including Plan 2 work like the copilot's tool calls if they enqueue jobs or touch the graph. Use it even when the change looks small ("just add a queue", "just add a node") because almost every bug here looked small.
+name: pgboss-gotchas
+description: Version-pinned pitfalls of pg-boss 12 and the rules of Digestor's own pipeline step runner (Postgres-backed position, compare-and-set advance, the context-check pause, resume, retries) as used in the worker, with the patterns that fixed them. Read this before writing or changing anything that sends or handles jobs, creates queues, schedules work, retries, resumes a paused pipeline, adds or changes a pipeline step or pause, deletes session data, or tests crash/restart behaviour — including Ask tool calls if they enqueue jobs. Use it even when the change looks small ("just add a queue", "just add a step") because almost every bug here looked small.
 ---
 
-# pg-boss + LangGraph: what bit us
+# pg-boss and the pipeline runner: what bit us
 
-Versions this was verified against: `pg-boss` 12.38, `@langchain/langgraph` 1.5, `@langchain/langgraph-checkpoint-postgres` 1.1. If `pnpm-lock.yaml` shows a newer major, re-check each item against `node_modules/<pkg>/dist/*.d.ts` before relying on it.
+Version this was verified against: `pg-boss` 12.38. If `pnpm-lock.yaml` shows a newer major, re-check each item against `node_modules/<pkg>/dist/*.d.ts` before relying on it.
 
 Every item below cost a review round on Plan 1. The code that implements each fix is named so you can copy the pattern instead of re-deriving it.
 
@@ -33,25 +33,26 @@ Every item below cost a review round on Plan 1. The code that implements each fi
 
 10. **Final-attempt crash is covered by the sweep.** If the last attempt dies without its handler finishing, nothing in the handler marks the session failed. `sweepStaleSessions` (`apps/worker/src/sweep.ts`, queue `session.sweep`, every 15 min) fails sessions in a processing stage with no `created`/`retry`/`active` job in `pgboss.job` for 120 min, and likewise any `running` analysis version with no live job. Keep new job queues that own a session in `LIVE_JOB_QUEUES` there. Rows a job owns are covered too (`sweepStaleJobRows`, R32): translations `pending`, tracks `preparing`, renders and burns `queued`/`rendering` untouched for 30 min with no live job matched on `data->>'analysisId'`/`'language'`, `'trackId'` or `'clipId'` are failed (friendly text in `error` where the row has one). A new job-owned row status belongs there, and its table needs an `updated_at` the sweep can age.
 
-## LangGraph
+## Pipeline runner
 
-1. **`invoke(input, cfg)` on an existing thread starts over from START.** To continue a crashed or retried run, check `const state = await graph.getState(cfg)`: if `state.next.length > 0`, call `graph.invoke(null, cfg)`. Fresh start only when nothing is pending (`handleStart`).
+`apps/worker/src/pipeline/run.ts` (`runPipeline`, `firstStepFor`, `stepForStage`); position in `pipeline_runs` (`next_step`, `round`, `answers`).
 
-2. **Resume an interrupt only if one is pending.** `new Command({ resume })` sent when the graph is mid-run or at a *later* interrupt would answer the wrong question. `handleResume` branches three ways: pending interrupt (`state.tasks[].interrupts`) → `Command`; `next` non-empty without interrupt → `invoke(null)`; finished → log and ignore.
+1. **The run row's `next_step` is the position.** Each step returns the next step (or a pause/stop); the runner advances with `advancePipelineRun`, a compare-and-set on `next_step`. A runner that loses the CAS stops without writing.
 
-3. **A node re-runs from its first line when resumed.** Everything before `interrupt()` executes again, and `interrupt()` then returns the resume value. So side effects before an interrupt must be idempotent, and the "awaiting" stage must only be written on the *real* pause, not on the replay — otherwise it overwrites the stage the API just set (`pause()` in `graph.ts`).
+2. **The pause stage is written exactly once.** Advancing INTO `ask_context` writes `awaiting_context` (55) in the same transaction as the CAS (the optional stage patch is applied only when the CAS matched). A start or duplicate start that finds the row at `ask_context` writes nothing, so it can't overwrite the stage the API set.
 
-4. **Every node must be safe to run twice** (retry after a crash re-runs the interrupted node): `replaceAiClips` replaces instead of appending; the render node skips clips already `done` and survives a single clip failing.
+3. **Resume applies only at `ask_context`, and only once the web has moved the stage off `awaiting_context`** (stale-resume guard: a resume that arrives while the stage still says awaiting is stale). The payload is used for that one step only, never stored as a position.
 
-5. **State channels need reducers/defaults** (`Annotation.Root` with `reducer` + `default`); conditional edges read state *and* the DB — keep the round/limit logic in one place (`MAX_CONTEXT_ROUNDS`).
+4. **Every step must be safe to run twice.** A crash before the CAS re-runs that step only: `replaceAiClips` replaces instead of appending; the render step skips clips already `done` and survives a single clip failing.
 
-6. **Checkpoints are user data.** They hold the human's answers. Deleting a session means `checkpointer.deleteThread(sessionId)` too (`runVideoRetention`: video files → checkpoints → `videoDeletedAt`, so a failure leaves the session for the next run; rows, thumbnails and `clips/` are kept). Thread id = session id.
+5. **The run row is user data.** It holds the human's answers. Retention deletes it (`runVideoRetention`: video files → run row → search index → `videoDeletedAt`, so a failure leaves the session for the next run; rows, thumbnails and `clips/` are kept).
 
-7. **`PostgresSaver.fromConnString(url)` then `await saver.setup()`** once at startup; tests use `MemorySaver`.
+6. **A session with no row** (left by the old LangGraph worker, or seeded) gets one from `stepForStage(session.stage)`. A resume with no row starts at `ask_context`, round from the stored card. `ready`, `failed` and `done` are a logged no-op. `scripts/seed-demo.ts` writes a `done` row so a seeded session never runs paid steps.
 
 ## Testing these paths
 
-- Use the real graph with `MemorySaver`, `FakeLLM` and a fake transcriber; don't stub `getState` — stubs hid resume bugs. Pattern: `graph.test.ts` "crash/resume" test — attempt 0 throws inside a node, attempt 1 (`handleStart` again) must resume from the checkpoint, not redo finished nodes, and not duplicate clips; a duplicate start afterwards is a no-op.
+- Use the real runner with `FakeLLM` and `FakeTranscriber` against `digestor_test`; don't stub the run row or the repo functions — stubs hid resume bugs. Pattern: `run.test.ts` crash/resume test — attempt 0 throws inside a step, attempt 1 (`handleStart` again) must continue from `next_step`, not redo finished steps, and not duplicate clips; a duplicate start afterwards is a no-op.
 - For job handlers, cover: non-final attempt (stage untouched, rethrows), final attempt (failed), deterministic error (failed at once, no rethrow).
 - pg-boss behaviour itself (expiry, heartbeat) is checked against the dev DB: `select name, retry_limit, expire_seconds, heartbeat_seconds from pgboss.queue;` and the same columns on a freshly sent row in `pgboss.job`.
 - Worker tests run in the container: `docker compose run --rm worker pnpm --filter @digestor/worker test <pattern>`.
+- Never run the host suite (`pnpm test`) and the worker suite at the same time: core truncates the shared `digestor_test` database.

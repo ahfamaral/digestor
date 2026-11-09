@@ -38,13 +38,13 @@ The stepper reads Upload › Processing › Context › Briefing › Prepare ›
 9. **Ask** (press `/` on the Briefing page): a RAG copilot answering only from the video's stored data, with function calls that change your personal selections (undoable; bulk changes need confirmation). It knows the speakers' names (confirmed or proposed) and can list when a named person speaks.
 10. **Speaker names (Plan 3):** a registry of people, and a name for each voice with its source (the official Senado record, a caption on screen, the transcript, or you). Names from AI are proposals until you confirm them in Who's who; Prepare is blocked until the voices in a clip are confirmed or marked "No name"; sensitive profiles (a trial) never show an unconfirmed name. Results: the debate scores 0.99, the Senado plenary 0.93, a Bundestag debate 0.95 and a US House floor hour 0.85 (see Evaluation). Câmara plenary links are matched the same way; see the "Câmara record names" paragraph under Evaluation (matching validated on recorded text only, not yet scored on a golden file). "Report a problem" on a name goes to the reports list.
 
-Progress streams to the browser over SSE; the pipeline survives worker restarts because it resumes from a Postgres checkpoint.
+Progress streams to the browser over SSE; the pipeline survives worker restarts because it resumes from the step stored in Postgres.
 
 ## Where the AI tooling lives
 
 | Technique | Where |
 | --- | --- |
-| LangGraph `StateGraph`, `interrupt()` / `Command`, Postgres checkpointer | `apps/worker/src/pipeline/graph.ts` (checkpointer wired in `apps/worker/src/main.ts`) |
+| Own step runner: Postgres-backed position (`pipeline_runs`), compare-and-set advance, one human pause | `apps/worker/src/pipeline/run.ts` |
 | LangChain `ChatAnthropic.withStructuredOutput` + zod | `apps/worker/src/llm/structured.ts` |
 | Swappable LLM provider (Anthropic or OpenRouter via `ChatOpenAICompletions`) | `apps/worker/src/llm/provider.ts`, `apps/worker/src/llm/openrouter.ts` |
 | Prompt engineering and grounding (fact sources, verbatim-quote check, per-item degradation) | `apps/worker/src/agents/` (context, topics, moments, briefing, checks, translation) |
@@ -57,7 +57,7 @@ Progress streams to the browser over SSE; the pipeline survives worker restarts 
 
 ```
 apps/web      Next.js app: screens (Upload, Processing, Context check, Briefing, Prepare, Export, Reports) and API routes
-apps/worker   Node worker: job queue consumer, LangGraph pipeline, ffmpeg, yt-dlp, AssemblyAI, Claude
+apps/worker   Node worker: job queue consumer, step-runner pipeline, ffmpeg, yt-dlp, AssemblyAI, Claude
 packages/core Shared schemas, time/snap helpers, Drizzle tables, repo functions, LocalStorage
 docker/initdb Creates the digestor_test database
 data/         Uploaded and generated files (git-ignored)

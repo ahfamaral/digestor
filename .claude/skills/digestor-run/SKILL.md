@@ -41,7 +41,7 @@ docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-de
 docker compose exec -w /app/apps/worker worker node --import tsx scripts/seed-demo.ts --stage awaiting_context
 ```
 
-Each prints `http://localhost:3000/s/<id>`. Seeded sessions have no LangGraph checkpoint, so Continue / Skip are accepted by the API but ignored by the worker — the stage stays where the web moved it. Good for looking at screens, keyboard triage, Prepare and Export (renders run for real in the worker container), not for testing the pipeline. Each `--stage ready` run creates a new session, so seed a fresh one for a clean end-to-end pass. For pipeline behaviour, use worker tests or real keys.
+Each prints `http://localhost:3000/s/<id>`. Seeded sessions have a `done` pipeline run row, so Continue / Skip are accepted by the API but ignored by the worker — the stage stays where the web moved it. Good for looking at screens, keyboard triage, Prepare and Export (renders run for real in the worker container), not for testing the pipeline. Each `--stage ready` run creates a new session, so seed a fresh one for a clean end-to-end pass. For pipeline behaviour, use worker tests or real keys.
 
 A test video to upload (made in the container, written to `./data` on the host):
 

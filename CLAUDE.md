@@ -3,7 +3,7 @@
 Long public-interest videos (interviews, parliament, UN, trials) → subtitled clips. Turing College capstone. All TypeScript (strict, ESM), pnpm monorepo:
 
 - `packages/core`: zod domain schemas, profiles and highlight types (`profiles.ts`), time/snap logic, subtitle text (`subtitleText.ts`), Drizzle tables + repo functions, LocalStorage, queue names and `JOB_OPTIONS`.
-- `apps/worker`: pg-boss consumer, LangGraph pipeline (`src/pipeline/graph.ts`, one human pause: the context check; `match_record` runs before it and `match_record_late` after it, so a suggestion accepted at the pause is matched on Continue), analysis agents (topics, moments, briefing, checks), Ask, Chroma search index, AssemblyAI, Claude via LangChain, ffmpeg, yt-dlp, retention clean-up and stale-session sweep, evaluation (`src/eval`, `scripts/eval.ts`).
+- `apps/worker`: pg-boss consumer, own step runner (`src/pipeline/run.ts`, position in `pipeline_runs`, one human pause: the context check; `match_record` runs before it and `match_record_late` after it, so a suggestion accepted at the pause is matched on Continue), analysis agents (topics, moments, briefing, checks), Ask, Chroma search index, AssemblyAI, Claude via LangChain, ffmpeg, yt-dlp, retention clean-up and stale-session sweep, evaluation (`src/eval`, `scripts/eval.ts`).
 - `apps/web`: Next.js 16 (App Router, Cache Components, Turbopack): screens + API routes + SSE.
 
 ## The journalist flow
@@ -14,7 +14,7 @@ Stepper: Upload › Processing › Context › Briefing › Prepare › Export. 
 - Profiles (`profiles.ts`): `parliament`, `supreme_court`, `electoral_debate`, `trial` (sensitive), `interview`, `un`, `other`. Each profile lists its highlight types; a type is `ai` or `counted` (`longest_speech`). The chip colour comes from `HIGHLIGHT_TYPES[*].tone` via `components/HighlightChip.tsx`.
 - An analysis is a versioned set of topics, moments (granularity `exchange` / `passage` / `punchline`), highlights and a briefing; selections, clips and subtitle tracks are a personal layer (`owner_id`, `OWNER_ID = "owner"`). Selections belong to one analysis version's moments: after a re-analysis they no longer show (the Briefing page counts them per version), while clips and their subtitle tracks keep working.
 - Queues (`packages/core/src/queue.ts`, all with `JOB_OPTIONS`): `session.start`, `session.resume`, `session.reanalyze`, `moment.check`, `track.prepare`, `track.burn`, `clip.render`, `briefing.translate`, `ask.run`, `moment.find_more`, `session.proxy` (encode the preview copy; the graph transcribes without waiting for it), `session.names` (match a linked official record of the Câmara, Senado, Bundestag, US House or US Senate; rows are `suggested` (YouTube suggester, accepted by the journalist), `pending`, `running`, `waiting` (not published yet, `records.retry` looks again), `matched` or `failed`; at upload the graph's `match_record` node does it before the context check); scheduled in the worker: `session.sweep` (every 15 min), `maintenance.cleanup` (daily) and `records.retry` (hourly: claims `waiting` official-record rows whose `retry_at` is due, every 6 h, and sends `session.names`).
-- Retention: `VIDEO_RETENTION_DAYS` (default 14) deletes `original.*`, `audio.mp3`, `proxy.mp4`, the LangGraph checkpoint and the session's Chroma index (so Ask search stops working after 14 days); analyses, personal layers and rendered clips stay. The sweep fails sessions and analysis versions with no progress for 120 minutes, and job rows stuck for 30 minutes (below).
+- Retention: `VIDEO_RETENTION_DAYS` (default 14) deletes `original.*`, `audio.mp3`, `proxy.mp4`, the pipeline run row (`pipeline_runs`, holds the context answers) and the session's Chroma index (so Ask search stops working after 14 days); analyses, personal layers and rendered clips stay. The sweep fails sessions and analysis versions with no progress for 120 minutes, and job rows stuck for 30 minutes (below).
 - Chroma is live: one collection per session (`session_<uuid without dashes>`) with a transcript index for Ask, using local `Xenova/multilingual-e5-small` embeddings cached in `data/models` (`HF_HOME`).
 
 Spec: `docs/superpowers/specs/2026-10-28-video-digestor-design.md` (v1) and `docs/superpowers/specs/2026-10-30-digestor-ui-concept-design.md` (the journalist flow, Plan 2 onwards). Plans: `docs/superpowers/plans/`. Deploy runbook: `docs/deploy.md`. Manual real-API checklist: `scripts/smoke.md`.
@@ -75,7 +75,7 @@ After adding a dependency: `pnpm install` on the host first (updates the lockfil
 ## Skills in this repo (`.claude/skills/`)
 
 - `digestor-run`: launch the stack, seed demo sessions, drive the UI with Playwright, screenshot.
-- `pgboss-langgraph-gotchas`: read before touching jobs, queues, the pipeline graph, resume or retries.
+- `pgboss-gotchas`: read before touching jobs, queues, the pipeline step runner, pauses, resume or retries.
 - `vendor-contract-check`: before writing or changing a fake for AssemblyAI, Claude or yt-dlp.
 - `llm-structured-output`: before adding or changing any LLM call that returns structured data.
 - `digestor-ui`: before building or changing any screen or component (tokens, colours, copy, keyboard, a11y). The concept is agreed (UI concept spec); mockups in `docs/design/` are inspiration only.

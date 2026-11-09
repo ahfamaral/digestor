@@ -105,12 +105,6 @@ importers:
       '@langchain/core':
         specifier: ^1.3.1
         version: 1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)
-      '@langchain/langgraph':
-        specifier: ^1.5.3
-        version: 1.5.3(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@3.25.76)
-      '@langchain/langgraph-checkpoint-postgres':
-        specifier: ^1.1.2
-        version: 1.1.2(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(@langchain/langgraph-checkpoint@1.2.1(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)))
       '@langchain/openai':
         specifier: ^1.8.0
         version: 1.8.0(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(undici@7.30.1)(ws@8.22.0)
@@ -1084,46 +1078,11 @@ packages:
     resolution: {integrity: sha512-jt0miXWxNi+rbZLeSeZkc7BBYKnWopksoJSpB+P3zaYgzMMNwkAPWqnd1zSClfYGwLZPXQbbTtaqv8ZFXmE3FA==}
     engines: {node: '>=20'}
 
-  '@langchain/langgraph-checkpoint-postgres@1.1.2':
-    resolution: {integrity: sha512-di06rlugOZmNNBt0fBTkCtvtSWdIMEZ8S6imO/AH2KilvrpHynYy6+nvqtFMnNWOf0oSl0Z4NDdfQelnYpAT9A==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@langchain/core': ^1.1.44
-      '@langchain/langgraph-checkpoint': ^1.2.0
-
-  '@langchain/langgraph-checkpoint@1.2.1':
-    resolution: {integrity: sha512-RD01mi9fYfpIq5fWrW/j2iY7MRUoqKvh1Nj6TMRDBoTGE18E2du75zKDugNxb57N8FWCojaiWGB9Enssnx9Hyg==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@langchain/core': ^1.1.48
-
-  '@langchain/langgraph-sdk@1.12.8':
-    resolution: {integrity: sha512-MYbACC5+l6XlcqCRZD5mz2KD01bdXxzJVEHs259g2R1pLbVEB2V+n2rk5kxGx4l2chAPjdNuNXihtwFBsFCT+Q==}
-    peerDependencies:
-      '@langchain/core': ^1.1.48
-      react: ^18 || ^19
-      react-dom: ^18 || ^19
-    peerDependenciesMeta:
-      react:
-        optional: true
-      react-dom:
-        optional: true
-
-  '@langchain/langgraph@1.5.3':
-    resolution: {integrity: sha512-cuqswNgfoF/J3/r9K5Qm7EnQc2f0mz7uWlAAs751KWhoK8sKfmuLABghF4b1LYq1NpK72XG1x8lWPyg45M8BOA==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@langchain/core': ^1.1.48
-      zod: ^3.25.32 || ^4.2.0
-
   '@langchain/openai@1.8.0':
     resolution: {integrity: sha512-HstN9V0rUkNnOyzMSylP2e5z6VbyuZXyoliuepO2Tf59bezrhvB/sljLfREN1lAGsy4YysD5hUeCN/2ynAZKjQ==}
     engines: {node: '>=22'}
     peerDependencies:
       '@langchain/core': ^1.3.1
-
-  '@langchain/protocol@0.0.20':
-    resolution: {integrity: sha512-sxlkDG2/HGyjDFLTJ8B/o3oglRjOv8iLCFgrV0550/Vym3V6RZ0SUjAQFe8jrLQw8ZXjERy3swJp5OODBSrUYA==}
 
   '@modelcontextprotocol/core@2.4.0':
     resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
@@ -2481,9 +2440,6 @@ packages:
   eventemitter3@4.0.7:
     resolution: {integrity: sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==}
 
-  eventemitter3@5.0.4:
-    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
-
   execa@5.1.1:
     resolution: {integrity: sha512-8uSpZZocAZRBAPIEINJj3Lo9HyGitllczc27Eh5YYojjMFMn8yHMDMaUHE2Jqfq05D/wucwI4JGURyXt1vchyg==}
     engines: {node: '>=10'}
@@ -2820,10 +2776,6 @@ packages:
   is-negative-zero@2.0.3:
     resolution: {integrity: sha512-5KoIu2Ngpyek75jXodFvnafB6DJgr3u8uuK0LEZJjrU19DrMD3EVERaR8sjz8CCGgpZvxPl9SuE1GMVPFHx1mw==}
     engines: {node: '>= 0.4'}
-
-  is-network-error@1.3.2:
-    resolution: {integrity: sha512-PhBY86zaxNZUuWP6h13Vu5oFe0XY6/UlKzQnYFELzGVHygP3MxmvTfYSG7GN3aIab/iWudSMgjSnG9Dq+nHrgA==}
-    engines: {node: '>=16'}
 
   is-number-object@1.1.1:
     resolution: {integrity: sha512-lZhclumE1G6VYD8VHe35wFaIif+CTy5SJIi5+3y4psDgWu4wPDoBhF8NxUOinEc7pHgiTsT6MaBb92rKhhD+Xw==}
@@ -3373,21 +3325,9 @@ packages:
     resolution: {integrity: sha512-RwFpb72c/BhQLEXIZ5K2e+AhgNVmIejGlTgiB9MzZ0e93GRvqZ7uSi0dvRF7/XIXDeNkra2fNHBxTyPDGySpjQ==}
     engines: {node: '>=8'}
 
-  p-queue@9.3.5:
-    resolution: {integrity: sha512-Lki/zhXFVmDhesBUn/yHRLW9Bte7mE7xoFHzTR8sIomV7a2z+LxYAPkGvdfidNiu4fKSfjtawixxSHcZci5QcQ==}
-    engines: {node: '>=20'}
-
-  p-retry@7.1.1:
-    resolution: {integrity: sha512-J5ApzjyRkkf601HpEeykoiCvzHQjWxPAHhyjFcEUP2SWq0+35NKh8TLhpLw+Dkq5TZBFvUM6UigdE9hIVYTl5w==}
-    engines: {node: '>=20'}
-
   p-timeout@3.2.0:
     resolution: {integrity: sha512-rhIwUycgwwKcP9yTOOFK/AKsAopjjCakVqLHePO3CC6Mir1Z99xT+R63jZxAT5lFZLa2inS5h+ZS2GvR99/FBg==}
     engines: {node: '>=8'}
-
-  p-timeout@7.0.2:
-    resolution: {integrity: sha512-prbX4Z3YszrFNgH+MW5Zoeq3baXrMtP/MQnFeET90UB/GtGcGDQ5Usg9OCy6ETjTTntOw1SL2z9fMPUppN3Guw==}
-    engines: {node: '>=20'}
 
   p-try@2.2.0:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
@@ -3512,10 +3452,6 @@ packages:
   postgres-array@2.0.0:
     resolution: {integrity: sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==}
     engines: {node: '>=4'}
-
-  postgres-array@3.0.4:
-    resolution: {integrity: sha512-nAUSGfSDGOaOAEGwqsRY27GPOea7CNipJPOA7lPbdEpx5Kg3qzdP0AaWC5MlhTWV9s4hFX39nomVZ+C4tnGOJQ==}
-    engines: {node: '>=12'}
 
   postgres-bytea@1.0.1:
     resolution: {integrity: sha512-5+5HqXnsZPE65IJZSMkZtURARZelel2oXUEO8rH83VS/hxH5vv1uHquPg5wZs8yMAfdv971IU+kcPUczi7NVBQ==}
@@ -4915,42 +4851,6 @@ snapshots:
       - openai
       - ws
 
-  '@langchain/langgraph-checkpoint-postgres@1.1.2(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(@langchain/langgraph-checkpoint@1.2.1(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)))':
-    dependencies:
-      '@langchain/core': 1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)
-      '@langchain/langgraph-checkpoint': 1.2.1(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))
-      pg: 8.23.1
-      postgres-array: 3.0.4
-    transitivePeerDependencies:
-      - pg-native
-
-  '@langchain/langgraph-checkpoint@1.2.1(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))':
-    dependencies:
-      '@langchain/core': 1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)
-
-  '@langchain/langgraph-sdk@1.12.8(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
-    dependencies:
-      '@langchain/core': 1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)
-      '@langchain/protocol': 0.0.20
-      '@types/json-schema': 7.0.15
-      p-queue: 9.3.5
-      p-retry: 7.1.1
-    optionalDependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-
-  '@langchain/langgraph@1.5.3(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@3.25.76)':
-    dependencies:
-      '@langchain/core': 1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)
-      '@langchain/langgraph-checkpoint': 1.2.1(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))
-      '@langchain/langgraph-sdk': 1.12.8(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@langchain/protocol': 0.0.20
-      '@standard-schema/spec': 1.1.0
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - react
-      - react-dom
-
   '@langchain/openai@1.8.0(@langchain/core@1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0))(undici@7.30.1)(ws@8.22.0)':
     dependencies:
       '@langchain/core': 1.3.1(@opentelemetry/api@1.10.0)(openai@7.45.1(undici@7.30.1)(ws@8.22.0)(zod@3.25.76))(ws@8.22.0)
@@ -4964,8 +4864,6 @@ snapshots:
       - google-auth-library
       - undici
       - ws
-
-  '@langchain/protocol@0.0.20': {}
 
   '@modelcontextprotocol/core@2.4.0':
     dependencies:
@@ -6107,8 +6005,8 @@ snapshots:
       '@next/eslint-plugin-next': 16.4.3(eslint@9.39.5(jiti@2.7.0))
       eslint: 9.39.5(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.5(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.5(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.39.5(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.39.5(jiti@2.7.0))
@@ -6130,7 +6028,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.5(jiti@2.7.0)):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
       debug: 4.4.3
@@ -6141,22 +6039,22 @@ snapshots:
       tinyglobby: 0.2.17
       unrs-resolver: 1.12.2
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.14.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@2.7.0)):
+  eslint-module-utils@2.14.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
       eslint: 9.39.5(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.5(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.2.0
@@ -6167,7 +6065,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.39.5(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.14.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@2.7.0))
+      eslint-module-utils: 2.14.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0)))(eslint@9.39.5(jiti@2.7.0))
       hasown: 2.0.4
       is-core-module: 2.17.0
       is-glob: 4.0.3
@@ -6314,8 +6212,6 @@ snapshots:
   esutils@2.0.3: {}
 
   eventemitter3@4.0.7: {}
-
-  eventemitter3@5.0.4: {}
 
   execa@5.1.1:
     dependencies:
@@ -6662,8 +6558,6 @@ snapshots:
   is-map@2.0.3: {}
 
   is-negative-zero@2.0.3: {}
-
-  is-network-error@1.3.2: {}
 
   is-number-object@1.1.1:
     dependencies:
@@ -7148,20 +7042,9 @@ snapshots:
       eventemitter3: 4.0.7
       p-timeout: 3.2.0
 
-  p-queue@9.3.5:
-    dependencies:
-      eventemitter3: 5.0.4
-      p-timeout: 7.0.2
-
-  p-retry@7.1.1:
-    dependencies:
-      is-network-error: 1.3.2
-
   p-timeout@3.2.0:
     dependencies:
       p-finally: 1.0.0
-
-  p-timeout@7.0.2: {}
 
   p-try@2.2.0: {}
 
@@ -7266,8 +7149,6 @@ snapshots:
       source-map-js: 1.2.2
 
   postgres-array@2.0.0: {}
-
-  postgres-array@3.0.4: {}
 
   postgres-bytea@1.0.1: {}
 

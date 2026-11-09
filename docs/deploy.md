@@ -56,7 +56,7 @@ Fill in every variable:
 | `ASSEMBLYAI_API_KEY` | Your AssemblyAI API key (transcription). |
 | `APP_PASSWORD` | **Required.** A strong password, for example from `openssl rand -base64 24`. The app is public, and compose refuses to start `web` without it. Wrong passwords are throttled per client address (5 in 10 minutes), read from `X-Forwarded-For`, which Caddy sets to the real peer. Putting a CDN or another proxy in front of Caddy would make every client look like that proxy's address. |
 | `MAX_UPLOAD_GB` | Upload limit (default 5). |
-| `VIDEO_RETENTION_DAYS` | Source videos (and the pipeline checkpoints) older than this are removed daily at 03:00 UTC (default 14). Sessions, briefings, thumbnails and rendered clips stay. Sessions still processing are never touched. |
+| `VIDEO_RETENTION_DAYS` | Source videos (and the pipeline run rows) older than this are removed daily at 03:00 UTC (default 14). Sessions, briefings, thumbnails and rendered clips stay. Sessions still processing are never touched. |
 | `POSTGRES_PASSWORD` | **Required.** The database password, letters and digits only (it goes inside `DATABASE_URL`), for example `openssl rand -hex 24`. Compose refuses to start without it. It only takes effect when the `pgdata` volume is first created: on a server that already has data, also run `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres psql -U digestor -d digestor -c "ALTER USER digestor PASSWORD '<the new password>'"` before restarting. |
 | `PUBLIC_HOSTNAME` | The DNS name from step 2, for example `digestor.example.com` (no `https://`). |
 
