@@ -1,8 +1,7 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type { PipelineStep, Stage } from "../schemas.ts";
 import type { Db } from "./client.ts";
-import { setStage } from "./repo.ts";
-import { pipelineRuns } from "./schema.ts";
+import { pipelineRuns, sessions } from "./schema.ts";
 
 export type PipelineRun = {
   sessionId: string;
@@ -25,7 +24,7 @@ export async function ensurePipelineRun(db: Db, sessionId: string, firstStep: Pi
 
 /**
  * Compare-and-set: moves the run `from` → `to` only if it is still at `from`. With `patch.stage` the session's
- * stage/progress is set in the same transaction, only when the step moved. Returns whether the step moved.
+ * stage/progress is set in the same transaction, only when the step moved and the session has not failed. Returns whether the step moved.
  */
 export async function advancePipelineRun(
   db: Db,
@@ -46,7 +45,13 @@ export async function advancePipelineRun(
       .where(sql`${pipelineRuns.sessionId} = ${sessionId} AND ${pipelineRuns.nextStep} = ${from}`)
       .returning({ sessionId: pipelineRuns.sessionId });
     if (rows.length === 0) return false;
-    if (patch?.stage) await setStage(tx, sessionId, patch.stage.stage, patch.stage.progress);
+    // A session something else failed meanwhile (the sweep, a step) stays failed; the runner stops at its next entry.
+    if (patch?.stage) {
+      await tx
+        .update(sessions)
+        .set({ stage: patch.stage.stage, progress: patch.stage.progress, error: null, updatedAt: sql`now()` })
+        .where(and(eq(sessions.id, sessionId), ne(sessions.stage, "failed")));
+    }
     return true;
   });
 }

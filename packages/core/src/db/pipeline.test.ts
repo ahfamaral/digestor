@@ -54,6 +54,14 @@ describe("pipeline runs", () => {
     expect(after).toMatchObject({ stage: "preparing", progress: 10 });
   });
 
+  it("a stage patch does not revive a failed session (the step still moves)", async () => {
+    await ensurePipelineRun(db, s.id, "understand_context");
+    await setStage(db, s.id, "failed", 55, "Boom");
+    expect(await advancePipelineRun(db, s.id, "understand_context", "ask_context", { stage: { stage: "awaiting_context", progress: 55 } })).toBe(true);
+    expect(await getSession(db, s.id)).toMatchObject({ stage: "failed", error: "Boom" });
+    expect((await getPipelineRun(db, s.id))!.nextStep).toBe("ask_context");
+  });
+
   it("deletePipelineRun removes the row; deleting a session cascades", async () => {
     await ensurePipelineRun(db, s.id, "download");
     await deletePipelineRun(db, s.id);

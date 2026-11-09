@@ -108,6 +108,28 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 Migrations run automatically through the `migrate` service before `web` and `worker` restart. A job interrupted by the restart is retried automatically; one that was mid-run can take up to its 4-hour expiry before it is picked up again, so prefer updating when nothing is processing. Old images can be removed with `docker image prune`.
 
+### Once, when updating to the step runner (migration 0019)
+
+The pipeline no longer uses LangGraph; its position is the `pipeline_runs` table and migration 0019 drops the `checkpoint*` tables.
+
+- Update when nothing is processing. This must return no rows (sessions at `awaiting_context` are safe: a resume continues them):
+
+  ```
+  select id, stage from sessions where stage not in ('ready','failed','awaiting_context');
+  ```
+
+  Why: `up -d --build` runs `migrate` (it drops the checkpoint tables) while the old worker still runs for a few seconds.
+- Dev/demo: sessions seeded by an older `seed-demo.ts` have no run row and would run the paid pipeline on Continue or Skip. Delete them, or give them a done row:
+
+  ```
+  insert into pipeline_runs(session_id,next_step) select id,'done' from sessions where title like '%(seeded)' on conflict do nothing;
+  ```
+- If an older worker ran after 0019, it recreated empty `checkpoint*` tables; drop them:
+
+  ```
+  DROP TABLE IF EXISTS "checkpoint_writes", "checkpoint_blobs", "checkpoints", "checkpoint_migrations";
+  ```
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:

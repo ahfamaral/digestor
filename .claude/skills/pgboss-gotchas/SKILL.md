@@ -43,7 +43,7 @@ Every item below cost a review round on Plan 1. The code that implements each fi
 
 3. **Resume applies only at `ask_context`, and only once the web has moved the stage off `awaiting_context`** (stale-resume guard: a resume that arrives while the stage still says awaiting is stale). The payload is used for that one step only, never stored as a position.
 
-4. **Every step must be safe to run twice.** A crash before the CAS re-runs that step only: `replaceAiClips` replaces instead of appending; the render step skips clips already `done` and survives a single clip failing.
+4. **Every step must be safe to run twice.** A crash before the CAS re-runs that step only: `replaceAiClips` replaces instead of appending; `analyze` returns early when the analysis already exists.
 
 5. **The run row is user data.** It holds the human's answers. Retention deletes it (`runVideoRetention`: video files → run row → search index → `videoDeletedAt`, so a failure leaves the session for the next run; rows, thumbnails and `clips/` are kept).
 

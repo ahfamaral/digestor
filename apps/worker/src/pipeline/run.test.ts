@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChromaClient } from "chromadb";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { personAt, type RecordRef, type ContextCard, type Fact, type ResumePayload, type Transcript, type Word } from "@digestor/core";
 import {
   LocalStorage,
@@ -27,6 +27,7 @@ import {
   setHumanAttribution,
   updateSession,
   getPipelineRun,
+  advancePipelineRun,
   deletePipelineRun,
   setStage,
   transitionStage,
@@ -195,6 +196,13 @@ const youtubeStub =
   };
 
 describe("pipeline", () => {
+  // The runner logs "ignoring start" / "waiting at the context check" lines that these tests trigger on purpose.
+  let log: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    log = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  afterEach(() => log.mockRestore());
+
   it("pauses for context when the date is missing", async () => {
     const enqueueProxy = vi.fn(async (_id: string) => {});
     const { start, sessionId, llm, nextStep, paused } = await setup({ context: [draft()], enqueueProxy });
@@ -671,6 +679,7 @@ describe("analysis", () => {
 
 describe("crash and resume", () => {
   it("a retried start job resumes from the stored step without re-running finished steps", async () => {
+    const info = vi.spyOn(console, "log").mockImplementation(() => {});
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       let transcribeCalls = 0;
@@ -715,6 +724,7 @@ describe("crash and resume", () => {
       expect(await nextStep()).toBe("ask_context");
     } finally {
       log.mockRestore();
+      info.mockRestore();
     }
   });
 
@@ -774,6 +784,45 @@ describe("runner", () => {
       expect(await runPipeline(deps, sessionId, { resume: dateAnswer })).toBe("paused");
       expect(contextCalls()).toHaveLength(2);
       expect((await runOf(sessionId)).answers).toEqual([{ question: "When was this recorded or first aired?", answer: "Maybe last spring" }]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a session failed while understand_context runs ends failed and does not pause or go on", async () => {
+    const restore = quiet();
+    try {
+      let id = "";
+      const failMidCall = async () => {
+        await setStage(db, id, "failed", 55, "Swept");
+        return draft();
+      };
+      const s = await setup({ context: [failMidCall] });
+      id = s.sessionId;
+      expect(await s.start()).toBe("stopped");
+      expect(await getSession(db, id)).toMatchObject({ stage: "failed", error: "Swept" });
+      expect(await s.nextStep()).not.toBe("name_speakers");
+      expect(s.contextCalls()).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a runner that loses the compare-and-set stops and writes nothing further", async () => {
+    const restore = quiet();
+    try {
+      let id = "";
+      const rival = async () => {
+        // Another writer moves the row past understand_context while this runner's call is in flight.
+        expect(await advancePipelineRun(db, id, "understand_context", "ask_context", { stage: { stage: "awaiting_context", progress: 55 } })).toBe(true);
+        return draft();
+      };
+      const s = await setup({ context: [rival] });
+      id = s.sessionId;
+      expect(await s.start()).toBe("stopped");
+      expect(await getPipelineRun(db, id)).toMatchObject({ nextStep: "ask_context", round: 0 });
+      expect(await getSession(db, id)).toMatchObject({ stage: "awaiting_context", progress: 55 });
+      expect(s.contextCalls()).toHaveLength(1);
     } finally {
       restore();
     }

@@ -358,7 +358,7 @@ const analyze: Step = async (deps, s) => {
 };
 
 /** A step from `naming.ts` (it never fails the session itself), followed by `next`. */
-const then =
+const andThen =
   (node: (deps: PipelineDeps) => (s: { sessionId: string }) => Promise<unknown>, next: PipelineStep): Step =>
   async (deps, s) => {
     await node(deps)(s);
@@ -370,18 +370,18 @@ export const STEPS: Record<Exclude<PipelineStep, "done">, Step> = {
   download,
   ingest,
   transcribe,
-  match_record: then(matchRecordNode, "understand_context"),
+  match_record: andThen(matchRecordNode, "understand_context"),
   understand_context: understandContextStep,
   ask_context: askContext,
   // The record step again, after the context check: a suggestion accepted at the pause (pending) is matched here; with no pending record it does nothing.
-  match_record_late: then(matchRecordNode, "name_speakers"),
-  name_speakers: then(nameSpeakersNode, "index"),
+  match_record_late: andThen(matchRecordNode, "name_speakers"),
+  name_speakers: andThen(nameSpeakersNode, "index"),
   index,
   analyze,
 };
 
 /** Steps after which a session some other path marked `failed` (e.g. the sweep) does not go on. */
-const STOPS_IF_FAILED: ReadonlySet<PipelineStep> = new Set(["download", "ingest", "transcribe", "match_record", "match_record_late", "name_speakers"]);
+const STOPS_IF_FAILED: ReadonlySet<PipelineStep> = new Set(["download", "ingest", "transcribe", "match_record", "understand_context", "ask_context", "match_record_late", "name_speakers"]);
 
 /** Where a YouTube session without a file, or an upload, starts. */
 export function firstStepFor(session: Pick<Session, "source" | "originalKey">): PipelineStep {
