@@ -44,7 +44,7 @@ Progress streams to the browser over SSE; the pipeline survives worker restarts 
 
 | Technique | Where |
 | --- | --- |
-| Own step runner: Postgres-backed position (`pipeline_runs`), compare-and-set advance, one human pause | `apps/worker/src/pipeline/run.ts` |
+| Human-in-the-loop pipeline on its own step runner: each session's step, question round and answers are stored in Postgres (`pipeline_runs`); steps advance by compare-and-set, so a crashed or duplicated job resumes at the right step and never re-runs finished paid work; the run pauses for the human at the context check and resumes on their answer | `apps/worker/src/pipeline/run.ts` |
 | LangChain `ChatAnthropic.withStructuredOutput` + zod | `apps/worker/src/llm/structured.ts` |
 | Swappable LLM provider (Anthropic or OpenRouter via `ChatOpenAICompletions`) | `apps/worker/src/llm/provider.ts`, `apps/worker/src/llm/openrouter.ts` |
 | Prompt engineering and grounding (fact sources, verbatim-quote check, per-item degradation) | `apps/worker/src/agents/` (context, topics, moments, briefing, checks, translation) |
