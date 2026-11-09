@@ -8,9 +8,10 @@ export * from "./db/personal.ts";
 export * from "./db/names.ts";
 export * from "./db/records.ts";
 export * from "./db/preview.ts";
+export * from "./db/pipeline.ts";
 export { runMigrations } from "./db/migrate.ts";
 export {
   sessions, transcripts, contextCards, analysisVersions, topics, moments, momentHighlights, briefings, translations,
-  selections, clips, clipEvents, subtitleTracks, askMessages, askActions, problemReports, persons, attributions, sessionRecords,
+  selections, clips, clipEvents, subtitleTracks, askMessages, askActions, problemReports, persons, attributions, sessionRecords, pipelineRuns,
   type Stage,
 } from "./db/schema.ts";

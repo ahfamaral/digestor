@@ -138,6 +138,13 @@ export type Stage =
   | "ready"
   | "failed";
 
+/** The upload pipeline's steps, in order; `pipeline_runs.next_step` holds the one still to run (`done` = finished). */
+export const PIPELINE_STEPS = [
+  "download", "ingest", "transcribe", "match_record", "understand_context", "ask_context",
+  "match_record_late", "name_speakers", "index", "analyze", "done",
+] as const;
+export type PipelineStep = (typeof PIPELINE_STEPS)[number];
+
 /** State of the session's preview copy (`proxy.mp4`); `null` = a session from before the copy got its own job. */
 export type ProxyStatus = "pending" | "running" | "done" | "failed";
 

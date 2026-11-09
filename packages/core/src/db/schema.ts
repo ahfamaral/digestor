@@ -11,7 +11,7 @@ import type {
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
 import type { SubtitlePosition, SubtitleStyle } from "../subtitleStyle.ts";
-import type { ContextCard, ProxyStatus, Stage, Word } from "../schemas.ts";
+import type { ContextCard, PipelineStep, ProxyStatus, Stage, Word } from "../schemas.ts";
 
 export type { Stage };
 
@@ -378,4 +378,15 @@ export const sessionRecords = pgTable("session_records", {
   linkedAt: timestamp("linked_at", { withTimezone: true }).notNull().defaultNow(),
   /** Last change: the sweep fails a `pending`/`running` row untouched for 30 min with no live job. */
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+/** Where a session's upload pipeline stands: the step still to run, the context-check round and the journalist's answers. */
+export const pipelineRuns = pgTable("pipeline_runs", {
+  sessionId: uuid("session_id")
+    .primaryKey()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  nextStep: text("next_step").$type<PipelineStep>().notNull(),
+  round: integer("round").notNull().default(0),
+  answers: jsonb("answers").$type<{ question: string; answer: string }[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
