@@ -9,14 +9,17 @@
  * it reads the current version. Moment checks only run on demand, so trap results count only checked moments:
  * `--run-checks` first checks every unchecked moment that overlaps a trap, with the model that version recorded for
  * checks, and stores the result as the app would. Without it the script never calls the LLM.
+ * The cost rows come from the version's recorded LLM usage (tokens and US$ per served model, since 2026-11-10) and,
+ * with `--run-checks`, from the checks this run made.
  */
 import { readFileSync } from "node:fs";
 import { GranularitySchema, HIGHLIGHT_TYPES, ProfileIdSchema } from "@digestor/core";
-import { createDb, getAnalysisByVersion, getAnalysisVersion, getContextCard, getCurrentAnalysis, getPersons, getTranscript, listAttributions, setMomentChecks } from "@digestor/core/server";
+import { createDb, getAnalysisByVersion, getAnalysisVersion, getContextCard, getCurrentAnalysis, getPersons, getSession, getTranscript, listAttributions, setMomentChecks } from "@digestor/core/server";
 import { checkMoment } from "../src/agents/checks.js";
-import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps, type Golden } from "../src/eval/metrics.js";
+import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps, usageRows, type Golden } from "../src/eval/metrics.js";
 import { createOpenRouterLLM } from "../src/llm/openrouter.js";
 import { createAnthropicLLM, type StructuredLLM } from "../src/llm/structured.js";
+import { UsageMeter, withUsageMeter } from "../src/llm/usage.js";
 import { withProfile } from "../src/pipeline/analysis.js";
 import { promptCard } from "../src/pipeline/naming.js";
 
@@ -52,7 +55,9 @@ try {
     console.error(`Session ${sessionId} has no complete analysis${versionArg === undefined ? "" : ` v${versionArg}`}.`);
     process.exit(1);
   }
-  const models = ((await getAnalysisVersion(db, analysis.version.id))?.models ?? {}) as Record<string, string>;
+  const versionRow = await getAnalysisVersion(db, analysis.version.id);
+  const models = (versionRow?.models ?? {}) as Record<string, string>;
+  const checksMeter = new UsageMeter();
 
   if (runChecks) {
     const pending = uncheckedOnTraps(golden.traps, analysis.moments);
@@ -64,11 +69,13 @@ try {
     }
     const llm = pending.length ? llmFor(models.checks!) : null;
     const card = stored ? await promptCard(db, sessionId, withProfile(stored.card, profile)) : null;
-    for (const [i, m] of pending.entries()) {
-      const checks = await checkMoment(llm!, { card: card!, moment: m, words: transcript!.words });
-      await setMomentChecks(db, m.id, checks);
-      console.error(`checked ${i + 1}/${pending.length}: ${m.granularity} ${m.title}`);
-    }
+    await withUsageMeter(checksMeter, async () => {
+      for (const [i, m] of pending.entries()) {
+        const checks = await checkMoment(llm!, { card: card!, moment: m, words: transcript!.words });
+        await setMomentChecks(db, m.id, checks);
+        console.error(`checked ${i + 1}/${pending.length}: ${m.granularity} ${m.title}`);
+      }
+    });
     if (pending.length) analysis = (await getAnalysisByVersion(db, sessionId, analysis.version.version))!;
   }
   const s = (ms: number) => (Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)} s` : "n/a");
@@ -112,6 +119,10 @@ try {
       }
     }
   }
+
+  const durationMs = (await getSession(db, sessionId))?.durationMs ?? null;
+  rows.push(...usageRows("analysis", versionRow?.usage ?? {}, durationMs));
+  if (runChecks) rows.push(...usageRows("checks run now", checksMeter.report(), null));
 
   console.log(`Evaluation of session ${sessionId} (analysis v${analysis.version.version}, profile ${analysis.version.profile}; golden profile ${golden.profile})`);
   console.log(`Models: ${[...new Set(Object.values(models))].join(", ") || "not recorded"}\n`);

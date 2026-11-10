@@ -3,7 +3,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { AttributionEvidence, AttributionSource, AttributionStatus } from "../attribution.ts";
-import type { AnalysisStatus, BriefingContent, MomentChecks, MomentOrigin, HighlightMethod } from "../analysisTypes.ts";
+import type { AnalysisStatus, BriefingContent, LLMUsage, MomentChecks, MomentOrigin, HighlightMethod } from "../analysisTypes.ts";
 import type {
   AskActionKind, AskActionStatus, AskMessageStatus, AskRole, ClipActor, ClipEventKind, ClipFormat, ProblemTargetKind,
   FindMoreStatus, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
@@ -73,6 +73,8 @@ export const analysisVersions = pgTable(
     pipelineVersion: text("pipeline_version").notNull(),
     models: jsonb("models").$type<Record<string, string>>().notNull().default({}),
     promptVersions: jsonb("prompt_versions").$type<Record<string, string>>().notNull().default({}),
+    /** Tokens and US$ per served model of the run that completed this version (`LLMUsage`). */
+    usage: jsonb("usage").$type<LLMUsage>().notNull().default({}),
     reason: text("reason").notNull(),
     isCurrent: boolean("is_current").notNull().default(false),
     /** When the session's names stood as this version's text was written (Plan 3 §5.2). */

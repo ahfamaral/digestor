@@ -3,6 +3,7 @@ import type { MessageContent } from "@langchain/core/messages";
 import { OutputParserException } from "@langchain/core/output_parsers";
 import { toJsonSchema } from "@langchain/core/utils/json_schema";
 import { ZodError, type z } from "zod";
+import { usageCallbacks } from "./usage.js";
 
 export type LLMModel = "reasoning" | "fast";
 
@@ -42,7 +43,9 @@ export function createAnthropicLLM(apiKey: string, opts: ClientOptions = {}): St
         model: MODEL_IDS[a.model],
         maxTokens: 16000,
         ...(opts.fetch ? { clientOptions: { fetch: opts.fetch } } : {}),
-      }).withStructuredOutput(llmJsonSchema(a.schema), { name: a.name, method: "jsonSchema" });
+      })
+        .withStructuredOutput(llmJsonSchema(a.schema), { name: a.name, method: "jsonSchema" })
+        .withConfig({ callbacks: usageCallbacks(MODEL_IDS[a.model]) });
       return invokeWithOneRetry<T>(validated(json, a.schema), a);
     },
   };

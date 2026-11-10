@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, MomentChecks, Person, Word } from "@digestor/core";
-import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps } from "./metrics.js";
+import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps, usageRows } from "./metrics.js";
 
 const t = (startMs: number, endMs: number) => ({ title: "t", startMs, endMs });
 
@@ -168,5 +168,23 @@ describe("attributionScore", () => {
   it("counts a name as right when its tokens are a subset of the golden name's", () => {
     const r = attributionScore([{ startMs: 0, endMs: 1_000, person: "Luiz Inácio Lula da Silva" }], [word("C", 0, 1_000)], [att("C", "p3")], persons);
     expect(r.correctMs).toBe(1_000);
+  });
+});
+
+describe("usageRows", () => {
+  const u = (calls: number, costUsd: number, unpricedCalls = 0) => ({ calls, inputTokens: 120_000, outputTokens: 8_000, reasoningTokens: 2_000, costUsd, unpricedCalls });
+
+  it("totals the run, gives the cost per hour of video and one row per model, most expensive first", () => {
+    const rows = usageRows("analysis", { "a/cheap": u(10, 0.01), "b/dear": u(5, 0.1) }, 2 * 3_600_000);
+    expect(rows).toEqual([
+      ["LLM cost, analysis", "$0.110 ($0.055 per hour of video) · 15 calls"],
+      ["LLM use, analysis, b/dear", "5 calls · 120k in / 8000 out (2000 thinking) · $0.100"],
+      ["LLM use, analysis, a/cheap", "10 calls · 120k in / 8000 out (2000 thinking) · $0.010"],
+    ]);
+  });
+
+  it("says when calls had no price, and when nothing was recorded", () => {
+    expect(usageRows("checks run now", { m: u(3, 0.002, 1) }, null)[0]).toEqual(["LLM cost, checks run now", "$0.0020 · 3 calls, 1 without a price (not counted)"]);
+    expect(usageRows("analysis", {}, 1000)).toEqual([["LLM cost, analysis", "not recorded (version made before 2026-11-10, or no LLM calls)"]]);
   });
 });

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import type {
+  LLMUsage,
   AnalysisBundle, AnalysisVersion, BriefingContent, Moment, MomentChecks, MomentHighlight, MomentWithHighlights, Topic,
 } from "../analysisTypes.ts";
 import type { Db } from "./client.ts";
@@ -99,8 +100,9 @@ export async function claimAnalysisVersion(
  * Atomically completes a `running` version and makes it the session's only current one. Takes the same session row
  * lock as `startAnalysisVersion`, so concurrent completes of two versions serialise instead of deadlocking.
  * Throws when the version is missing or not running (a failed or already complete version never becomes current).
+ * `usage` is the LLM usage of the run that completed it.
  */
-export async function completeAnalysisVersion(db: Db, analysisId: string): Promise<void> {
+export async function completeAnalysisVersion(db: Db, analysisId: string, opts: { usage?: LLMUsage } = {}): Promise<void> {
   await db.transaction(async (tx) => {
     const [found] = await tx
       .select({ sessionId: analysisVersions.sessionId })
@@ -110,7 +112,7 @@ export async function completeAnalysisVersion(db: Db, analysisId: string): Promi
     await tx.execute(sql`select id from ${sessions} where ${sessions.id} = ${found.sessionId} for update`);
     const [row] = await tx
       .update(analysisVersions)
-      .set({ status: "complete", isCurrent: true })
+      .set({ status: "complete", isCurrent: true, ...(opts.usage ? { usage: opts.usage } : {}) })
       .where(and(eq(analysisVersions.id, analysisId), eq(analysisVersions.status, "running")))
       .returning({ sessionId: analysisVersions.sessionId });
     if (!row) throw new Error(`Analysis version is not running: ${analysisId}`);
@@ -118,6 +120,28 @@ export async function completeAnalysisVersion(db: Db, analysisId: string): Promi
       .update(analysisVersions)
       .set({ isCurrent: false })
       .where(and(eq(analysisVersions.sessionId, row.sessionId), ne(analysisVersions.id, analysisId)));
+  });
+}
+
+/**
+ * Makes a complete version the session's current one again (the evaluation batch puts back the version the session
+ * had before its runs). Same session row lock as `completeAnalysisVersion`. False when the version is missing, not
+ * this session's, or not complete; nothing changes then.
+ */
+export async function makeAnalysisCurrent(db: Db, sessionId: string, analysisId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select id from ${sessions} where ${sessions.id} = ${sessionId} for update`);
+    const [row] = await tx
+      .update(analysisVersions)
+      .set({ isCurrent: true })
+      .where(and(eq(analysisVersions.id, analysisId), eq(analysisVersions.sessionId, sessionId), eq(analysisVersions.status, "complete")))
+      .returning({ id: analysisVersions.id });
+    if (!row) return false;
+    await tx
+      .update(analysisVersions)
+      .set({ isCurrent: false })
+      .where(and(eq(analysisVersions.sessionId, sessionId), ne(analysisVersions.id, analysisId)));
+    return true;
   });
 }
 

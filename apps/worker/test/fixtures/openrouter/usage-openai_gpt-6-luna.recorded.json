@@ -1,0 +1,78 @@
+{
+  "_meta": {
+    "date": "2026-11-10",
+    "sdk": "@langchain/openai 1.8.0",
+    "input": "probe-schemas checks schema, smallest valid object",
+    "request": {
+      "model": "openai/gpt-6-luna",
+      "provider": {
+        "require_parameters": true
+      },
+      "response_format": {
+        "type": "json_schema",
+        "name": "checks"
+      }
+    }
+  },
+  "response": {
+    "id": "gen-1794324725-rEABiP6M3GzVew1tLnZD",
+    "object": "chat.completion",
+    "created": 1794324725,
+    "model": "openai/gpt-6-luna",
+    "provider": "OpenAI",
+    "system_fingerprint": null,
+    "service_tier": "default",
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "message": {
+          "role": "assistant",
+          "content": "{\"argumentComplete\":false,\"continuesWith\":null,\"unansweredQuestion\":false,\"contextRisk\":null,\"reportedSpeech\":false,\"interpreter\":false}",
+          "refusal": null,
+          "reasoning": "**Considering schema requirements**\n\nI'm looking at the schema requirements which involve using booleans and no defaults. The developer mentioned needing the smallest valid object, so I'm thinking of a JSON structure with booleans set to false and nullable string fields, particularly for contextRisk. All properties are optional, so technically an empty object {} qualifies as valid. I need to ensure that I follow the format checks for the output properly.",
+          "reasoning_details": [
+            {
+              "type": "reasoning.summary",
+              "summary": "**Considering schema requirements**\n\nI'm looking at the schema requirements which involve using booleans and no defaults. The developer mentioned needing the smallest valid object, so I'm thinking of a JSON structure with booleans set to false and nullable string fields, particularly for contextRisk. All properties are optional, so technically an empty object {} qualifies as valid. I need to ensure that I follow the format checks for the output properly.",
+              "format": "openai-responses-v1",
+              "index": 0
+            },
+            {
+              "type": "reasoning.encrypted",
+              "data": "gAAAAABq8zj5aWC-H-5ya4ZvkZn05MBEYICxb_UZNoQuO0nCYNMMuR9AVFErxJO2tQAr_vpRtcI7GoyhqQXrao83Y7THtl7FrHvdLkmjFfZ2zr4l2n7RyvZ8NLDhGRYPyvxnx2Mf79dUVlG67HIYDKtWpVcwRgPjl0LNwXQycf47DNh5UavjPIKqG3QDxQzqbgtBwOi-Bcv7CVzb4n1qKPijQvW7DbhT7AQayEKskNQSXv55vJZCFvNCuC9m28CEHbC7SPeufy12HmnG0hnx9SLVsVArcwRR0yiRZuAeaI6nsxFa5o6lqrrkPDqCvq-JPd3PLlRQr5Iy8oVEK4fdY_11PTs3OIR_RR67OSuHuuzlEXAWQEY45cpvrxB99kFStChoUMBiGac5rJiDiISIJ8AidgFOCz9BjgYKAkfPx5gcE03Y3IwFDnoNpOv-tLxE45sTKqZOW7k0JbxM8TenlB-mYakjVpLk9ymypxeB9EapsXYxgHTiwzXjzoUskTGPmf0iLREpcNeqiNwkL-TnebLqWj5d4Roy7VShsjGLBCDkbfXdXxXYMzsNKC3jIF-bWL4RBOwHTQBR3G8p95JtBwOGdMjsJrsds_tRo5ypEXg8IeBdFKCVp7YA8E5XGT-OXC3f_BiHfjxp9U22CGKJ6PbQs_9v5S0jA_lhacqirzeDOWsiESAtJGl9txPWy7wph0tdwXrLwZKmFKCOW_P5mIOOLQRk0lmhTwRluPYWnGU1m2qPTP-p79ruPxaXG6LU-2IlqUiVgNJf1HbNWj-_gg0vG1bNs-58tPJAgawkW2w8VVsVokh8p2Rwo71O2Vbf0QCvgzWt_tu1Wh-S0LUjslcHk0b05j9Uezde60vRfrvlQdOkv2A1iqZJhwRaMcKaU3LCnG96U1kNsoFCwdOd6QqWh8tOKbPI7oFiAAlH1I_eqD4EnJNRaEfAtBuugnlvCURfjAKau-CIg8pttZO_KxmfMOHWlqmOXHgGMFZwoseqhKLQ55mGL6n07_cXGMSBStzaIQ1HE1nd8uNBsGvubgyB7fpWuqeKMipXUkJW_TRy41MdV1IkIRHr0uuS5kLDHk2o5DTbolL7hGoAPLMeFXnnz-BUrtC1TOOcy2bUy78dNT5bBnrmnLoful_e4mqjtxHcdM_MqJOjVcNpRB26VtG8L9EViUiZ1i9n5qPxE1hel66fZ041cOL65tGVQHIrO5ksizfgmEHrFAzTJKzFMCa50nOxyO3aRDvYvAV9WhZlkJhCWPUomikCIOMdzZ0rIycJ3xwInFtAu6ttc6aHoLUWlW4_K8Q8n1yP8jTZBi5CdozZM_slVL7mR2xMZdsqq-y9uF27ZpbJqhtoCMtZeQqNdddTkKEFxKrnTF7S7QPdN5fCCXyVWRuJ0l4Zf2Y7b9M4jMajvZw_jIP41cmrnWFXuaraYGebk2CHHICEp2x7DJla5ssEZOrDBYmz4k118epbgQLTmfcFT7lxeg6HBqYJdzp367ORWWzKoXXs5RdAkq8W3G6ofgw61XnS3Gdc_RMbxYsq7IdE0Dh9OHfL7Mw1vPxVhCvTVu1jqPB4mSsGqfPJdpOttb488iknL2WVeG6ssdfGRzPyqXY_pRrAKe18uE8YHGLSh5IKjJw7sfKzgb3434jVMmfBYQ0RGLK0y0NDEH_Izibc_wrgovBvrsrTylV_0d2aL15j0zcefwnJfLFEPqX4tNuwW4Vx-__QZPAYSRBZiAVOjICOCHxzTMrYd0BOdJi8ew8Z2f61vDneQjPoz51r9GhOV-9jjB5RfUmDkSLVOmxJ5LB_lC-6IQCKggApVLlsEu2Bk0gXbVYDnqEY1BWo06iWN8YY8jDAhDNXtji_0kG30Sx7-R1_twxifQTOb_-9VXVHp-rl5y8fINa1DS3cv-1NmuIziETvNStxZYdLQh8j4NnVa330d1dcc_aOxEX1p_V_HXz1n2B_kV-zDfrIJ9u2LjiDdMx1D-ArHRyrAVGwxV-FB0OYgRXiej0XwQD2aGX1wWS0KBggw3MKZ3MMt8bAhkigd6CUCkA923GzYxtfwJzVynYbl_kshVbZkEgRt6S281_2-VRlNxYeMyGCMB1itVrC5G8rIq_ttkd-Zm4q-jaV5Jfmasi__MBZJcsFbF3oE2PGAxyEggL9tHZAdwjgP-xJWAVE4numuJ8GofsCODGSDA9sZL6RGx1hxivEgAu_03f9VelZRj_E6Jr24f7FVTHIcz2J6rgg-fwfwtn-XKfCUa9wpnQnYNYCBR-9gUN8fYmM83g4ZdTCefVwg7rzX0eDoB_Fb5Y9DdLAfNHglWzVwFMdAk9n5jbjMOEEL6fRv-5Ax8bw_Q8jhzStfBwiNoz2_yzyr6OT25e9nJPPUCXPfa8Gbl0RUj0zjdaIdH29tHhsWBGzCq36uGcAhCrrhOL-B1ipSIU9lgsE5sUIWItkqEWIaI9ySkmMHh5nvloZJTT2h4oLxZrMenkDUBZcLWcPIA7Ht0gxVCHCymMoN0B4w6l8XDc8QKvZTJU9j4nyKc8y7aZLPK85aqOOWCrtvNxJ4ml92Fj8R4XUXtHJrblW9TCJsy_P10Atut4UL2tsm_MM4ZxZK5M0GiyUAoBkAoncDfTmbaclbSYhTsBHA9PIpEitVu_lA7lukh-dTA==.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL2dwdC02LWx1bmEtMjAyNjA5MjJ8b3BlbmFpIn0",
+              "format": "openai-responses-v1",
+              "id": "rs_069fb6cc1304ce7f016af338f6b1e887d1b0478fd76a1afb77",
+              "index": 1
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 219,
+      "completion_tokens": 111,
+      "total_tokens": 330,
+      "cost": 0.0000774,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.0000774,
+        "upstream_inference_prompt_cost": 0.0000219,
+        "upstream_inference_completions_cost": 0.0000555
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 69,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  }
+}

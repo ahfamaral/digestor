@@ -2,6 +2,7 @@ import { SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAICompletions } from "@langchain/openai";
 import { invokeWithOneRetry, isParseError, llmJsonSchema, validated, type ClientOptions, type GenerateArgs, type LLMModel, type StructuredLLM } from "./structured.js";
 import { fromAIMessage, toLangChainMessages, type ToolLLM } from "./tools.js";
+import { usageCallbacks } from "./usage.js";
 
 /** OpenAI-compatible Chat Completions API: https://openrouter.ai/docs/api-reference/overview */
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -53,7 +54,7 @@ export function createOpenRouterLLM(apiKey: string, models: Record<LLMModel, str
       const json = openRouterChat(apiKey, models[a.model], 16000, opts).withStructuredOutput(llmJsonSchema(a.schema), {
         name: a.name,
         method: "jsonSchema", // response_format json_schema; Claude 5.5 rejects a forced tool call
-      });
+      }).withConfig({ callbacks: usageCallbacks(models[a.model]) });
       return invokeWithOneRetry<T>(validated(json, a.schema), a);
     },
   };

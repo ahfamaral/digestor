@@ -39,6 +39,20 @@ export interface TranslatedBriefingContent {
 }
 
 export type AnalysisStatus = "running" | "complete" | "failed";
+
+/** What one model consumed in a run: tokens and the dollars charged (unpriced calls are counted, never guessed). */
+export interface ModelUsage {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Thinking tokens, already inside `outputTokens` (billed as output). */
+  reasoningTokens: number;
+  costUsd: number;
+  /** Replies with no cost and no known price; `costUsd` leaves them out. */
+  unpricedCalls: number;
+}
+/** LLM usage of a run, keyed by the model that actually answered (provider id, e.g. `openai/gpt-6-luna`). */
+export type LLMUsage = Record<string, ModelUsage>;
 export type MomentOrigin = "ai" | "counted" | "ask" | "user" | "find_more";
 export type HighlightMethod = "ai" | "counted";
 
@@ -51,6 +65,8 @@ export interface AnalysisVersion {
   pipelineVersion: string;
   models: Record<string, string>;
   promptVersions: Record<string, string>;
+  /** Tokens and dollars of the run that completed this version (`{}` before 2026-11-10 or while running). */
+  usage: LLMUsage;
   reason: string;
   isCurrent: boolean;
   /** When the session's names stood as this version's text was written. */

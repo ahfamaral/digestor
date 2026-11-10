@@ -1,0 +1,71 @@
+{
+  "_meta": {
+    "date": "2026-11-10",
+    "sdk": "@langchain/openai 1.8.0",
+    "input": "probe-schemas checks schema, smallest valid object",
+    "request": {
+      "model": "qwen/qwen3.8-flash",
+      "provider": {
+        "require_parameters": true
+      },
+      "response_format": {
+        "type": "json_schema",
+        "name": "checks"
+      }
+    }
+  },
+  "response": {
+    "id": "gen-1794324832-Wyi510N0DxU7ATb7s8Tw",
+    "object": "chat.completion",
+    "created": 1794324832,
+    "model": "qwen/qwen3.8-flash",
+    "provider": "Alibaba",
+    "system_fingerprint": null,
+    "service_tier": null,
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "stop",
+        "message": {
+          "role": "assistant",
+          "content": "{\"argumentComplete\":true,\"continuesWith\":null,\"unansweredQuestion\":true,\"contextRisk\":null,\"reportedSpeech\":true,\"interpreter\":true}",
+          "refusal": null,
+          "reasoning": "We need answer user: \"Return the smallest valid object.\" with schema. Need produce JSON object adhering schema. Need think in English same language. Need smallest valid object: empty arrays, null where allowed, short strings, 0 for numbers. Schema: object with booleans argumentComplete, unansweredQuestion, reportedSpeech, interpreter. continuesWith string or null. contextRisk string or null. required all. additionalProperties false. Need smallest valid JSON object. For booleans, smallest? Could use true/false? Shortest? \"false\" is 5, \"true\" 4? Actually true is shorter. But semantics? We need valid, not necessarily correct? User says smallest valid object: empty arrays, null where allowed, short strings, 0 for numbers. For boolean choose shortest valid literal true (4 chars). continuesWith null allowed, contextRisk null allowed. So object keys order? Required all. Minimal characters: {\"argumentComplete\":true,\"continuesWith\":null,\"unansweredQuestion\":true,\"contextRisk\":null,\"reportedSpeech\":true,\"interpreter\":true}. But key order as given. Shortest keys fixed. Could contextRisk be empty string? null allowed and shorter than \"\". So null. For boolean, true shortest. But if we need maybe false semantically? The prompt doesn't provide audio/moment. It just wants smallest valid object; so any valid booleans true minimal. Need ensure JSON. Maybe no spaces. Final only JSON. Need consider continuesWith string or null; null valid. contextRisk string or null; null valid. All booleans. final compact.",
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "text": "We need answer user: \"Return the smallest valid object.\" with schema. Need produce JSON object adhering schema. Need think in English same language. Need smallest valid object: empty arrays, null where allowed, short strings, 0 for numbers. Schema: object with booleans argumentComplete, unansweredQuestion, reportedSpeech, interpreter. continuesWith string or null. contextRisk string or null. required all. additionalProperties false. Need smallest valid JSON object. For booleans, smallest? Could use true/false? Shortest? \"false\" is 5, \"true\" 4? Actually true is shorter. But semantics? We need valid, not necessarily correct? User says smallest valid object: empty arrays, null where allowed, short strings, 0 for numbers. For boolean choose shortest valid literal true (4 chars). continuesWith null allowed, contextRisk null allowed. So object keys order? Required all. Minimal characters: {\"argumentComplete\":true,\"continuesWith\":null,\"unansweredQuestion\":true,\"contextRisk\":null,\"reportedSpeech\":true,\"interpreter\":true}. But key order as given. Shortest keys fixed. Could contextRisk be empty string? null allowed and shorter than \"\". So null. For boolean, true shortest. But if we need maybe false semantically? The prompt doesn't provide audio/moment. It just wants smallest valid object; so any valid booleans true minimal. Need ensure JSON. Maybe no spaces. Final only JSON. Need consider continuesWith string or null; null valid. contextRisk string or null; null valid. All booleans. final compact.",
+              "format": "unknown",
+              "index": 0
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 374,
+      "completion_tokens": 359,
+      "total_tokens": 733,
+      "cost": 0.00022483,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.00022483,
+        "upstream_inference_prompt_cost": 0.0000561,
+        "upstream_inference_completions_cost": 0.00016873
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 324,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  }
+}

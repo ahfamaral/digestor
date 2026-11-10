@@ -32,6 +32,7 @@ import { findMoments } from "../agents/moments.js";
 import { findTopics } from "../agents/topics.js";
 import { MissingApiKeyError } from "../errors.js";
 import { MODEL_IDS, type LLMModel, type StructuredLLM } from "../llm/structured.js";
+import { UsageMeter, withUsageMeter } from "../llm/usage.js";
 import { releaseAudio } from "./audio.js";
 import { promptCard } from "./naming.js";
 
@@ -149,22 +150,26 @@ export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: {
   // `names_at` stamp, so they are never older than it.
   const card = await promptCard(db, sessionId, withProfile(stored.card, opts.profile));
 
-  await stage("finding_topics", 75);
-  const drafts = await findTopics(llm, { card, transcript });
-  const topics = await saveTopics(db, version.id, drafts.map((t, idx) => ({ idx, ...t })));
+  // Every LLM call of this run (retries included) adds its tokens and dollars here; stored on the version.
+  const meter = new UsageMeter();
+  await withUsageMeter(meter, async () => {
+    await stage("finding_topics", 75);
+    const drafts = await findTopics(llm, { card, transcript });
+    const topics = await saveTopics(db, version.id, drafts.map((t, idx) => ({ idx, ...t })));
 
-  await stage("finding_moments", 82);
-  const found = await findMoments(llm, { card, transcript, topics });
-  const saved = await saveMoments(db, version.id, found);
+    await stage("finding_moments", 82);
+    const found = await findMoments(llm, { card, transcript, topics });
+    const saved = await saveMoments(db, version.id, found);
 
-  await stage("writing_briefing", 92);
-  await saveBriefing(db, version.id, await writeBriefing(llm, { card, topics, moments: saved, words: transcript.words }));
+    await stage("writing_briefing", 92);
+    await saveBriefing(db, version.id, await writeBriefing(llm, { card, topics, moments: saved, words: transcript.words }));
 
-  const withHighlights: MomentWithHighlights[] = saved.map((m, i) => ({ ...m, highlights: found[i]!.highlights }));
-  const top = [...new Set(topHighlights(withHighlights, opts.profile).map((h) => h.moment))];
-  await prepareTopHighlights(deps, { session, card, words: transcript.words, moments: top });
+    const withHighlights: MomentWithHighlights[] = saved.map((m, i) => ({ ...m, highlights: found[i]!.highlights }));
+    const top = [...new Set(topHighlights(withHighlights, opts.profile).map((h) => h.moment))];
+    await prepareTopHighlights(deps, { session, card, words: transcript.words, moments: top });
+  });
 
-  await completeAnalysisVersion(db, version.id);
+  await completeAnalysisVersion(db, version.id, { usage: meter.report() });
   await updateSession(db, sessionId, {
     profile: opts.profile,
     ...(initial ? { stage: "preparing_preview" as const, progress: 96, error: null } : {}),

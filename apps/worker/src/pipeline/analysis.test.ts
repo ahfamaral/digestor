@@ -31,6 +31,7 @@ import {
 import { MissingApiKeyError } from "../errors.js";
 import { handleCheckMoment, handleReanalyze, type JobContext } from "../jobs.js";
 import { FakeLLM, type FakeCall, type StructuredLLM } from "../llm/structured.js";
+import { recordUsage } from "../llm/usage.js";
 import { PROMPT_VERSIONS, runAnalysis, type AnalysisDeps } from "./analysis.js";
 import { CHECKS_OK, analysisResponses, crashOnInsert } from "./fakeAnalysis.js";
 import type { PipelineDeps } from "./run.js";
@@ -139,6 +140,31 @@ describe("runAnalysis", () => {
       briefing: "openrouter:anthropic/claude-sonnet-5.5",
       checks: "openrouter:anthropic/claude-haiku-5.5",
     });
+  });
+
+  it("stores the tokens and dollars of every LLM call the run made, per served model", async () => {
+    const fake = new FakeLLM({ byName: analysisResponses({ topics: TOPICS }) });
+    let calls = 0;
+    const llm: StructuredLLM = {
+      async generate(a) {
+        calls += 1;
+        // What the adapters' callbacks do for a real reply: reasoning and fast calls answered by two models.
+        recordUsage(a.model === "fast" ? "m/fast" : "m/reasoning", { inputTokens: 100, outputTokens: 10, reasoningTokens: 1, costUsd: 0.01 });
+        return fake.generate(a);
+      },
+    };
+    const id = await seed();
+
+    await runAnalysis(mkDeps(llm).deps, id, { profile: "interview", reason: "initial" });
+
+    const [v] = await versionsOf(id);
+    const usage = v!.usage;
+    const total = Object.values(usage).reduce((n, u) => n + u.calls, 0);
+    expect(total).toBe(calls);
+    expect(usage["m/reasoning"]).toMatchObject({ inputTokens: 100 * usage["m/reasoning"]!.calls, unpricedCalls: 0 });
+    expect(Object.values(usage).reduce((n, u) => n + u.costUsd, 0)).toBeCloseTo(0.01 * calls, 8);
+    recordUsage("outside", { inputTokens: 1, outputTokens: 1, reasoningTokens: 0, costUsd: 1 }); // no meter: ignored
+    expect((await versionsOf(id))[0]!.usage).toEqual(usage);
   });
 
   it("walks the analysis stages and stores one complete version with its models and prompt versions", async () => {

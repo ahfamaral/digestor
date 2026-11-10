@@ -3,7 +3,7 @@ import pg from "pg";
 import { createDb, type Db } from "./client.ts";
 import {
   completeAnalysisVersion, failAnalysisVersion, getAnalysisByVersion, getAnalysisVersion, getCurrentAnalysis, getMoment, getRunningAnalysis, getTranslation, listAnalysisVersions,
-  claimAnalysisVersion, deletePendingTranslation, failTranslation, requestTranslation, saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
+  claimAnalysisVersion, deletePendingTranslation, makeAnalysisCurrent, failTranslation, requestTranslation, saveBriefing, saveMoments, saveTopics, saveTranslation, setMomentChecks, setMomentThumb, startAnalysisVersion,
   type NewMoment,
 } from "./analysis.ts";
 import { createSession, deleteSession, getSession, setStage, transitionStage, updateSession, type Session } from "./repo.ts";
@@ -80,6 +80,26 @@ describe("analysis versions", () => {
     expect(await getAnalysisVersion(db, v2.id)).toMatchObject({ status: "failed", isCurrent: false });
     expect(await getCurrentAnalysis(db, s.id)).toMatchObject({ version: { version: 1 } });
     await expect(completeAnalysisVersion(db, "00000000-0000-4000-8000-000000000000")).rejects.toThrow(/not found/);
+  });
+
+  it("makeAnalysisCurrent puts an older complete version back as the only current one, and refuses others", async () => {
+    const v1 = await startAnalysisVersion(db, s.id, META);
+    await completeAnalysisVersion(db, v1.id);
+    const v2 = await startAnalysisVersion(db, s.id, META);
+    await completeAnalysisVersion(db, v2.id, { usage: { m: { calls: 1, inputTokens: 2, outputTokens: 3, reasoningTokens: 0, costUsd: 0.5, unpricedCalls: 0 } } });
+    expect((await getAnalysisVersion(db, v2.id))!.usage.m!.costUsd).toBe(0.5);
+    const v3 = await startAnalysisVersion(db, s.id, META);
+    await failAnalysisVersion(db, v3.id);
+
+    expect(await makeAnalysisCurrent(db, s.id, v1.id)).toBe(true);
+    expect(await getCurrentAnalysis(db, s.id)).toMatchObject({ version: { version: 1 } });
+    expect((await listAnalysisVersions(db, s.id)).filter((v) => v.isCurrent).map((v) => v.id)).toEqual([v1.id]);
+
+    expect(await makeAnalysisCurrent(db, s.id, v3.id)).toBe(false); // failed
+    const other = await createSession(db, { title: "Other", source: "upload" });
+    expect(await makeAnalysisCurrent(db, other.id, v2.id)).toBe(false); // another session's
+    expect(await getCurrentAnalysis(db, s.id)).toMatchObject({ version: { version: 1 } });
+    await deleteSession(db, other.id);
   });
 
   it("only a running version can fail: failing a complete version is a no-op", async () => {

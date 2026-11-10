@@ -2,9 +2,441 @@
   "sessionId": "b3e26a69-9471-44ee-87d8-dee5d239e299",
   "videoPath": "https://www.youtube.com/watch?v=lAEiehsUmjw",
   "profile": "parliament",
-  "labelledBy": "drafted by Claude; owner review pending (20 turns: the whole Bundestag debate of 16/10/2026, sitting 21/103, TOP 34 Bürokratierückbau im Verkehrsbereich, labelled from the transcript and the Plenarprotokoll: who the chair gives the floor to, the record speech order; the chair is Vizepräsident Bodo Ramelow per the record; left out: a 1 s heckle \"Warum?\" and a 5 s \"Vielen Dank.\" whose speaker is unclear)",
-  "topics": [],
-  "moments": [],
+  "labelledBy": "drafted by Claude; owner review pending (20 turns: the whole Bundestag debate of 16/10/2026, sitting 21/103, TOP 34 Bürokratierückbau im Verkehrsbereich, labelled from the transcript and the Plenarprotokoll: who the chair gives the floor to, the record speech order; the chair is Vizepräsident Bodo Ramelow per the record; left out: a 1 s heckle \"Warum?\" and a 5 s \"Vielen Dank.\" whose speaker is unclear); moments, topic and traps drafted by Claude from the transcript on 2026-11-10 (owner review pending): one topic (the single agenda item), each of the 9 speeches as an exchange, 25 passages, 17 punchlines, 8 traps (5 reported speech, 3 cut mid-argument). Types use the parliament profile: heated, strong_argument; laughter and the counted longest_speech are not labelled.",
+  "topics": [
+    {
+      "title": "TOP 34: Bürokratierückbau im Verkehrsbereich (erste Beratung)",
+      "startMs": 0,
+      "endMs": 1946852
+    }
+  ],
+  "moments": [
+    {
+      "granularity": "exchange",
+      "title": "Bilger (Minister): Gesetz als nächstes Entlastungspaket",
+      "startMs": 24936,
+      "endMs": 240342,
+      "types": []
+    },
+    {
+      "granularity": "exchange",
+      "title": "Wiehle (AfD): Regierung verfehlt das Ziel meilenweit",
+      "startMs": 261751,
+      "endMs": 506093,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "exchange",
+      "title": "Troff-Schaffarzyk (SPD): handlungsfähiger Staat, Schiene und Drohnen",
+      "startMs": 522900,
+      "endMs": 691294,
+      "types": []
+    },
+    {
+      "granularity": "exchange",
+      "title": "Gastel (Grüne): richtig, aber nicht weit genug",
+      "startMs": 707570,
+      "endMs": 961881,
+      "types": []
+    },
+    {
+      "granularity": "exchange",
+      "title": "Pellmann (Linke): Barrierefreiheit statt Fristabbau",
+      "startMs": 982098,
+      "endMs": 1174150,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "exchange",
+      "title": "Kölbl (CDU/CSU): Wir liefern beim Bürokratierückbau",
+      "startMs": 1191047,
+      "endMs": 1350790,
+      "types": []
+    },
+    {
+      "granularity": "exchange",
+      "title": "Kneller (AfD): 18 Millionen von 65 Milliarden",
+      "startMs": 1368751,
+      "endMs": 1537158,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "exchange",
+      "title": "Vöpel (SPD): moderner Staat, Infrastrukturzukunftsgesetz",
+      "startMs": 1557753,
+      "endMs": 1712484,
+      "types": []
+    },
+    {
+      "granularity": "exchange",
+      "title": "Baumgartner (CDU/CSU): Berlin liefert, Brüssel muss liefern",
+      "startMs": 1733390,
+      "endMs": 1925180,
+      "types": []
+    },
+    {
+      "granularity": "passage",
+      "title": "Bilger: 950 Mio. Euro weniger Erfüllungsaufwand, digitale Papiere",
+      "startMs": 55063,
+      "endMs": 102910,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Bilger: Beispiele des Gesetzes und rund 19 Mio. Euro Entlastung",
+      "startMs": 113070,
+      "endMs": 157730,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Wiehle: Reinigungstrupp-Bild, 18 Mio. von 64 Mrd. Euro",
+      "startMs": 278514,
+      "endMs": 314010,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Wiehle: neue Lkw-Maut-Regeln im Spargesetz, 'ein schlechter Witz'",
+      "startMs": 326513,
+      "endMs": 363707,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Wiehle: Zwölf-Uhr-Tankregel streichen",
+      "startMs": 369076,
+      "endMs": 400947,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Wiehle: CO2-Preis und THG-Quote, Sprit 20 Cent billiger",
+      "startMs": 442590,
+      "endMs": 481656,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Troff-Schaffarzyk: Elektrifizierung, digitaler Bahnbetrieb, Grenze bei Sicherheit",
+      "startMs": 577682,
+      "endMs": 633347,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Troff-Schaffarzyk: 200.000 Drohnenbetreiber, ein gestrichener Satz",
+      "startMs": 634519,
+      "endMs": 677254,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Gastel: Elektrifizierung, nur 62 % des Netzes",
+      "startMs": 744835,
+      "endMs": 794970,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Gastel: Wann steht ein Zug? 84 Sekunden auf der S1",
+      "startMs": 819548,
+      "endMs": 855751,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Gastel: der Farbton, den es nicht gibt",
+      "startMs": 858678,
+      "endMs": 897973,
+      "types": []
+    },
+    {
+      "granularity": "passage",
+      "title": "Gastel: Hamburg–Hannover, Augsburg–Ulm, fehlender Mut",
+      "startMs": 899000,
+      "endMs": 961881,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Pellmann: der Schüler im Rollstuhl, 'politischer Offenbarungseid'",
+      "startMs": 984446,
+      "endMs": 1015293,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Pellmann: Frist verfehlt, Frist abgeschafft – die Prüfung abschaffen",
+      "startMs": 1016446,
+      "endMs": 1048360,
+      "types": [
+        "heated",
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Pellmann: Kostenvorbehalt, 'Menschenrechte nur, wenn sie in den Haushalt passen?'",
+      "startMs": 1048830,
+      "endMs": 1076730,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Pellmann: 'Schau aufs Handy! Bleib doch zu Hause!' – ein Menschenrecht",
+      "startMs": 1133517,
+      "endMs": 1173210,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Kölbl: ein schlechter Witz und eine Liste von Vorhaben",
+      "startMs": 1194744,
+      "endMs": 1261092,
+      "types": []
+    },
+    {
+      "granularity": "passage",
+      "title": "Kölbl: exotische Triebe im Bürokratiedschungel",
+      "startMs": 1270206,
+      "endMs": 1309148,
+      "types": []
+    },
+    {
+      "granularity": "passage",
+      "title": "Kneller: 65 Mrd., 18 Milliliter Tankfüllung, Ziel 292 Mio.",
+      "startMs": 1376958,
+      "endMs": 1411063,
+      "types": [
+        "heated",
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Kneller: Tankregel, CO2-Preis und THG-Quote streichen",
+      "startMs": 1414551,
+      "endMs": 1454232,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Kneller: 60 % aus der EU, 'Eurokratie-Antibiotikum AfD'",
+      "startMs": 1513970,
+      "endMs": 1537158,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Vöpel: Infrastrukturzukunftsgesetz, Brücken und Stichtag",
+      "startMs": 1633110,
+      "endMs": 1660218,
+      "types": []
+    },
+    {
+      "granularity": "passage",
+      "title": "Baumgartner: drei Gesetze diese Woche, 72 Mio. weniger Bürokratiekosten",
+      "startMs": 1746514,
+      "endMs": 1786650,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Baumgartner: Dienstwagen-Führerschein und Buslinien",
+      "startMs": 1808348,
+      "endMs": 1835985,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "passage",
+      "title": "Baumgartner: 60 % aus Brüssel, der Kanzler kämpft",
+      "startMs": 1862753,
+      "endMs": 1912400,
+      "types": []
+    },
+    {
+      "granularity": "punchline",
+      "title": "Bilger: 'Sie sehen: Wir liefern.'",
+      "startMs": 55063,
+      "endMs": 70676,
+      "types": []
+    },
+    {
+      "granularity": "punchline",
+      "title": "Wiehle: der Reinigungstrupp, der nur den Briefkasten leert",
+      "startMs": 278514,
+      "endMs": 291544,
+      "types": []
+    },
+    {
+      "granularity": "punchline",
+      "title": "Wiehle: nicht einmal der dreitausendste Teil",
+      "startMs": 293037,
+      "endMs": 308626,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Wiehle: 'ein schlechter Witz' – der Müllhaufen",
+      "startMs": 351682,
+      "endMs": 363707,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Wiehle: Sprit 20 Cent pro Liter billiger",
+      "startMs": 468276,
+      "endMs": 481656,
+      "types": []
+    },
+    {
+      "granularity": "punchline",
+      "title": "Troff-Schaffarzyk: nicht die Axt anlegen, kein schwacher Staat",
+      "startMs": 527459,
+      "endMs": 545139,
+      "types": []
+    },
+    {
+      "granularity": "punchline",
+      "title": "Troff-Schaffarzyk: Dachdecker, Vermesser, Rehkitze",
+      "startMs": 651940,
+      "endMs": 674449,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Gastel: 0 statt 3 Sekunden, 84 Sekunden Verzögerung",
+      "startMs": 837145,
+      "endMs": 855751,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Gastel: nicht wegen Bürokratie, sondern wegen fehlendem Mut",
+      "startMs": 940857,
+      "endMs": 951483,
+      "types": []
+    },
+    {
+      "granularity": "punchline",
+      "title": "Pellmann: 'Ich nenne das einen politischen Offenbarungseid.'",
+      "startMs": 1004599,
+      "endMs": 1015293,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Pellmann: 'Sie schaffen einfach die Frist ab. So geht das nicht.'",
+      "startMs": 1027730,
+      "endMs": 1035850,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Pellmann: 'Kein Fahrplan? Schau aufs Handy!'",
+      "startMs": 1143140,
+      "endMs": 1152060,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Pellmann: 'Sie bauen Fristen ab, wir wollen Barrieren abbauen.'",
+      "startMs": 1153220,
+      "endMs": 1173210,
+      "types": [
+        "strong_argument"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Kölbl: der schlechte Witz vom Politiker",
+      "startMs": 1194744,
+      "endMs": 1211400,
+      "types": []
+    },
+    {
+      "granularity": "punchline",
+      "title": "Kneller: 18 Milliliter, nicht mal ein Schnapsglas",
+      "startMs": 1386400,
+      "endMs": 1398278,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Kneller: Globoli gescheitert, Antibiotikum heißt AfD",
+      "startMs": 1526636,
+      "endMs": 1537158,
+      "types": [
+        "heated"
+      ]
+    },
+    {
+      "granularity": "punchline",
+      "title": "Baumgartner: Berichtspflichten weghauen, ein Gamechanger",
+      "startMs": 1896715,
+      "endMs": 1912400,
+      "types": []
+    }
+  ],
   "speakers": [
     {
       "startMs": 0,
@@ -107,5 +539,54 @@
       "person": "Bodo Ramelow"
     }
   ],
-  "traps": []
+  "traps": [
+    {
+      "kind": "quoted_opponent",
+      "title": "Bilger gibt die OECD wieder",
+      "startMs": 188008,
+      "endMs": 207499
+    },
+    {
+      "kind": "quoted_opponent",
+      "title": "Gastel gibt den Bauleiter wieder (Farbton)",
+      "startMs": 863054,
+      "endMs": 881157
+    },
+    {
+      "kind": "quoted_opponent",
+      "title": "Kneller gibt die Bewertung des BGL wieder",
+      "startMs": 1464840,
+      "endMs": 1483401
+    },
+    {
+      "kind": "quoted_opponent",
+      "title": "Kneller gibt die Klage des DSLV wieder",
+      "startMs": 1486806,
+      "endMs": 1504360
+    },
+    {
+      "kind": "quoted_opponent",
+      "title": "Baumgartner gibt den Verkehrsminister wieder",
+      "startMs": 1850068,
+      "endMs": 1862641
+    },
+    {
+      "kind": "mid_argument",
+      "title": "Bilger sagt '19 Milliarden' und korrigiert erst im nächsten Satz auf Millionen",
+      "startMs": 143730,
+      "endMs": 157730
+    },
+    {
+      "kind": "mid_argument",
+      "title": "Pellmanns Satz 'Bis zum 1. Januar 2022' ist im Transkript in zwei Sätze geteilt",
+      "startMs": 1016446,
+      "endMs": 1029910
+    },
+    {
+      "kind": "mid_argument",
+      "title": "Vöpels Satz bricht nach 'Der' ab und geht nach 5 s weiter",
+      "startMs": 1609555,
+      "endMs": 1621598
+    }
+  ]
 }

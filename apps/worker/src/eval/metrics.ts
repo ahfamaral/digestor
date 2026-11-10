@@ -1,4 +1,4 @@
-import { closeMatches, personAt, type Attribution, type Granularity, type HighlightTypeId, type MomentChecks, type Person, type ProfileId, type Word } from "@digestor/core";
+import { closeMatches, personAt, type Attribution, type Granularity, type HighlightTypeId, type LLMUsage, type ModelUsage, type MomentChecks, type Person, type ProfileId, type Word } from "@digestor/core";
 
 /** Hand-labelled expectations for one video (spec §14a). */
 export interface Golden {
@@ -137,4 +137,32 @@ export function attributionScore(
   }
   const totalMs = correctMs + wrongMs + unnamedMs;
   return { correctMs, wrongMs, unnamedMs, totalMs, correctConfirmedMs, score: totalMs === 0 ? 0 : (correctMs - 5 * wrongMs) / totalMs };
+}
+
+const usd = (v: number) => `$${v < 0.01 ? v.toFixed(4) : v.toFixed(3)}`;
+const tokens = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : String(n));
+
+/**
+ * Cost rows for the eval table: the total of a run's LLM usage, per hour of video, then one row per served model
+ * (most expensive first). `label` names the run ("analysis", "checks run now"). Unpriced calls are reported, never priced.
+ */
+export function usageRows(label: string, usage: LLMUsage, durationMs: number | null): [string, string][] {
+  const models = Object.entries(usage).sort(([, a], [, b]) => b.costUsd - a.costUsd);
+  if (models.length === 0) return [[`LLM cost, ${label}`, "not recorded (version made before 2026-11-10, or no LLM calls)"]];
+  const sum = (k: keyof ModelUsage) => models.reduce((n, [, u]) => n + u[k], 0);
+  const hours = durationMs ? durationMs / 3_600_000 : 0;
+  const cost = sum("costUsd");
+  const unpriced = sum("unpricedCalls");
+  const rows: [string, string][] = [
+    [
+      `LLM cost, ${label}`,
+      `${usd(cost)}${hours ? ` (${usd(cost / hours)} per hour of video)` : ""} · ${sum("calls")} calls${unpriced ? `, ${unpriced} without a price (not counted)` : ""}`,
+    ],
+  ];
+  for (const [model, u] of models)
+    rows.push([
+      `LLM use, ${label}, ${model}`,
+      `${u.calls} calls · ${tokens(u.inputTokens)} in / ${tokens(u.outputTokens)} out (${tokens(u.reasoningTokens)} thinking) · ${usd(u.costUsd)}`,
+    ]);
+  return rows;
 }

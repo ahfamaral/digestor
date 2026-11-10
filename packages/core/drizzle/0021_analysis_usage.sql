@@ -1,0 +1,1 @@
+ALTER TABLE "analysis_versions" ADD COLUMN "usage" jsonb DEFAULT '{}'::jsonb NOT NULL;
