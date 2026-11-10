@@ -10,7 +10,7 @@ Tests prove units; this skill proves the screens. Use it after any change a user
 ## 1. Bring the stack up
 
 ```bash
-colima status || colima start --cpu 4 --memory 8
+colima status || colima start --cpu 4 --memory 4   # the Mac has 8 GB; more starves macOS
 docker compose up -d                       # postgres, chroma, worker
 docker compose ps                          # postgres must be "healthy"
 pnpm db:migrate                            # idempotent
