@@ -54,7 +54,7 @@ describe("monitor components", () => {
 
   it("a speech match shows the highlighted snippet instead of repeating the summary", () => {
     const html = renderToStaticMarkup(
-      <SearchView back="/monitor" locale="en" q="feminicídio" page={0} result={{ ...searched, members: [], rollCalls: [], speeches: { total: 1, rows: [hit] } }} />,
+      <SearchView back="/monitor" locale="en" q="feminicídio" page={0} result={{ ...searched, rollCalls: { total: 0, rows: [] }, speeches: { total: 1, rows: [hit] } }} />,
     );
     expect(html).toContain("feminicídio</mark>");
     expect(html).not.toContain("RESUMO OFICIAL");
@@ -64,9 +64,10 @@ describe("monitor components", () => {
 
   it("a search with no results at all shows every empty state", () => {
     const html = renderToStaticMarkup(
-      <SearchView back="/monitor" locale="en" q="xyz" page={0} result={{ ...searched, q: "xyz", terms: ["xyz"], members: [], rollCalls: [], speeches: { total: 0, rows: [] } }} />,
+      <SearchView back="/monitor" locale="en" q="xyz" page={0} result={{ ...searched, q: "xyz", terms: ["xyz"], rollCalls: { total: 0, rows: [] }, speeches: { total: 0, rows: [] } }} />,
     );
-    for (const s of ["No deputies match.", "No speeches match.", "No roll calls match."]) expect(html).toContain(s);
+    for (const s of ["No speeches match.", "No roll calls match."]) expect(html).toContain(s);
+    expect(html).not.toContain("No deputies match."); // deputies are found by the combobox, not the topic search
   });
 
   it("the language switch links back to the same page, and Portuguese labels the page", () => {

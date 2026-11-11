@@ -1,5 +1,6 @@
 import { normName } from "@digestor/core";
-import { searchMembers, searchRollCalls, searchSpeeches, type Db, type MemberRow, type RollCallHit, type SpeechHit } from "@digestor/core/server";
+import { searchRollCalls, searchSpeeches, type Db, type RollCallHit, type SpeechHit } from "@digestor/core/server";
+import type { LandingParams } from "./params";
 
 export const MAX_QUERY = 200;
 export const SEARCH_PAGE = 20;
@@ -10,8 +11,9 @@ export type TranslateResult = { terms: string[]; translated: boolean; failed: bo
 export type Translate = (q: string) => Promise<TranslateResult>;
 
 export type Searched = { q: string; terms: string[]; translatedFrom: string | null; notice: "translationFailed" | null };
-export type SearchResult = Searched & {
-  members: MemberRow[]; speeches: { total: number; rows: SpeechHit[] }; rollCalls: RollCallHit[];
+/** A group the person chose not to show is null. */
+export type LandingResult = Searched & {
+  speeches: { total: number; rows: SpeechHit[] } | null; rollCalls: { total: number; rows: RollCallHit[] } | null;
 };
 
 /** Control characters out (a NUL makes Postgres throw), spaces collapsed, capped. */
@@ -34,18 +36,25 @@ export function queryTerms(s: Searched): string[] {
 }
 
 /**
- * One search box: deputies by name (the query as typed), speeches and roll calls by the (translated) terms.
- * An empty query touches nothing.
+ * The landing's topic search: speeches (filtered, paged by `p`) and roll calls (dates only, paged by `rp`) by the
+ * (translated) terms. Deputies are found by the combobox, not here. An empty query touches nothing.
  */
-export async function runSearch(db: Db, raw: string, translate?: Translate, a: { page?: number } = {}): Promise<SearchResult> {
-  const searched = await searchTerms(cleanQuery(raw), translate);
-  if (!searched.q) return { ...searched, members: [], speeches: { total: 0, rows: [] }, rollCalls: [] };
-  const [members, speeches, rollCalls] = await Promise.all([
-    searchMembers(db, searched.q),
-    searchSpeeches(db, { terms: queryTerms(searched), limit: SEARCH_PAGE, offset: (a.page ?? 0) * SEARCH_PAGE }),
-    searchRollCalls(db, { terms: queryTerms(searched) }).then((r) => r.rows),
+export async function runSearch(db: Db, p: LandingParams, translate?: Translate): Promise<LandingResult> {
+  const searched = await searchTerms(cleanQuery(p.q), translate);
+  const empty = { total: 0, rows: [] };
+  if (!searched.q) return { ...searched, speeches: p.show.speeches ? empty : null, rollCalls: p.show.rollCalls ? empty : null };
+  const terms = queryTerms(searched);
+  const filters = {
+    from: p.from ?? undefined, to: p.to ?? undefined, party: p.party ?? undefined, uf: p.uf ?? undefined, phase: p.phase ?? undefined,
+    inOffice: p.inOffice || undefined,
+  };
+  const [speeches, rollCalls] = await Promise.all([
+    p.show.speeches ? searchSpeeches(db, { terms, filters, sort: p.sort, limit: SEARCH_PAGE, offset: p.p * SEARCH_PAGE }) : null,
+    p.show.rollCalls
+      ? searchRollCalls(db, { terms, from: filters.from, to: filters.to, sort: p.sort, limit: SEARCH_PAGE, offset: p.rp * SEARCH_PAGE })
+      : null,
   ]);
-  return { ...searched, members, speeches, rollCalls };
+  return { ...searched, speeches, rollCalls };
 }
 
 /** A non-negative page number from a query parameter. */
@@ -56,17 +65,6 @@ export function pageParam(v: string | string[] | undefined): number {
 
 export function stringParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? "";
-}
-
-/** The current monitor URL (path + query), for the language switch to come back to. */
-export function backPath(path: string, params: Record<string, string | string[] | undefined>): string {
-  const sp = new URLSearchParams();
-  for (const k of ["q", "p"]) {
-    const v = stringParam(params[k]);
-    if (v) sp.set(k, v);
-  }
-  const s = sp.toString();
-  return s ? `${path}?${s}` : path;
 }
 
 export const deputyUrl = (externalId: number) => `https://www.camara.leg.br/deputados/${externalId}`;

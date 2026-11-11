@@ -6,7 +6,8 @@ import { AppBar } from "@/components/AppBar";
 import { DeputyView } from "@/components/Monitor/DeputyView";
 import type { MonitorLocale } from "@/lib/monitor/i18n";
 import { requestLocale, translator } from "@/lib/monitor/server";
-import { backPath, cleanQuery, MEMBER_PAGE, pageParam, queryTerms, searchTerms, stringParam } from "@/lib/monitor/search";
+import { deputyHref, parseDeputy } from "@/lib/monitor/params";
+import { cleanQuery, MEMBER_PAGE, pageParam, queryTerms, searchTerms, stringParam } from "@/lib/monitor/search";
 import { getServer } from "@/lib/server";
 
 /** A deputy's speeches (searchable, this deputy only) and recorded votes. `id` is the Câmara's deputy id. */
@@ -34,7 +35,7 @@ async function Deputy({ params, searchParams }: Pick<PageProps<"/monitor/deputad
   const q = stringParam(sp.q);
   const page = pageParam(sp.p);
   const locale = await requestLocale();
-  const back = backPath(`/monitor/deputados/${member.externalId}`, sp);
+  const back = deputyHref(member.externalId, parseDeputy(sp));
   if (!cleanQuery(q)) return <DeputyData locale={locale} member={member} q={q} page={page} back={back} />;
   // A search is translated first (up to 10 s): the header and box show at once, with "Searching…" meanwhile.
   const empty = { total: 0, rows: [] };

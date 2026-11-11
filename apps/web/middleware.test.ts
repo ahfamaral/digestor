@@ -31,6 +31,13 @@ describe("password gate", () => {
     expect(wrong.status).toBe(401);
   });
 
+  it("the monitor's deputy suggestions answer 401 without a cookie", async () => {
+    process.env.APP_PASSWORD = "hunter2";
+    const res = await middleware(req("/api/monitor/deputies?q=fe"));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized." });
+  });
+
   it("redirects pages to /login and lets the login routes through", async () => {
     process.env.APP_PASSWORD = "hunter2";
     const page = await middleware(req("/s/abc"));
