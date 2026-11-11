@@ -1,0 +1,28 @@
+{
+ "dados": [
+  {
+   "id": 2462009,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2462009",
+   "siglaTipo": "PL",
+   "codTipo": 139,
+   "numero": 3880,
+   "ano": 2024,
+   "ementa": "Altera a Lei nº 11.340, de 7 de agosto de 2006 (Lei Maria da Penha), para incluir a violência vicária dentre as definições de violência doméstica e familiar contra a mulher de que trata o respectivo art. 7º.",
+   "dataApresentacao": "2024-10-10T00:02"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL&numero=3880&ano=2024"
+  },
+  {
+   "rel": "first",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL&numero=3880&ano=2024&pagina=1&itens=15"
+  },
+  {
+   "rel": "last",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL&numero=3880&ano=2024&pagina=1&itens=15"
+  }
+ ]
+}

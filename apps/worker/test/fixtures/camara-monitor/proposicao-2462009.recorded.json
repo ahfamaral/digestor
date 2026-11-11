@@ -1,0 +1,46 @@
+{
+ "dados": {
+  "id": 2462009,
+  "uri": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2462009",
+  "siglaTipo": "PL",
+  "codTipo": 139,
+  "numero": 3880,
+  "ano": 2024,
+  "ementa": "Altera a Lei nº 11.340, de 7 de agosto de 2006 (Lei Maria da Penha), para incluir a violência vicária dentre as definições de violência doméstica e familiar contra a mulher de que trata o respectivo art. 7º.",
+  "dataApresentacao": "2024-10-10T00:02",
+  "uriOrgaoNumerador": "https://dadosabertos.camara.leg.br/api/v2/orgaos/537870",
+  "statusProposicao": {
+   "dataHora": "2026-04-14T00:00",
+   "sequencia": 97,
+   "siglaOrgao": "MESA",
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/4",
+   "uriUltimoRelator": "https://dadosabertos.camara.leg.br/api/v2/deputados/220569",
+   "regime": "Urgência (Art. 155, RICD)",
+   "descricaoTramitacao": "Apresentação de Proposição",
+   "codTipoTramitacao": "100",
+   "descricaoSituacao": "Transformado em Norma Jurídica",
+   "codSituacao": 1140,
+   "despacho": "Recebimento do Ofício nº 237/2026 (SF) que comunica restituição ao Senado Federal pela Presidência da República do autógrafo do projeto de lei sancionado (PL 3880/2024).",
+   "url": "https://www.camara.leg.br/proposicoesWeb/prop_mostrarintegra?codteor=3112917",
+   "ambito": "Regimental",
+   "apreciacao": "Proposição Sujeita à Apreciação do Plenário"
+  },
+  "uriAutores": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2462009/autores",
+  "descricaoTipo": "Projeto de Lei",
+  "ementaDetalhada": "",
+  "keywords": "Alteração, Lei Maria da Penha (2006), violência doméstica, violência vicária, vítima, filho, dependente, parente, violência contra a mulher.",
+  "uriPropPrincipal": null,
+  "uriPropAnterior": null,
+  "uriPropPosterior": null,
+  "urlInteiroTeor": "https://www.camara.leg.br/proposicoesWeb/prop_mostrarintegra?codteor=2484097",
+  "urnFinal": null,
+  "texto": null,
+  "justificativa": null
+ },
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2462009"
+  }
+ ]
+}

@@ -1,0 +1,28 @@
+{
+ "dados": [
+  {
+   "id": 2449741,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2449741",
+   "siglaTipo": "PL",
+   "codTipo": 139,
+   "numero": 2942,
+   "ano": 2024,
+   "ementa": "Determina a aplicação de monitoramento eletrônico para agressores em casos de violência doméstica , como medida de proteção às vítimas e prevenção de novos episódios de agressão.",
+   "dataApresentacao": "2024-07-17T13:57"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL&numero=2942&ano=2024"
+  },
+  {
+   "rel": "first",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL&numero=2942&ano=2024&pagina=1&itens=15"
+  },
+  {
+   "rel": "last",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL&numero=2942&ano=2024&pagina=1&itens=15"
+  }
+ ]
+}

@@ -1,0 +1,21 @@
+{
+ "dados": [
+  {
+   "id": 204407,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407",
+   "nome": "Fernanda Melchionna",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RS",
+   "idLegislatura": 57,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204407.jpg",
+   "email": ""
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados?dataInicio=2026-02-01&dataFim=2026-11-11&ordem=ASC&ordenarPor=nome&pagina=3&itens=100"
+  }
+ ]
+}
