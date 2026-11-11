@@ -20,3 +20,4 @@ export * from "./attribution.ts";
 export * from "./chambers.ts";
 export * from "./recordRef.ts";
 export * from "./recordSuggest.ts";
+export * from "./monitorText.ts";
