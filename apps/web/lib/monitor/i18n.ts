@@ -1,9 +1,10 @@
-import { monitorEn, type MonitorKey, type MonitorMessages } from "@/messages/monitor";
+import { monitorEn, monitorPtBR, type MonitorKey, type MonitorMessages } from "@/messages/monitor";
 
 export type MonitorLocale = "en" | "pt-BR";
 export const MONITOR_LANG_COOKIE = "monitor_lang";
 
-const catalogues: Record<MonitorLocale, MonitorMessages> = { en: monitorEn, "pt-BR": monitorEn };
+const catalogues: Record<MonitorLocale, MonitorMessages> = { en: monitorEn, "pt-BR": monitorPtBR };
+export const isMonitorLocale = (v: unknown): v is MonitorLocale => v === "en" || v === "pt-BR";
 
 function lookup(locale: MonitorLocale, key: string): string {
   let node: unknown = catalogues[locale];
@@ -21,9 +22,11 @@ export function tm(locale: MonitorLocale, key: MonitorKey, vars?: Record<string,
   });
 }
 
-/** The interface language: English until the Portuguese catalogue lands. */
-export function monitorLocale(_cookie: string | undefined, _acceptLanguage: string | null): MonitorLocale {
-  return "en";
+/** The interface language: the switch's cookie when valid, else Portuguese for a `pt*` browser, else English. */
+export function monitorLocale(cookie: string | undefined, acceptLanguage: string | null): MonitorLocale {
+  if (isMonitorLocale(cookie)) return cookie;
+  const first = (acceptLanguage ?? "").split(",")[0]?.split(";")[0]?.trim().toLowerCase() ?? "";
+  return first === "pt" || first.startsWith("pt-") ? "pt-BR" : "en";
 }
 
 /** A Brasília wall-clock stamp ("2026-03-17T18:00") formatted as written, with no time-zone shift. */

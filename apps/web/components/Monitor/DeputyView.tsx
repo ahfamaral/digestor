@@ -3,6 +3,7 @@ import { BackLink } from "@/components/BackLink";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyUrl, MEMBER_PAGE, type Searched } from "@/lib/monitor/search";
 import { ExternalLink } from "./ExternalLink";
+import { LanguageSwitch } from "./LanguageSwitch";
 import { Pager } from "./Pager";
 import { SearchBox } from "./SearchBox";
 import { SearchedFor } from "./SearchedFor";
@@ -15,17 +16,20 @@ import { VoteRow } from "./VoteRow";
  * votes in their own unfiltered list. Speeches and votes are never paired.
  */
 export function DeputyView({
-  locale, member, q, searched, speeches, votes, page,
+  locale, member, q, searched, speeches, votes, page, back,
 }: {
-  locale: MonitorLocale; member: MemberRow; q: string; searched: Searched | null;
+  back: string; locale: MonitorLocale; member: MemberRow; q: string; searched: Searched | null;
   speeches: { total: number; rows: (SpeechRow | SpeechHit)[] }; votes: { total: number; rows: Vote[] }; page: number;
 }) {
   const base = `/monitor/deputados/${member.externalId}`;
   const searching = !!searched?.q;
   return (
-    <div className="grid gap-6">
+    <div lang={locale} className="grid gap-6">
       <div className="grid gap-3">
-        <BackLink href="/monitor" label={tm(locale, "member.back")} />
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <BackLink href="/monitor" label={tm(locale, "member.back")} />
+          <LanguageSwitch locale={locale} back={back} />
+        </div>
         <div className="flex items-center gap-4">
           {member.photoUrl && (
             // The Câmara's own photo URL, loaded by the browser (no next/image proxy).

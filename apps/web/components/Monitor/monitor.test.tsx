@@ -27,7 +27,7 @@ describe("monitor components", () => {
 
   it("a deputy with no speeches and no votes shows both empty states", () => {
     const html = renderToStaticMarkup(
-      <DeputyView locale="en" member={member} q="" speeches={{ total: 0, rows: [] }} searched={null} votes={{ total: 0, rows: [] }} page={0} />,
+      <DeputyView back="/monitor/deputados/999" locale="en" member={member} q="" speeches={{ total: 0, rows: [] }} searched={null} votes={{ total: 0, rows: [] }} page={0} />,
     );
     expect(html).toContain("No speeches in 2026.");
     expect(html).toContain("No recorded votes in 2026.");
@@ -38,7 +38,7 @@ describe("monitor components", () => {
   it("an untranscribed speech says the full text is not published yet", () => {
     const html = renderToStaticMarkup(
       <DeputyView
-        locale="en" member={{ ...member, inOffice: true }} q="" searched={null} page={0} votes={{ total: 0, rows: [] }}
+        back="/monitor/deputados/999" locale="en" member={{ ...member, inOffice: true }} q="" searched={null} page={0} votes={{ total: 0, rows: [] }}
         speeches={{ total: 1, rows: [{ id: 1, startsAt: "2026-10-14T20:12", phase: "Breves Comunicações", kind: null, summary: "Resumo.", text: "" }] }}
       />,
     );
@@ -54,7 +54,7 @@ describe("monitor components", () => {
 
   it("a speech match shows the highlighted snippet instead of repeating the summary", () => {
     const html = renderToStaticMarkup(
-      <SearchView locale="en" q="feminicídio" page={0} result={{ ...searched, members: [], rollCalls: [], speeches: { total: 1, rows: [hit] } }} />,
+      <SearchView back="/monitor" locale="en" q="feminicídio" page={0} result={{ ...searched, members: [], rollCalls: [], speeches: { total: 1, rows: [hit] } }} />,
     );
     expect(html).toContain("feminicídio</mark>");
     expect(html).not.toContain("RESUMO OFICIAL");
@@ -64,8 +64,15 @@ describe("monitor components", () => {
 
   it("a search with no results at all shows every empty state", () => {
     const html = renderToStaticMarkup(
-      <SearchView locale="en" q="xyz" page={0} result={{ ...searched, q: "xyz", terms: ["xyz"], members: [], rollCalls: [], speeches: { total: 0, rows: [] } }} />,
+      <SearchView back="/monitor" locale="en" q="xyz" page={0} result={{ ...searched, q: "xyz", terms: ["xyz"], members: [], rollCalls: [], speeches: { total: 0, rows: [] } }} />,
     );
     for (const s of ["No deputies match.", "No speeches match.", "No roll calls match."]) expect(html).toContain(s);
+  });
+
+  it("the language switch links back to the same page, and Portuguese labels the page", () => {
+    const html = renderToStaticMarkup(<SearchView back="/monitor?q=f%C3%AAmea" locale="pt-BR" q="" page={0} result={null} />);
+    expect(html).toContain(`href="/monitor/lang?to=en&amp;back=${encodeURIComponent("/monitor?q=f%C3%AAmea")}"`);
+    expect(html).toContain("Monitor da Câmara");
+    expect(html).toContain('lang="pt-BR"');
   });
 });

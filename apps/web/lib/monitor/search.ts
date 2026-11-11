@@ -47,5 +47,16 @@ export function stringParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? "";
 }
 
+/** The current monitor URL (path + query), for the language switch to come back to. */
+export function backPath(path: string, params: Record<string, string | string[] | undefined>): string {
+  const sp = new URLSearchParams();
+  for (const k of ["q", "p"]) {
+    const v = stringParam(params[k]);
+    if (v) sp.set(k, v);
+  }
+  const s = sp.toString();
+  return s ? `${path}?${s}` : path;
+}
+
 export const deputyUrl = (externalId: number) => `https://www.camara.leg.br/deputados/${externalId}`;
 export const billUrl = (billId: number) => `https://www.camara.leg.br/propostas-legislativas/${billId}`;

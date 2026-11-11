@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { AppBar } from "@/components/AppBar";
 import { SearchView } from "@/components/Monitor/SearchView";
 import { requestLocale, translator } from "@/lib/monitor/server";
-import { pageParam, runSearch, stringParam } from "@/lib/monitor/search";
+import { backPath, pageParam, runSearch, stringParam } from "@/lib/monitor/search";
 import { getServer } from "@/lib/server";
 
 /** The Câmara monitor: search deputies, speeches and roll calls. Reads the DB per request (inside Suspense). */
@@ -27,5 +27,5 @@ async function MonitorSearch({ searchParams }: { searchParams: PageProps<"/monit
   const page = pageParam(sp.p);
   const locale = await requestLocale();
   const result = q.trim() ? await runSearch(getServer().db, q, translator(), { page }) : null;
-  return <SearchView locale={locale} q={q} result={result} page={page} />;
+  return <SearchView locale={locale} q={q} result={result} page={page} back={backPath("/monitor", sp)} />;
 }

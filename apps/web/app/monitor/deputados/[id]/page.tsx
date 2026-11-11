@@ -5,7 +5,7 @@ import { getMember, listMemberSpeeches, listMemberVotes, searchSpeeches } from "
 import { AppBar } from "@/components/AppBar";
 import { DeputyView } from "@/components/Monitor/DeputyView";
 import { requestLocale, translator } from "@/lib/monitor/server";
-import { cleanQuery, MEMBER_PAGE, pageParam, searchTerms, stringParam } from "@/lib/monitor/search";
+import { backPath, cleanQuery, MEMBER_PAGE, pageParam, searchTerms, stringParam } from "@/lib/monitor/search";
 import { getServer } from "@/lib/server";
 
 /** A deputy's speeches (searchable, this deputy only) and recorded votes. `id` is the Câmara's deputy id. */
@@ -40,5 +40,10 @@ async function Deputy({ params, searchParams }: Pick<PageProps<"/monitor/deputad
     searched ? searchSpeeches(db, { terms: searched.terms, memberId: member.id, ...paging }) : listMemberSpeeches(db, member.id, paging),
     listMemberVotes(db, member.id, { limit: 1000 }),
   ]);
-  return <DeputyView locale={locale} member={member} q={q} searched={searched} speeches={speeches} votes={votes} page={page} />;
+  return (
+    <DeputyView
+      locale={locale} member={member} q={q} searched={searched} speeches={speeches} votes={votes} page={page}
+      back={backPath(`/monitor/deputados/${member.externalId}`, sp)}
+    />
+  );
 }

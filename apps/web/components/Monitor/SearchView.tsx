@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { SEARCH_PAGE, type SearchResult } from "@/lib/monitor/search";
+import { LanguageSwitch } from "./LanguageSwitch";
 import { Pager } from "./Pager";
 import { RollCallItem } from "./RollCallItem";
 import { SearchBox } from "./SearchBox";
@@ -9,13 +10,16 @@ import { Section } from "./Section";
 import { SpeechItem } from "./SpeechItem";
 
 /** `/monitor`: one search box, then Deputies (by name), Speeches and Roll calls (by the searched terms). */
-export function SearchView({ locale, q, result, page }: { locale: MonitorLocale; q: string; result: SearchResult | null; page: number }) {
+export function SearchView({ locale, q, result, page, back }: { locale: MonitorLocale; q: string; result: SearchResult | null; page: number; back: string }) {
   // A topic search rarely matches a name: the Deputies section shows only with matches, or when nothing matched at all.
   const nothingElse = !result?.speeches.total && !result?.rollCalls.length;
   return (
-    <div className="grid gap-6">
+    <div lang={locale} className="grid gap-6">
       <div className="grid gap-1">
-        <h1 className="text-xl font-bold tracking-tight">{tm(locale, "title")}</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h1 className="text-xl font-bold tracking-tight">{tm(locale, "title")}</h1>
+          <LanguageSwitch locale={locale} back={back} />
+        </div>
         <p className="text-sm text-muted-foreground">{tm(locale, "dataNote")}</p>
       </div>
       <div className="grid gap-2">
