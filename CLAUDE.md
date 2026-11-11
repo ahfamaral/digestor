@@ -17,6 +17,15 @@ Stepper: Upload › Processing › Context › Briefing › Prepare › Export. 
 - Retention: `VIDEO_RETENTION_DAYS` (default 14) deletes `original.*`, `audio.mp3`, `proxy.mp4`, the pipeline run row (`pipeline_runs`, holds the context answers) and the session's Chroma index (so Ask search stops working after 14 days); analyses, personal layers and rendered clips stay. The sweep fails sessions and analysis versions with no progress for 120 minutes, and job rows stuck for 30 minutes (below).
 - Chroma is live: one collection per session (`session_<uuid without dashes>`) with a transcript index for Ask, using local `Xenova/multilingual-e5-small` embeddings cached in `data/models` (`HF_HOME`).
 
+## Câmara monitor (preview)
+
+Official records of the Brazilian Câmara (deputies, plenary speeches, roll-call votes since 1 Feb 2026), separate from the journalist flow. Spec `docs/superpowers/specs/2026-11-11-camara-monitor-preview-design.md`.
+
+- Routes: `/monitor?q=` (one search box: deputies by name, speeches and roll calls by topic) and `/monitor/deputados/[id]?q=` (Câmara deputy id; the search covers that deputy's speeches only, votes are an unfiltered list: speeches and votes are never paired). `/monitor/lang?to=en|pt-BR&back=` sets the `monitor_lang` cookie. Server components only (`components/Monitor/`, `lib/monitor/`), copy in `messages/monitor.ts` (`tm()`, English and Portuguese), not in `t()`.
+- Tables (migration 0022): `parl_members`, `parl_speeches`, `parl_roll_calls`, `parl_votes`; stored `tsvector` columns on `pt_unaccent` (Portuguese stemming, accent-insensitive), `pg_trgm` on names. Repo functions in `packages/core/src/db/monitor.ts`.
+- Data: `apps/worker/src/monitor/` (API client, bulk CSVs, `refreshMonitor`); queue `monitor.refresh`, daily 09:00 UTC (last 7 days of speeches, the year's roll calls and votes, missing bills). An empty API answer never deletes stored speeches.
+- The only LLM call: `lib/monitor/translateQuery.ts` in the web app turns a query into ≤ 4 Portuguese terms (OpenRouter, 10 s, cached); without `OPENROUTER_API_KEY` or on failure the words are searched as typed. No AI text about a person anywhere. Code never fetches `www.camara.leg.br` pages.
+
 Spec: `docs/superpowers/specs/2026-10-28-video-digestor-design.md` (v1) and `docs/superpowers/specs/2026-10-30-digestor-ui-concept-design.md` (the journalist flow, Plan 2 onwards). Plans: `docs/superpowers/plans/`. Deploy runbook: `docs/deploy.md`. Manual real-API checklist: `scripts/smoke.md`.
 
 ## Environment
@@ -39,6 +48,7 @@ Spec: `docs/superpowers/specs/2026-10-28-video-digestor-design.md` (v1) and `doc
 | Migrations | `pnpm db:migrate` (wait for postgres healthy) |
 | Import old sessions' card names as proposals (once, idempotent) | `docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/import-names.ts` |
 | Merge duplicate persons (once, idempotent) | `docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/merge-persons.ts` |
+| Monitor: load 2026 Câmara data (once; reruns are safe) | `docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-backfill.ts` (about 6 min) |
 | Prod build (one VPS) | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` |
 
 After adding a dependency: `pnpm install` on the host first (updates the lockfile); the worker entrypoint syncs on restart.

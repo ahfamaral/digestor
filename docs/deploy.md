@@ -138,6 +138,22 @@ Migration 0020 adds a CHECK on `pipeline_runs.next_step`. Before updating, this 
 select next_step, count(*) from pipeline_runs where next_step not in ('download','ingest','transcribe','match_record','understand_context','ask_context','match_record_late','name_speakers','index','analyze','done') group by 1;
 ```
 
+### Once, when updating to the Câmara monitor (migration 0022)
+
+`up -d --build` runs migrations 0021 (LLM cost per analysis version) and 0022 (the monitor tables; it creates the `unaccent` and `pg_trgm` extensions, which ship with the `postgres:17` image). Then load the 2026 data once (about 6 minutes; safe to run again):
+
+```
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-backfill.ts
+```
+
+It prints the counts (dev on 2026-11-11: 568 deputies, 8,055 speeches, 126 roll calls, 51,450 votes; 74 MB). Open `/monitor` and search a deputy and a topic. The worker refreshes it daily at 09:00 UTC; the next morning check the log line:
+
+```
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs worker | grep monitor.refresh
+```
+
+Query translation uses `OPENROUTER_API_KEY` from `.env` in the `web` container (without it, searches run on the words as typed).
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:
