@@ -3,8 +3,9 @@ import pg from "pg";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "./client.ts";
 import { parlMembers, parlSpeeches, parlVotes } from "./schema.ts";
+import { fillSpeechParties, replaceHistory } from "./monitorRecord.ts";
 import {
-  countSpeechesInWindow, getMember, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
+  countSpeechesInWindow, speechFacets, getMember, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
   searchMembers, searchRollCalls, searchSpeeches, setInOffice, upsertMembers, upsertRollCalls, type MemberInput, type RollCallInput,
   type SpeechInput,
 } from "./monitor.ts";
@@ -133,11 +134,11 @@ describe("roll calls", () => {
       rollCall("2449741-72", "2026-03-18", { billSummary: summary }),
       rollCall("1-1", "2026-03-19", { billSummary: summary, yes: 0, no: 0, other: 0 }),
     ]);
-    const hits = await searchRollCalls(db, { terms: ["violência doméstica"] });
+    const hits = (await searchRollCalls(db, { terms: ["violência doméstica"] })).rows;
     expect(hits.map((h) => h.id)).toEqual(["2449741-72"]);
     expect(hits[0]!.snippet).toContain("\u0001");
     expect(hits[0]).not.toHaveProperty("vote");
-    expect(await searchRollCalls(db, { terms: ["o"] })).toEqual([]);
+    expect(await searchRollCalls(db, { terms: ["o"] })).toEqual({ total: 0, rows: [] });
   });
 
   it("listMemberVotes lists recorded votes only, newest first", async () => {
@@ -170,7 +171,102 @@ describe("roll calls", () => {
   it("upsertRollCalls updates in place", async () => {
     await upsertRollCalls(db, [rollCall("2449741-72", "2026-03-18")]);
     await upsertRollCalls(db, [rollCall("2449741-72", "2026-03-18", { yes: 410, billSummary: "violência doméstica" })]);
-    const hits = await searchRollCalls(db, { terms: ["violência doméstica"] });
+    const hits = (await searchRollCalls(db, { terms: ["violência doméstica"] })).rows;
     expect(hits.map((h) => h.yes)).toEqual([410]);
+  });
+});
+
+describe("search filters", () => {
+  async function setup() {
+    const ids = await upsertMembers(db, [
+      { ...member(220576, "Alfredo Gaspar"), party: "PL", uf: "AL" }, member(204407, "Fernanda Melchionna"), { ...member(9, "Ex Deputado"), party: "PT", uf: "SP" },
+    ]);
+    const g = ids.get(220576)!, f = ids.get(204407)!, x = ids.get(9)!;
+    await replaceHistory(db, g, [
+      { at: "2023-02-01T12:05", party: "UNIÃO", uf: "AL", status: "Exercício", description: "Posse" },
+      { at: "2026-04-29T22:10", party: "PL", uf: "AL", status: "Exercício", description: "Alteração de partido" },
+    ]);
+    await replaceHistory(db, f, [{ at: "2023-02-01T12:05", party: "PSOL", uf: "RS", status: "Exercício", description: "Posse" }]);
+    await replaceHistory(db, x, [{ at: "2023-02-01T12:05", party: "PT", uf: "SP", status: "Exercício", description: "Posse" }]);
+    await replaceSpeechWindow(db, g, "2026-02-01", "2026-11-11", [
+      speech("2026-04-29T18:00", "feminicídio feminicídio feminicídio em Alagoas"), speech("2026-05-01T10:00", "o feminicídio"),
+    ]);
+    await replaceSpeechWindow(db, f, "2026-02-01", "2026-11-11", [
+      speech("2026-03-17T18:00", "O feminicídio no RS", { phase: "Grande Expediente" }),
+      speech("2026-06-02T10:00", "Eu, Fernanda Melchionna, falo do orçamento"),
+    ]);
+    await replaceSpeechWindow(db, x, "2026-02-01", "2026-11-11", [
+      speech("2026-07-01T10:00", "A deputada Fernanda Melchionna defendeu as mulheres; feminicídio"),
+    ]);
+    await setInOffice(db, "camara", [220576, 204407]);
+    await fillSpeechParties(db);
+    return { g, f, x };
+  }
+  const terms = ["feminicídio"];
+  const names = (r: { rows: { member: { name: string }; startsAt: string }[] }) => r.rows.map((s) => `${s.member.name}@${s.startsAt.slice(0, 10)}`);
+
+  it("searchSpeeches filters by dates, party on the day, state, phase and in office", async () => {
+    await setup();
+    const one = await searchSpeeches(db, { terms, filters: { party: "UNIÃO" } });
+    expect(names(one)).toEqual(["Alfredo Gaspar@2026-04-29"]);
+    expect(one.rows[0]!.partyThen).toBe("UNIÃO");
+    expect(one.rows[0]!.member.party).toBe("PL");
+    expect(names(await searchSpeeches(db, { terms, filters: { party: "PL" } }))).toEqual(["Alfredo Gaspar@2026-05-01"]);
+    expect((await searchSpeeches(db, { terms, filters: { uf: "RS" } })).total).toBe(1);
+    expect((await searchSpeeches(db, { terms, filters: { from: "2026-04-29", to: "2026-05-01" } })).total).toBe(2);
+    expect(names(await searchSpeeches(db, { terms, filters: { phase: "Grande Expediente" } }))).toEqual(["Fernanda Melchionna@2026-03-17"]);
+    expect((await searchSpeeches(db, { terms })).total).toBe(4);
+    expect((await searchSpeeches(db, { terms, filters: { inOffice: true } })).total).toBe(3);
+  });
+
+  it("searchSpeeches sorts by best match or newest", async () => {
+    const { g } = await setup();
+    expect(names(await searchSpeeches(db, { terms, memberId: g }))).toEqual(["Alfredo Gaspar@2026-04-29", "Alfredo Gaspar@2026-05-01"]);
+    expect(names(await searchSpeeches(db, { terms, memberId: g, sort: "new" }))).toEqual(["Alfredo Gaspar@2026-05-01", "Alfredo Gaspar@2026-04-29"]);
+  });
+
+  it("mentions: others' speeches naming the deputy, topic optional, name highlighted", async () => {
+    const { f } = await setup();
+    const m = await searchSpeeches(db, { terms: [], mentionOf: { memberId: f, name: "Fernanda Melchionna" } });
+    expect(names(m)).toEqual(["Ex Deputado@2026-07-01"]);
+    expect(m.rows[0]!.snippet).toContain("\u0001Fernanda");
+    expect((await searchSpeeches(db, { terms, mentionOf: { memberId: f, name: "Fernanda Melchionna" } })).total).toBe(1);
+    expect((await searchSpeeches(db, { terms: ["orçamento"], mentionOf: { memberId: f, name: "Fernanda Melchionna" } })).total).toBe(0);
+  });
+
+  it("mention names never break the query", async () => {
+    const { f } = await setup();
+    for (const name of ["Paulão", "Dr. Zacharias Calil", "D'Ávila", "Coronel Chrisóstomo-Silva", "!!!", "o"]) {
+      await expect(searchSpeeches(db, { terms: [], mentionOf: { memberId: f, name } })).resolves.toBeTruthy();
+    }
+  });
+
+  it("speechFacets lists values alphabetically", async () => {
+    await setup();
+    const f = await speechFacets(db);
+    expect(f.parties).toEqual(["PL", "PSOL", "PT", "UNIÃO"]);
+    expect(f.ufs).toEqual(["AL", "RS", "SP"]);
+    expect(f.phases).toEqual(["Breves Comunicações", "Grande Expediente"]);
+  });
+
+  it("listMemberSpeeches narrows by dates and phase", async () => {
+    const { f } = await setup();
+    expect((await listMemberSpeeches(db, f, { phase: "Grande Expediente" })).total).toBe(1);
+    expect((await listMemberSpeeches(db, f, { from: "2026-06-01", to: "2026-06-30" })).total).toBe(1);
+  });
+
+  it("searchRollCalls pages, filters by date and sorts", async () => {
+    const summary = "violência doméstica";
+    await upsertRollCalls(db, [
+      rollCall("1-1", "2026-03-18", { billSummary: `${summary} ${summary} ${summary}` }),
+      rollCall("2-2", "2026-05-20", { billSummary: summary }),
+      rollCall("3-3", "2026-06-01", { billSummary: summary }),
+    ]);
+    const page = await searchRollCalls(db, { terms: [summary], limit: 2 });
+    expect(page.total).toBe(3);
+    expect(page.rows).toHaveLength(2);
+    expect(page.rows[0]!.id).toBe("1-1");
+    expect((await searchRollCalls(db, { terms: [summary], from: "2026-05-01" })).total).toBe(2);
+    expect((await searchRollCalls(db, { terms: [summary], sort: "new" })).rows.map((r) => r.id)).toEqual(["3-3", "2-2", "1-1"]);
   });
 });

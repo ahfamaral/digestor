@@ -49,7 +49,7 @@ describe("monitor components", () => {
   const searched = { q: "feminicídio", terms: ["feminicídio"], translatedFrom: null, notice: null };
   const hit = {
     id: 7, startsAt: "2026-04-08T11:28", phase: "Comissão Geral", kind: null, summary: "RESUMO OFICIAL", text: "texto",
-    member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS",
+    member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS", partyThen: "PSOL", ufThen: "RS",
   };
 
   it("a speech match shows the highlighted snippet instead of repeating the summary", () => {

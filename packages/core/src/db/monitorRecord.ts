@@ -1,9 +1,9 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { ExternalMandate, HistoryRow, Position } from "../monitorTimeline.ts";
+import { inOfficePeriods, partyTimeline, type ExternalMandate, type HistoryRow, type Position } from "../monitorTimeline.ts";
 import type { Db } from "./client.ts";
 import type { House } from "./monitor.ts";
 import {
-  parlBillAuthors, parlBills, parlMemberHistory, parlMembers, parlOrientations, parlPresence, parlSessions,
+  parlBillAuthors, parlBills, parlMemberHistory, parlMembers, parlOrientations, parlPresence, parlRollCalls, parlSessions, parlVotes,
 } from "./schema.ts";
 
 // Parliament monitor: the deputy's record beyond speeches and votes (history, profile, authored bills, presence) and
@@ -130,4 +130,120 @@ export async function getHistory(db: Db, memberId: number): Promise<HistoryRow[]
     .where(eq(parlMemberHistory.memberId, memberId))
     .orderBy(asc(parlMemberHistory.at), asc(parlMemberHistory.id));
   return rows.map((r) => ({ ...r, at: localMinute(r.at) }));
+}
+
+export async function getProfile(db: Db, memberId: number): Promise<ProfileInput & { refreshedAt: string | null }> {
+  const [r] = await db
+    .select({
+      profession: parlMembers.profession, externalMandates: parlMembers.externalMandates, fronts: parlMembers.fronts,
+      positions: parlMembers.positions, refreshedAt: parlMembers.profileRefreshedAt,
+    })
+    .from(parlMembers)
+    .where(eq(parlMembers.id, memberId));
+  return {
+    profession: r?.profession ?? null, externalMandates: r?.externalMandates ?? [], fronts: r?.fronts ?? [], positions: r?.positions ?? [],
+    refreshedAt: r?.refreshedAt ? r.refreshedAt.toISOString() : null,
+  };
+}
+
+export type Presence = { sessions: number; present: number; missing: { id: number; startsAt: string; description: string }[] };
+
+/**
+ * The deputy's presence record for `year`: closed plenary deliberative sessions held while they were in office (from
+ * the history), and those with no presence recorded. Null without history (the in-office periods are unknown).
+ */
+export async function getPresence(db: Db, memberId: number, year: number): Promise<Presence | null> {
+  const history = await getHistory(db, memberId);
+  if (history.length === 0) return null;
+  const periods = inOfficePeriods(partyTimeline(history));
+  const rows = await db.execute<{ id: number; starts_at: string; description: string; present: boolean }>(sql`
+    select s.id, to_char(s.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, s.description,
+      exists (select 1 from parl_presence p where p.session_id = s.id and p.member_id = ${memberId}) as present
+    from parl_sessions s
+    where s.status = 'Encerrada' and s.starts_at >= make_date(${year}, 1, 1) and s.starts_at < make_date(${year} + 1, 1, 1)
+    order by s.starts_at, s.id`);
+  const held = rows.rows.filter((s) => {
+    const day = s.starts_at.slice(0, 10);
+    return periods.some((p) => day >= p.from && (p.to === null || day < p.to));
+  });
+  return {
+    sessions: held.length,
+    present: held.filter((s) => s.present).length,
+    missing: held.filter((s) => !s.present).map((s) => ({ id: s.id, startsAt: s.starts_at, description: s.description })),
+  };
+}
+
+export type MemberBill = { id: number; type: string; number: number; year: number; summary: string; presentedAt: string; firstAuthor: boolean };
+
+/** Bills and requests the deputy signed, newest first; `byType` counts all of them (the filter aside), most first. */
+export async function listMemberBills(
+  db: Db, memberId: number, a: { type?: string; limit?: number; offset?: number },
+): Promise<{ total: number; byType: { type: string; n: number }[]; rows: MemberBill[] }> {
+  const by = await db.execute<{ type: string; n: number }>(sql`
+    select b.type, count(*)::int as n from parl_bill_authors a join parl_bills b on b.id = a.bill_id
+    where a.member_id = ${memberId} group by b.type order by n desc, b.type`);
+  const typeWhere = a.type ? sql`and b.type = ${a.type}` : sql``;
+  const total = a.type ? (by.rows.find((r) => r.type === a.type)?.n ?? 0) : by.rows.reduce((s, r) => s + r.n, 0);
+  const rows = await db.execute<{ id: number; type: string; number: number; year: number; summary: string; presented_at: string; first_author: boolean }>(sql`
+    select b.id, b.type, b.number, b.year, b.summary, to_char(b.presented_at, 'YYYY-MM-DD"T"HH24:MI') as presented_at, a.first_author
+    from parl_bill_authors a join parl_bills b on b.id = a.bill_id
+    where a.member_id = ${memberId} ${typeWhere}
+    order by b.presented_at desc, b.id desc limit ${a.limit ?? 20} offset ${a.offset ?? 0}`);
+  return {
+    total,
+    byType: by.rows,
+    rows: rows.rows.map((r) => ({
+      id: r.id, type: r.type, number: r.number, year: r.year, summary: r.summary, presentedAt: r.presented_at, firstAuthor: r.first_author,
+    })),
+  };
+}
+
+export type RollCallDetail = {
+  id: string; date: string; description: string; yes: number; no: number; other: number; billId: number | null; billLabel: string | null;
+  billSummary: string;
+  parties: { party: string | null; counts: { vote: string; n: number }[]; deputies: { externalId: number; name: string; uf: string | null; vote: string }[] }[];
+  orientations: { bloc: string; orientation: string }[];
+};
+
+/** Labels in the order the Câmara lists them; anything else follows, as published. */
+const VOTE_ORDER = ["Sim", "Não", "Abstenção", "Obstrução", "Artigo 17"];
+const byName = (a: string, b: string) => a.localeCompare(b, "pt-BR");
+
+/** A roll call with its votes grouped by the party at the time of the vote, and the guidance as published. */
+export async function getRollCall(db: Db, id: string): Promise<RollCallDetail | null> {
+  const [rc] = await db.select().from(parlRollCalls).where(eq(parlRollCalls.id, id));
+  if (!rc) return null;
+  const votes = await db
+    .select({
+      externalId: parlMembers.externalId, name: parlMembers.name, vote: parlVotes.vote,
+      party: sql<string | null>`coalesce(${parlVotes.party}, ${parlMembers.party})`, uf: sql<string | null>`coalesce(${parlVotes.uf}, ${parlMembers.uf})`,
+    })
+    .from(parlVotes)
+    .innerJoin(parlMembers, eq(parlMembers.id, parlVotes.memberId))
+    .where(eq(parlVotes.rollCallId, id));
+  const groups = new Map<string | null, RollCallDetail["parties"][number]["deputies"]>();
+  for (const v of votes) {
+    const list = groups.get(v.party || null) ?? [];
+    list.push({ externalId: v.externalId, name: v.name, uf: v.uf, vote: v.vote });
+    groups.set(v.party || null, list);
+  }
+  const rank = (vote: string) => (VOTE_ORDER.includes(vote) ? VOTE_ORDER.indexOf(vote) : VOTE_ORDER.length);
+  const parties = [...groups]
+    .map(([party, deputies]) => {
+      const counts = new Map<string, number>();
+      for (const d of deputies) counts.set(d.vote, (counts.get(d.vote) ?? 0) + 1);
+      return {
+        party,
+        counts: [...counts].map(([vote, n]) => ({ vote, n })).sort((a, b) => rank(a.vote) - rank(b.vote) || byName(a.vote, b.vote)),
+        deputies: deputies.sort((a, b) => byName(a.name, b.name)),
+      };
+    })
+    .sort((a, b) => b.deputies.length - a.deputies.length || byName(a.party ?? "￿", b.party ?? "￿"));
+  const orientations = (
+    await db.select({ bloc: parlOrientations.bloc, orientation: parlOrientations.orientation }).from(parlOrientations).where(eq(parlOrientations.rollCallId, id))
+  ).sort((a, b) => byName(a.bloc, b.bloc));
+  return {
+    id: rc.id, date: rc.date, description: rc.description, yes: rc.yes, no: rc.no, other: rc.other, billId: rc.billId, billLabel: rc.billLabel,
+    billSummary: rc.billSummary, parties, orientations,
+  };
 }

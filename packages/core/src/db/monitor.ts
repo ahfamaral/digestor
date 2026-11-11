@@ -19,7 +19,13 @@ export type MemberRow = {
   id: number; externalId: number; name: string; party: string | null; uf: string | null; photoUrl: string | null; inOffice: boolean;
 };
 export type SpeechRow = { id: number; startsAt: string; phase: string | null; kind: string | null; summary: string; text: string };
-export type SpeechHit = SpeechRow & { member: Pick<MemberRow, "externalId" | "name" | "party" | "uf">; snippet: string };
+/** `member` carries today's party and state; `partyThen`/`ufThen` are the speaker's on the day (null without history). */
+export type SpeechHit = SpeechRow & {
+  member: Pick<MemberRow, "externalId" | "name" | "party" | "uf">; snippet: string; partyThen: string | null; ufThen: string | null;
+};
+/** Days inclusive; `party`/`uf` are the speaker's on the day; `inOffice` = in office today. */
+export type SpeechFilters = { from?: string; to?: string; party?: string; uf?: string; phase?: string; inOffice?: boolean };
+export type SortOrder = "best" | "new";
 export type RollCallHit = {
   id: string; date: string; description: string; yes: number; no: number; other: number; billId: number | null;
   billLabel: string | null; snippet: string;
@@ -155,53 +161,98 @@ export async function countSpeechesInWindow(db: Db, memberId: number, from: stri
 }
 
 export async function listMemberSpeeches(
-  db: Db, memberId: number, a: { limit?: number; offset?: number },
+  db: Db, memberId: number, a: { limit?: number; offset?: number; from?: string; to?: string; phase?: string },
 ): Promise<{ total: number; rows: SpeechRow[] }> {
-  const [c] = await db.select({ n: count() }).from(parlSpeeches).where(eq(parlSpeeches.memberId, memberId));
+  const where = and(
+    eq(parlSpeeches.memberId, memberId),
+    a.from ? gte(parlSpeeches.startsAt, `${a.from} 00:00:00`) : undefined,
+    a.to ? lt(parlSpeeches.startsAt, sql`(${a.to}::date + 1)::timestamp`) : undefined,
+    a.phase ? eq(parlSpeeches.phase, a.phase) : undefined,
+  );
+  const [c] = await db.select({ n: count() }).from(parlSpeeches).where(where);
   const rows = await db
     .select({
       id: parlSpeeches.id, startsAt: parlSpeeches.startsAt, phase: parlSpeeches.phase, kind: parlSpeeches.kind,
       summary: parlSpeeches.summary, text: parlSpeeches.text,
     })
     .from(parlSpeeches)
-    .where(eq(parlSpeeches.memberId, memberId))
+    .where(where)
     .orderBy(desc(parlSpeeches.startsAt), desc(parlSpeeches.id))
     .limit(a.limit ?? 50)
     .offset(a.offset ?? 0);
   return { total: c?.n ?? 0, rows: rows.map((r) => ({ ...r, startsAt: localMinute(r.startsAt) })) };
 }
 
+/** The filters as `and …` conditions on speeches aliased `s`. */
+function speechFilterSql(f: SpeechFilters = {}): SQL {
+  const parts: SQL[] = [];
+  if (f.from) parts.push(sql`and s.starts_at >= ${f.from}::date`);
+  if (f.to) parts.push(sql`and s.starts_at < (${f.to}::date + 1)`);
+  if (f.party) parts.push(sql`and s.party = ${f.party}`);
+  if (f.uf) parts.push(sql`and s.uf = ${f.uf}`);
+  if (f.phase) parts.push(sql`and s.phase = ${f.phase}`);
+  if (f.inOffice) parts.push(sql`and exists (select 1 from parl_members im where im.id = s.member_id and im.in_office)`);
+  return sql.join(parts, sql` `);
+}
+
 type SpeechHitSql = {
   id: number; starts_at: string; phase: string | null; kind: string | null; summary: string; text: string; external_id: number;
-  name: string; party: string | null; uf: string | null; snippet: string;
+  name: string; party: string | null; uf: string | null; party_then: string | null; uf_then: string | null; snippet: string;
 };
 
-/** Full-text search over speeches (any of the terms), best match first, then newest; snippets for the page's rows only. */
+/**
+ * Full-text search over speeches (any of the terms), best match first (then newest) or newest first; snippets for the
+ * page's rows only. `mentionOf`: other deputies' speeches that name this one (a phrase match on the name), the terms
+ * then optional; the name is highlighted in the snippet too.
+ */
 export async function searchSpeeches(
-  db: Db, a: { terms: string[]; memberId?: number; limit?: number; offset?: number },
+  db: Db,
+  a: {
+    terms: string[]; memberId?: number; mentionOf?: { memberId: number; name: string }; filters?: SpeechFilters; sort?: SortOrder;
+    limit?: number; offset?: number;
+  },
 ): Promise<{ total: number; rows: SpeechHit[] }> {
-  const q = tsQuery(a.terms);
-  if (!q) return { total: 0, rows: [] };
+  const topic = tsQuery(a.terms);
+  // phraseto_tsquery, not websearch_to_tsquery: a name must never be read as search syntax ("-", "or", quotes).
+  const name = a.mentionOf ? sql`phraseto_tsquery('pt_unaccent', ${a.mentionOf.name})` : null;
+  if (!topic && !name) return { total: 0, rows: [] };
+  const match = name && topic ? sql`(${name}) && (${topic})` : (name ?? topic)!;
+  const head = name && topic ? sql`(${name}) || (${topic})` : match;
   const member = a.memberId === undefined ? sql`` : sql`and s.member_id = ${a.memberId}`;
-  const hits = sql`select s.*, ts_rank_cd(s.tsv, q.q) as rank from parl_speeches s, q where numnode(q.q) > 0 and s.tsv @@ q.q ${member}`;
-  const c = await db.execute<{ n: number }>(sql`with q as (select (${q}) as q) select count(*)::int as n from (${hits}) h`);
+  const notSelf = a.mentionOf ? sql`and s.member_id <> ${a.mentionOf.memberId}` : sql``;
+  const hits = sql`select s.*, ts_rank_cd(s.tsv, q.q) as rank from parl_speeches s, q
+    where numnode(q.q) > 0 and s.tsv @@ q.q ${member} ${notSelf} ${speechFilterSql(a.filters)}`;
+  const inner = a.sort === "new" ? sql`s.starts_at desc, s.id desc` : sql`rank desc, s.starts_at desc, s.id desc`;
+  const outer = a.sort === "new" ? sql`p.starts_at desc, p.id desc` : sql`p.rank desc, p.starts_at desc, p.id desc`;
+  const c = await db.execute<{ n: number }>(sql`with q as (select (${match}) as q) select count(*)::int as n from (${hits}) h`);
   const total = c.rows[0]?.n ?? 0;
   if (total === 0) return { total: 0, rows: [] };
   const r = await db.execute<SpeechHitSql>(sql`
-    with q as (select (${q}) as q)
+    with q as (select (${match}) as q, (${head}) as hq)
     select p.id, to_char(p.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, p.phase, p.kind, p.summary, p.text,
-      m.external_id, m.name, m.party, m.uf,
-      ts_headline('pt_unaccent', concat_ws(' … ', nullif(p.summary, ''), nullif(p.text, '')), q.q, ${HEADLINE}) as snippet
-    from (${hits} order by rank desc, s.starts_at desc, s.id desc limit ${a.limit ?? 20} offset ${a.offset ?? 0}) p
+      p.party as party_then, p.uf as uf_then, m.external_id, m.name, m.party, m.uf,
+      ts_headline('pt_unaccent', concat_ws(' … ', nullif(p.summary, ''), nullif(p.text, '')), q.hq, ${HEADLINE}) as snippet
+    from (${hits} order by ${inner} limit ${a.limit ?? 20} offset ${a.offset ?? 0}) p
     join parl_members m on m.id = p.member_id, q
-    order by p.rank desc, p.starts_at desc, p.id desc`);
+    order by ${outer}`);
   return {
     total,
     rows: r.rows.map((x) => ({
       id: x.id, startsAt: x.starts_at, phase: x.phase, kind: x.kind, summary: x.summary, text: x.text,
       member: { externalId: x.external_id, name: x.name, party: x.party, uf: x.uf }, snippet: x.snippet,
+      partyThen: x.party_then, ufThen: x.uf_then,
     })),
   };
+}
+
+/** The values the landing filters offer: speakers' parties and states on the day, session phases; alphabetical. */
+export async function speechFacets(db: Db): Promise<{ parties: string[]; ufs: string[]; phases: string[] }> {
+  const col = async (c: "party" | "uf" | "phase") => {
+    const r = await db.execute<{ v: string }>(sql`select distinct ${sql.raw(c)} as v from parl_speeches where ${sql.raw(c)} is not null and ${sql.raw(c)} <> ''`);
+    return r.rows.map((x) => x.v).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  };
+  const [parties, ufs, phases] = await Promise.all([col("party"), col("uf"), col("phase")]);
+  return { parties, ufs, phases };
 }
 
 // ── Roll calls and votes ───────────────────────────────────────────────────────────────────────────────────────────
@@ -254,24 +305,36 @@ type RollCallHitSql = {
   bill_label: string | null; snippet: string;
 };
 
-/** Full-text search over roll calls (bill summary + what was voted); never any deputy's vote. */
-export async function searchRollCalls(db: Db, a: { terms: string[]; limit?: number }): Promise<RollCallHit[]> {
+/** Full-text search over roll calls (bill summary + what was voted), paged; never any deputy's vote. Days inclusive. */
+export async function searchRollCalls(
+  db: Db, a: { terms: string[]; from?: string; to?: string; sort?: SortOrder; limit?: number; offset?: number },
+): Promise<{ total: number; rows: RollCallHit[] }> {
   const q = tsQuery(a.terms);
-  if (!q) return [];
+  if (!q) return { total: 0, rows: [] };
+  const dates = sql.join(
+    [a.from ? sql`and r.date >= ${a.from}::date` : sql``, a.to ? sql`and r.date <= ${a.to}::date` : sql``],
+    sql` `,
+  );
+  const hits = sql`select r.*, ts_rank_cd(r.tsv, q.q) as rank from parl_roll_calls r, q
+    where numnode(q.q) > 0 and r.tsv @@ q.q and r.yes + r.no + r.other > 0 ${dates}`;
+  const c = await db.execute<{ n: number }>(sql`with q as (select (${q}) as q) select count(*)::int as n from (${hits}) h`);
+  const total = c.rows[0]?.n ?? 0;
+  if (total === 0) return { total: 0, rows: [] };
+  const inner = a.sort === "new" ? sql`r.date desc, r.id desc` : sql`rank desc, r.date desc, r.id`;
+  const outer = a.sort === "new" ? sql`p.date desc, p.id desc` : sql`p.rank desc, p.date desc, p.id`;
   const r = await db.execute<RollCallHitSql>(sql`
     with q as (select (${q}) as q)
     select p.id, to_char(p.date, 'YYYY-MM-DD') as date, p.description, p.yes, p.no, p.other, p.bill_id, p.bill_label,
       ts_headline('pt_unaccent', concat_ws(' … ', nullif(p.bill_summary, ''), p.description), q.q, ${HEADLINE}) as snippet
-    from (
-      select r.*, ts_rank_cd(r.tsv, q.q) as rank from parl_roll_calls r, q
-      where numnode(q.q) > 0 and r.tsv @@ q.q and r.yes + r.no + r.other > 0
-      order by rank desc, r.date desc, r.id limit ${a.limit ?? 10}
-    ) p, q
-    order by p.rank desc, p.date desc, p.id`);
-  return r.rows.map((x) => ({
-    id: x.id, date: x.date, description: x.description, yes: x.yes, no: x.no, other: x.other, billId: x.bill_id,
-    billLabel: x.bill_label, snippet: x.snippet,
-  }));
+    from (${hits} order by ${inner} limit ${a.limit ?? 10} offset ${a.offset ?? 0}) p, q
+    order by ${outer}`);
+  return {
+    total,
+    rows: r.rows.map((x) => ({
+      id: x.id, date: x.date, description: x.description, yes: x.yes, no: x.no, other: x.other, billId: x.bill_id,
+      billLabel: x.bill_label, snippet: x.snippet,
+    })),
+  };
 }
 
 /** The member's recorded votes, newest roll call first. */

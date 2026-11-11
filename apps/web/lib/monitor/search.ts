@@ -43,7 +43,7 @@ export async function runSearch(db: Db, raw: string, translate?: Translate, a: {
   const [members, speeches, rollCalls] = await Promise.all([
     searchMembers(db, searched.q),
     searchSpeeches(db, { terms: queryTerms(searched), limit: SEARCH_PAGE, offset: (a.page ?? 0) * SEARCH_PAGE }),
-    searchRollCalls(db, { terms: queryTerms(searched) }),
+    searchRollCalls(db, { terms: queryTerms(searched) }).then((r) => r.rows),
   ]);
   return { ...searched, members, speeches, rollCalls };
 }
