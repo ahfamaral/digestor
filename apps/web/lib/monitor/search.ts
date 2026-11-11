@@ -2,7 +2,9 @@ import { normName } from "@digestor/core";
 import { searchRollCalls, searchSpeeches, type Db, type RollCallHit, type SpeechHit } from "@digestor/core/server";
 import type { LandingParams } from "./params";
 
-export const MAX_QUERY = 200;
+import { cleanQuery } from "./params";
+
+export { cleanQuery, MAX_QUERY, pageParam, stringParam } from "./params";
 export const SEARCH_PAGE = 20;
 export const MEMBER_PAGE = 50;
 
@@ -16,8 +18,6 @@ export type LandingResult = Searched & {
   speeches: { total: number; rows: SpeechHit[] } | null; rollCalls: { total: number; rows: RollCallHit[] } | null;
 };
 
-/** Control characters out (a NUL makes Postgres throw), spaces collapsed, capped. */
-export const cleanQuery = (q: string) => q.replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim().slice(0, MAX_QUERY);
 
 /** The query's search terms: translated when a translator is given, else the words as typed. */
 export async function searchTerms(q: string, translate?: Translate): Promise<Searched> {
@@ -57,15 +57,6 @@ export async function runSearch(db: Db, p: LandingParams, translate?: Translate)
   return { ...searched, speeches, rollCalls };
 }
 
-/** A non-negative page number from a query parameter. */
-export function pageParam(v: string | string[] | undefined): number {
-  const n = Number(Array.isArray(v) ? v[0] : v);
-  return Number.isInteger(n) && n > 0 && n < 10_000 ? n : 0;
-}
-
-export function stringParam(v: string | string[] | undefined): string {
-  return (Array.isArray(v) ? v[0] : v) ?? "";
-}
 
 export const deputyUrl = (externalId: number) => `https://www.camara.leg.br/deputados/${externalId}`;
 export const billUrl = (billId: number) => `https://www.camara.leg.br/propostas-legislativas/${billId}`;

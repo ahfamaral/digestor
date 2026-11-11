@@ -1,6 +1,7 @@
 import type { MemberRow, SpeechHit, SpeechRow, VoteRow as Vote } from "@digestor/core/server";
 import { BackLink } from "@/components/BackLink";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
+import { deputyHref } from "@/lib/monitor/params";
 import { deputyUrl, MEMBER_PAGE, type Searched } from "@/lib/monitor/search";
 import { ExternalLink } from "./ExternalLink";
 import { LanguageSwitch } from "./LanguageSwitch";
@@ -66,7 +67,7 @@ export function DeputyView({
             <SpeechItem key={s.id} locale={locale} speech={s} />
           ))}
         </Section>
-        <Pager locale={locale} base={base} q={hasQuery ? q : ""} page={page} size={MEMBER_PAGE} total={speeches.total} />
+        <Pager locale={locale} page={page} size={MEMBER_PAGE} total={speeches.total} href={(p) => deputyHref(member.externalId, { q: hasQuery ? q : "", p })} />
       </div>
       <Section
         title={tm(locale, "sections.votes")}

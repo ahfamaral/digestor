@@ -1,9 +1,22 @@
-import { cleanQuery, pageParam } from "./search";
-
 /**
  * Every monitor URL parameter is parsed here, and every monitor link is built here. Anything a person can type into a
  * URL (a date outside the year, `party=';--`, `p=-1`, a repeated key) is ignored or normalised, never an error.
+ * Client-safe: the deputy combobox and the year select load it in the browser, so it never imports server code.
  */
+export const MAX_QUERY = 200;
+
+/** Control characters out (a NUL makes Postgres throw), spaces collapsed, capped. */
+export const cleanQuery = (q: string) => q.replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim().slice(0, MAX_QUERY);
+
+/** A non-negative page number from a query parameter. */
+export function pageParam(v: string | string[] | undefined): number {
+  const n = Number(Array.isArray(v) ? v[0] : v);
+  return Number.isInteger(n) && n > 0 && n < 10_000 ? n : 0;
+}
+
+export function stringParam(v: string | string[] | undefined): string {
+  return (Array.isArray(v) ? v[0] : v) ?? "";
+}
 export const MONITOR_YEARS = [2026] as const;
 const DEFAULT_YEAR = 2026;
 

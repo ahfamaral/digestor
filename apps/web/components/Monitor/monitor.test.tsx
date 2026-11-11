@@ -1,9 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { landingHref, parseLanding, type LandingParams } from "@/lib/monitor/params";
 import { DeputyView } from "./DeputyView";
 import { Highlighted } from "./Highlighted";
+import { LandingView } from "./LandingView";
+import { Pager } from "./Pager";
+import { RollCallItem } from "./RollCallItem";
+import { SortSwitch } from "./SortSwitch";
+import { SpeechItem } from "./SpeechItem";
 import { VoteRow } from "./VoteRow";
-import { SearchView } from "./SearchView";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 const member = { id: 1, externalId: 999, name: "Suplente Teste", party: "PT", uf: "SP", photoUrl: null, inOffice: false };
 
@@ -52,33 +59,78 @@ describe("monitor components", () => {
     member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS", partyThen: "PSOL", ufThen: "RS",
   };
 
-  it("a speech match shows the highlighted snippet instead of repeating the summary", () => {
+  const facets = { parties: ["PL", "PSOL"], ufs: ["RS", "SP"], phases: ["Breves Comunicações"] };
+  const landing = (o: Partial<LandingParams> = {}) => ({ ...parseLanding({}), ...o });
+  const rollCall = { id: "2449741-72", date: "2026-07-08", description: "Aprovado o projeto", yes: 300, no: 100, other: 2, billId: 2449741, billLabel: "PL 2942/2024", snippet: "o \u0001projeto\u0002" };
+
+  it("landing without a query shows both doors and no results", () => {
+    const html = renderToStaticMarkup(<LandingView locale="en" params={landing()} facets={facets} result={null} />);
+    expect(html).toContain("Find a deputy");
+    expect(html).toContain("Search a topic across the Câmara");
+    expect(html).toContain('role="combobox"');
+    expect(html).not.toContain("No speeches match.");
+    expect(html).not.toContain("Speeches</h2>");
+  });
+
+  it("a speech match shows the highlighted snippet, the party on the day and \"now PL\" when it changed", () => {
+    const moved = { ...hit, member: { ...hit.member, party: "PL" }, partyThen: "PSOL", ufThen: "RS" };
     const html = renderToStaticMarkup(
-      <SearchView back="/monitor" locale="en" q="feminicídio" page={0} result={{ ...searched, rollCalls: { total: 0, rows: [] }, speeches: { total: 1, rows: [hit] } }} />,
+      <LandingView locale="en" params={landing({ q: "feminicídio" })} facets={facets} result={{ ...searched, rollCalls: { total: 0, rows: [] }, speeches: { total: 1, rows: [moved] } }} />,
     );
     expect(html).toContain("feminicídio</mark>");
     expect(html).not.toContain("RESUMO OFICIAL");
-    expect(html).not.toContain("No deputies match.");
     expect(html).toContain('href="/monitor/deputados/204407"');
+    expect(html).toContain("PSOL-RS");
+    expect(html).toContain("now PL");
+    const same = renderToStaticMarkup(<SpeechItem locale="en" speech={hit} showMember />);
+    expect(same).toContain("PSOL-RS");
+    expect(same).not.toContain("now ");
   });
 
-  it("a search with no results at all shows every empty state", () => {
-    const html = renderToStaticMarkup(
-      <SearchView back="/monitor" locale="en" q="xyz" page={0} result={{ ...searched, q: "xyz", terms: ["xyz"], rollCalls: { total: 0, rows: [] }, speeches: { total: 0, rows: [] } }} />,
+  it("a roll call opens the roll-call page; the official bill link stays", () => {
+    const html = renderToStaticMarkup(<RollCallItem locale="en" rollCall={rollCall} />);
+    expect(html).toContain('href="/monitor/votacoes/2449741-72"');
+    expect(html).toContain("https://www.camara.leg.br/propostas-legislativas/2449741");
+  });
+
+  it("Pager says Previous / Next and keeps the filters", () => {
+    const params = landing({ q: "feminicídio", party: "PSOL" });
+    const html = renderToStaticMarkup(<Pager locale="en" page={0} size={20} total={45} href={(p) => landingHref({ ...params, p })} />);
+    expect(html).toContain("Next");
+    expect(html).not.toContain("Previous");
+    expect(html).toContain("party=PSOL&amp;p=1");
+    const pt = renderToStaticMarkup(<Pager locale="pt-BR" page={1} size={20} total={45} href={(p) => landingHref({ ...params, p })} />);
+    expect(pt).toContain("Anterior");
+    expect(pt).toContain("Próxima");
+  });
+
+  it("only the ticked group is shown; empty states otherwise", () => {
+    const only = renderToStaticMarkup(
+      <LandingView locale="en" params={landing({ q: "xyz", show: { speeches: true, rollCalls: false } })} facets={facets} result={{ ...searched, q: "xyz", terms: ["xyz"], rollCalls: null, speeches: { total: 0, rows: [] } }} />,
     );
-    for (const s of ["No speeches match.", "No roll calls match."]) expect(html).toContain(s);
-    expect(html).not.toContain("No deputies match."); // deputies are found by the combobox, not the topic search
+    expect(only).toContain("No speeches match.");
+    expect(only).not.toContain("Roll calls</h2>");
+    const both = renderToStaticMarkup(
+      <LandingView locale="en" params={landing({ q: "xyz" })} facets={facets} result={{ ...searched, q: "xyz", terms: ["xyz"], rollCalls: { total: 0, rows: [] }, speeches: { total: 0, rows: [] } }} />,
+    );
+    for (const t of ["No speeches match.", "No roll calls match."]) expect(both).toContain(t);
+  });
+
+  it("the sort switch keeps every filter and resets the pages", () => {
+    const html = renderToStaticMarkup(<SortSwitch locale="en" params={landing({ q: "x", party: "PSOL", p: 2, rp: 1 })} />);
+    expect(html).toContain('href="/monitor?q=x&amp;party=PSOL&amp;sort=new"');
+    expect(html).toContain('aria-current="true"');
   });
 
   it("the language switch links back to the same page, and Portuguese labels the page", () => {
-    const html = renderToStaticMarkup(<SearchView back="/monitor?q=f%C3%AAmea" locale="pt-BR" q="" page={0} result={null} />);
+    const html = renderToStaticMarkup(<LandingView locale="pt-BR" params={landing({ q: "fêmea" })} facets={facets} result={null} />);
     expect(html).toContain(`href="/monitor/lang?to=en&amp;back=${encodeURIComponent("/monitor?q=f%C3%AAmea")}"`);
     expect(html).toContain("Monitor da Câmara");
     expect(html).toContain('lang="pt-BR"');
   });
 
   it("while a search runs, both pages say so instead of showing empty lists", () => {
-    const search = renderToStaticMarkup(<SearchView back="/monitor" locale="en" q="femicide" page={0} result={null} searching />);
+    const search = renderToStaticMarkup(<LandingView locale="en" params={landing({ q: "femicide" })} facets={facets} result={null} searching />);
     expect(search).toContain('role="status"');
     expect(search).toContain("Searching…");
     expect(search).toContain('value="femicide"');

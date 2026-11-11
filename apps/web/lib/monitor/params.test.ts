@@ -124,3 +124,14 @@ describe("roll-call links", () => {
     expect(isRollCallId("1234567890-1")).toBe(false);
   });
 });
+
+describe("client safety", () => {
+  it("params and suggest never import server code (the combobox and year select load them in the browser)", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["params.ts", "suggest.ts"]) {
+      const src = readFileSync(new URL(`./${f}`, import.meta.url), "utf8");
+      const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+      expect(imports.filter((i) => i === "./search" || i!.includes("/server") || i === "./server"), f).toEqual([]);
+    }
+  });
+});

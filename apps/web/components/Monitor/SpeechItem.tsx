@@ -1,19 +1,29 @@
 import Link from "next/link";
 import type { SpeechHit, SpeechRow } from "@digestor/core/server";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
+import { deputyHref } from "@/lib/monitor/params";
 import { Highlighted } from "./Highlighted";
 
-/** One official speech: when, the session phase, the Câmara's summary (or, for a search match, the matching passages), the full text on demand. */
+/**
+ * One official speech: who (with the party and state on the day, and "now …" when the party changed since), when, the
+ * session phase, the Câmara's summary (or, for a search match, the matching passages), the full text on demand.
+ */
 export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLocale; speech: SpeechRow | SpeechHit; showMember?: boolean }) {
   const hit = "snippet" in speech ? speech : null;
+  const party = hit ? (hit.partyThen ?? hit.member.party) : null;
+  const uf = hit ? (hit.partyThen ? hit.ufThen : hit.member.uf) : null;
+  const changed = hit && hit.partyThen && hit.member.party && hit.member.party !== hit.partyThen ? hit.member.party : null;
   return (
     <li className="grid gap-1.5 px-4 py-3 text-sm">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         {showMember && hit && (
-          <Link href={`/monitor/deputados/${hit.member.externalId}`} className="font-semibold underline-offset-2 hover:underline">
-            {hit.member.name}
-            {hit.member.party && <span className="font-normal text-muted-foreground"> · {[hit.member.party, hit.member.uf].filter(Boolean).join("-")}</span>}
-          </Link>
+          <span>
+            <Link href={deputyHref(hit.member.externalId)} className="font-semibold underline-offset-2 hover:underline">
+              {hit.member.name}
+            </Link>
+            {party && <span className="text-muted-foreground"> · {[party, uf].filter(Boolean).join("-")}</span>}
+            {changed && <span className="text-xs text-muted-foreground"> ({tm(locale, "speech.now", { party: changed })})</span>}
+          </span>
         )}
         <time dateTime={speech.startsAt} className="font-mono text-xs text-muted-foreground">
           {formatSpeechTime(speech.startsAt, locale)}

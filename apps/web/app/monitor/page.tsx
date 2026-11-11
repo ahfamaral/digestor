@@ -1,14 +1,16 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
+import { speechFacets } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
-import { SearchView } from "@/components/Monitor/SearchView";
+import { LandingView } from "@/components/Monitor/LandingView";
+import type { Facets } from "@/components/Monitor/TopicFilters";
 import type { MonitorLocale } from "@/lib/monitor/i18n";
-import { requestLocale, translator } from "@/lib/monitor/server";
 import { landingHref, parseLanding, type LandingParams } from "@/lib/monitor/params";
+import { requestLocale, translator } from "@/lib/monitor/server";
 import { runSearch } from "@/lib/monitor/search";
 import { getServer } from "@/lib/server";
 
-/** The Câmara monitor: search deputies, speeches and roll calls. Reads the DB per request (inside Suspense). */
+/** The Câmara monitor: find a deputy, or search a topic with filters. Reads the DB per request (inside Suspense). */
 export default function MonitorPage({ searchParams }: PageProps<"/monitor">) {
   return (
     <>
@@ -24,21 +26,18 @@ export default function MonitorPage({ searchParams }: PageProps<"/monitor">) {
 
 async function MonitorSearch({ searchParams }: { searchParams: PageProps<"/monitor">["searchParams"] }) {
   await connection();
-  const sp = await searchParams;
-  const params = parseLanding(sp);
-  const { q, p: page } = params;
-  const locale = await requestLocale();
-  const back = landingHref(params);
-  if (!q.trim()) return <SearchView locale={locale} q={q} result={null} page={page} back={back} />;
-  // The query is translated first (up to 10 s): the header and box show at once, with "Searching…" until results arrive.
+  const params = parseLanding(await searchParams);
+  const [locale, facets] = await Promise.all([requestLocale(), speechFacets(getServer().db)]);
+  if (!params.q) return <LandingView locale={locale} params={params} facets={facets} result={null} />;
+  // The query is translated first (up to 10 s): the header and both doors show at once, with "Searching…" meanwhile.
   return (
-    <Suspense key={`${q}|${page}`} fallback={<SearchView locale={locale} q={q} result={null} page={page} back={back} searching />}>
-      <MonitorResults locale={locale} params={params} back={back} />
+    <Suspense key={landingHref(params)} fallback={<LandingView locale={locale} params={params} facets={facets} result={null} searching />}>
+      <MonitorResults locale={locale} params={params} facets={facets} />
     </Suspense>
   );
 }
 
-async function MonitorResults({ locale, params, back }: { locale: MonitorLocale; params: LandingParams; back: string }) {
+async function MonitorResults({ locale, params, facets }: { locale: MonitorLocale; params: LandingParams; facets: Facets }) {
   const result = await runSearch(getServer().db, params, translator());
-  return <SearchView locale={locale} q={params.q} result={result} page={params.p} back={back} />;
+  return <LandingView locale={locale} params={params} facets={facets} result={result} />;
 }
