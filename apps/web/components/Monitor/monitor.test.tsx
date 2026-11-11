@@ -11,6 +11,7 @@ import { Presence } from "./Presence";
 import { ProfileLine } from "./ProfileLine";
 import { Pager } from "./Pager";
 import { RollCallItem } from "./RollCallItem";
+import { RollCallView } from "./RollCallView";
 import { SpeechItem } from "./SpeechItem";
 import { VoteRow } from "./VoteRow";
 
@@ -237,5 +238,35 @@ describe("monitor components", () => {
       <ProfileLine locale="en" profile={{ profession: null, externalMandates: [{ office: "Governador(a)", place: "", uf: "MA", from: 2009, to: 2014, party: "MDB" }], fronts: [], positions: [] }} />,
     );
     expect(noTown).toContain("Governador(a) · MA · 2009–2014, MDB");
+  });
+
+  const rollCallDetail = {
+    id: "2449741-72", date: "2026-03-10", description: "Aprovado o projeto.", yes: 2, no: 1, other: 0, billId: 2449741, billLabel: "PL 2942/2024",
+    billSummary: "Altera a Lei", orientations: [{ bloc: "PL", orientation: "Sim" }, { bloc: "PDT", orientation: "" }],
+    parties: [
+      { party: "UNIÃO", counts: [{ vote: "Sim", n: 1 }, { vote: "Não", n: 1 }], deputies: [
+        { externalId: 220576, name: "Alfredo Gaspar", uf: "AL", vote: "Sim" }, { externalId: 1, name: "Outro", uf: "BA", vote: "Não" },
+      ] },
+      { party: null, counts: [{ vote: "Sim", n: 1 }], deputies: [{ externalId: 2, name: "Sem Partido", uf: null, vote: "Sim" }] },
+    ],
+  };
+
+  it("votes are grouped by the party at the vote", () => {
+    const html = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} />);
+    expect(html).toContain("UNIÃO");
+    expect(html).toContain('href="/monitor/deputados/220576"');
+    expect(html).toContain("Sim 1 · Não 1");
+    expect(html).toContain("No party recorded");
+    expect(html).toContain("Party at the time of the vote, as published.");
+    expect(html).toContain('href="https://www.camara.leg.br/propostas-legislativas/2449741"');
+    expect(html.indexOf("UNIÃO")).toBeLessThan(html.indexOf("Alfredo Gaspar"));
+  });
+
+  it('empty guidance reads "No guidance"', () => {
+    const html = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} />);
+    expect(html).toContain("Party and bloc guidance");
+    expect(html).toContain("No guidance");
+    const pt = renderToStaticMarkup(<RollCallView locale="pt-BR" rollCall={rollCallDetail} />);
+    expect(pt).toContain("Sem orientação");
   });
 });

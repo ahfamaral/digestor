@@ -122,6 +122,9 @@ describe("roll-call links", () => {
     expect(isRollCallId("2449741")).toBe(false);
     expect(isRollCallId("1-1; drop")).toBe(false);
     expect(isRollCallId("1234567890-1")).toBe(false);
+    expect(isRollCallId("x")).toBe(false);
+    expect(isRollCallId("1-")).toBe(false);
+    expect(isRollCallId("../1-1")).toBe(false);
   });
 });
 

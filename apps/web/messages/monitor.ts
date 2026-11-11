@@ -99,6 +99,15 @@ export const monitorEn = {
     title: "Parliamentary fronts",
     members: "Member of {n} parliamentary fronts",
   },
+  rollCallPage: {
+    byParty: "By party",
+    noParty: "No party recorded",
+    deputiesOne: "1 deputy",
+    deputies: "{n} deputies",
+    partyNote: "Party at the time of the vote, as published.",
+    guidance: "Party and bloc guidance",
+    noGuidance: "No guidance",
+  },
   sections: {
     deputies: "Deputies",
     speeches: "Speeches",
@@ -239,6 +248,15 @@ export const monitorPtBR: MonitorMessages = {
   fronts: {
     title: "Frentes parlamentares",
     members: "Membro de {n} frentes parlamentares",
+  },
+  rollCallPage: {
+    byParty: "Por partido",
+    noParty: "Sem partido registrado",
+    deputiesOne: "1 deputado",
+    deputies: "{n} deputados",
+    partyNote: "Partido no momento da votação, como publicado.",
+    guidance: "Orientação de partidos e blocos",
+    noGuidance: "Sem orientação",
   },
   sections: {
     deputies: "Deputados",
