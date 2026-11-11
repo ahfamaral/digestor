@@ -1,9 +1,15 @@
 import {
-  countInOffice, countSpeechesInWindow, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, upsertMembers, upsertRollCalls, type Db,
+  countInOffice, countSpeechesInWindow, fillSpeechParties, membersNeedingProfile, replaceBillAuthors, replaceHistory, replaceOrientations,
+  replacePresence, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, setProfile, upsertBills, upsertMembers,
+  upsertRollCalls, upsertSessions, type Db,
 } from "@digestor/core/server";
 import { mapLimit } from "../records/http.js";
-import { fetchBill, fetchInOfficeIds, fetchMembers, fetchSpeeches, fetchYearCsv, MONITOR_FROM } from "./camara.js";
-import { parseCsv } from "./bulk.js";
+import {
+  fetchBill, fetchHistory, fetchInOfficeIds, fetchMembers, fetchProfile, fetchSpeeches, fetchYearCsv, MONITOR_FROM, type YearCsv,
+} from "./camara.js";
+import {
+  AUTHOR_COLUMNS, BILL_COLUMNS, parseCsv, toBillAuthors, toBills, toOrientations, toPresence, toSessions, type CsvRow,
+} from "./bulk.js";
 import { toRollCalls, toVotes } from "./rollCalls.js";
 
 /** Nightly refresh of the parliament monitor, after the Câmara regenerates its bulk files (04:00–07:10 UTC). */
@@ -13,20 +19,25 @@ const CONCURRENCY = 4;
 
 export type RefreshCounts = {
   members: number; speeches: { inserted: number; kept: number; failed: number }; rollCalls: number; votes: number; bills: number;
+  history: { ok: number; failed: number }; profiles: { ok: number; failed: number };
+  orientations: number; sessions: number; presence: number; authoredBills: number;
 };
+export type RefreshWindow = { speechesFrom: string; to: string; year: number; profiles: "all" | "missing" };
 
 /** Days of speeches re-read each night: transcriptions are often published weeks late (42 still empty in dev, some 2 months old). */
 export const SPEECH_WINDOW_DAYS = 60;
 
 /**
- * Deputies (everyone who sat since `MONITOR_FROM`, in office today flagged), each deputy's speeches in
- * [speechesFrom, to] (replaced, so late transcriptions arrive), then the year's roll calls and votes from the bulk
- * files, then bills still missing an id or summary. Upserts and window replaces only: a rerun is harmless.
+ * Deputies (everyone who sat since `MONITOR_FROM`, in office today flagged), each deputy's history (party changes,
+ * leave), each deputy's speeches in [speechesFrom, to] (replaced, so late transcriptions arrive) with the party on the
+ * day, profiles (all on Mondays, else only those never fetched), then the year's bulk files one at a time: roll calls
+ * and votes, bills still missing an id or summary, guidance, plenary sessions and presence, bills and their authors.
+ * Upserts and replaces only: a rerun is harmless.
  * The Câmara sometimes answers 200 with an empty list when it is failing: a deputy whose stored speeches in the window
  * would all be deleted by an empty answer is skipped (`kept`) and the run warns once.
  */
 export async function refreshMonitor(
-  deps: { db: Db; fetch: typeof fetch }, a: { speechesFrom: string; to: string; year: number },
+  deps: { db: Db; fetch: typeof fetch }, a: RefreshWindow,
 ): Promise<RefreshCounts> {
   const { db, fetch: f } = deps;
   const members = await fetchMembers(f, MONITOR_FROM, a.to);
@@ -40,6 +51,25 @@ export async function refreshMonitor(
   } else {
     await setInOffice(db, "camara", inOffice);
   }
+
+  // History before speeches: the party on the day of each speech comes from it. One deputy failing is counted and
+  // skipped; only a mostly failed run throws, so pg-boss retries it.
+  const history = { ok: 0, failed: 0 };
+  let historyError: unknown = null;
+  await mapLimit([...ids], CONCURRENCY, async ([externalId, memberId]) => {
+    try {
+      const rows = await fetchHistory(f, externalId);
+      await replaceHistory(db, memberId, rows);
+      history.ok++;
+    } catch (err) {
+      history.failed++;
+      historyError = err;
+    }
+  });
+  if (history.failed > 0) {
+    console.warn(`monitor.refresh: history of ${history.failed} deputies failed; last error:`, historyError instanceof Error ? historyError.message : historyError);
+  }
+  if (history.failed > ids.size / 2) throw new Error(`monitor.refresh: history failed for ${history.failed} of ${ids.size} deputies`);
 
   // One deputy failing (5xx twice, a malformed record) is counted and skipped: the rest and the votes still refresh.
   // Only a mostly failed run throws, so pg-boss retries it.
@@ -65,6 +95,24 @@ export async function refreshMonitor(
   if (failed > 0) console.warn(`monitor.refresh: speeches of ${failed} deputies failed; last error:`, lastError instanceof Error ? lastError.message : lastError);
   if (failed > ids.size / 2) throw new Error(`monitor.refresh: speeches failed for ${failed} of ${ids.size} deputies`);
   const speeches = { inserted, kept, failed };
+  await fillSpeechParties(db);
+
+  // Profiles change rarely: all of them on Mondays, otherwise only deputies never fetched. Failures never throw.
+  const profiles = { ok: 0, failed: 0 };
+  let profileError: unknown = null;
+  await mapLimit(await membersNeedingProfile(db, "camara", a.profiles === "all"), CONCURRENCY, async (m) => {
+    try {
+      await setProfile(db, m.id, await fetchProfile(f, m.externalId));
+      profiles.ok++;
+    } catch (err) {
+      profiles.failed++;
+      profileError = err;
+    }
+  });
+  if (profiles.failed > 0) {
+    console.warn(`monitor.refresh: profiles of ${profiles.failed} deputies failed; last error:`, profileError instanceof Error ? profileError.message : profileError);
+  }
+  const counts = { members: members.length, speeches, history, profiles, rollCalls: 0, votes: 0, bills: 0, orientations: 0, sessions: 0, presence: 0, authoredBills: 0 };
 
   // One file at a time: three large parallel downloads are what the Câmara cut off. A file that doesn't exist (a 4xx,
   // e.g. the new year's on 1 January) is final: no roll calls this run, no retry.
@@ -76,7 +124,7 @@ export async function refreshMonitor(
   } catch (err) {
     if (!(err as { final?: boolean }).final) throw err;
     console.warn(`monitor.refresh: no roll calls for ${a.year}:`, (err as Error).message);
-    return { members: members.length, speeches, rollCalls: 0, votes: 0, bills: 0 };
+    return counts;
   }
   const rollCalls = toRollCalls(votacoes, objetos);
   await upsertRollCalls(db, rollCalls.map(({ needsBill: _, ...r }) => r));
@@ -91,7 +139,9 @@ export async function refreshMonitor(
   const memberIdOf = new Map([...ids, ...added]);
   let votes = 0;
   for (const rc of rollCalls) {
-    const rows = (votesByRollCall.get(rc.id) ?? []).map((v) => ({ memberId: memberIdOf.get(v.externalId)!, vote: v.vote }));
+    const rows = (votesByRollCall.get(rc.id) ?? []).map((v) => ({
+      memberId: memberIdOf.get(v.externalId)!, vote: v.vote, party: v.party || null, uf: v.uf || null,
+    }));
     await replaceVotes(db, rc.id, rows);
     votes += rows.length;
   }
@@ -109,12 +159,74 @@ export async function refreshMonitor(
     return b ? [{ ...r, billId: b.id, billLabel: b.label, billSummary: b.summary }] : [];
   });
   await upsertRollCalls(db, bills.map(({ needsBill: _, ...r }) => r));
+  Object.assign(counts, { rollCalls: rollCalls.length, votes, bills: bills.length });
 
-  return { members: members.length, speeches, rollCalls: rollCalls.length, votes, bills: bills.length };
+  // The five files below are each optional: one that doesn't exist (a final 4xx) skips its own part only.
+  const optional = async (kind: YearCsv, keep?: string[]): Promise<CsvRow[] | null> => {
+    try {
+      return parseCsv(await fetchYearCsv(f, kind, a.year), keep);
+    } catch (err) {
+      if (!(err as { final?: boolean }).final) throw err;
+      console.warn(`monitor.refresh: skipped ${kind}-${a.year}:`, (err as Error).message);
+      return null;
+    }
+  };
+
+  const guidance = await optional("votacoesOrientacoes");
+  if (guidance) {
+    const byRollCall = toOrientations(guidance, new Set(rollCalls.map((r) => r.id)));
+    for (const rc of rollCalls) {
+      const rows = byRollCall.get(rc.id) ?? [];
+      await replaceOrientations(db, rc.id, rows);
+      counts.orientations += rows.length;
+    }
+  }
+
+  // Presence and authorship of deputies outside the members list are skipped, never added as members.
+  const events = await optional("eventos");
+  if (events) {
+    const sessions = toSessions(events);
+    await upsertSessions(db, sessions);
+    counts.sessions = sessions.length;
+    const presenceRows = await optional("eventosPresencaDeputados", ["idEvento", "idDeputado"]);
+    if (presenceRows) {
+      const sessionIds = sessions.map((s) => s.id);
+      const rows = toPresence(presenceRows, new Set(sessionIds)).flatMap((p) => {
+        const memberId = memberIdOf.get(p.externalId);
+        return memberId === undefined ? [] : [{ sessionId: p.sessionId, memberId }];
+      });
+      await replacePresence(db, sessionIds, rows);
+      counts.presence = rows.length;
+    }
+  }
+
+  const billRows = await optional("proposicoes", BILL_COLUMNS);
+  if (billRows) {
+    const billsOfYear = toBills(billRows);
+    await upsertBills(db, billsOfYear);
+    const authorRows = await optional("proposicoesAutores", AUTHOR_COLUMNS);
+    if (authorRows) {
+      const billIds = billsOfYear.map((b) => b.id);
+      const rows = toBillAuthors(authorRows, new Set(billIds)).flatMap((r) => {
+        const memberId = memberIdOf.get(r.externalId);
+        return memberId === undefined ? [] : [{ billId: r.billId, memberId, firstAuthor: r.firstAuthor }];
+      });
+      await replaceBillAuthors(db, billIds, rows);
+      counts.authoredBills = rows.length;
+    }
+  }
+
+  return counts;
 }
 
-/** The nightly window: the last `SPEECH_WINDOW_DAYS` of speeches (late transcriptions), this year's roll calls. */
-export function nightlyWindow(now = new Date()): { speechesFrom: string; to: string; year: number } {
+/**
+ * The nightly window: the last `SPEECH_WINDOW_DAYS` of speeches (late transcriptions), this year's bulk files, and
+ * every profile on Mondays (otherwise only deputies never fetched).
+ */
+export function nightlyWindow(now = new Date()): RefreshWindow {
   const day = (d: Date) => d.toISOString().slice(0, 10);
-  return { speechesFrom: day(new Date(now.getTime() - SPEECH_WINDOW_DAYS * 86_400_000)), to: day(now), year: now.getUTCFullYear() };
+  return {
+    speechesFrom: day(new Date(now.getTime() - SPEECH_WINDOW_DAYS * 86_400_000)), to: day(now), year: now.getUTCFullYear(),
+    profiles: now.getUTCDay() === 1 ? "all" : "missing",
+  };
 }

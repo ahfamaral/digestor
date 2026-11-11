@@ -1,0 +1,106 @@
+{
+ "dados": [
+  {
+   "id": 204407,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407",
+   "nome": "Fernanda Melchionna",
+   "nomeEleitoral": "FERNANDA MELCHIONNA",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RS",
+   "idLegislatura": 58,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204407.jpg",
+   "dataHora": "2023-02-01T00:00",
+   "situacao": null,
+   "condicaoEleitoral": null,
+   "descricaoStatus": "Nome no in\u00edcio da legislatura / Partido no in\u00edcio da legislatura"
+  },
+  {
+   "id": 204407,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407",
+   "nome": "Fernanda Melchionna",
+   "nomeEleitoral": "FERNANDA MELCHIONNA",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RS",
+   "idLegislatura": 57,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204407.jpg",
+   "dataHora": "2023-02-01T00:00",
+   "situacao": null,
+   "condicaoEleitoral": null,
+   "descricaoStatus": "Nome no in\u00edcio da legislatura / Partido no in\u00edcio da legislatura"
+  },
+  {
+   "id": 204407,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407",
+   "nome": "Fernanda Melchionna",
+   "nomeEleitoral": "FERNANDA MELCHIONNA",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RS",
+   "idLegislatura": 57,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204407.jpg",
+   "dataHora": "2023-02-01T12:05",
+   "situacao": "Exerc\u00edcio",
+   "condicaoEleitoral": "Titular",
+   "descricaoStatus": "Entrada - Posse de Eleito Titular - Posse na Sess\u00e3o Preparat\u00f3ria"
+  },
+  {
+   "id": 204407,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407",
+   "nome": "Fernanda Melchionna ",
+   "nomeEleitoral": "FERNANDA MELCHIONNA ",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RS",
+   "idLegislatura": 56,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204407.jpg",
+   "dataHora": "2019-02-01T11:45",
+   "situacao": "Exerc\u00edcio",
+   "condicaoEleitoral": "Titular",
+   "descricaoStatus": "Entrada - Posse de Eleito Titular - Posse na Sess\u00e3o Preparat\u00f3ria"
+  },
+  {
+   "id": 204407,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407",
+   "nome": "Fernanda Melchionna ",
+   "nomeEleitoral": "FERNANDA MELCHIONNA ",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RS",
+   "idLegislatura": 56,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204407.jpg",
+   "dataHora": "2023-01-31T23:59",
+   "situacao": "FIM_MANDATO",
+   "condicaoEleitoral": "Titular",
+   "descricaoStatus": "Sa\u00edda - Afastamento definitivo - T\u00e9rmino da Legislatura"
+  },
+  {
+   "id": 204407,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407",
+   "nome": "Fernanda Melchionna ",
+   "nomeEleitoral": "FERNANDA MELCHIONNA ",
+   "siglaPartido": "PSOL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839",
+   "siglaUf": "RS",
+   "idLegislatura": 56,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/204407.jpg",
+   "dataHora": "2023-02-01T00:00",
+   "situacao": null,
+   "condicaoEleitoral": null,
+   "descricaoStatus": "Nome no in\u00edcio da legislatura / Partido no in\u00edcio da legislatura"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/historico"
+  }
+ ]
+}

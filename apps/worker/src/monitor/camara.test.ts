@@ -122,9 +122,14 @@ describe("Câmara monitor client", () => {
     expect(rows.filter((r) => r.status === "Licença").length).toBeGreaterThan(0);
   });
 
-  it("fetchHistory: an unknown deputy (404) has no history", async () => {
+  it("fetchHistory of 204407 drops rows labelled legislature 56 and 58", async () => {
     const { f } = fakeCamaraMonitorFetch();
-    expect(await fetchHistory(f, 999)).toEqual([]);
+    expect((await fetchHistory(f, 204407)).map((r) => r.at)).toEqual(["2023-02-01T00:00", "2023-02-01T12:05"]);
+  });
+
+  it("fetchHistory: an unknown deputy (404) has no history", async () => {
+    const notFound = (async () => new Response("{}", { status: 404 })) as typeof fetch;
+    expect(await fetchHistory(notFound, 999)).toEqual([]);
   });
 
   it("fetchProfile maps 204407", async () => {
@@ -151,8 +156,8 @@ describe("Câmara monitor client", () => {
   });
 
   it("fetchProfile of a deputy the API doesn't know is empty", async () => {
-    const { f } = fakeCamaraMonitorFetch();
-    expect(await fetchProfile(f, 999)).toEqual({ profession: null, externalMandates: [], fronts: [], positions: [] });
+    const notFound = (async () => new Response("{}", { status: 404 })) as typeof fetch;
+    expect(await fetchProfile(notFound, 999)).toEqual({ profession: null, externalMandates: [], fronts: [], positions: [] });
   });
 
   it("mergeMandates joins consecutive terms, keeps a gap and a party change apart", () => {

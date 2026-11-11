@@ -3,15 +3,19 @@ import { readFileSync } from "node:fs";
 /**
  * A fake `fetch` over the recorded Câmara monitor fixtures (test/fixtures/camara-monitor, recorded 2026-11-11, see its
  * README). URLs are matched by path and query; anything else answers 404 like the API does for unknown ids.
- * `overrides` replaces a body by a URL substring (e.g. `{ "/deputados/204407/discursos": { dados: [], links: [] } }`).
+ * `overrides` replaces a body by a URL substring (e.g. `{ "/deputados/204407/discursos": { dados: [], links: [] } }`);
+ * `{ status: 404 }` (only a numeric `status`) answers that status instead.
  */
 const dir = new URL("../../test/fixtures/camara-monitor/", import.meta.url);
 export const monitorFixture = (name: string) => readFileSync(new URL(name, dir), "utf8");
 const json = (name: string) => JSON.parse(monitorFixture(name)) as unknown;
-/** Per-deputy fixtures served for `/deputados/{id}/{kind}`; other deputies answer 404. */
+/** Per-deputy fixtures served for `/deputados/{id}/{kind}`; other deputies answer an empty list. */
 const RECORDED = new Set([
-  "historico-220576", "historico-73806", "profissoes-204407", "mandatosExternos-204407", "frentes-204407", "orgaos-204407",
+  "historico-204407", "historico-220576", "historico-73806", "profissoes-204407", "mandatosExternos-204407", "frentes-204407", "orgaos-204407",
 ]);
+
+const isStatus = (b: unknown): b is { status: number } =>
+  typeof b === "object" && b !== null && Object.keys(b).length === 1 && typeof (b as { status?: unknown }).status === "number";
 
 export function fakeCamaraMonitorFetch(overrides: Record<string, unknown> = {}) {
   const calls: string[] = [];
@@ -19,7 +23,9 @@ export function fakeCamaraMonitorFetch(overrides: Record<string, unknown> = {}) 
     const url = String(input instanceof Request ? input.url : input);
     calls.push(url);
     for (const [part, body] of Object.entries(overrides)) {
-      if (url.includes(part)) return new Response(typeof body === "string" ? body : JSON.stringify(body), { status: 200 });
+      if (!url.includes(part)) continue;
+      if (isStatus(body)) return new Response(JSON.stringify(body), { status: body.status });
+      return new Response(typeof body === "string" ? body : JSON.stringify(body), { status: 200 });
     }
     const u = new URL(url);
     const p = u.pathname;
@@ -36,7 +42,7 @@ export function fakeCamaraMonitorFetch(overrides: Record<string, unknown> = {}) 
     if (p === "/api/v2/deputados/204407/discursos") return ok(monitorFixture("discursos-204407.recorded.json"));
     if (/^\/api\/v2\/deputados\/\d+\/discursos$/.test(p)) return ok(JSON.stringify({ dados: [], links: [] }));
     const sub = /^\/api\/v2\/deputados\/(\d+)\/(historico|profissoes|mandatosExternos|frentes|orgaos)$/.exec(p);
-    if (sub && RECORDED.has(`${sub[2]}-${sub[1]}`)) return ok(monitorFixture(`${sub[2]}-${sub[1]}.recorded.json`));
+    if (sub) return ok(RECORDED.has(`${sub[2]}-${sub[1]}`) ? monitorFixture(`${sub[2]}-${sub[1]}.recorded.json`) : JSON.stringify({ dados: [], links: [] }));
     if (p === "/api/v2/proposicoes/2462009") return ok(monitorFixture("proposicao-2462009.recorded.json"));
     if (p === "/api/v2/proposicoes" && q.get("siglaTipo") === "PL" && q.get("ano") === "2024") {
       const n = q.get("numero");

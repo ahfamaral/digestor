@@ -70,6 +70,7 @@ describe("toBillAuthors", () => {
     expect(rows).toEqual([
       { billId: 2600034, externalId: 204488, firstAuthor: false },
       { billId: 2600034, externalId: 141533, firstAuthor: true },
+      { billId: 2600034, externalId: 204407, firstAuthor: false },
       { billId: 2646307, externalId: 204407, firstAuthor: true },
     ]);
   });
