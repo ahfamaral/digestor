@@ -1,0 +1,458 @@
+{
+ "dados": [
+  {
+   "idOrgao": 2018,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2018",
+   "siglaOrgao": "CREDN",
+   "nomeOrgao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "nomePublicacao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-03-15T00:00",
+   "dataFim": "2024-02-04T23:59"
+  },
+  {
+   "idOrgao": 537870,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/537870",
+   "siglaOrgao": "CMULHER",
+   "nomeOrgao": "Comiss\u00e3o de Defesa dos Direitos da Mulher",
+   "nomePublicacao": "Comiss\u00e3o de Defesa dos Direitos da Mulher",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-03-15T00:00",
+   "dataFim": "2023-12-15T23:59"
+  },
+  {
+   "idOrgao": 539388,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539388",
+   "siglaOrgao": "CASP",
+   "nomeOrgao": "Comiss\u00e3o de Administra\u00e7\u00e3o e Servi\u00e7o P\u00fablico",
+   "nomePublicacao": "Comiss\u00e3o de Administra\u00e7\u00e3o e Servi\u00e7o P\u00fablico",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-03-15T00:00",
+   "dataFim": "2023-12-15T23:59"
+  },
+  {
+   "idOrgao": 2010,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2010",
+   "siglaOrgao": "CFT",
+   "nomeOrgao": "Comiss\u00e3o de Finan\u00e7as e Tributa\u00e7\u00e3o",
+   "nomePublicacao": "Comiss\u00e3o de Finan\u00e7as e Tributa\u00e7\u00e3o",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-03-20T00:00",
+   "dataFim": "2023-12-15T23:59"
+  },
+  {
+   "idOrgao": 2002,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2002",
+   "siglaOrgao": "CCTI",
+   "nomeOrgao": "Comiss\u00e3o de Ci\u00eancia, Tecnologia e Inova\u00e7\u00e3o",
+   "nomePublicacao": "Comiss\u00e3o de Ci\u00eancia, Tecnologia e Inova\u00e7\u00e3o",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2023-04-18T00:00",
+   "dataFim": "2024-02-04T23:59"
+  },
+  {
+   "idOrgao": 537239,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/537239",
+   "siglaOrgao": "SEMULHER",
+   "nomeOrgao": "Secretaria da Mulher",
+   "nomePublicacao": "SECRETARIA DA MULHER",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-05-04T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 539426,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539426",
+   "siglaOrgao": "CPIAMERI",
+   "nomeOrgao": "Comiss\u00e3o Parlamentar de Inqu\u00e9rito destinada a investigar as inconsist\u00eancias da ordem de 20 bilh\u00f5es de reais detectadas em lan\u00e7amentos cont\u00e1beis da empresa Americanas S.A. realizados no exerc\u00edcio de 2022 e em exerc\u00edcios anteriores",
+   "nomePublicacao": "CPI sobre a Empresa Americanas S.A.",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2023-05-17T00:00",
+   "dataFim": "2023-09-26T23:59"
+  },
+  {
+   "idOrgao": 539572,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539572",
+   "siglaOrgao": "PEC00923",
+   "nomeOrgao": "Comiss\u00e3o Especial destinada a proferir parecer \u00e0 Proposta de Emenda \u00e0 Constitui\u00e7\u00e3o n. 9, de 2023, do Sr. Paulo Magalh\u00e3es e outros, que \"altera a Emenda Constitucional n\u00ba 117, de 5 de abril de 2022, quanto \u00e0 aplica\u00e7\u00e3o de san\u00e7\u00f5es aos partidos que n\u00e3o preencheram a cota m\u00ednima de recursos ou que n\u00e3o destinaram os valores m\u00ednimos em raz\u00e3o de sexo e ra\u00e7a em elei\u00e7\u00f5es, bem como nas presta\u00e7\u00f5es de contas anuais e eleitorais\"",
+   "nomePublicacao": "Comiss\u00e3o Especial sobre a Cota M\u00ednima de Recursos dos Partidos (PEC 009/23)",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-07-10T00:00",
+   "dataFim": "2024-08-22T23:59"
+  },
+  {
+   "idOrgao": 539430,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539430",
+   "siglaOrgao": "CPIMST",
+   "nomeOrgao": "Comiss\u00e3o Parlamentar de Inqu\u00e9rito destinada a investigar a atua\u00e7\u00e3o do grupo Movimento dos Trabalhadores Sem Terra (MST), do seu real prop\u00f3sito, assim como dos seus financiadores",
+   "nomePublicacao": "CPI sobre o Movimento dos Trabalhadores sem Terra (MST)",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2023-07-11T00:00",
+   "dataFim": "2023-07-13T23:59"
+  },
+  {
+   "idOrgao": 539387,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539387",
+   "siglaOrgao": "CPASF",
+   "nomeOrgao": "Comiss\u00e3o de Previd\u00eancia, Assist\u00eancia Social, Inf\u00e2ncia, Adolesc\u00eancia e Fam\u00edlia",
+   "nomePublicacao": "Comiss\u00e3o de Previd\u00eancia, Assist\u00eancia Social, Inf\u00e2ncia, Adolesc\u00eancia e Fam\u00edlia",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2023-09-05T00:00",
+   "dataFim": "2023-09-05T23:59"
+  },
+  {
+   "idOrgao": 539635,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539635",
+   "siglaOrgao": "CEDESNAT",
+   "nomeOrgao": "Comiss\u00e3o Especial destinada a estudar e analisar formas de preven\u00e7\u00e3o e aux\u00edlio a desastres e calamidades naturais que v\u00eam assolando o Territ\u00f3rio Nacional",
+   "nomePublicacao": "Comiss\u00e3o Especial sobre Preven\u00e7\u00e3o e Aux\u00edlio a Desastres e Calamidades Naturais",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-10-19T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 539387,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539387",
+   "siglaOrgao": "CPASF",
+   "nomeOrgao": "Comiss\u00e3o de Previd\u00eancia, Assist\u00eancia Social, Inf\u00e2ncia, Adolesc\u00eancia e Fam\u00edlia",
+   "nomePublicacao": "Comiss\u00e3o de Previd\u00eancia, Assist\u00eancia Social, Inf\u00e2ncia, Adolesc\u00eancia e Fam\u00edlia",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2023-10-25T00:00",
+   "dataFim": "2023-11-20T23:59"
+  },
+  {
+   "idOrgao": 539387,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539387",
+   "siglaOrgao": "CPASF",
+   "nomeOrgao": "Comiss\u00e3o de Previd\u00eancia, Assist\u00eancia Social, Inf\u00e2ncia, Adolesc\u00eancia e Fam\u00edlia",
+   "nomePublicacao": "Comiss\u00e3o de Previd\u00eancia, Assist\u00eancia Social, Inf\u00e2ncia, Adolesc\u00eancia e Fam\u00edlia",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2023-11-21T00:00",
+   "dataFim": "2023-11-22T23:59"
+  },
+  {
+   "idOrgao": 539637,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539637",
+   "siglaOrgao": "CEXCIRS",
+   "nomeOrgao": "Comiss\u00e3o Externa destinada a apurar e acompanhar os danos causados pelas enchentes de 2023 e 2024, que atingiram o estado do Rio Grande do Sul",
+   "nomePublicacao": "Comiss\u00e3o Externa sobre Danos Causados pelas Enchentes no Rio Grande do Sul",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2023-11-28T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 2003,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2003",
+   "siglaOrgao": "CCJC",
+   "nomeOrgao": "Comiss\u00e3o de Constitui\u00e7\u00e3o e Justi\u00e7a e de Cidadania",
+   "nomePublicacao": "Comiss\u00e3o de Constitui\u00e7\u00e3o e Justi\u00e7a e de Cidadania",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2024-03-06T00:00",
+   "dataFim": "2024-10-08T23:59"
+  },
+  {
+   "idOrgao": 2007,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2007",
+   "siglaOrgao": "CDHMIR",
+   "nomeOrgao": "Comiss\u00e3o de Direitos Humanos, Minorias e Igualdade Racial",
+   "nomePublicacao": "Comiss\u00e3o de Direitos Humanos, Minorias e Igualdade Racial",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2024-03-06T00:00",
+   "dataFim": "2024-12-03T23:59"
+  },
+  {
+   "idOrgao": 2009,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2009",
+   "siglaOrgao": "CE",
+   "nomeOrgao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "nomePublicacao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2024-03-06T00:00",
+   "dataFim": "2024-03-12T23:59"
+  },
+  {
+   "idOrgao": 5438,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/5438",
+   "siglaOrgao": "CLP",
+   "nomeOrgao": "Comiss\u00e3o de Legisla\u00e7\u00e3o Participativa",
+   "nomePublicacao": "Comiss\u00e3o de Legisla\u00e7\u00e3o Participativa",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2024-03-06T00:00",
+   "dataFim": "2025-01-31T23:59"
+  },
+  {
+   "idOrgao": 2018,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2018",
+   "siglaOrgao": "CREDN",
+   "nomeOrgao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "nomePublicacao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2024-03-06T00:00",
+   "dataFim": "2024-03-20T23:59"
+  },
+  {
+   "idOrgao": 536996,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/536996",
+   "siglaOrgao": "CCULT",
+   "nomeOrgao": "Comiss\u00e3o de Cultura",
+   "nomePublicacao": "Comiss\u00e3o de Cultura",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2024-03-12T00:00",
+   "dataFim": "2025-01-31T23:59"
+  },
+  {
+   "idOrgao": 2009,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2009",
+   "siglaOrgao": "CE",
+   "nomeOrgao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "nomePublicacao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2024-03-14T00:00",
+   "dataFim": "2024-10-08T23:59"
+  },
+  {
+   "idOrgao": 2018,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2018",
+   "siglaOrgao": "CREDN",
+   "nomeOrgao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "nomePublicacao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2024-03-25T00:00",
+   "dataFim": "2025-01-31T23:59"
+  },
+  {
+   "idOrgao": 539724,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539724",
+   "siglaOrgao": "SUBRS",
+   "nomeOrgao": "Subcomiss\u00e3o Especial para acompanhar os impactos da trag\u00e9dia ambiental sobre a comunidade educacional do Rio Grande do Sul, bem como as a\u00e7\u00f5es de recupera\u00e7\u00e3o",
+   "nomePublicacao": "Subcomiss\u00e3o Especial Impactos sobre a Comunidade Educacional do RS (CE/SUBRS)",
+   "titulo": "Relator",
+   "codTitulo": "50",
+   "dataInicio": "2024-07-03T00:00",
+   "dataFim": "2024-10-08T23:59"
+  },
+  {
+   "idOrgao": 2009,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2009",
+   "siglaOrgao": "CE",
+   "nomeOrgao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "nomePublicacao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2024-10-09T00:00",
+   "dataFim": "2025-01-31T23:59"
+  },
+  {
+   "idOrgao": 2007,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2007",
+   "siglaOrgao": "CDHMIR",
+   "nomeOrgao": "Comiss\u00e3o de Direitos Humanos, Minorias e Igualdade Racial",
+   "nomePublicacao": "Comiss\u00e3o de Direitos Humanos, Minorias e Igualdade Racial",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2024-12-04T00:00",
+   "dataFim": "2024-12-04T23:59"
+  },
+  {
+   "idOrgao": 2009,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2009",
+   "siglaOrgao": "CE",
+   "nomeOrgao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "nomePublicacao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2025-03-19T00:00",
+   "dataFim": "2026-01-31T23:59"
+  },
+  {
+   "idOrgao": 2018,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2018",
+   "siglaOrgao": "CREDN",
+   "nomeOrgao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "nomePublicacao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2025-03-19T00:00",
+   "dataFim": "2026-01-31T23:59"
+  },
+  {
+   "idOrgao": 2003,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2003",
+   "siglaOrgao": "CCJC",
+   "nomeOrgao": "Comiss\u00e3o de Constitui\u00e7\u00e3o e Justi\u00e7a e de Cidadania",
+   "nomePublicacao": "Comiss\u00e3o de Constitui\u00e7\u00e3o e Justi\u00e7a e de Cidadania",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2025-03-20T00:00",
+   "dataFim": "2026-01-31T23:59"
+  },
+  {
+   "idOrgao": 539776,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539776",
+   "siglaOrgao": "PL233823",
+   "nomeOrgao": "Comiss\u00e3o Especial destinada a proferir parecer ao Projeto de Lei n\u00ba 2338, de 2023, do Senado Federal, que \"disp\u00f5e sobre o desenvolvimento, o fomento e o uso \u00e9tico e respons\u00e1vel da intelig\u00eancia artificial com base na centralidade da pessoa humana\"",
+   "nomePublicacao": "Comiss\u00e3o Especial sobre Intelig\u00eancia Artificial (PL 2338/23)",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2025-05-20T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 539796,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539796",
+   "siglaOrgao": "CEXRSFEM",
+   "nomeOrgao": "Comiss\u00e3o Externa destinada a acompanhar os graves casos de feminic\u00eddios ocorridos no Estado do Rio Grande do Sul",
+   "nomePublicacao": "Comiss\u00e3o Externa sobre os Feminic\u00eddios ocorridos no Estado do Rio Grande do Sul",
+   "titulo": "Coordenador",
+   "codTitulo": "14",
+   "dataInicio": "2025-05-28T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 539796,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539796",
+   "siglaOrgao": "CEXRSFEM",
+   "nomeOrgao": "Comiss\u00e3o Externa destinada a acompanhar os graves casos de feminic\u00eddios ocorridos no Estado do Rio Grande do Sul",
+   "nomePublicacao": "Comiss\u00e3o Externa sobre os Feminic\u00eddios ocorridos no Estado do Rio Grande do Sul",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2025-05-28T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 539806,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539806",
+   "siglaOrgao": "SUBVAL",
+   "nomeOrgao": "Subcomiss\u00e3o Permanente para acompanhar e propor sugest\u00f5es para a valoriza\u00e7\u00e3o dos profissionais da educa\u00e7\u00e3o.",
+   "nomePublicacao": "Subcomiss\u00e3o Permanente da Valoriza\u00e7\u00e3o dos Profissionais da Educa\u00e7\u00e3o (CE/SUBVAL)",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2025-07-08T00:00",
+   "dataFim": "2026-01-31T23:59"
+  },
+  {
+   "idOrgao": 539809,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539809",
+   "siglaOrgao": "PLP15225",
+   "nomeOrgao": "Comiss\u00e3o Especial destinada a proferir parecer ao Projeto de Lei Complementar n\u00ba 152, de 2025, do Senhor Luiz Gast\u00e3o, que \"regula os servi\u00e7os de transporte remunerado privado individual de passageiros e de coleta e entrega de bens prestados pelas empresas operadoras de plataforma digital\"",
+   "nomePublicacao": "Comiss\u00e3o Especial sobre Regulamenta\u00e7\u00e3o dos Trabalhadores por App (PLP 152/25)",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2025-08-27T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 539388,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539388",
+   "siglaOrgao": "CASP",
+   "nomeOrgao": "Comiss\u00e3o de Administra\u00e7\u00e3o e Servi\u00e7o P\u00fablico",
+   "nomePublicacao": "Comiss\u00e3o de Administra\u00e7\u00e3o e Servi\u00e7o P\u00fablico",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2026-02-04T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 5438,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/5438",
+   "siglaOrgao": "CLP",
+   "nomeOrgao": "Comiss\u00e3o de Legisla\u00e7\u00e3o Participativa",
+   "nomePublicacao": "Comiss\u00e3o de Legisla\u00e7\u00e3o Participativa",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2026-03-03T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 2009,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2009",
+   "siglaOrgao": "CE",
+   "nomeOrgao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "nomePublicacao": "Comiss\u00e3o de Educa\u00e7\u00e3o",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2026-03-10T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 537870,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/537870",
+   "siglaOrgao": "CMULHER",
+   "nomeOrgao": "Comiss\u00e3o de Defesa dos Direitos da Mulher",
+   "nomePublicacao": "Comiss\u00e3o de Defesa dos Direitos da Mulher",
+   "titulo": "Titular",
+   "codTitulo": "101",
+   "dataInicio": "2026-03-10T00:00",
+   "dataFim": null
+  },
+  {
+   "idOrgao": 539845,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/539845",
+   "siglaOrgao": "PEC22119",
+   "nomeOrgao": "Comiss\u00e3o Especial destinada a proferir parecer \u00e0 Proposta de Emenda \u00e0 Constitui\u00e7\u00e3o n\u00ba 221, de 2019, do Senhor Reginaldo Lopes, que \"altera o Art. 7\u00ba inciso XII da constitui\u00e7\u00e3o Federal, reduzindo a jornada de trabalho a 36 horas semanais em 10 anos\", e apensada",
+   "nomePublicacao": "Comiss\u00e3o Especial sobre o Fim da Escala 6x1 Vida Digna ao Trabalhador (PEC 221/19)",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2026-04-28T00:00",
+   "dataFim": "2026-10-16T23:59"
+  },
+  {
+   "idOrgao": 5503,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/5503",
+   "siglaOrgao": "CSPCCO",
+   "nomeOrgao": "Comiss\u00e3o de Seguran\u00e7a P\u00fablica e Combate ao Crime Organizado",
+   "nomePublicacao": "Comiss\u00e3o de Seguran\u00e7a P\u00fablica e Combate ao Crime Organizado",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2026-07-14T00:00",
+   "dataFim": "2026-09-01T23:59"
+  },
+  {
+   "idOrgao": 2018,
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2018",
+   "siglaOrgao": "CREDN",
+   "nomeOrgao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "nomePublicacao": "Comiss\u00e3o de Rela\u00e7\u00f5es Exteriores e de Defesa Nacional",
+   "titulo": "Suplente",
+   "codTitulo": "102",
+   "dataInicio": "2026-08-12T00:00",
+   "dataFim": "2026-08-17T23:59"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/orgaos?dataInicio=2023-02-01&itens=100"
+  },
+  {
+   "rel": "first",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/orgaos?dataInicio=2023-02-01&pagina=1&itens=100"
+  },
+  {
+   "rel": "last",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/orgaos?dataInicio=2023-02-01&pagina=1&itens=100"
+  }
+ ]
+}

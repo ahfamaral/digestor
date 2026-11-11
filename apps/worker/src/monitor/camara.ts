@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { MemberInput, SpeechInput } from "@digestor/core/server";
+import type { ExternalMandate, Position } from "@digestor/core";
+import type { HistoryInput, MemberInput, ProfileInput, SpeechInput } from "@digestor/core/server";
 import { getJson, httpTiming } from "../records/http.js";
 
 /**
@@ -9,6 +10,9 @@ import { getJson, httpTiming } from "../records/http.js";
  * Callers keep at most 4 requests in flight (`mapLimit`). Code never fetches www.camara.leg.br pages.
  */
 export const MONITOR_FROM = "2026-02-01";
+/** The 57th legislature began on 1 Feb 2023: history, fronts and positions are read from then. */
+export const LEGISLATURE_FROM = "2023-02-01";
+const LEGISLATURE = 57;
 const API = "https://dadosabertos.camara.leg.br/api/v2";
 const FILES = "https://dadosabertos.camara.leg.br/arquivos";
 const LABEL = "Câmara";
@@ -79,6 +83,86 @@ export async function fetchSpeeches(f: typeof fetch, externalId: number, from: s
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
+const historico = z
+  .object({ dataHora: z.string(), siglaPartido: text, siglaUf: text, situacao: text, descricaoStatus: text, idLegislatura: z.coerce.number().nullish() })
+  .passthrough();
+
+/**
+ * A deputy's history in this legislature (`/historico`: party changes, leave, return), as published. The API also lists
+ * rows of earlier legislatures dated at this one's start (73806: a PFL row of legislature 49 dated 2023-02-01), so only
+ * rows of legislature 57 (or with no legislature) are kept. An unknown deputy (404) has none.
+ */
+export async function fetchHistory(f: typeof fetch, externalId: number): Promise<HistoryInput[]> {
+  const rows = await pages(f, `${API}/deputados/${externalId}/historico`, historico);
+  return rows
+    .filter((r) => r.idLegislatura == null || r.idLegislatura === LEGISLATURE)
+    .map((r) => ({ at: r.dataHora.slice(0, 16), party: r.siglaPartido, uf: r.siglaUf, status: r.situacao, description: r.descricaoStatus ?? "" }));
+}
+
+const profissao = z.object({ titulo: text }).passthrough();
+const mandatoExterno = z
+  .object({ cargo: text, municipio: text, siglaUf: text, anoInicio: text, anoFim: text, siglaPartidoEleicao: text })
+  .passthrough();
+const frente = z.object({ titulo: text, idLegislatura: z.coerce.number().nullish() }).passthrough();
+const orgao = z
+  .object({ siglaOrgao: text, nomeOrgao: text, nomePublicacao: text, titulo: text, dataInicio: text, dataFim: text })
+  .passthrough();
+
+const year = (s: string | null) => (s && /^\d{4}$/.test(s) ? Number(s) : null);
+
+/**
+ * Consecutive terms in one office, place, UF and party become one span ("Vereador(a) · Porto Alegre (RS) · 2009–2018");
+ * a gap, a party change or an open-ended term keeps them apart. Oldest first.
+ */
+export function mergeMandates(rows: ExternalMandate[]): ExternalMandate[] {
+  const sorted = [...rows].sort((a, b) => a.from - b.from || (a.to ?? Infinity) - (b.to ?? Infinity));
+  const out: ExternalMandate[] = [];
+  for (const r of sorted) {
+    const prev = out[out.length - 1];
+    if (
+      prev && prev.to !== null && prev.office === r.office && prev.place === r.place && prev.uf === r.uf && prev.party === r.party &&
+      r.from <= prev.to + 1
+    ) {
+      out[out.length - 1] = { ...prev, to: r.to === null ? null : Math.max(prev.to, r.to) };
+    } else {
+      out.push({ ...r });
+    }
+  }
+  return out;
+}
+
+/**
+ * A deputy's profile: profession, earlier mandates (merged), the parliamentary fronts of this legislature and the seats
+ * in bodies since its start (every page). Four calls, one after another; an unknown deputy gives an empty profile.
+ */
+export async function fetchProfile(f: typeof fetch, externalId: number): Promise<ProfileInput> {
+  const base = `${API}/deputados/${externalId}`;
+  const professions = await pages(f, `${base}/profissoes`, profissao);
+  const mandates = await pages(f, `${base}/mandatosExternos`, mandatoExterno);
+  const fronts = await pages(f, `${base}/frentes`, frente);
+  const bodies = await pages(f, `${base}/orgaos?dataInicio=${LEGISLATURE_FROM}&itens=100`, orgao);
+  return {
+    profession: professions.find((p) => p.titulo)?.titulo ?? null,
+    externalMandates: mergeMandates(
+      mandates.flatMap((m) => {
+        const from = year(m.anoInicio);
+        return m.cargo && from !== null
+          ? [{ office: m.cargo, place: m.municipio ?? "", uf: m.siglaUf, from, to: year(m.anoFim), party: m.siglaPartidoEleicao }]
+          : [];
+      }),
+    ),
+    fronts: fronts.filter((r) => r.idLegislatura === LEGISLATURE && r.titulo).map((r) => r.titulo!),
+    positions: bodies.flatMap((o): Position[] =>
+      o.siglaOrgao && o.dataInicio
+        ? [{
+            body: o.siglaOrgao, bodyName: o.nomePublicacao ?? o.nomeOrgao ?? o.siglaOrgao, title: o.titulo ?? "",
+            from: o.dataInicio.slice(0, 10), to: o.dataFim ? o.dataFim.slice(0, 10) : null,
+          }]
+        : [],
+    ),
+  };
+}
+
 const ENTITIES: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 /** The API leaves HTML entities in some summaries ("feminicídio.&nbsp;Destacou"): stored as the plain characters. */
 export function decodeEntities(s: string): string {
@@ -91,7 +175,9 @@ export function decodeEntities(s: string): string {
   });
 }
 
-export type YearCsv = "votacoes" | "votacoesObjetos" | "votacoesVotos";
+export type YearCsv =
+  | "votacoes" | "votacoesObjetos" | "votacoesVotos" | "votacoesOrientacoes"
+  | "eventos" | "eventosPresencaDeputados" | "proposicoes" | "proposicoesAutores";
 
 /** Bulk files are up to ~50 MB; the API's 30 s per-call limit is too short for them. */
 export const bulkTiming = { timeoutMs: 5 * 60_000, attempts: 3 };

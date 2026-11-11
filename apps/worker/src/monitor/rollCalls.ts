@@ -1,17 +1,11 @@
-import { parse } from "csv-parse/sync";
 import type { RollCallInput } from "@digestor/core/server";
+import type { CsvRow } from "./bulk.js";
 
 /**
  * Plenary roll calls and per-deputy votes from the Câmara's yearly bulk files (votacoes, votacoesObjetos,
  * votacoesVotos; see test/fixtures/camara-monitor/README.md). Only roll calls are kept: plenary votações with
  * recorded votes. Everything is stored as published; labels like "Artigo 17" are not rewritten.
  */
-export type CsvRow = Record<string, string>;
-
-/** `;`-separated, BOM, every field quoted; quoted fields may hold line breaks. */
-export function parseCsv(text: string): CsvRow[] {
-  return parse(text, { delimiter: ";", bom: true, columns: true, relax_quotes: true, skip_empty_lines: true }) as CsvRow[];
-}
 
 const MAIN_TYPES = new Set(["PL", "PLP", "PEC", "MPV", "PDL", "PRC", "PLV"]);
 const POINTS_TO = /=>\s*([A-Z]+ \d+\/\d{4})/;

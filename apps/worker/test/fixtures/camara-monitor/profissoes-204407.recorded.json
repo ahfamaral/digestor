@@ -1,0 +1,15 @@
+{
+ "dados": [
+  {
+   "dataHora": "2018-11-12T14:09",
+   "codTipoProfissao": 76,
+   "titulo": "Bibliotec\u00e1ria"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/profissoes"
+  }
+ ]
+}

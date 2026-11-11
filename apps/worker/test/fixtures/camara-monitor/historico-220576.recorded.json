@@ -1,0 +1,58 @@
+{
+ "dados": [
+  {
+   "id": 220576,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/220576",
+   "nome": "Alfredo Gaspar",
+   "nomeEleitoral": "ALFREDO GASPAR",
+   "siglaPartido": "UNI\u00c3O",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/38009",
+   "siglaUf": "AL",
+   "idLegislatura": 57,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/220576.jpg",
+   "dataHora": "2023-02-01T00:00",
+   "situacao": null,
+   "condicaoEleitoral": null,
+   "descricaoStatus": "Nome no in\u00edcio da legislatura / Partido no in\u00edcio da legislatura"
+  },
+  {
+   "id": 220576,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/220576",
+   "nome": "Alfredo Gaspar",
+   "nomeEleitoral": "ALFREDO GASPAR",
+   "siglaPartido": "UNI\u00c3O",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/38009",
+   "siglaUf": "AL",
+   "idLegislatura": 57,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/220576.jpg",
+   "dataHora": "2023-02-01T12:05",
+   "situacao": "Exerc\u00edcio",
+   "condicaoEleitoral": "Titular",
+   "descricaoStatus": "Entrada - Posse de Eleito Titular - Posse na Sess\u00e3o Preparat\u00f3ria"
+  },
+  {
+   "id": 220576,
+   "uri": "https://dadosabertos.camara.leg.br/api/v2/deputados/220576",
+   "nome": "Alfredo Gaspar",
+   "nomeEleitoral": "ALFREDO GASPAR",
+   "siglaPartido": "PL",
+   "uriPartido": "https://dadosabertos.camara.leg.br/api/v2/partidos/37906",
+   "siglaUf": "AL",
+   "idLegislatura": 57,
+   "email": null,
+   "urlFoto": "https://www.camara.leg.br/internet/deputado/bandep/220576.jpg",
+   "dataHora": "2026-04-29T22:10",
+   "situacao": "Exerc\u00edcio",
+   "condicaoEleitoral": "Titular",
+   "descricaoStatus": "Altera\u00e7\u00e3o de partido"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados/220576/historico"
+  }
+ ]
+}

@@ -8,6 +8,10 @@ import { readFileSync } from "node:fs";
 const dir = new URL("../../test/fixtures/camara-monitor/", import.meta.url);
 export const monitorFixture = (name: string) => readFileSync(new URL(name, dir), "utf8");
 const json = (name: string) => JSON.parse(monitorFixture(name)) as unknown;
+/** Per-deputy fixtures served for `/deputados/{id}/{kind}`; other deputies answer 404. */
+const RECORDED = new Set([
+  "historico-220576", "historico-73806", "profissoes-204407", "mandatosExternos-204407", "frentes-204407", "orgaos-204407",
+]);
 
 export function fakeCamaraMonitorFetch(overrides: Record<string, unknown> = {}) {
   const calls: string[] = [];
@@ -31,6 +35,8 @@ export function fakeCamaraMonitorFetch(overrides: Record<string, unknown> = {}) 
     if (p === "/api/v2/deputados") return ok(monitorFixture("deputados-em-exercicio.recorded.json"));
     if (p === "/api/v2/deputados/204407/discursos") return ok(monitorFixture("discursos-204407.recorded.json"));
     if (/^\/api\/v2\/deputados\/\d+\/discursos$/.test(p)) return ok(JSON.stringify({ dados: [], links: [] }));
+    const sub = /^\/api\/v2\/deputados\/(\d+)\/(historico|profissoes|mandatosExternos|frentes|orgaos)$/.exec(p);
+    if (sub && RECORDED.has(`${sub[2]}-${sub[1]}`)) return ok(monitorFixture(`${sub[2]}-${sub[1]}.recorded.json`));
     if (p === "/api/v2/proposicoes/2462009") return ok(monitorFixture("proposicao-2462009.recorded.json"));
     if (p === "/api/v2/proposicoes" && q.get("siglaTipo") === "PL" && q.get("ano") === "2024") {
       const n = q.get("numero");

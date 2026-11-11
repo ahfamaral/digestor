@@ -3,7 +3,8 @@ import {
 } from "@digestor/core/server";
 import { mapLimit } from "../records/http.js";
 import { fetchBill, fetchInOfficeIds, fetchMembers, fetchSpeeches, fetchYearCsv, MONITOR_FROM } from "./camara.js";
-import { parseCsv, toRollCalls, toVotes } from "./rollCalls.js";
+import { parseCsv } from "./bulk.js";
+import { toRollCalls, toVotes } from "./rollCalls.js";
 
 /** Nightly refresh of the parliament monitor, after the Câmara regenerates its bulk files (04:00–07:10 UTC). */
 export const MONITOR_REFRESH_QUEUE = "monitor.refresh";

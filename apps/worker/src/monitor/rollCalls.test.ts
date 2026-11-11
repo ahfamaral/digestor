@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { monitorFixture } from "./fakeCamaraMonitor.js";
-import { mainBill, parseCsv, toRollCalls, toVotes } from "./rollCalls.js";
+import { parseCsv } from "./bulk.js";
+import { mainBill, toRollCalls, toVotes } from "./rollCalls.js";
 
 const votacoes = parseCsv(monitorFixture("votacoes-2026.excerpt.csv"));
 const objetos = parseCsv(monitorFixture("votacoesObjetos-2026.excerpt.csv"));

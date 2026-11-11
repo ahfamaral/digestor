@@ -1,0 +1,37 @@
+{
+ "dados": [
+  {
+   "cargo": "Vereador(a)",
+   "siglaUf": "RS",
+   "municipio": "Porto Alegre",
+   "anoInicio": "2009",
+   "anoFim": "2012",
+   "siglaPartidoEleicao": "PSOL",
+   "uriPartidoEleicao": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839"
+  },
+  {
+   "cargo": "Vereador(a)",
+   "siglaUf": "RS",
+   "municipio": "Porto Alegre",
+   "anoInicio": "2013",
+   "anoFim": "2016",
+   "siglaPartidoEleicao": "PSOL",
+   "uriPartidoEleicao": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839"
+  },
+  {
+   "cargo": "Vereador(a)",
+   "siglaUf": "RS",
+   "municipio": "Porto Alegre",
+   "anoInicio": "2017",
+   "anoFim": "2018",
+   "siglaPartidoEleicao": "PSOL",
+   "uriPartidoEleicao": "https://dadosabertos.camara.leg.br/api/v2/partidos/36839"
+  }
+ ],
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/mandatosExternos"
+  }
+ ]
+}
