@@ -92,6 +92,11 @@ export async function setInOffice(db: Db, house: House, externalIds: number[]): 
   await db.update(parlMembers).set({ inOffice: sql`${list}` }).where(eq(parlMembers.house, house));
 }
 
+export async function countInOffice(db: Db, house: House): Promise<number> {
+  const [r] = await db.select({ n: count() }).from(parlMembers).where(and(eq(parlMembers.house, house), eq(parlMembers.inOffice, true)));
+  return r?.n ?? 0;
+}
+
 export async function getMember(db: Db, house: House, externalId: number): Promise<MemberRow | null> {
   const [r] = await db.select().from(parlMembers).where(and(eq(parlMembers.house, house), eq(parlMembers.externalId, externalId)));
   return r ? toMember(r) : null;

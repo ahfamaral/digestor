@@ -14,7 +14,8 @@ export type SearchResult = Searched & {
   members: MemberRow[]; speeches: { total: number; rows: SpeechHit[] }; rollCalls: RollCallHit[];
 };
 
-export const cleanQuery = (q: string) => q.trim().slice(0, MAX_QUERY);
+/** Control characters out (a NUL makes Postgres throw), spaces collapsed, capped. */
+export const cleanQuery = (q: string) => q.replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim().slice(0, MAX_QUERY);
 
 /** The query's search terms: translated when a translator is given, else the words as typed. */
 export async function searchTerms(q: string, translate?: Translate): Promise<Searched> {

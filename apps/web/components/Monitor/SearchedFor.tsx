@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import type { Searched } from "@/lib/monitor/search";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
 
@@ -12,5 +13,15 @@ export function SearchedFor({ locale, searched }: { locale: MonitorLocale; searc
       </p>
       {searched.notice === "translationFailed" && <p>{tm(locale, "search.translationFailed")}</p>}
     </div>
+  );
+}
+
+/** Shown while a search is translated and run. */
+export function SearchingStatus({ locale }: { locale: MonitorLocale }) {
+  return (
+    <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+      {tm(locale, "search.searching")}
+    </p>
   );
 }

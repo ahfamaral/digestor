@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { getMember, listMemberSpeeches, listMemberVotes, searchSpeeches } from "@digestor/core/server";
+import { getMember, listMemberSpeeches, listMemberVotes, searchSpeeches, type MemberRow } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { DeputyView } from "@/components/Monitor/DeputyView";
+import type { MonitorLocale } from "@/lib/monitor/i18n";
 import { requestLocale, translator } from "@/lib/monitor/server";
 import { backPath, cleanQuery, MEMBER_PAGE, pageParam, queryTerms, searchTerms, stringParam } from "@/lib/monitor/search";
 import { getServer } from "@/lib/server";
@@ -33,6 +34,22 @@ async function Deputy({ params, searchParams }: Pick<PageProps<"/monitor/deputad
   const q = stringParam(sp.q);
   const page = pageParam(sp.p);
   const locale = await requestLocale();
+  const back = backPath(`/monitor/deputados/${member.externalId}`, sp);
+  if (!cleanQuery(q)) return <DeputyData locale={locale} member={member} q={q} page={page} back={back} />;
+  // A search is translated first (up to 10 s): the header and box show at once, with "Searching…" meanwhile.
+  const empty = { total: 0, rows: [] };
+  return (
+    <Suspense
+      key={`${q}|${page}`}
+      fallback={<DeputyView locale={locale} member={member} q={q} searched={null} speeches={empty} votes={empty} page={page} back={back} searching />}
+    >
+      <DeputyData locale={locale} member={member} q={q} page={page} back={back} />
+    </Suspense>
+  );
+}
+
+async function DeputyData({ locale, member, q, page, back }: { locale: MonitorLocale; member: MemberRow; q: string; page: number; back: string }) {
+  const { db } = getServer();
   const clean = cleanQuery(q);
   const searched = clean ? await searchTerms(clean, translator()) : null;
   const paging = { limit: MEMBER_PAGE, offset: page * MEMBER_PAGE };
@@ -40,10 +57,5 @@ async function Deputy({ params, searchParams }: Pick<PageProps<"/monitor/deputad
     searched ? searchSpeeches(db, { terms: queryTerms(searched), memberId: member.id, ...paging }) : listMemberSpeeches(db, member.id, paging),
     listMemberVotes(db, member.id, { limit: 1000 }),
   ]);
-  return (
-    <DeputyView
-      locale={locale} member={member} q={q} searched={searched} speeches={speeches} votes={votes} page={page}
-      back={backPath(`/monitor/deputados/${member.externalId}`, sp)}
-    />
-  );
+  return <DeputyView locale={locale} member={member} q={q} searched={searched} speeches={speeches} votes={votes} page={page} back={back} />;
 }

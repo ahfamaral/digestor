@@ -17,6 +17,7 @@ export const monitorEn = {
     searchedFor: "Searched for: {terms}",
     fromQuery: "(from “{q}”)",
     translationFailed: "Couldn't translate the search; searched for your words as typed.",
+    searching: "Searching…",
   },
   sections: {
     deputies: "Deputies",
@@ -76,6 +77,7 @@ export const monitorPtBR: MonitorMessages = {
     searchedFor: "Buscado: {terms}",
     fromQuery: "(de “{q}”)",
     translationFailed: "Não foi possível traduzir a busca; buscamos as palavras como foram digitadas.",
+    searching: "Buscando…",
   },
   sections: {
     deputies: "Deputados",

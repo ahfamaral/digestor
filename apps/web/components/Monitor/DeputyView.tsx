@@ -6,7 +6,7 @@ import { ExternalLink } from "./ExternalLink";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { Pager } from "./Pager";
 import { SearchBox } from "./SearchBox";
-import { SearchedFor } from "./SearchedFor";
+import { SearchedFor, SearchingStatus } from "./SearchedFor";
 import { Section } from "./Section";
 import { SpeechItem } from "./SpeechItem";
 import { VoteRow } from "./VoteRow";
@@ -16,13 +16,13 @@ import { VoteRow } from "./VoteRow";
  * votes in their own unfiltered list. Speeches and votes are never paired.
  */
 export function DeputyView({
-  locale, member, q, searched, speeches, votes, page, back,
+  locale, member, q, searched, speeches, votes, page, back, searching = false,
 }: {
-  back: string; locale: MonitorLocale; member: MemberRow; q: string; searched: Searched | null;
+  back: string; locale: MonitorLocale; searching?: boolean; member: MemberRow; q: string; searched: Searched | null;
   speeches: { total: number; rows: (SpeechRow | SpeechHit)[] }; votes: { total: number; rows: Vote[] }; page: number;
 }) {
   const base = `/monitor/deputados/${member.externalId}`;
-  const searching = !!searched?.q;
+  const hasQuery = !!searched?.q;
   return (
     <div lang={locale} className="grid gap-6">
       <div className="grid gap-3">
@@ -51,19 +51,22 @@ export function DeputyView({
       </div>
       <div className="grid gap-2">
         <SearchBox action={base} q={q} label={tm(locale, "search.deputyLabel")} placeholder={tm(locale, "search.deputyPlaceholder")} button={tm(locale, "search.button")} />
+        {searching && <SearchingStatus locale={locale} />}
         {searched && <SearchedFor locale={locale} searched={searched} />}
       </div>
+      {!searching && (
+      <>
       <div className="grid">
         <Section
           title={tm(locale, "sections.speeches")}
           count={speeches.total ? formatCount(speeches.total, locale) : undefined}
-          empty={speeches.total ? null : tm(locale, searching ? "empty.speeches" : "empty.memberSpeeches")}
+          empty={speeches.total ? null : tm(locale, hasQuery ? "empty.speeches" : "empty.memberSpeeches")}
         >
           {speeches.rows.map((s) => (
             <SpeechItem key={s.id} locale={locale} speech={s} />
           ))}
         </Section>
-        <Pager locale={locale} base={base} q={searching ? q : ""} page={page} size={MEMBER_PAGE} total={speeches.total} />
+        <Pager locale={locale} base={base} q={hasQuery ? q : ""} page={page} size={MEMBER_PAGE} total={speeches.total} />
       </div>
       <Section
         title={tm(locale, "sections.votes")}
@@ -75,6 +78,8 @@ export function DeputyView({
           <VoteRow key={v.rollCallId} locale={locale} vote={v} />
         ))}
       </Section>
+      </>
+      )}
     </div>
   );
 }

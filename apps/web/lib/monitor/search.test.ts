@@ -57,4 +57,9 @@ describe("runSearch", () => {
     // what the person typed keeps its own search syntax
     expect((await runSearch(db, "violência mulher")).speeches.total).toBe(2);
   });
+
+  it("strips control characters (a NUL would make Postgres throw)", async () => {
+    const r = await runSearch(db, "femi\u0000nicídio\u0007");
+    expect(r.q).toBe("femi nicídio");
+  });
 });

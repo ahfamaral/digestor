@@ -75,4 +75,17 @@ describe("monitor components", () => {
     expect(html).toContain("Monitor da Câmara");
     expect(html).toContain('lang="pt-BR"');
   });
+
+  it("while a search runs, both pages say so instead of showing empty lists", () => {
+    const search = renderToStaticMarkup(<SearchView back="/monitor" locale="en" q="femicide" page={0} result={null} searching />);
+    expect(search).toContain('role="status"');
+    expect(search).toContain("Searching…");
+    expect(search).toContain('value="femicide"');
+    const deputy = renderToStaticMarkup(
+      <DeputyView back="/monitor/deputados/999" locale="pt-BR" member={member} q="femicide" searched={null} page={0} speeches={{ total: 0, rows: [] }} votes={{ total: 0, rows: [] }} searching />,
+    );
+    expect(deputy).toContain("Buscando…");
+    expect(deputy).not.toContain("Nenhum discurso em 2026.");
+    expect(deputy).not.toContain("Nenhum voto registrado em 2026.");
+  });
 });

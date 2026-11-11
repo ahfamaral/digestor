@@ -5,12 +5,13 @@ import { LanguageSwitch } from "./LanguageSwitch";
 import { Pager } from "./Pager";
 import { RollCallItem } from "./RollCallItem";
 import { SearchBox } from "./SearchBox";
-import { SearchedFor } from "./SearchedFor";
+import { SearchedFor, SearchingStatus } from "./SearchedFor";
 import { Section } from "./Section";
 import { SpeechItem } from "./SpeechItem";
 
 /** `/monitor`: one search box, then Deputies (by name), Speeches and Roll calls (by the searched terms). */
-export function SearchView({ locale, q, result, page, back }: { locale: MonitorLocale; q: string; result: SearchResult | null; page: number; back: string }) {
+/** `searching`: the Suspense fallback while the query is translated and run (header and box stay, a status line instead of results). */
+export function SearchView({ locale, q, result, page, back, searching = false }: { locale: MonitorLocale; q: string; result: SearchResult | null; page: number; back: string; searching?: boolean }) {
   // A topic search rarely matches a name: the Deputies section shows only with matches, or when nothing matched at all.
   const nothingElse = !result?.speeches.total && !result?.rollCalls.length;
   return (
@@ -24,6 +25,7 @@ export function SearchView({ locale, q, result, page, back }: { locale: MonitorL
       </div>
       <div className="grid gap-2">
         <SearchBox action="/monitor" q={q} label={tm(locale, "search.label")} placeholder={tm(locale, "search.placeholder")} button={tm(locale, "search.button")} />
+        {searching && <SearchingStatus locale={locale} />}
         {result && <SearchedFor locale={locale} searched={result} />}
       </div>
       {result?.q && (

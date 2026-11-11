@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createDb, getMember, listMemberSpeeches, listMemberVotes, searchSpeeches, type Db } from "@digestor/core/server";
 import { httpTiming } from "../records/http.js";
 import { fakeCamaraMonitorFetch } from "./fakeCamaraMonitor.js";
-import { refreshMonitor } from "./refresh.js";
+import { nightlyWindow, refreshMonitor } from "./refresh.js";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -22,7 +22,7 @@ describe("refreshMonitor", () => {
   it("loads deputies, speeches, roll calls, bills and votes from the Câmara", async () => {
     const { f } = fakeCamaraMonitorFetch();
     const counts = await refreshMonitor({ db, fetch: f }, window);
-    expect(counts).toMatchObject({ members: 3, speeches: { inserted: 4, kept: 0 }, rollCalls: 4, bills: 2 });
+    expect(counts).toMatchObject({ members: 3, speeches: { inserted: 4, kept: 0, failed: 0 }, rollCalls: 4, bills: 2 });
     const her = await getMember(db, "camara", 204407);
     expect(her).toMatchObject({ name: "Fernanda Melchionna", party: "PSOL", uf: "RS", inOffice: true });
     expect((await listMemberSpeeches(db, her!.id, {})).total).toBe(4);
@@ -55,10 +55,43 @@ describe("refreshMonitor", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { f } = fakeCamaraMonitorFetch({ "/deputados/204407/discursos": { dados: [], links: [] } });
     const counts = await refreshMonitor({ db, fetch: f }, window);
-    expect(counts.speeches).toEqual({ inserted: 0, kept: 1 });
+    expect(counts.speeches).toEqual({ inserted: 0, kept: 1, failed: 0 });
     const her = await getMember(db, "camara", 204407);
     expect((await listMemberSpeeches(db, her!.id, {})).total).toBe(4);
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  it("keeps the in-office flags when the Câmara answers an empty in-office list", async () => {
+    await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { f } = fakeCamaraMonitorFetch({ "deputados?itens=100": { dados: [], links: [] } });
+    await refreshMonitor({ db, fetch: f }, window);
+    expect((await getMember(db, "camara", 204407))!.inOffice).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/in office/));
+    warn.mockRestore();
+  });
+
+  it("one deputy failing doesn't stop the others or the votes", async () => {
+    const base = fakeCamaraMonitorFetch().f;
+    const f = (async (input: string | URL | Request, init?: RequestInit) =>
+      String(input).includes("/deputados/204379/discursos") ? new Response("{}", { status: 500 }) : base(input, init)) as typeof fetch;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const counts = await refreshMonitor({ db, fetch: f }, window);
+    warn.mockRestore();
+    expect(counts.speeches).toEqual({ inserted: 4, kept: 0, failed: 1 });
+    expect(counts.rollCalls).toBe(4);
+    expect(counts.votes).toBe(16);
+  });
+
+  it("a year with no bulk files yet (404) refreshes deputies and speeches and doesn't throw", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, { ...window, year: 2019 });
+    warn.mockRestore();
+    expect(counts).toMatchObject({ members: 3, speeches: { inserted: 4 }, rollCalls: 0, votes: 0 });
+  });
+
+  it("the nightly window re-reads 60 days of speeches, so late transcriptions arrive", () => {
+    expect(nightlyWindow(new Date("2026-11-11T09:00:00Z"))).toEqual({ speechesFrom: "2026-09-12", to: "2026-11-11", year: 2026 });
   });
 });

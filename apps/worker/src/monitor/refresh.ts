@@ -1,5 +1,5 @@
 import {
-  countSpeechesInWindow, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, upsertMembers, upsertRollCalls, type Db,
+  countInOffice, countSpeechesInWindow, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, upsertMembers, upsertRollCalls, type Db,
 } from "@digestor/core/server";
 import { mapLimit } from "../records/http.js";
 import { fetchBill, fetchInOfficeIds, fetchMembers, fetchSpeeches, fetchYearCsv, MONITOR_FROM } from "./camara.js";
@@ -11,8 +11,11 @@ export const MONITOR_REFRESH_CRON = "0 9 * * *";
 const CONCURRENCY = 4;
 
 export type RefreshCounts = {
-  members: number; speeches: { inserted: number; kept: number }; rollCalls: number; votes: number; bills: number;
+  members: number; speeches: { inserted: number; kept: number; failed: number }; rollCalls: number; votes: number; bills: number;
 };
+
+/** Days of speeches re-read each night: transcriptions are often published weeks late (42 still empty in dev, some 2 months old). */
+export const SPEECH_WINDOW_DAYS = 60;
 
 /**
  * Deputies (everyone who sat since `MONITOR_FROM`, in office today flagged), each deputy's speeches in
@@ -27,25 +30,53 @@ export async function refreshMonitor(
   const { db, fetch: f } = deps;
   const members = await fetchMembers(f, MONITOR_FROM, a.to);
   const ids = await upsertMembers(db, members);
-  await setInOffice(db, "camara", await fetchInOfficeIds(f));
+  // The same 200-with-an-empty-list failure would mark every deputy "Not in office now": an empty or much shorter list
+  // than the one stored keeps the stored flags.
+  const inOffice = await fetchInOfficeIds(f);
+  const before = await countInOffice(db, "camara");
+  if (inOffice.length === 0 || inOffice.length < before / 2) {
+    console.warn(`monitor.refresh: the Câmara listed ${inOffice.length} deputies in office (${before} stored); kept the stored in-office flags`);
+  } else {
+    await setInOffice(db, "camara", inOffice);
+  }
 
+  // One deputy failing (5xx twice, a malformed record) is counted and skipped: the rest and the votes still refresh.
+  // Only a mostly failed run throws, so pg-boss retries it.
   let inserted = 0;
   let kept = 0;
+  let failed = 0;
+  let lastError: unknown = null;
   await mapLimit([...ids], CONCURRENCY, async ([externalId, memberId]) => {
-    const rows = await fetchSpeeches(f, externalId, a.speechesFrom, a.to);
-    if (rows.length === 0 && (await countSpeechesInWindow(db, memberId, a.speechesFrom, a.to)) > 0) {
-      kept++;
-      return;
+    try {
+      const rows = await fetchSpeeches(f, externalId, a.speechesFrom, a.to);
+      if (rows.length === 0 && (await countSpeechesInWindow(db, memberId, a.speechesFrom, a.to)) > 0) {
+        kept++;
+        return;
+      }
+      const r = await replaceSpeechWindow(db, memberId, a.speechesFrom, a.to, rows);
+      inserted += r.inserted; // after the await: `x += await …` reads x before it and loses parallel updates
+    } catch (err) {
+      failed++;
+      lastError = err;
     }
-    const r = await replaceSpeechWindow(db, memberId, a.speechesFrom, a.to, rows);
-    inserted += r.inserted; // after the await: `x += await …` reads x before it and loses parallel updates
   });
   if (kept > 0) console.warn(`monitor.refresh: the Câmara sent no speeches for ${kept} deputies who have some stored in the window; kept them`);
+  if (failed > 0) console.warn(`monitor.refresh: speeches of ${failed} deputies failed; last error:`, lastError instanceof Error ? lastError.message : lastError);
+  if (failed > ids.size / 2) throw new Error(`monitor.refresh: speeches failed for ${failed} of ${ids.size} deputies`);
+  const speeches = { inserted, kept, failed };
 
-  // One file at a time: three large parallel downloads are what the Câmara cut off.
-  const votacoes = parseCsv(await fetchYearCsv(f, "votacoes", a.year));
-  const objetos = parseCsv(await fetchYearCsv(f, "votacoesObjetos", a.year));
-  const votos = parseCsv(await fetchYearCsv(f, "votacoesVotos", a.year));
+  // One file at a time: three large parallel downloads are what the Câmara cut off. A file that doesn't exist (a 4xx,
+  // e.g. the new year's on 1 January) is final: no roll calls this run, no retry.
+  let votacoes, objetos, votos;
+  try {
+    votacoes = parseCsv(await fetchYearCsv(f, "votacoes", a.year));
+    objetos = parseCsv(await fetchYearCsv(f, "votacoesObjetos", a.year));
+    votos = parseCsv(await fetchYearCsv(f, "votacoesVotos", a.year));
+  } catch (err) {
+    if (!(err as { final?: boolean }).final) throw err;
+    console.warn(`monitor.refresh: no roll calls for ${a.year}:`, (err as Error).message);
+    return { members: members.length, speeches, rollCalls: 0, votes: 0, bills: 0 };
+  }
   const rollCalls = toRollCalls(votacoes, objetos);
   await upsertRollCalls(db, rollCalls.map(({ needsBill: _, ...r }) => r));
 
@@ -66,18 +97,23 @@ export async function refreshMonitor(
 
   const known = await rollCallIdsWithBill(db, rollCalls.map((r) => r.id));
   const toFetch = rollCalls.filter((r) => r.needsBill && !known.has(r.id));
-  const found = await mapLimit(toFetch, CONCURRENCY, (r) => fetchBill(f, r.needsBill!));
+  const found = await mapLimit(toFetch, CONCURRENCY, (r) =>
+    fetchBill(f, r.needsBill!).catch((err) => {
+      console.warn(`monitor.refresh: bill of roll call ${r.id} not fetched:`, err instanceof Error ? err.message : err);
+      return null; // tried again next night
+    }),
+  );
   const bills = toFetch.flatMap((r, i) => {
     const b = found[i];
     return b ? [{ ...r, billId: b.id, billLabel: b.label, billSummary: b.summary }] : [];
   });
   await upsertRollCalls(db, bills.map(({ needsBill: _, ...r }) => r));
 
-  return { members: members.length, speeches: { inserted, kept }, rollCalls: rollCalls.length, votes, bills: bills.length };
+  return { members: members.length, speeches, rollCalls: rollCalls.length, votes, bills: bills.length };
 }
 
-/** The nightly window: the last 7 days of speeches (late transcriptions), this year's roll calls. */
+/** The nightly window: the last `SPEECH_WINDOW_DAYS` of speeches (late transcriptions), this year's roll calls. */
 export function nightlyWindow(now = new Date()): { speechesFrom: string; to: string; year: number } {
   const day = (d: Date) => d.toISOString().slice(0, 10);
-  return { speechesFrom: day(new Date(now.getTime() - 7 * 86_400_000)), to: day(now), year: now.getUTCFullYear() };
+  return { speechesFrom: day(new Date(now.getTime() - SPEECH_WINDOW_DAYS * 86_400_000)), to: day(now), year: now.getUTCFullYear() };
 }
