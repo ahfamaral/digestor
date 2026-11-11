@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { MemberInput, SpeechInput } from "@digestor/core/server";
-import { get, getJson } from "../records/http.js";
+import { getJson, httpTiming } from "../records/http.js";
 
 /**
  * Câmara open-data client for the parliament monitor (https://dadosabertos.camara.leg.br). Shapes recorded 2026-11-11,
@@ -72,20 +72,49 @@ export async function fetchSpeeches(f: typeof fetch, externalId: number, from: s
       startsAt: d.dataHoraInicio.slice(0, 16),
       phase: d.faseEvento?.titulo ?? null,
       kind: d.tipoDiscurso,
-      summary: d.sumario ?? "",
-      text: d.transcricao ?? "",
-      keywords: d.keywords ?? "",
+      summary: decodeEntities(d.sumario ?? ""),
+      text: decodeEntities(d.transcricao ?? ""),
+      keywords: decodeEntities(d.keywords ?? ""),
     }))
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
+const ENTITIES: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+/** The API leaves HTML entities in some summaries ("feminicídio.&nbsp;Destacou"): stored as the plain characters. */
+export function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
+    if (e[0] === "#") {
+      const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
+      return Number.isInteger(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code === 160 ? 32 : code) : m;
+    }
+    return ENTITIES[e.toLowerCase()] ?? m;
+  });
+}
+
 export type YearCsv = "votacoes" | "votacoesObjetos" | "votacoesVotos";
 
-/** The year's bulk file as text (BOM included; the parser strips it). */
+/** Bulk files are up to ~50 MB; the API's 30 s per-call limit is too short for them. */
+export const bulkTiming = { timeoutMs: 5 * 60_000, attempts: 3 };
+
+/**
+ * The year's bulk file as text (BOM included; the parser strips it). The Câmara sometimes closes the connection in the
+ * middle of a large body ("terminated", seen 2026-11-11 after 15 MB), so the whole download (request and body) is
+ * retried, up to 3 times. A 4xx is final.
+ */
 export async function fetchYearCsv(f: typeof fetch, kind: YearCsv, year: number): Promise<string> {
-  const res = await get(`${FILES}/${kind}/csv/${kind}-${year}.csv`, "text/csv", f, LABEL);
-  if (!res.ok) throw new Error(`${LABEL} bulk file ${kind}-${year}.csv answered ${res.status}.`);
-  return res.text();
+  const url = `${FILES}/${kind}/csv/${kind}-${year}.csv`;
+  for (let attempt = 1; ; attempt++) {
+    let res: Response;
+    try {
+      res = await f(url, { headers: { accept: "text/csv" }, signal: AbortSignal.timeout(bulkTiming.timeoutMs) });
+      if (res.ok) return await res.text();
+      if (res.status < 500 && res.status !== 429) throw Object.assign(new Error(`${LABEL} bulk file ${kind}-${year}.csv answered ${res.status}.`), { final: true });
+      throw new Error(`${LABEL} bulk file ${kind}-${year}.csv answered ${res.status}.`);
+    } catch (err) {
+      if ((err as { final?: boolean }).final || attempt >= bulkTiming.attempts) throw err;
+      await new Promise((resolve) => setTimeout(resolve, httpTiming.delayMs * attempt));
+    }
+  }
 }
 
 const LABEL_RE = /^([A-Z]+) (\d+)\/(\d{4})$/;

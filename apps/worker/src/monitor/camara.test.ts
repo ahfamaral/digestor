@@ -42,6 +42,13 @@ describe("Câmara monitor client", () => {
     expect(rows[2]!.text).toBe("");
   });
 
+  it("fetchSpeeches decodes the HTML entities the Câmara leaves in summaries", async () => {
+    const body = { dados: [{ dataHoraInicio: "2026-04-08T11:28", sumario: "o feminicídio.&nbsp;Destacou A &amp; B &gt; C &#39;x&#39; &#8211; y", transcricao: "t", keywords: "" }], links: [] };
+    const { f } = fakeCamaraMonitorFetch({ "/deputados/204407/discursos": body });
+    const [row] = await fetchSpeeches(f, 204407, "2026-02-01", "2026-11-11");
+    expect(row!.summary).toBe("o feminicídio. Destacou A & B > C 'x' – y");
+  });
+
   it("fetchSpeeches: an unknown deputy (404) gives no speeches", async () => {
     const notFound = (async () => new Response("{}", { status: 404 })) as typeof fetch;
     expect(await fetchSpeeches(notFound, 999, "2026-02-01", "2026-11-11")).toEqual([]);
@@ -53,6 +60,35 @@ describe("Câmara monitor client", () => {
     expect(calls[0]).toBe("https://dadosabertos.camara.leg.br/arquivos/votacoes/csv/votacoes-2026.csv");
     expect(text).toContain("2449741-72");
     await expect(fetchYearCsv(f, "votacoes", 2019)).rejects.toThrow(/Câmara/);
+  });
+
+  it("fetchYearCsv retries a download cut off mid-body", async () => {
+    let n = 0;
+    const f = (async () => {
+      n++;
+      if (n === 1) {
+        const body = new ReadableStream({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('"id";"data"\n'));
+            c.error(new TypeError("terminated"));
+          },
+        });
+        return new Response(body, { status: 200 });
+      }
+      return new Response('"id";"data"\n"1-1";"2026-01-01"\n', { status: 200 });
+    }) as typeof fetch;
+    expect(await fetchYearCsv(f, "votacoes", 2026)).toContain("1-1");
+    expect(n).toBe(2);
+  });
+
+  it("fetchYearCsv gives up after three cut-off downloads", async () => {
+    let n = 0;
+    const f = (async () => {
+      n++;
+      throw new TypeError("terminated");
+    }) as typeof fetch;
+    await expect(fetchYearCsv(f, "votacoes", 2026)).rejects.toThrow();
+    expect(n).toBe(3);
   });
 
   it("fetchBill by id and by label", async () => {
