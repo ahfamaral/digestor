@@ -13,5 +13,6 @@ export { runMigrations } from "./db/migrate.ts";
 export {
   sessions, transcripts, contextCards, analysisVersions, topics, moments, momentHighlights, briefings, translations,
   selections, clips, clipEvents, subtitleTracks, askMessages, askActions, problemReports, persons, attributions, sessionRecords, pipelineRuns,
+  parlMembers, parlSpeeches, parlRollCalls, parlVotes,
   type Stage,
 } from "./db/schema.ts";

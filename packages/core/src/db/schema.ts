@@ -1,5 +1,5 @@
 import {
-  boolean, check, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid,
+  boolean, check, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { AttributionEvidence, AttributionSource, AttributionStatus } from "../attribution.ts";
@@ -397,4 +397,93 @@ export const pipelineRuns = pgTable(
   (t) => [
     check("pipeline_runs_next_step_check", sql`${t.nextStep} IN (${sql.join(PIPELINE_STEPS.map((s) => sql.raw(`'${s}'`)), sql`, `)})`),
   ],
+);
+
+// ── Parliament monitor (Câmara preview, migration 0022) ──────────────────────────────────────────────────────────────
+// Official records only. `pt_unaccent` is a copy of Postgres' `portuguese` text-search configuration with `unaccent`
+// first, created by hand at the top of 0022, so "feminicidio" matches "feminicídios".
+
+const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
+
+export const parlMembers = pgTable(
+  "parl_members",
+  {
+    id: serial("id").primaryKey(),
+    /** Only "camara" for now; the column lets another house be added later. */
+    house: text("house").$type<"camara">().notNull(),
+    externalId: integer("external_id").notNull(),
+    name: text("name").notNull(),
+    /** Lower-case, accents stripped in code (`normName`): the name search runs on it. */
+    nameNorm: text("name_norm").notNull(),
+    party: text("party"),
+    uf: text("uf"),
+    photoUrl: text("photo_url"),
+    /** In `GET /deputados` today; false shows "Not in office now". */
+    inOffice: boolean("in_office").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    unique("parl_members_house_external_id_unique").on(t.house, t.externalId),
+    index("parl_members_name_norm_trgm").using("gin", sql`${t.nameNorm} gin_trgm_ops`),
+  ],
+);
+
+export const parlSpeeches = pgTable(
+  "parl_speeches",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => parlMembers.id, { onDelete: "cascade" }),
+    /** Brasília local time as published (no zone); a 4-minute stenography block. */
+    startsAt: timestamp("starts_at", { mode: "string" }).notNull(),
+    phase: text("phase"),
+    kind: text("kind"),
+    summary: text("summary").notNull().default(""),
+    /** Full official text; empty until the Câmara publishes the transcription. */
+    text: text("text").notNull().default(""),
+    keywords: text("keywords").notNull().default(""),
+    tsv: tsvector("tsv").generatedAlwaysAs(
+      sql`setweight(to_tsvector('pt_unaccent', summary || ' ' || keywords), 'A') || setweight(to_tsvector('pt_unaccent', text), 'B')`,
+    ),
+  },
+  (t) => [index("parl_speeches_member_starts").on(t.memberId, t.startsAt), index("parl_speeches_tsv").using("gin", t.tsv)],
+);
+
+export const parlRollCalls = pgTable(
+  "parl_roll_calls",
+  {
+    /** The votação id, e.g. "2449741-72". */
+    id: text("id").primaryKey(),
+    house: text("house").$type<"camara">().notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    registeredAt: timestamp("registered_at", { mode: "string" }),
+    description: text("description").notNull(),
+    yes: integer("yes").notNull(),
+    no: integer("no").notNull(),
+    other: integer("other").notNull(),
+    billId: integer("bill_id"),
+    /** e.g. "PL 3880/2024". */
+    billLabel: text("bill_label"),
+    billSummary: text("bill_summary").notNull().default(""),
+    tsv: tsvector("tsv").generatedAlwaysAs(
+      sql`setweight(to_tsvector('pt_unaccent', bill_summary), 'A') || setweight(to_tsvector('pt_unaccent', description), 'B')`,
+    ),
+  },
+  (t) => [index("parl_roll_calls_tsv").using("gin", t.tsv), index("parl_roll_calls_date").on(t.date)],
+);
+
+export const parlVotes = pgTable(
+  "parl_votes",
+  {
+    rollCallId: text("roll_call_id")
+      .notNull()
+      .references(() => parlRollCalls.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => parlMembers.id, { onDelete: "cascade" }),
+    /** As published: Sim, Não, Abstenção, Obstrução, Art. 17. */
+    vote: text("vote").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.rollCallId, t.memberId] }), index("parl_votes_member").on(t.memberId)],
 );
