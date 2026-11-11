@@ -135,6 +135,43 @@ describe("OpenRouter structured LLM", () => {
     expect(sent).toHaveLength(2);
   });
 
+  // A provider that accepts the request and never answers: the OpenAI SDK aborts it at `timeout` and throws
+  // APIConnectionTimeoutError, which @langchain/openai 1.8 renames to a retryable "TimeoutError" (utils/client.js).
+  function hangingThen(replies: { status?: number; body: unknown }[], hangs: number) {
+    const sent: unknown[] = [];
+    const fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)));
+      if (sent.length <= hangs)
+        return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+      const next = replies.shift()!;
+      return new Response(JSON.stringify(next.body), { status: next.status ?? 200, headers: { "content-type": "application/json" } });
+    }) as typeof globalThis.fetch;
+    return { fetch, sent };
+  }
+
+  it("cuts a request that hangs at the timeout and tries once more", async () => {
+    const { fetch, sent } = hangingThen([{ body: completion({ content: '{"topics":[]}' }) }], 1);
+    const out = await createOpenRouterLLM("k", MODELS, { fetch, timeoutMs: 50 }).generate({ schema: Topics, name: "topics", system: "s", user: "u", model: "reasoning" });
+    expect(out).toEqual({ topics: [] });
+    expect(sent).toHaveLength(2);
+  });
+
+  it("gives up after a second timeout instead of LangChain's 6 retries", async () => {
+    const { fetch, sent } = hangingThen([], 10);
+    await expect(
+      createOpenRouterLLM("k", MODELS, { fetch, timeoutMs: 50 }).generate({ schema: Topics, name: "topics", system: "s", user: "u", model: "reasoning" }),
+    ).rejects.toThrow(/timed out/i);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("Ask: a hung step is cut at the timeout too, and each step gets its own retry", async () => {
+    const { fetch, sent } = hangingThen([{ body: completion({ content: "first" }) }, { body: completion({ content: "second" }) }], 1);
+    const llm = createOpenRouterToolLLM("k", MODELS, { fetch, timeoutMs: 50 });
+    await llm.step({ system: "s", messages: [{ role: "user", text: "q" }], tools: [] });
+    await llm.step({ system: "s", messages: [{ role: "user", text: "q" }], tools: [] });
+    expect(sent).toHaveLength(3);
+  });
+
   it("does not retry an out-of-credits error itself (402)", async () => {
     const { fetch, sent } = fakeFetch([{ status: 402, body: { error: { code: 402, message: "Insufficient credits" } } }]);
     await expect(

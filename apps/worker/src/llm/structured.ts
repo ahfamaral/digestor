@@ -27,7 +27,8 @@ export const MODEL_IDS: Record<LLMModel, string> = {
 };
 
 /** Test seam: route the SDK's HTTP calls through a fake. */
-export type ClientOptions = { fetch?: typeof globalThis.fetch };
+/** `timeoutMs` per HTTP request (OpenRouter only; tests shorten it). */
+export type ClientOptions = { fetch?: typeof globalThis.fetch; timeoutMs?: number };
 
 /**
  * Claude 5.5 rejects `temperature` (and top_p/top_k) and forced `tool_choice`, and thinks by default, so structured

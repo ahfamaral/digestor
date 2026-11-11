@@ -24,6 +24,24 @@ export function stopRetryingUnlessTransient(err: unknown): void {
 }
 
 /**
+ * Per-request limit. Without one a provider that accepts a request and never answers holds the analysis until the
+ * OpenAI SDK's default of 10 minutes, and LangChain then retries a timeout up to 6 times. Per-call times aren't
+ * measured yet; in the 2026-11-10 screening a whole analysis of a 32-min video (~22 calls) took 2–20 min with the
+ * models we kept, while Qwen3.8 Flash spent about 20 min on its briefing step alone. A call cut here is lost work
+ * (the briefing and per-unit calls degrade; the analysis carries on).
+ */
+export const OPENROUTER_TIMEOUT_MS = 5 * 60_000;
+
+/** `stopRetryingUnlessTransient`, plus at most one retry after a timeout (a slow provider is likely slow again). */
+function retryPolicy(): (err: unknown) => void {
+  let timeouts = 0;
+  return (err) => {
+    if (err instanceof Error && err.name === "TimeoutError" && ++timeouts > 1) throw err;
+    stopRetryingUnlessTransient(err);
+  };
+}
+
+/**
  * `ChatOpenAICompletions`, not `ChatOpenAI`: the latter switches some model names to OpenAI's Responses API.
  * `require_parameters` keeps OpenRouter from routing to a provider that would silently drop our tools or settings
  * (https://openrouter.ai/docs/guides/routing/provider-selection). No `temperature`: Claude 5.5 rejects it and
@@ -35,7 +53,8 @@ function openRouterChat(apiKey: string, model: string, maxTokens: number, opts: 
     apiKey,
     model,
     maxTokens,
-    onFailedAttempt: stopRetryingUnlessTransient,
+    timeout: opts.timeoutMs ?? OPENROUTER_TIMEOUT_MS,
+    onFailedAttempt: retryPolicy(), // one client per call or step, so the timeout count is per call
     modelKwargs: { provider: { require_parameters: true } },
     configuration: {
       baseURL: OPENROUTER_BASE_URL,
@@ -62,9 +81,9 @@ export function createOpenRouterLLM(apiKey: string, models: Record<LLMModel, str
 
 /** Reasoning model with tools bound per call, like `createAnthropicToolLLM`. */
 export function createOpenRouterToolLLM(apiKey: string, models: Record<LLMModel, string>, opts: ClientOptions = {}): ToolLLM {
-  const chat = openRouterChat(apiKey, models.reasoning, 4096, opts);
   return {
     async step(a) {
+      const chat = openRouterChat(apiKey, models.reasoning, 4096, opts);
       const model = a.tools.length > 0 ? chat.bindTools(a.tools) : chat;
       const res = await model.invoke([new SystemMessage(a.system), ...toLangChainMessages(a.messages)]);
       return fromAIMessage(res);
