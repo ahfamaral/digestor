@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { inOfficePeriods, partyTimeline, type ExternalMandate, type HistoryRow, type Position } from "../monitorTimeline.ts";
+import { inOfficeSpans, type ExternalMandate, type HistoryRow, type Position } from "../monitorTimeline.ts";
 import type { Db } from "./client.ts";
 import type { House } from "./monitor.ts";
 import {
@@ -120,6 +120,21 @@ export async function replacePresence(db: Db, sessionIds: number[], rows: { sess
   });
 }
 
+/** Stored history rows of a member (the refresh keeps them when the Câmara answers empty). */
+export async function countHistory(db: Db, memberId: number): Promise<number> {
+  const r = await db.execute<{ n: number }>(sql`select count(*)::int as n from parl_member_history where member_id = ${memberId}`);
+  return r.rows[0]?.n ?? 0;
+}
+
+/** Stored presence, authorship and guidance rows (the refresh keeps them when a bulk file comes back empty or short). */
+export async function monitorRowCounts(db: Db): Promise<{ presence: number; billAuthors: number; orientations: number }> {
+  const r = await db.execute<{ presence: number; bill_authors: number; orientations: number }>(sql`
+    select (select count(*)::int from parl_presence) as presence, (select count(*)::int from parl_bill_authors) as bill_authors,
+      (select count(*)::int from parl_orientations) as orientations`);
+  const x = r.rows[0];
+  return { presence: x?.presence ?? 0, billAuthors: x?.bill_authors ?? 0, orientations: x?.orientations ?? 0 };
+}
+
 // ── Reads ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** The member's history, oldest first. */
@@ -150,22 +165,22 @@ export type Presence = { sessions: number; present: number; missing: { id: numbe
 
 /**
  * The deputy's presence record for `year`: closed plenary deliberative sessions held while they were in office (from
- * the history), and those with no presence recorded. Null without history (the in-office periods are unknown).
+ * the history, to the minute), and those with no presence recorded. A session nobody's presence was recorded for
+ * (joint Congress veto sessions, typed "Sessão Deliberativa" too) isn't counted: the file doesn't cover it. Null
+ * without history (the in-office periods are unknown).
  */
 export async function getPresence(db: Db, memberId: number, year: number): Promise<Presence | null> {
   const history = await getHistory(db, memberId);
   if (history.length === 0) return null;
-  const periods = inOfficePeriods(partyTimeline(history));
+  const periods = inOfficeSpans(history);
   const rows = await db.execute<{ id: number; starts_at: string; description: string; present: boolean }>(sql`
     select s.id, to_char(s.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, s.description,
       exists (select 1 from parl_presence p where p.session_id = s.id and p.member_id = ${memberId}) as present
     from parl_sessions s
     where s.status = 'Encerrada' and s.starts_at >= make_date(${year}, 1, 1) and s.starts_at < make_date(${year} + 1, 1, 1)
+      and exists (select 1 from parl_presence any_p where any_p.session_id = s.id)
     order by s.starts_at, s.id`);
-  const held = rows.rows.filter((s) => {
-    const day = s.starts_at.slice(0, 10);
-    return periods.some((p) => day >= p.from && (p.to === null || day < p.to));
-  });
+  const held = rows.rows.filter((s) => periods.some((p) => s.starts_at >= p.from && (p.to === null || s.starts_at < p.to)));
   return {
     sessions: held.length,
     present: held.filter((s) => s.present).length,

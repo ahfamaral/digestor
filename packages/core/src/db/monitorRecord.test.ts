@@ -69,11 +69,46 @@ describe("presence, bills and roll calls", () => {
       { id: 13, startsAt: "2026-03-04T14:00", description: "Sessão Deliberativa Ordinária", status: "Cancelada" },
       { id: 14, startsAt: "2025-12-01T14:00", description: "Sessão Deliberativa Ordinária", status: "Encerrada" },
     ]);
-    await replacePresence(db, [10, 11, 12], [{ sessionId: 10, memberId: a }, { sessionId: 11, memberId: a }]);
+    const other = (await upsertMembers(db, [member(3, "Outro")])).get(3)!;
+    await replacePresence(db, [10, 11, 12], [{ sessionId: 10, memberId: a }, { sessionId: 11, memberId: a }, { sessionId: 12, memberId: other }]);
     expect(await getPresence(db, a, 2026)).toEqual({
       sessions: 2, present: 1, missing: [{ id: 12, startsAt: "2026-03-03T14:00", description: "Sessão Deliberativa Ordinária" }],
     });
     expect(await getPresence(db, ids.get(2)!, 2026)).toBeNull();
+  });
+
+  it("getPresence leaves out sessions nobody's presence was recorded for (joint veto sessions)", async () => {
+    const ids = await upsertMembers(db, [member(1, "A"), member(2, "B")]);
+    for (const id of [ids.get(1)!, ids.get(2)!]) await replaceHistory(db, id, [h("2026-02-01T12:00", "PT", "Exercício", "Entrada")]);
+    await upsertSessions(db, [
+      { id: 20, startsAt: "2026-04-29T14:00", description: "Sessão Deliberativa Ordinária", status: "Encerrada" },
+      { id: 21, startsAt: "2026-04-30T10:35", description: "Deliberação do Veto nº 3/26 (Dosimetria de Penas)", status: "Encerrada" },
+    ]);
+    await replacePresence(db, [20, 21], [{ sessionId: 20, memberId: ids.get(2)! }]);
+    expect(await getPresence(db, ids.get(1)!, 2026)).toEqual({
+      sessions: 1, present: 0, missing: [{ id: 20, startsAt: "2026-04-29T14:00", description: "Sessão Deliberativa Ordinária" }],
+    });
+  });
+
+  it("getPresence compares to the minute: a session before the swearing-in that day is not counted", async () => {
+    const ids = await upsertMembers(db, [member(1, "Volta"), member(2, "Presente")]);
+    const a = ids.get(1)!;
+    await replaceHistory(db, a, [
+      h("2026-02-01T12:00", "PT", "Exercício", "Entrada"),
+      h("2026-03-10T09:00", "PT", "Licença", "Saída - Licença para Tratamento de Saúde"),
+      h("2026-03-20T17:01", "PT", "Exercício", "Entrada - Reassunção"),
+    ]);
+    await upsertSessions(db, [
+      { id: 30, startsAt: "2026-03-10T08:00", description: "antes da licença", status: "Encerrada" },
+      { id: 31, startsAt: "2026-03-10T14:00", description: "depois da saída", status: "Encerrada" },
+      { id: 32, startsAt: "2026-03-20T14:00", description: "antes da posse", status: "Encerrada" },
+      { id: 33, startsAt: "2026-03-20T18:00", description: "depois da posse", status: "Encerrada" },
+    ]);
+    const b = ids.get(2)!;
+    await replacePresence(db, [30, 31, 32, 33], [30, 31, 32, 33].map((sessionId) => ({ sessionId, memberId: b })));
+    const p = await getPresence(db, a, 2026);
+    expect(p!.sessions).toBe(2);
+    expect(p!.missing.map((m) => m.id)).toEqual([30, 33]);
   });
 
   it("listMemberBills counts by type and filters", async () => {

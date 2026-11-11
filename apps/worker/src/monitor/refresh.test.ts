@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import {
-  createDb, getMember, getProfile, getRollCall, listMemberBills, listMemberSpeeches, listMemberVotes, searchSpeeches, type Db,
+  createDb, getHistory, getMember, getProfile, getRollCall, listMemberBills, listMemberSpeeches, listMemberVotes, searchSpeeches, type Db,
 } from "@digestor/core/server";
 import { httpTiming } from "../records/http.js";
-import { fakeCamaraMonitorFetch } from "./fakeCamaraMonitor.js";
+import { fakeCamaraMonitorFetch, monitorFixture } from "./fakeCamaraMonitor.js";
 import { nightlyWindow, refreshMonitor } from "./refresh.js";
 
 let db: Db;
@@ -127,7 +127,7 @@ describe("refreshMonitor", () => {
     const missing = fakeCamaraMonitorFetch();
     const c1 = await refreshMonitor({ db, fetch: missing.f }, window);
     expect(missing.calls.filter((c) => c.includes("/profissoes"))).toHaveLength(0);
-    expect(c1.profiles).toEqual({ ok: 0, failed: 0 });
+    expect(c1.profiles).toEqual({ ok: 0, failed: 0, kept: 0 });
     const all = fakeCamaraMonitorFetch();
     const c2 = await refreshMonitor({ db, fetch: all.f }, { ...window, profiles: "all" });
     const members = await db.execute<{ n: number }>(sql`select count(*)::int as n from parl_members`);
@@ -150,7 +150,7 @@ describe("refreshMonitor", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const counts = await refreshMonitor({ db, fetch: f }, window);
     warn.mockRestore();
-    expect(counts.history).toEqual({ ok: 2, failed: 1 });
+    expect(counts.history).toEqual({ ok: 2, failed: 1, kept: 0 });
     expect(counts.speeches.inserted).toBe(4);
     expect(counts.rollCalls).toBe(4);
   });
@@ -158,5 +158,50 @@ describe("refreshMonitor", () => {
   it('nightlyWindow is "all" on Mondays', () => {
     expect(nightlyWindow(new Date("2026-11-16T09:00:00Z")).profiles).toBe("all");
     expect(nightlyWindow(new Date("2026-11-17T09:00:00Z")).profiles).toBe("missing");
+  });
+
+  it("an empty history answer keeps the stored history", async () => {
+    await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const her = (await getMember(db, "camara", 204407))!;
+    const before = await getHistory(db, her.id);
+    expect(before.length).toBeGreaterThan(0);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch({ "/deputados/204407/historico": { dados: [], links: [] } }).f }, window);
+    warn.mockRestore();
+    expect(counts.history.kept).toBe(1);
+    expect(await getHistory(db, her.id)).toEqual(before);
+  });
+
+  it("an empty profile answer keeps the stored profile", async () => {
+    await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const empty = { dados: [], links: [] };
+    const { f } = fakeCamaraMonitorFetch({
+      "/deputados/204407/profissoes": empty, "/deputados/204407/mandatosExternos": empty, "/deputados/204407/frentes": empty, "/deputados/204407/orgaos": empty,
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const counts = await refreshMonitor({ db, fetch: f }, { ...window, profiles: "all" });
+    warn.mockRestore();
+    expect(counts.profiles.kept).toBe(1);
+    const her = (await getMember(db, "camara", 204407))!;
+    expect((await getProfile(db, her.id)).profession).toBe("Bibliotecária");
+  });
+
+  it("empty presence, authors and guidance files keep the stored rows", async () => {
+    await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const header = (kind: string) => monitorFixture(`${kind}-2026.excerpt.csv`).split("\n")[0] + "\n";
+    const { f } = fakeCamaraMonitorFetch({
+      "/arquivos/eventosPresencaDeputados/": header("eventosPresencaDeputados"),
+      "/arquivos/proposicoesAutores/": header("proposicoesAutores"),
+      "/arquivos/votacoesOrientacoes/": header("votacoesOrientacoes"),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await refreshMonitor({ db, fetch: f }, window);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/presence/));
+    warn.mockRestore();
+    const her = (await getMember(db, "camara", 204407))!;
+    const presence = await db.execute<{ n: number }>(sql`select count(*)::int as n from parl_presence where member_id = ${her.id}`);
+    expect(presence.rows[0]!.n).toBe(2);
+    expect((await listMemberBills(db, her.id, {})).total).toBe(2);
+    expect((await getRollCall(db, "2449741-72"))!.orientations).toHaveLength(13);
   });
 });

@@ -1,5 +1,5 @@
 import {
-  countInOffice, countSpeechesInWindow, fillSpeechParties, membersNeedingProfile, replaceBillAuthors, replaceHistory, replaceOrientations,
+  countHistory, countInOffice, countSpeechesInWindow, fillSpeechParties, getProfile, monitorRowCounts, membersNeedingProfile, replaceBillAuthors, replaceHistory, replaceOrientations,
   replacePresence, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, setProfile, upsertBills, upsertMembers,
   upsertRollCalls, upsertSessions, type Db,
 } from "@digestor/core/server";
@@ -19,7 +19,7 @@ const CONCURRENCY = 4;
 
 export type RefreshCounts = {
   members: number; speeches: { inserted: number; kept: number; failed: number }; rollCalls: number; votes: number; bills: number;
-  history: { ok: number; failed: number }; profiles: { ok: number; failed: number };
+  history: { ok: number; failed: number; kept: number }; profiles: { ok: number; failed: number; kept: number };
   orientations: number; sessions: number; presence: number; authoredBills: number;
 };
 export type RefreshWindow = { speechesFrom: string; to: string; year: number; profiles: "all" | "missing" };
@@ -54,11 +54,16 @@ export async function refreshMonitor(
 
   // History before speeches: the party on the day of each speech comes from it. One deputy failing is counted and
   // skipped; only a mostly failed run throws, so pg-boss retries it.
-  const history = { ok: 0, failed: 0 };
+  // An empty answer for a deputy with stored history is the Câmara failing, not a deputy without history: kept.
+  const history = { ok: 0, failed: 0, kept: 0 };
   let historyError: unknown = null;
   await mapLimit([...ids], CONCURRENCY, async ([externalId, memberId]) => {
     try {
       const rows = await fetchHistory(f, externalId);
+      if (rows.length === 0 && (await countHistory(db, memberId)) > 0) {
+        history.kept++;
+        return;
+      }
       await replaceHistory(db, memberId, rows);
       history.ok++;
     } catch (err) {
@@ -66,6 +71,7 @@ export async function refreshMonitor(
       historyError = err;
     }
   });
+  if (history.kept > 0) console.warn(`monitor.refresh: the Câmara sent no history for ${history.kept} deputies who have some stored; kept it`);
   if (history.failed > 0) {
     console.warn(`monitor.refresh: history of ${history.failed} deputies failed; last error:`, historyError instanceof Error ? historyError.message : historyError);
   }
@@ -97,18 +103,26 @@ export async function refreshMonitor(
   const speeches = { inserted, kept, failed };
   await fillSpeechParties(db);
 
-  // Profiles change rarely: all of them on Mondays, otherwise only deputies never fetched. Failures never throw.
-  const profiles = { ok: 0, failed: 0 };
+  // Profiles change rarely: all of them on Mondays, otherwise only deputies never fetched. Failures never throw. An
+  // all-empty answer over a stored profile is kept (and not marked refreshed, so a "missing" night asks again).
+  const profiles = { ok: 0, failed: 0, kept: 0 };
   let profileError: unknown = null;
   await mapLimit(await membersNeedingProfile(db, "camara", a.profiles === "all"), CONCURRENCY, async (m) => {
     try {
-      await setProfile(db, m.id, await fetchProfile(f, m.externalId));
+      const p = await fetchProfile(f, m.externalId);
+      const empty = (x: typeof p) => !x.profession && x.externalMandates.length + x.fronts.length + x.positions.length === 0;
+      if (empty(p) && !empty(await getProfile(db, m.id))) {
+        profiles.kept++;
+        return;
+      }
+      await setProfile(db, m.id, p);
       profiles.ok++;
     } catch (err) {
       profiles.failed++;
       profileError = err;
     }
   });
+  if (profiles.kept > 0) console.warn(`monitor.refresh: the Câmara sent an empty profile for ${profiles.kept} deputies with one stored; kept it`);
   if (profiles.failed > 0) {
     console.warn(`monitor.refresh: profiles of ${profiles.failed} deputies failed; last error:`, profileError instanceof Error ? profileError.message : profileError);
   }
@@ -172,9 +186,19 @@ export async function refreshMonitor(
     }
   };
 
+  // A file that comes back empty or much shorter than what is stored is the Câmara failing (the same 200-with-nothing
+  // as the API): its part keeps the stored rows.
+  const stored = await monitorRowCounts(db);
+  const tooShort = (what: string, n: number, before: number) => {
+    if (before === 0 || n >= before / 2) return false;
+    console.warn(`monitor.refresh: ${what}: the file gave ${n} rows (${before} stored); kept the stored rows`);
+    return true;
+  };
+
   const guidance = await optional("votacoesOrientacoes");
-  if (guidance) {
-    const byRollCall = toOrientations(guidance, new Set(rollCalls.map((r) => r.id)));
+  const byRollCall = guidance ? toOrientations(guidance, new Set(rollCalls.map((r) => r.id))) : null;
+  const guidanceRows = byRollCall ? [...byRollCall.values()].reduce((n, l) => n + l.length, 0) : 0;
+  if (byRollCall && !tooShort("guidance", guidanceRows, stored.orientations)) {
     for (const rc of rollCalls) {
       const rows = byRollCall.get(rc.id) ?? [];
       await replaceOrientations(db, rc.id, rows);
@@ -195,8 +219,10 @@ export async function refreshMonitor(
         const memberId = memberIdOf.get(p.externalId);
         return memberId === undefined ? [] : [{ sessionId: p.sessionId, memberId }];
       });
-      await replacePresence(db, sessionIds, rows);
-      counts.presence = rows.length;
+      if (!tooShort("presence", rows.length, stored.presence)) {
+        await replacePresence(db, sessionIds, rows);
+        counts.presence = rows.length;
+      }
     }
   }
 
@@ -211,8 +237,10 @@ export async function refreshMonitor(
         const memberId = memberIdOf.get(r.externalId);
         return memberId === undefined ? [] : [{ billId: r.billId, memberId, firstAuthor: r.firstAuthor }];
       });
-      await replaceBillAuthors(db, billIds, rows);
-      counts.authoredBills = rows.length;
+      if (!tooShort("bill authors", rows.length, stored.billAuthors)) {
+        await replaceBillAuthors(db, billIds, rows);
+        counts.authoredBills = rows.length;
+      }
     }
   }
 

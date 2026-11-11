@@ -43,6 +43,25 @@ export function partyTimeline(rows: HistoryRow[], since = "2023-02-01"): Timelin
   return bands.filter((b) => b.to === null || b.to > since).map((b) => (b.from < since ? { ...b, from: since } : b));
 }
 
+/**
+ * In-office stretches to the minute, straight from the history ("YYYY-MM-DDTHH:MM"; `to` null = still in office): a
+ * deputy sworn in again at 17:01 was not in office at a 14:00 session that day.
+ */
+export function inOfficeSpans(rows: HistoryRow[]): { from: string; to: string | null }[] {
+  const out: { from: string; to: string | null }[] = [];
+  let open: string | null = null;
+  for (const r of [...rows].sort((a, b) => a.at.localeCompare(b.at))) {
+    const inOffice = r.status === IN_OFFICE;
+    if (inOffice && open === null) open = r.at;
+    else if (!inOffice && open !== null) {
+      out.push({ from: open, to: r.at });
+      open = null;
+    }
+  }
+  if (open !== null) out.push({ from: open, to: null });
+  return out;
+}
+
 /** The in-office stretches of a timeline, adjacent bands (a party change) joined. */
 export function inOfficePeriods(bands: TimelineBand[]): { from: string; to: string | null }[] {
   const out: { from: string; to: string | null }[] = [];
