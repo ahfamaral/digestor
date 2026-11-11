@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, count, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from "drizzle-orm";
 import { HIGHLIGHT_END, HIGHLIGHT_START, normName } from "../monitorText.ts";
 import type { Db } from "./client.ts";
@@ -118,15 +119,32 @@ export async function searchMembers(db: Db, q: string, limit = 8): Promise<Membe
 
 // ── Speeches ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** One transaction: delete the member's speeches in [from, to] (days, inclusive) and insert `rows`. */
+/**
+ * A speech's stable key: deputy, start minute and a fingerprint of its text (summary when there is no text yet), so the
+ * nightly window replace gives the same speech the same key. It changes once if the transcription arrives late.
+ */
+export function speechKey(externalId: number, startsAt: string, text: string): string {
+  return `${externalId}:${startsAt}:${createHash("sha1").update(normName(text)).digest("hex").slice(0, 10)}`;
+}
+
+/**
+ * One transaction: delete the member's speeches in [from, to] (days, inclusive) and insert `rows`, each with its
+ * `speechKey` (the n-th identical speech in one call gets ":n").
+ */
 export async function replaceSpeechWindow(
   db: Db, memberId: number, from: string, to: string, rows: SpeechInput[],
 ): Promise<{ deleted: number; inserted: number }> {
   return db.transaction(async (tx) => {
+    const [m] = await tx.select({ externalId: parlMembers.externalId }).from(parlMembers).where(eq(parlMembers.id, memberId));
     const del = await tx.delete(parlSpeeches).where(windowWhere(memberId, from, to)).returning({ id: parlSpeeches.id });
-    for (const part of chunks(rows)) {
-      await tx.insert(parlSpeeches).values(part.map((r) => ({ ...r, memberId, startsAt: `${localMinute(r.startsAt)}:00` })));
-    }
+    const seen = new Map<string, number>();
+    const keyed = rows.map((r) => {
+      const base = speechKey(m?.externalId ?? memberId, localMinute(r.startsAt), r.text || r.summary);
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      return { ...r, memberId, startsAt: `${localMinute(r.startsAt)}:00`, speechKey: n === 1 ? base : `${base}:${n}` };
+    });
+    for (const part of chunks(keyed)) await tx.insert(parlSpeeches).values(part);
     return { deleted: del.length, inserted: rows.length };
   });
 }
@@ -222,7 +240,9 @@ export async function rollCallIdsWithBill(db: Db, ids: string[]): Promise<Set<st
 }
 
 /** One transaction: the roll call's votes become exactly `rows`. */
-export async function replaceVotes(db: Db, rollCallId: string, rows: { memberId: number; vote: string }[]): Promise<void> {
+export async function replaceVotes(
+  db: Db, rollCallId: string, rows: { memberId: number; vote: string; party?: string | null; uf?: string | null }[],
+): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(parlVotes).where(eq(parlVotes.rollCallId, rollCallId));
     for (const part of chunks(rows)) await tx.insert(parlVotes).values(part.map((r) => ({ ...r, rollCallId })));

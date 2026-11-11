@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "./client.ts";
-import { parlMembers, parlSpeeches } from "./schema.ts";
+import { parlMembers, parlSpeeches, parlVotes } from "./schema.ts";
 import {
   countSpeechesInWindow, getMember, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
   searchMembers, searchRollCalls, searchSpeeches, setInOffice, upsertMembers, upsertRollCalls, type MemberInput, type RollCallInput,
@@ -18,7 +18,7 @@ beforeAll(() => {
 afterAll(() => close());
 beforeEach(async () => {
   const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
-  await pool.query("TRUNCATE parl_votes, parl_roll_calls, parl_speeches, parl_members RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE parl_presence, parl_sessions, parl_bill_authors, parl_bills, parl_orientations, parl_member_history, parl_votes, parl_roll_calls, parl_speeches, parl_members RESTART IDENTITY CASCADE");
   await pool.end();
 });
 
@@ -108,6 +108,22 @@ describe("speeches", () => {
     expect(list.rows.map((x) => x.text)).toEqual(["um, agora com texto", "outubro"]);
     expect(list.rows[0]!.startsAt).toBe("2026-11-09T10:00");
   });
+
+  it("a speech keeps its key across a window replace; duplicates get distinct keys", async () => {
+    const { a } = await twoMembers();
+    await replaceSpeechWindow(db, a, "2026-02-01", "2026-11-11", [speech("2026-03-17T18:00", "O feminicídio no RS")]);
+    const k1 = (await db.select().from(parlSpeeches)).map((r) => r.speechKey);
+    expect(k1[0]).toMatch(/^204407:2026-03-17T18:00:[0-9a-f]{10}$/);
+    await replaceSpeechWindow(db, a, "2026-02-01", "2026-11-11", [
+      speech("2026-03-17T18:00", "O feminicídio no RS"), speech("2026-04-01T10:00", "outro"),
+    ]);
+    const k2 = (await db.select().from(parlSpeeches)).map((r) => r.speechKey);
+    expect(k2).toContain(k1[0]);
+    await replaceSpeechWindow(db, a, "2026-02-01", "2026-11-11", [speech("2026-05-01T10:00", "igual"), speech("2026-05-01T10:00", "igual")]);
+    const k3 = (await db.select().from(parlSpeeches)).map((r) => r.speechKey!).sort();
+    expect(k3).toHaveLength(2);
+    expect(k3[1]).toBe(`${k3[0]}:2`);
+  });
 });
 
 describe("roll calls", () => {
@@ -141,6 +157,14 @@ describe("roll calls", () => {
     await replaceVotes(db, "2449741-72", [{ memberId: b, vote: "Sim" }]);
     expect((await listMemberVotes(db, a, {})).total).toBe(1);
     expect(await rollCallIdsWithBill(db, ["2449741-72", "2462009-57", "nope"])).toEqual(new Set(["2449741-72"]));
+  });
+
+  it("replaceVotes stores the party at the vote", async () => {
+    const { a, b } = await twoMembers();
+    await upsertRollCalls(db, [rollCall("2449741-72", "2026-03-18")]);
+    await replaceVotes(db, "2449741-72", [{ memberId: a, vote: "Sim", party: "UNIÃO", uf: "AL" }, { memberId: b, vote: "Não" }]);
+    const rows = await db.select().from(parlVotes).orderBy(parlVotes.memberId);
+    expect(rows.map((r) => [r.party, r.uf])).toEqual([["UNIÃO", "AL"], [null, null]]);
   });
 
   it("upsertRollCalls updates in place", async () => {

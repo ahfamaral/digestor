@@ -9,6 +9,7 @@ import type {
   FindMoreStatus, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
+import type { ExternalMandate, Position } from "../monitorTimeline.ts";
 import type { Granularity, HighlightTypeId } from "../profiles.ts";
 import type { SubtitlePosition, SubtitleStyle } from "../subtitleStyle.ts";
 import { PIPELINE_STEPS, type ContextCard, type PipelineStep, type ProxyStatus, type Stage, type Word } from "../schemas.ts";
@@ -420,6 +421,12 @@ export const parlMembers = pgTable(
     photoUrl: text("photo_url"),
     /** In `GET /deputados` today; false shows "Not in office now". */
     inOffice: boolean("in_office").notNull().default(false),
+    /** Profile, refreshed weekly (`/profissoes`, `/mandatosExternos`, `/frentes`, `/orgaos`); null until first fetched. */
+    profession: text("profession"),
+    externalMandates: jsonb("external_mandates").$type<ExternalMandate[]>(),
+    fronts: jsonb("fronts").$type<string[]>(),
+    positions: jsonb("positions").$type<Position[]>(),
+    profileRefreshedAt: timestamp("profile_refreshed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
@@ -443,11 +450,20 @@ export const parlSpeeches = pgTable(
     /** Full official text; empty until the Câmara publishes the transcription. */
     text: text("text").notNull().default(""),
     keywords: text("keywords").notNull().default(""),
+    /** `{externalId}:{startsAt}:{text fingerprint}`: survives the nightly window replace (a later video link points here). */
+    speechKey: text("speech_key"),
+    /** The speaker's party and state on the day (`fillSpeechParties`, from the history); null without history. */
+    party: text("party"),
+    uf: text("uf"),
     tsv: tsvector("tsv").generatedAlwaysAs(
       sql`setweight(to_tsvector('pt_unaccent', summary || ' ' || keywords), 'A') || setweight(to_tsvector('pt_unaccent', text), 'B')`,
     ),
   },
-  (t) => [index("parl_speeches_member_starts").on(t.memberId, t.startsAt), index("parl_speeches_tsv").using("gin", t.tsv)],
+  (t) => [
+    index("parl_speeches_member_starts").on(t.memberId, t.startsAt),
+    index("parl_speeches_tsv").using("gin", t.tsv),
+    uniqueIndex("parl_speeches_key").on(t.speechKey),
+  ],
 );
 
 export const parlRollCalls = pgTable(
@@ -484,6 +500,94 @@ export const parlVotes = pgTable(
       .references(() => parlMembers.id, { onDelete: "cascade" }),
     /** As published: Sim, Não, Abstenção, Obstrução, Art. 17. */
     vote: text("vote").notNull(),
+    /** Party and state on the vote row (at the time of the vote). */
+    party: text("party"),
+    uf: text("uf"),
   },
   (t) => [primaryKey({ columns: [t.rollCallId, t.memberId] }), index("parl_votes_member").on(t.memberId)],
+);
+
+/** `/deputados/{id}/historico`, replaced per deputy each night. */
+export const parlMemberHistory = pgTable(
+  "parl_member_history",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => parlMembers.id, { onDelete: "cascade" }),
+    at: timestamp("at", { mode: "string" }).notNull(),
+    party: text("party"),
+    uf: text("uf"),
+    /** `situacao`: "Exercício" means in office. */
+    status: text("status"),
+    description: text("description").notNull().default(""),
+  },
+  (t) => [index("parl_member_history_member_at").on(t.memberId, t.at)],
+);
+
+/** Party, bloc and government guidance per roll call (`votacoesOrientacoes-*.csv`), as published. */
+export const parlOrientations = pgTable(
+  "parl_orientations",
+  {
+    rollCallId: text("roll_call_id")
+      .notNull()
+      .references(() => parlRollCalls.id, { onDelete: "cascade" }),
+    bloc: text("bloc").notNull(),
+    orientation: text("orientation").notNull().default(""),
+  },
+  (t) => [primaryKey({ columns: [t.rollCallId, t.bloc] })],
+);
+
+/** Bills and requests presented since `MONITOR_FROM` (`proposicoes-*.csv`). */
+export const parlBills = pgTable(
+  "parl_bills",
+  {
+    id: integer("id").primaryKey(),
+    house: text("house").$type<"camara">().notNull(),
+    type: text("type").notNull(),
+    number: integer("number").notNull(),
+    year: integer("year").notNull(),
+    summary: text("summary").notNull().default(""),
+    presentedAt: timestamp("presented_at", { mode: "string" }).notNull(),
+  },
+  (t) => [index("parl_bills_presented_at").on(t.presentedAt)],
+);
+
+/** Deputies who signed a bill (`proposicoesAutores-*.csv`); `firstAuthor` = signature order 1. */
+export const parlBillAuthors = pgTable(
+  "parl_bill_authors",
+  {
+    billId: integer("bill_id")
+      .notNull()
+      .references(() => parlBills.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => parlMembers.id, { onDelete: "cascade" }),
+    firstAuthor: boolean("first_author").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.billId, t.memberId] }), index("parl_bill_authors_member").on(t.memberId)],
+);
+
+/** Plenary deliberative sessions ("Sessão Deliberativa" events, `eventos-*.csv`), any status. */
+export const parlSessions = pgTable("parl_sessions", {
+  id: integer("id").primaryKey(),
+  house: text("house").$type<"camara">().notNull(),
+  startsAt: timestamp("starts_at", { mode: "string" }).notNull(),
+  description: text("description").notNull(),
+  /** `situacao`: "Encerrada" when held. */
+  status: text("status").notNull(),
+});
+
+/** A recorded presence of a deputy at a session (`eventosPresencaDeputados-*.csv`). */
+export const parlPresence = pgTable(
+  "parl_presence",
+  {
+    sessionId: integer("session_id")
+      .notNull()
+      .references(() => parlSessions.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => parlMembers.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.sessionId, t.memberId] }), index("parl_presence_member").on(t.memberId)],
 );

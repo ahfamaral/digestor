@@ -162,6 +162,13 @@
       "when": 1794394886990,
       "tag": "0022_parliament_monitor",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794404306931,
+      "tag": "0023_monitor_workspace",
+      "breakpoints": true
     }
   ]
 }
