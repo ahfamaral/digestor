@@ -1,9 +1,11 @@
 import type { VoteRow as Vote } from "@digestor/core/server";
 import { formatDay, tm, type MonitorLocale } from "@/lib/monitor/i18n";
+import Link from "next/link";
+import { rollCallHref } from "@/lib/monitor/params";
 import { billUrl } from "@/lib/monitor/search";
 import { ExternalLink } from "./ExternalLink";
 
-/** One recorded vote: the roll call (bill, ementa, what was voted) and the vote exactly as published. */
+/** One recorded vote: the roll call (opens its page; the bill on the Câmara's site), what was voted, and the vote exactly as published. */
 export function VoteRow({ locale, vote: v }: { locale: MonitorLocale; vote: Vote }) {
   return (
     <li className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:gap-x-4">
@@ -12,12 +14,13 @@ export function VoteRow({ locale, vote: v }: { locale: MonitorLocale; vote: Vote
           <time dateTime={v.date} className="font-mono text-xs text-muted-foreground">
             {formatDay(v.date, locale)}
           </time>
-          {v.billLabel && v.billId ? (
-            <ExternalLink href={billUrl(v.billId)} className="font-semibold">
-              {v.billLabel}
+          <Link href={rollCallHref(v.rollCallId)} className="font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+            {v.billLabel ?? tm(locale, "rollCall.noBill")}
+          </Link>
+          {v.billLabel && v.billId && (
+            <ExternalLink href={billUrl(v.billId)} className="text-xs">
+              {tm(locale, "member.officialRecord")}
             </ExternalLink>
-          ) : (
-            <span className="font-semibold">{v.billLabel ?? tm(locale, "rollCall.noBill")}</span>
           )}
         </div>
         {v.billSummary && (

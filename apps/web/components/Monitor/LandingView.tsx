@@ -76,7 +76,7 @@ export function LandingView({
         <div className="grid gap-2">
           {searching && <SearchingStatus locale={locale} />}
           {result && <SearchedFor locale={locale} searched={result} />}
-          {result?.q && <SortSwitch locale={locale} params={params} />}
+          {result?.q && <SortSwitch locale={locale} sort={params.sort} href={(sort) => landingHref({ ...params, sort, p: 0, rp: 0 })} />}
         </div>
       )}
 

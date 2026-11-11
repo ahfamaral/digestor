@@ -62,6 +62,43 @@ export const monitorEn = {
     label: "Year",
     only: "Only 2026 for now",
   },
+  timeline: {
+    title: "Party and office",
+    since: "since {date}",
+    range: "{from} – {to}",
+    outOfOffice: "Out of office",
+  },
+  positions: {
+    title: "Positions",
+    now: "now",
+    membersOne: "Member of 1 committee",
+    members: "Member of {n} committees",
+  },
+  deputySearch: {
+    by: "Speeches by",
+    mentions: "Mentioning",
+    rel: "Which speeches",
+    placeholder: "A topic (optional when mentioning)",
+    mentionsOf: "Speeches by other deputies that mention {name}.",
+  },
+  bills: {
+    title: "Bills and requests",
+    all: "All",
+    coAuthor: "co-author",
+    empty: "No bills or requests filed in {year}.",
+    types: "Filter by type",
+  },
+  presence: {
+    title: "Presence",
+    sentence: "Present at {present} of {sessions} plenary deliberative sessions while in office ({year})",
+    noneRecorded: "No presence recorded ({n})",
+    note: "The open data doesn't say why: justified absences, leave and missions look the same.",
+    unavailable: "Presence not available for this deputy.",
+  },
+  fronts: {
+    title: "Parliamentary fronts",
+    members: "Member of {n} parliamentary fronts",
+  },
   sections: {
     deputies: "Deputies",
     speeches: "Speeches",
@@ -165,6 +202,43 @@ export const monitorPtBR: MonitorMessages = {
   year: {
     label: "Ano",
     only: "Só 2026 por enquanto",
+  },
+  timeline: {
+    title: "Partido e exercício",
+    since: "desde {date}",
+    range: "{from} – {to}",
+    outOfOffice: "Fora do exercício",
+  },
+  positions: {
+    title: "Cargos",
+    now: "atual",
+    membersOne: "Membro de 1 comissão",
+    members: "Membro de {n} comissões",
+  },
+  deputySearch: {
+    by: "Discursos de",
+    mentions: "Que mencionam",
+    rel: "Quais discursos",
+    placeholder: "Um tema (opcional ao buscar menções)",
+    mentionsOf: "Discursos de outros deputados que mencionam {name}.",
+  },
+  bills: {
+    title: "Proposições e requerimentos",
+    all: "Todos",
+    coAuthor: "coautoria",
+    empty: "Nenhuma proposição ou requerimento apresentado em {year}.",
+    types: "Filtrar por tipo",
+  },
+  presence: {
+    title: "Presença",
+    sentence: "Presente em {present} de {sessions} sessões deliberativas do Plenário durante o exercício ({year})",
+    noneRecorded: "Sem presença registrada ({n})",
+    note: "Os dados abertos não dizem o motivo: faltas justificadas, licenças e missões aparecem da mesma forma.",
+    unavailable: "Presença indisponível para este deputado.",
+  },
+  fronts: {
+    title: "Frentes parlamentares",
+    members: "Membro de {n} frentes parlamentares",
   },
   sections: {
     deputies: "Deputados",
