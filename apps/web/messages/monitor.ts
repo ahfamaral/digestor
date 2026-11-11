@@ -1,0 +1,61 @@
+/**
+ * Copy of the Câmara monitor (its own catalogue: Digestor's `t()` and `messages/en.ts` stay English-only). Official
+ * data (speech text, summaries, ementas, vote labels) is never translated: it is shown as published.
+ */
+export const monitorEn = {
+  title: "Câmara monitor",
+  dataNote: "Official records of the Câmara dos Deputados since 1 February 2026, updated nightly.",
+  search: {
+    label: "Search the monitor",
+    placeholder: "Search a deputy or a topic",
+    button: "Search",
+    deputyLabel: "Search this deputy's speeches",
+    deputyPlaceholder: "Search this deputy's speeches",
+    clear: "Clear search",
+    searchedFor: "Searched for: {terms}",
+    fromQuery: "(from “{q}”)",
+    translationFailed: "Couldn't translate the search; searched for your words as typed.",
+  },
+  sections: {
+    deputies: "Deputies",
+    speeches: "Speeches",
+    rollCalls: "Roll calls",
+    votes: "Votes",
+  },
+  empty: {
+    deputies: "No deputies match.",
+    speeches: "No speeches match.",
+    rollCalls: "No roll calls match.",
+    memberSpeeches: "No speeches in 2026.",
+    memberVotes: "No recorded votes in 2026.",
+  },
+  member: {
+    notInOffice: "Not in office now",
+    officialRecord: "Official record",
+    back: "Câmara monitor",
+  },
+  speech: {
+    showFullText: "Show full text",
+    noText: "Full text not published yet",
+  },
+  rollCall: {
+    totals: "Yes {yes} · No {no} · Other {other}",
+    noBill: "No bill named",
+  },
+  votes: {
+    note: "Roll calls without a recorded vote are not listed.",
+  },
+  paging: {
+    range: "{from}–{to} of {total}",
+    newer: "Newer",
+    older: "Older",
+    label: "More results",
+  },
+};
+
+type Paths<T, P extends string = ""> = {
+  [K in keyof T & string]: T[K] extends string ? `${P}${K}` : Paths<T[K], `${P}${K}.`>;
+}[keyof T & string];
+
+export type MonitorMessages = typeof monitorEn;
+export type MonitorKey = Paths<MonitorMessages>;

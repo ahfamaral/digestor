@@ -32,6 +32,7 @@ export const en = {
   appBar: {
     progress: "Progress",
     sessions: "Sessions",
+    monitor: "Monitor",
     stepOf: "Step {n} of {total} · {name}",
     step: {
       Upload: "Upload",

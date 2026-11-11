@@ -24,6 +24,9 @@ export function AppBar({ current, session, facts = { hasClips: false, allReadyRe
         {!signedOut && <Link href="/" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
           {t("appBar.sessions")}
         </Link>}
+        {!signedOut && <Link href="/monitor" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
+          {t("appBar.monitor")}
+        </Link>}
       </div>
       {current && (
         <nav aria-label={t("appBar.progress")} className="hidden items-center gap-1.5 text-xs text-step-upcoming sm:flex">
