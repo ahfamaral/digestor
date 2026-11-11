@@ -1,3 +1,4 @@
+import { normName } from "@digestor/core";
 import { searchMembers, searchRollCalls, searchSpeeches, type Db, type MemberRow, type RollCallHit, type SpeechHit } from "@digestor/core/server";
 
 export const MAX_QUERY = 200;
@@ -23,6 +24,15 @@ export async function searchTerms(q: string, translate?: Translate): Promise<Sea
 }
 
 /**
+ * The terms as full-text queries: what the person typed keeps its search syntax (quotes, OR, -word); a translated
+ * multi-word term is a phrase, so "violência contra a mulher" doesn't match those words scattered over a speech.
+ */
+export function queryTerms(s: Searched): string[] {
+  const typed = normName(s.q);
+  return s.terms.map((t) => (normName(t) === typed || !/\s/.test(t.trim()) ? t : `"${t.replace(/"/g, "")}"`));
+}
+
+/**
  * One search box: deputies by name (the query as typed), speeches and roll calls by the (translated) terms.
  * An empty query touches nothing.
  */
@@ -31,8 +41,8 @@ export async function runSearch(db: Db, raw: string, translate?: Translate, a: {
   if (!searched.q) return { ...searched, members: [], speeches: { total: 0, rows: [] }, rollCalls: [] };
   const [members, speeches, rollCalls] = await Promise.all([
     searchMembers(db, searched.q),
-    searchSpeeches(db, { terms: searched.terms, limit: SEARCH_PAGE, offset: (a.page ?? 0) * SEARCH_PAGE }),
-    searchRollCalls(db, { terms: searched.terms }),
+    searchSpeeches(db, { terms: queryTerms(searched), limit: SEARCH_PAGE, offset: (a.page ?? 0) * SEARCH_PAGE }),
+    searchRollCalls(db, { terms: queryTerms(searched) }),
   ]);
   return { ...searched, members, speeches, rollCalls };
 }

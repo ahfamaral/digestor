@@ -43,4 +43,18 @@ describe("runSearch", () => {
     const failed = await runSearch(db, "femicide", async (q) => ({ terms: [q], translated: false, failed: true }));
     expect(failed).toMatchObject({ terms: ["femicide"], translatedFrom: null, notice: "translationFailed" });
   });
+
+  it("searches translated multi-word terms as phrases, not loose words", async () => {
+    const ids = await upsertMembers(db, [{ house: "camara", externalId: 1, name: "A", party: null, uf: null, photoUrl: null }]);
+    const speech = (startsAt: string, text: string) => ({ startsAt, phase: null, kind: null, summary: "", text, keywords: "" });
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-02-01", "2026-11-11", [
+      speech("2026-03-01T10:00", "Combater a violência contra a mulher é urgente."),
+      speech("2026-03-02T10:00", "A violência no trânsito é contra a lei; a mulher do prefeito falou."),
+    ]);
+    const r = await runSearch(db, "violence against women", async () => ({ terms: ["violência contra a mulher"], translated: true, failed: false }));
+    expect(r.terms).toEqual(["violência contra a mulher"]);
+    expect(r.speeches.total).toBe(1);
+    // what the person typed keeps its own search syntax
+    expect((await runSearch(db, "violência mulher")).speeches.total).toBe(2);
+  });
 });
