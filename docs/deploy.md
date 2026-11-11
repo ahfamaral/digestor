@@ -154,6 +154,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs worker | gr
 
 Query translation uses `OPENROUTER_API_KEY` from `.env` in the `web` container (without it, searches run on the words as typed).
 
+### Once, when updating to the monitor workspace (migration 0023)
+
+`up -d --build` runs migration 0023 (history, profiles, guidance, sessions and presence, bills and authors; party on the day for speeches and at the vote for votes). Then rerun the backfill once so the new tables fill (about 16 minutes now: it also reads every deputy's history and profile; safe to run again):
+
+```
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-backfill.ts
+```
+
+Dev on 2026-11-11 printed: 568 deputies, history and profiles 568 ok / 0 failed, 1,700 guidance rows, 82 plenary sessions, 38,497 presence rows, 52,205 bill authorships, in 927 s. Check `/monitor` (pick a deputy in the "Find a deputy" box, open a roll call from a topic search) and one deputy's page: the party timeline, "Present at N of M…" and the bills list show. The nightly refresh now also reads every deputy's history (568 calls) and, on Mondays, every profile.
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:
