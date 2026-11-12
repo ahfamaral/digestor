@@ -8,3 +8,4 @@ secrets/*
 dist/
 .pnpm-store/
 apps/worker/test/tmp/
+reports/

@@ -27,7 +27,8 @@ export function partyTimeline(rows: HistoryRow[], since = "2023-02-01"): Timelin
     const inOffice = r.status === IN_OFFICE;
     const last = bands.at(-1);
     if (last && last.party === r.party && last.inOffice === inOffice) continue;
-    const band = { party: r.party, uf: r.uf, from: day, to: null, inOffice, description: inOffice ? "" : r.description };
+    // A row without a status (the legislature's start placeholder, "Nome no início da legislatura…") explains nothing.
+    const band = { party: r.party, uf: r.uf, from: day, to: null, inOffice, description: inOffice || !r.status ? "" : r.description };
     if (last && last.from === day) {
       bands[bands.length - 1] = band;
       const prev = bands.at(-2);

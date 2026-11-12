@@ -9,22 +9,31 @@ export type Step = (typeof STEPS)[number];
 const FOCUS = "rounded outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 /**
- * `signedOut` (the login page) leaves out the Sessions link: there is nowhere to go before signing in.
+ * `signedOut` (the login page) leaves out the Sessions link: there is nowhere to go before signing in. `area` marks the
+ * current top link (`aria-current`); `skipTo` adds a "Skip to content" link to that element id, shown on focus.
  * Top bar: "Digestor." logo, a "Sessions" link home, and the six-step indicator (done steps green with ✓, current step
  * bold). Inside a ready session (`session.ready`) Briefing, Prepare and Export are links to jump between them.
  */
-export function AppBar({ current, session, facts = { hasClips: false, allReadyRendered: false }, signedOut = false, children }: { current?: Step; signedOut?: boolean; session?: { id: string; ready: boolean }; facts?: StepFacts; children?: React.ReactNode }) {
+export function AppBar({ current, session, facts = { hasClips: false, allReadyRendered: false }, signedOut = false, area, skipTo, children }: { current?: Step; signedOut?: boolean; session?: { id: string; ready: boolean }; facts?: StepFacts; area?: "sessions" | "monitor"; skipTo?: string; children?: React.ReactNode }) {
   const at = current ? STEPS.indexOf(current) : -1;
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-4 py-3">
       <div className="flex items-center gap-4">
+        {skipTo && (
+          <a
+            href={`#${skipTo}`}
+            className="sr-only rounded bg-white px-2 py-1 text-sm font-medium focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            {t("appBar.skip")}
+          </a>
+        )}
         <Link href="/" className={cn("inline-flex h-8 items-center text-base font-extrabold tracking-tight", FOCUS)}>
           {t("app.name")}<span className="text-brand">.</span>
         </Link>
         {!signedOut && <Link href="/" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
           {t("appBar.sessions")}
         </Link>}
-        {!signedOut && <Link href="/monitor" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
+        {!signedOut && <Link href="/monitor" aria-current={area === "monitor" ? "page" : undefined} className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", area === "monitor" && "text-foreground", FOCUS)}>
           {t("appBar.monitor")}
         </Link>}
       </div>

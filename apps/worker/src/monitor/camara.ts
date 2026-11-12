@@ -30,6 +30,7 @@ const discurso = z
     sumario: text,
     transcricao: text,
     keywords: text,
+    urlTexto: text,
   })
   .passthrough();
 const proposicao = z
@@ -72,14 +73,19 @@ export async function fetchSpeeches(f: typeof fetch, externalId: number, from: s
   const url = `${API}/deputados/${externalId}/discursos?dataInicio=${from}&dataFim=${to}&itens=100&ordenarPor=dataHoraInicio&ordem=ASC`;
   const rows = await pages(f, url, discurso);
   return rows
-    .map((d) => ({
-      startsAt: d.dataHoraInicio.slice(0, 16),
-      phase: d.faseEvento?.titulo ?? null,
-      kind: d.tipoDiscurso,
-      summary: decodeEntities(d.sumario ?? ""),
-      text: decodeEntities(d.transcricao ?? ""),
-      keywords: decodeEntities(d.keywords ?? ""),
-    }))
+    .map((d) => {
+      const { text, file } = attachedFile(cleanText(d.transcricao ?? ""));
+      return {
+        startsAt: d.dataHoraInicio.slice(0, 16),
+        phase: d.faseEvento?.titulo ?? null,
+        kind: d.tipoDiscurso,
+        summary: cleanText(d.sumario ?? ""),
+        text,
+        keywords: cleanText(d.keywords ?? ""),
+        urlText: camaraUrl(d.urlTexto),
+        textFile: file,
+      };
+    })
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
@@ -161,6 +167,48 @@ export async function fetchProfile(f: typeof fetch, externalId: number): Promise
         : [],
     ),
   };
+}
+
+/** Windows-1252 bytes the Câmara's texts carry as C1 control characters (0x97 em dash, 0x93/0x94 quotes…); others: a space. */
+const CP1252: Record<number, string> = {
+  0x80: "€", 0x82: "‚", 0x83: "ƒ", 0x84: "„", 0x85: "…", 0x86: "†", 0x87: "‡", 0x88: "ˆ", 0x89: "‰", 0x8a: "Š", 0x8b: "‹",
+  0x8c: "Œ", 0x8e: "Ž", 0x91: "‘", 0x92: "’", 0x93: "“", 0x94: "”", 0x95: "•", 0x96: "–", 0x97: "—", 0x98: "˜", 0x99: "™",
+  0x9a: "š", 0x9b: "›", 0x9c: "œ", 0x9e: "ž", 0x9f: "Ÿ",
+};
+
+/**
+ * Official text as stored: HTML entities decoded, Windows-1252 leftovers mapped (migration 0024 did the same to older
+ * rows), other control characters (a NUL makes Postgres throw; \u0001/\u0002 are our highlight markers) as spaces.
+ */
+export function cleanText(s: string): string {
+  return decodeEntities(s)
+    .replace(/[\u0080-\u009f]/g, (c) => CP1252[c.charCodeAt(0)] ?? " ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, " ");
+}
+
+/**
+ * Some speeches arrive as an attached .docx: its bytes inside `transcricao`, after a heading ("DISCURSO NA ÍNTEGRA
+ * ENCAMINHADO PELO SR. DEPUTADO X (SEM REGISTRO TAQUIGRÁFICO). PK…[Content_Types].xml…"). Keep the heading only.
+ */
+export function attachedFile(text: string): { text: string; file: boolean } {
+  const at = text.indexOf("[Content_Types].xml");
+  if (at < 0) return { text, file: false };
+  return { text: text.slice(0, at).replace(/PK[\s\S]{0,80}$/, "").trim(), file: true };
+}
+
+/** A link to the Câmara's own pages, as https; anything else (another host, another scheme, empty) is dropped. */
+export function camaraUrl(u: string | null | undefined): string | null {
+  if (!u) return null;
+  try {
+    const url = new URL(u);
+    const host = url.hostname.toLowerCase();
+    const camara = ["camara.gov.br", "camara.leg.br"].some((d) => host === d || host.endsWith(`.${d}`));
+    if (!camara || (url.protocol !== "https:" && url.protocol !== "http:")) return null;
+    url.protocol = "https:";
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 const ENTITIES: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };

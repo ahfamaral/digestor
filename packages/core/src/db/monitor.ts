@@ -9,7 +9,11 @@ import { parlMembers, parlRollCalls, parlSpeeches, parlVotes } from "./schema.ts
 export type House = "camara";
 export type MemberInput = { house: House; externalId: number; name: string; party: string | null; uf: string | null; photoUrl: string | null };
 /** `startsAt` is Brasília local time as published, "YYYY-MM-DDTHH:MM". */
-export type SpeechInput = { startsAt: string; phase: string | null; kind: string | null; summary: string; text: string; keywords: string };
+export type SpeechInput = {
+  startsAt: string; phase: string | null; kind: string | null; summary: string; text: string; keywords: string;
+  /** The Câmara's page for the text (`urlText`); `textFile`: published as an attached file, `text` is its heading only. */
+  urlText?: string | null; textFile?: boolean;
+};
 export type RollCallInput = {
   id: string; date: string; registeredAt: string | null; description: string; yes: number; no: number; other: number;
   billId: number | null; billLabel: string | null; billSummary: string;
@@ -18,7 +22,10 @@ export type RollCallInput = {
 export type MemberRow = {
   id: number; externalId: number; name: string; party: string | null; uf: string | null; photoUrl: string | null; inOffice: boolean;
 };
-export type SpeechRow = { id: number; startsAt: string; phase: string | null; kind: string | null; summary: string; text: string };
+export type SpeechRow = {
+  id: number; startsAt: string; phase: string | null; kind: string | null; summary: string; text: string;
+  urlText: string | null; textFile: boolean;
+};
 /** `member` carries today's party and state; `partyThen`/`ufThen` are the speaker's on the day (null without history). */
 export type SpeechHit = SpeechRow & {
   member: Pick<MemberRow, "externalId" | "name" | "party" | "uf">; snippet: string; partyThen: string | null; ufThen: string | null;
@@ -51,6 +58,18 @@ function chunks<T>(rows: T[], size = CHUNK): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
   return out;
+}
+
+/**
+ * Rank: full-text rank, plus 1 when the row holds `phrase` (the words as typed, together) so those come first under
+ * "Best match". Normalization 32 (rank / (rank + 1)) keeps the order and stays below 1, so the +1 always wins; a raw
+ * `ts_rank_cd` goes far above 1 on long speeches (24 for "saúde"). phraseto_tsquery never reads its input as syntax.
+ */
+function rankSql(alias: "s" | "r", phrase: string | undefined): SQL {
+  const col = sql.raw(`${alias}.tsv`);
+  const base = sql`ts_rank_cd(${col}, q.q, 32)`;
+  const p = phrase?.trim();
+  return p ? sql`${base} + case when ${col} @@ phraseto_tsquery('pt_unaccent', ${p}) then 1 else 0 end` : base;
 }
 
 /** The terms OR-ed into one tsquery; null when no term has a searchable word (stop words, punctuation). */
@@ -118,8 +137,23 @@ export async function searchMembers(db: Db, q: string, limit = 8): Promise<Membe
     .select()
     .from(parlMembers)
     .where(sql`${parlMembers.nameNorm} ilike ${`%${esc}%`}`)
-    .orderBy(sql`similarity(${parlMembers.nameNorm}, ${n}) desc`, parlMembers.name)
+    // The name starting with the text first, then a word starting with it ("Melo" for "mel"), then the text inside a
+    // word ("Vermelho"); similarity and the name break ties.
+    .orderBy(
+      sql`case when ${parlMembers.nameNorm} ilike ${`${esc}%`} then 0 when ${parlMembers.nameNorm} ilike ${`% ${esc}%`} then 1 else 2 end`,
+      sql`similarity(${parlMembers.nameNorm}, ${n}) desc`,
+      parlMembers.name,
+    )
     .limit(limit);
+  return rows.map(toMember);
+}
+
+/**
+ * Every deputy of the house in alphabetical order (accents and case ignored), for the directory page: a few hundred
+ * rows, filtered and grouped by letter in the web app. Alphabetical only, never ranked.
+ */
+export async function listMembers(db: Db, house: House): Promise<MemberRow[]> {
+  const rows = await db.select().from(parlMembers).where(eq(parlMembers.house, house)).orderBy(parlMembers.nameNorm, parlMembers.name, parlMembers.externalId);
   return rows.map(toMember);
 }
 
@@ -173,7 +207,7 @@ export async function listMemberSpeeches(
   const rows = await db
     .select({
       id: parlSpeeches.id, startsAt: parlSpeeches.startsAt, phase: parlSpeeches.phase, kind: parlSpeeches.kind,
-      summary: parlSpeeches.summary, text: parlSpeeches.text,
+      summary: parlSpeeches.summary, text: parlSpeeches.text, urlText: parlSpeeches.urlText, textFile: parlSpeeches.textFile,
     })
     .from(parlSpeeches)
     .where(where)
@@ -197,6 +231,7 @@ function speechFilterSql(f: SpeechFilters = {}): SQL {
 
 type SpeechHitSql = {
   id: number; starts_at: string; phase: string | null; kind: string | null; summary: string; text: string; external_id: number;
+  url_text: string | null; text_file: boolean;
   name: string; party: string | null; uf: string | null; party_then: string | null; uf_then: string | null; snippet: string;
 };
 
@@ -209,7 +244,7 @@ export async function searchSpeeches(
   db: Db,
   a: {
     terms: string[]; memberId?: number; mentionOf?: { memberId: number; name: string }; filters?: SpeechFilters; sort?: SortOrder;
-    limit?: number; offset?: number;
+    limit?: number; offset?: number; phrase?: string;
   },
 ): Promise<{ total: number; rows: SpeechHit[] }> {
   const topic = tsQuery(a.terms);
@@ -220,7 +255,7 @@ export async function searchSpeeches(
   const head = name && topic ? sql`(${name}) || (${topic})` : match;
   const member = a.memberId === undefined ? sql`` : sql`and s.member_id = ${a.memberId}`;
   const notSelf = a.mentionOf ? sql`and s.member_id <> ${a.mentionOf.memberId}` : sql``;
-  const hits = sql`select s.*, ts_rank_cd(s.tsv, q.q) as rank from parl_speeches s, q
+  const hits = sql`select s.*, ${rankSql("s", a.phrase)} as rank from parl_speeches s, q
     where numnode(q.q) > 0 and s.tsv @@ q.q ${member} ${notSelf} ${speechFilterSql(a.filters)}`;
   const inner = a.sort === "new" ? sql`s.starts_at desc, s.id desc` : sql`rank desc, s.starts_at desc, s.id desc`;
   const outer = a.sort === "new" ? sql`p.starts_at desc, p.id desc` : sql`p.rank desc, p.starts_at desc, p.id desc`;
@@ -230,7 +265,7 @@ export async function searchSpeeches(
   const r = await db.execute<SpeechHitSql>(sql`
     with q as (select (${match}) as q, (${head}) as hq)
     select p.id, to_char(p.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, p.phase, p.kind, p.summary, p.text,
-      p.party as party_then, p.uf as uf_then, m.external_id, m.name, m.party, m.uf,
+      p.url_text, p.text_file, p.party as party_then, p.uf as uf_then, m.external_id, m.name, m.party, m.uf,
       ts_headline('pt_unaccent', concat_ws(' … ', nullif(p.summary, ''), nullif(p.text, '')), q.hq, ${HEADLINE}) as snippet
     from (${hits} order by ${inner} limit ${a.limit ?? 20} offset ${a.offset ?? 0}) p
     join parl_members m on m.id = p.member_id, q
@@ -239,7 +274,7 @@ export async function searchSpeeches(
     total,
     rows: r.rows.map((x) => ({
       id: x.id, startsAt: x.starts_at, phase: x.phase, kind: x.kind, summary: x.summary, text: x.text,
-      member: { externalId: x.external_id, name: x.name, party: x.party, uf: x.uf }, snippet: x.snippet,
+      urlText: x.url_text, textFile: x.text_file, member: { externalId: x.external_id, name: x.name, party: x.party, uf: x.uf }, snippet: x.snippet,
       partyThen: x.party_then, ufThen: x.uf_then,
     })),
   };
@@ -307,7 +342,7 @@ type RollCallHitSql = {
 
 /** Full-text search over roll calls (bill summary + what was voted), paged; never any deputy's vote. Days inclusive. */
 export async function searchRollCalls(
-  db: Db, a: { terms: string[]; from?: string; to?: string; sort?: SortOrder; limit?: number; offset?: number },
+  db: Db, a: { terms: string[]; from?: string; to?: string; sort?: SortOrder; limit?: number; offset?: number; phrase?: string },
 ): Promise<{ total: number; rows: RollCallHit[] }> {
   const q = tsQuery(a.terms);
   if (!q) return { total: 0, rows: [] };
@@ -315,7 +350,7 @@ export async function searchRollCalls(
     [a.from ? sql`and r.date >= ${a.from}::date` : sql``, a.to ? sql`and r.date <= ${a.to}::date` : sql``],
     sql` `,
   );
-  const hits = sql`select r.*, ts_rank_cd(r.tsv, q.q) as rank from parl_roll_calls r, q
+  const hits = sql`select r.*, ${rankSql("r", a.phrase)} as rank from parl_roll_calls r, q
     where numnode(q.q) > 0 and r.tsv @@ q.q and r.yes + r.no + r.other > 0 ${dates}`;
   const c = await db.execute<{ n: number }>(sql`with q as (select (${q}) as q) select count(*)::int as n from (${hits}) h`);
   const total = c.rows[0]?.n ?? 0;

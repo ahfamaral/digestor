@@ -1,12 +1,18 @@
 import type { VoteRow as Vote } from "@digestor/core/server";
-import { formatDay, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import Link from "next/link";
+import { formatDay, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { rollCallHref } from "@/lib/monitor/params";
 import { billUrl } from "@/lib/monitor/search";
+import { isRequestVote } from "@/lib/monitor/votes";
 import { ExternalLink } from "./ExternalLink";
 
-/** One recorded vote: the roll call (opens its page; the bill on the Câmara's site), what was voted, and the vote exactly as published. */
-export function VoteRow({ locale, vote: v }: { locale: MonitorLocale; vote: Vote }) {
+/**
+ * One recorded vote: what was voted (the roll call's published description) first, then the bill it belongs to (opens
+ * the roll-call page; the bill on the Câmara's site) and its summary, and the vote exactly as published. A vote on a
+ * request is marked, since a "Não" on it is not a vote against the bill. `from`: the deputy whose page lists it, so the
+ * roll-call page leads back to them.
+ */
+export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote: Vote; from?: number }) {
   return (
     <li className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:gap-x-4">
       <div className="grid min-w-0 gap-1">
@@ -14,7 +20,7 @@ export function VoteRow({ locale, vote: v }: { locale: MonitorLocale; vote: Vote
           <time dateTime={v.date} className="font-mono text-xs text-muted-foreground">
             {formatDay(v.date, locale)}
           </time>
-          <Link href={rollCallHref(v.rollCallId)} className="font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href={rollCallHref(v.rollCallId, { from })} className="font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
             {v.billLabel ?? tm(locale, "rollCall.noBill")}
           </Link>
           {v.billLabel && v.billId && (
@@ -22,15 +28,16 @@ export function VoteRow({ locale, vote: v }: { locale: MonitorLocale; vote: Vote
               {tm(locale, "member.officialRecord")}
             </ExternalLink>
           )}
+          {isRequestVote(v.description, v.billLabel) && (
+            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{tm(locale, "votes.request")}</span>
+          )}
         </div>
-        {v.billSummary && (
-          <p lang="pt-BR" className="break-words">
-            {v.billSummary}
-          </p>
-        )}
-        <p lang="pt-BR" className="break-words whitespace-pre-line text-muted-foreground">
+        <p lang="pt-BR" className="break-words whitespace-pre-line">
           {v.description}
         </p>
+        {v.billSummary && (
+          <p lang="pt-BR" className="break-words text-muted-foreground">{v.billSummary}</p>
+        )}
       </div>
       <span lang="pt-BR" className="h-fit w-fit rounded-full border border-border bg-stone-100 px-2.5 py-0.5 text-xs font-semibold text-foreground sm:self-start">{v.vote}</span>
     </li>

@@ -7,7 +7,7 @@ import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
  */
 export function Presence({ locale, presence, year }: { locale: MonitorLocale; presence: PresenceRecord | null; year: number }) {
   return (
-    <section className="grid gap-2" aria-labelledby="presence-title">
+    <section id="presence" tabIndex={-1} className="grid scroll-mt-14 gap-2 outline-none" aria-labelledby="presence-title">
       <h2 id="presence-title" className="text-base font-semibold">{tm(locale, "presence.title")}</h2>
       {presence === null ? (
         <p className="text-sm text-muted-foreground">{tm(locale, "presence.unavailable")}</p>
@@ -16,7 +16,7 @@ export function Presence({ locale, presence, year }: { locale: MonitorLocale; pr
           <p>{tm(locale, "presence.sentence", { present: presence.present, sessions: presence.sessions, year })}</p>
           {presence.missing.length > 0 && (
             <details>
-              <summary className="w-fit cursor-pointer rounded font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+              <summary className="w-fit cursor-pointer rounded font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
                 {tm(locale, "presence.noneRecorded", { n: presence.missing.length })}
               </summary>
               <ul className="mt-2 grid gap-1">

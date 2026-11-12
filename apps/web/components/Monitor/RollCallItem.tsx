@@ -6,13 +6,16 @@ import { billUrl } from "@/lib/monitor/search";
 import { ExternalLink } from "./ExternalLink";
 import { Highlighted } from "./Highlighted";
 
-/** A roll call in search results: what was voted (opens the roll-call page), the bill on the Câmara's site, the totals. */
-export function RollCallItem({ locale, rollCall: r }: { locale: MonitorLocale; rollCall: RollCallHit }) {
+/**
+ * A roll call in search results: what was voted (opens the roll-call page), the bill on the Câmara's site, the totals.
+ * `back`: the search's address, so the roll-call page leads back to it.
+ */
+export function RollCallItem({ locale, rollCall: r, back }: { locale: MonitorLocale; rollCall: RollCallHit; back?: string }) {
   const n = (v: number) => formatCount(v, locale);
   return (
     <li className="grid gap-1.5 px-4 py-3 text-sm">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <Link href={rollCallHref(r.id)} className="font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+        <Link href={rollCallHref(r.id, { back })} className="font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
           {r.billLabel ?? tm(locale, "rollCall.noBill")}
         </Link>
         {r.billLabel && r.billId && (

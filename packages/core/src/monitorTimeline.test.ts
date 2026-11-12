@@ -30,6 +30,16 @@ describe("partyTimeline", () => {
     expect(inOfficePeriods(bands)).toEqual([{ from: "2023-02-01", to: "2025-03-03" }, { from: "2025-04-01", to: null }]);
   });
 
+  it("a substitute's wait before taking office has no description (the start row is a placeholder, not an exit)", () => {
+    const rows = [
+      h("2023-02-01T00:00", "REPUBLICANOS", null, "Nome no início da legislatura / Partido no início da legislatura"),
+      h("2023-09-13T18:06", "REPUBLICANOS", "CONVOCADO", "DIVERSO - Convocação Eleito ou Suplente - Aguardando Convocação de Suplente"),
+      h("2023-09-13T18:44", "REPUBLICANOS", "Exercício", "Entrada - Posse de Suplente - Posse como Suplente"),
+    ];
+    const [wait] = partyTimeline(rows);
+    expect(wait).toMatchObject({ inOffice: false, from: "2023-02-01", to: "2023-09-13", description: "" });
+  });
+
   it("rows before the legislature are clipped to it; no rows, no bands", () => {
     expect(partyTimeline([h("2019-02-01T10:00", "PSOL", "Exercício")])[0]!.from).toBe("2023-02-01");
     expect(partyTimeline([])).toEqual([]);

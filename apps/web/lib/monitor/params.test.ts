@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  deputyHref, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam, type DeputyParams, type LandingParams,
+  backToSearch, deputyHref, directoryHref, fromDeputy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam, type DeputyParams, type LandingParams,
 } from "./params";
 
 const DEFAULT_LANDING: LandingParams = {
   q: "", show: { speeches: true, rollCalls: true }, from: null, to: null, party: null, uf: null, phase: null, inOffice: false,
-  sort: "best", year: 2026, p: 0, rp: 0,
+  sort: "best", year: 2026, p: 0, rp: 0, exact: false,
 };
 
 /** A URL's query as Next hands it to a page: repeated keys become arrays. */
@@ -81,11 +81,11 @@ describe("landingHref", () => {
   it("round-trips, keys in a fixed order", () => {
     const x: LandingParams = {
       q: "violência contra a mulher", show: { speeches: false, rollCalls: true }, from: "2026-03-01", to: "2026-06-30", party: "PSOL",
-      uf: "RS", phase: "Breves Comunicações", inOffice: true, sort: "new", year: 2026, p: 2, rp: 1,
+      uf: "RS", phase: "Breves Comunicações", inOffice: true, sort: "new", year: 2026, p: 2, rp: 1, exact: true,
     };
     const href = landingHref(x);
     expect([...new URLSearchParams(href.split("?")[1]).keys()]).toEqual([
-      "q", "show", "from", "to", "party", "uf", "phase", "inOffice", "sort", "p", "rp",
+      "q", "exact", "show", "from", "to", "party", "uf", "phase", "inOffice", "sort", "p", "rp",
     ]);
     expect(parseLanding(spOf(href))).toEqual(x);
     const both = { ...x, show: { speeches: true, rollCalls: true } };
@@ -95,8 +95,10 @@ describe("landingHref", () => {
 
 describe("parseDeputy and deputyHref", () => {
   it("defaults and invalid values", () => {
-    const d: DeputyParams = { q: "", rel: "by", from: null, to: null, phase: null, sort: "best", year: 2026, p: 0, btype: null, bp: 0 };
+    const d: DeputyParams = { q: "", rel: "by", from: null, to: null, phase: null, sort: "best", year: 2026, p: 0, btype: null, bp: 0, vp: 0, exact: false };
     expect(parseDeputy({})).toEqual(d);
+    expect(parseDeputy({ vp: "2" }).vp).toBe(2);
+    expect(parseDeputy({ vp: "x" }).vp).toBe(0);
     expect(parseDeputy({ rel: "x" }).rel).toBe("by");
     expect(parseDeputy({ rel: "mentions" }).rel).toBe("mentions");
     expect(parseDeputy({ btype: "RCP" }).btype).toBe("RCP");
@@ -107,17 +109,42 @@ describe("parseDeputy and deputyHref", () => {
 
   it("deputyHref omits defaults and round-trips", () => {
     expect(deputyHref(204407)).toBe("/monitor/deputados/204407");
-    const x: DeputyParams = { q: "Paulão", rel: "mentions", from: "2026-02-01", to: "2026-05-01", phase: "Ordem do Dia", sort: "new", year: 2026, p: 1, btype: "PL", bp: 3 };
+    const x: DeputyParams = { q: "Paulão", rel: "mentions", from: "2026-02-01", to: "2026-05-01", phase: "Ordem do Dia", sort: "new", year: 2026, p: 1, btype: "PL", bp: 3, vp: 2, exact: true };
     const href = deputyHref(204407, x);
     expect(href.startsWith("/monitor/deputados/204407?q=")).toBe(true);
-    expect([...new URLSearchParams(href.split("?")[1]).keys()]).toEqual(["q", "rel", "from", "to", "phase", "sort", "p", "btype", "bp"]);
+    expect([...new URLSearchParams(href.split("?")[1]).keys()]).toEqual(["q", "exact", "rel", "from", "to", "phase", "sort", "p", "btype", "bp", "vp"]);
     expect(parseDeputy(spOf(href))).toEqual(x);
+  });
+});
+
+describe("parseDirectory and directoryHref", () => {
+  it("today's party and state, former deputies on request; invalid values ignored", () => {
+    expect(parseDirectory({})).toEqual({ party: null, uf: null, former: false });
+    expect(parseDirectory({ party: "PC do B", uf: "SP", former: "1" })).toEqual({ party: "PC do B", uf: "SP", former: true });
+    expect(parseDirectory({ party: "';--", uf: "sp", former: "true" })).toEqual({ party: null, uf: null, former: false });
+    expect(directoryHref()).toBe("/monitor/deputados");
+    const x = { party: "PSOL", uf: "RS", former: true };
+    expect(directoryHref(x)).toBe("/monitor/deputados?party=PSOL&uf=RS&former=1");
+    expect(parseDirectory(spOf(directoryHref(x)))).toEqual(x);
   });
 });
 
 describe("roll-call links", () => {
   it("rollCallHref and isRollCallId", () => {
     expect(rollCallHref("2449741-72")).toBe("/monitor/votacoes/2449741-72");
+    // opened from a deputy's page: the back link names that deputy
+    expect(rollCallHref("2449741-72", { from: 204407 })).toBe("/monitor/votacoes/2449741-72?from=204407");
+    // opened from the search results: the way back keeps the search (browsers without the Navigation API too)
+    const back = "/monitor?q=sa%C3%BAde&p=2";
+    expect(rollCallHref("2449741-72", { back })).toBe(`/monitor/votacoes/2449741-72?back=${encodeURIComponent(back)}`);
+    expect(backToSearch({ back })).toBe(back);
+    expect(backToSearch({ back: "/monitor" })).toBe("/monitor");
+    for (const bad of [undefined, "", "https://evil.example/monitor", "//evil.example", "/monitor/../s/1", "/monitorx", "/monitor?q=a#x", "/s/1", `/monitor?q=${"a".repeat(1200)}`]) {
+      expect(backToSearch({ back: bad })).toBeNull();
+    }
+    expect(fromDeputy({ from: "204407" })).toBe(204407);
+    expect(fromDeputy({ from: ["204407", "1"] })).toBe(204407);
+    for (const bad of [undefined, "", "0", "-1", "1e3", "abc", "1234567890", "1; drop"]) expect(fromDeputy({ from: bad })).toBeNull();
     expect(isRollCallId("2449741-72")).toBe(true);
     expect(isRollCallId("2449741")).toBe(false);
     expect(isRollCallId("1-1; drop")).toBe(false);

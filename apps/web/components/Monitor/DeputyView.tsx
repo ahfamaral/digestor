@@ -1,9 +1,10 @@
+import Link from "next/link";
 import type { TimelineBand } from "@digestor/core";
 import type { MemberBill, MemberRow, Presence as PresenceRecord, ProfileInput, SpeechHit, SpeechRow, VoteRow as Vote } from "@digestor/core/server";
 import { BackLink } from "@/components/BackLink";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
-import { deputyHref, MONITOR_YEARS, type DeputyParams } from "@/lib/monitor/params";
-import { deputyUrl, MEMBER_PAGE, type Searched } from "@/lib/monitor/search";
+import { deputyHref, directoryHref, MONITOR_YEARS, type DeputyParams } from "@/lib/monitor/params";
+import { deputyUrl, MEMBER_PAGE, VOTE_PAGE, type Searched } from "@/lib/monitor/search";
 import { AuthoredBills } from "./AuthoredBills";
 import { DeputyCombobox } from "./DeputyCombobox";
 import { DeputySearch } from "./DeputySearch";
@@ -15,13 +16,20 @@ import { PartyTimeline } from "./PartyTimeline";
 import { Positions } from "./Positions";
 import { Presence } from "./Presence";
 import { ProfileLine } from "./ProfileLine";
+import { ScrollToHash } from "./ScrollToHash";
 import { SearchedFor, SearchingStatus } from "./SearchedFor";
+import { SectionNav } from "./SectionNav";
 import { Section } from "./Section";
 import { SortSwitch } from "./SortSwitch";
 import { SpeechItem } from "./SpeechItem";
 import { TopicNote } from "./TopicNote";
 import { VoteRow } from "./VoteRow";
 import { YearSelect } from "./YearSelect";
+
+/** The speech search, its sort and its pages land here instead of the top of the page. */
+const SPEECHES = "speeches";
+/** The section links at the top (Fronts only when the deputy joined any). */
+const NAV = ["speeches", "bills", "votes", "presence", "fronts"] as const;
 
 export type DeputyWorkspace = {
   profile: ProfileInput; bands: TimelineBand[]; presence: PresenceRecord | null;
@@ -31,7 +39,8 @@ export type DeputyWorkspace = {
 /**
  * A deputy's workspace, all official records: header and profile, party timeline, positions, the speech search (their
  * speeches, or others' mentioning them), authored bills, recorded votes, presence and fronts. Speeches and votes are
- * never paired. `searching`: the Suspense fallback while a query is translated and run (records hidden meanwhile).
+ * never paired. `searching`: the Suspense fallback while a query is translated and run (the records below the search hidden
+ * meanwhile; header, timeline and positions stay).
  */
 export function DeputyView({
   locale, member, params, searched, speeches, votes, profile, bands, presence, bills, phases, today, searching = false,
@@ -46,9 +55,21 @@ export function DeputyView({
   return (
     <div lang={locale} className="grid gap-8">
       <div className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <BackLink href="/monitor" label={tm(locale, "member.back")} />
-          <div className="flex items-center gap-3">
+          {/* Another deputy: the first thing on the page, above the header (owner, 2026-11-11). */}
+          <div className="order-last flex w-full flex-col items-start gap-x-3 gap-y-1.5 sm:order-none sm:w-auto sm:max-w-md sm:flex-1 sm:flex-row sm:items-center">
+            <div className="w-full min-w-0 sm:flex-1">
+              <DeputyCombobox locale={locale} size="sm" label={tm(locale, "landing.findDeputy")} />
+            </div>
+            <Link
+              href={directoryHref()}
+              className="shrink-0 rounded text-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-stone-500"
+            >
+              {tm(locale, "directory.browseShort")}
+            </Link>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
             <YearSelect locale={locale} year={params.year} hrefs={yearHrefs} />
             <LanguageSwitch locale={locale} back={deputyHref(id, params)} />
           </div>
@@ -71,17 +92,19 @@ export function DeputyView({
             </ExternalLink>
           </div>
         </div>
-        <div className="grid gap-1 sm:max-w-sm">
-          <DeputyCombobox locale={locale} size="sm" label={tm(locale, "landing.findDeputy")} />
-        </div>
         <p className="text-xs text-muted-foreground">{tm(locale, "dataNote")}</p>
       </div>
 
-      {!searching && <PartyTimeline locale={locale} bands={bands} today={today} />}
-      {!searching && <Positions locale={locale} positions={profile.positions} today={today} />}
+      <SectionNav
+        label={tm(locale, "nav.label")}
+        links={NAV.filter((n) => n !== "fronts" || profile.fronts.length > 0).map((n) => ({ id: n, text: tm(locale, `nav.${n}`) }))}
+      />
 
-      <section className="grid gap-3" aria-labelledby="speeches-title">
-        <h2 id="speeches-title" className="sr-only">{tm(locale, "sections.speeches")}</h2>
+      {/* Shown while searching too: the page above the speech search keeps its height, so #speeches stays in view. */}
+      <PartyTimeline locale={locale} bands={bands} today={today} />
+      <Positions locale={locale} positions={profile.positions} today={today} />
+
+      <section id={SPEECHES} tabIndex={-1} className="grid scroll-mt-14 gap-3 outline-none" aria-label={tm(locale, "sections.speeches")}>
         <DeputySearch locale={locale} externalId={id} params={params} phases={phases} />
         {searching && <SearchingStatus locale={locale} />}
         {searched && <SearchedFor locale={locale} searched={searched} />}
@@ -89,7 +112,7 @@ export function DeputyView({
         {!searching && (
           <>
             {(params.q || mentions) && (
-              <SortSwitch locale={locale} sort={params.sort} href={(sort) => deputyHref(id, { ...params, sort, p: 0 })} />
+              <SortSwitch locale={locale} sort={params.sort} href={(sort) => `${deputyHref(id, { ...params, sort, p: 0 })}#${SPEECHES}`} />
             )}
             <div className="grid">
               <Section
@@ -101,7 +124,7 @@ export function DeputyView({
                   <SpeechItem key={s.id} locale={locale} speech={s} showMember={mentions} />
                 ))}
               </Section>
-              <Pager locale={locale} page={params.p} size={MEMBER_PAGE} total={speeches.total} href={(p) => deputyHref(id, { ...params, p })} />
+              <Pager locale={locale} page={params.p} size={MEMBER_PAGE} total={speeches.total} href={(p) => `${deputyHref(id, { ...params, p })}#${SPEECHES}`} label={tm(locale, "paging.speeches")} />
             </div>
           </>
         )}
@@ -110,18 +133,23 @@ export function DeputyView({
       {!searching && (
         <>
           <AuthoredBills locale={locale} externalId={id} params={params} bills={bills} />
-          <Section
-            title={tm(locale, "sections.votes")}
-            count={votes.total ? formatCount(votes.total, locale) : undefined}
-            note={tm(locale, "votes.note")}
-            empty={votes.total ? null : tm(locale, "empty.memberVotes")}
-          >
-            {votes.rows.map((v) => (
-              <VoteRow key={v.rollCallId} locale={locale} vote={v} />
-            ))}
-          </Section>
+          <div className="grid">
+            <Section
+              id="votes"
+              title={tm(locale, "sections.votes")}
+              count={votes.total ? formatCount(votes.total, locale) : undefined}
+              note={tm(locale, "votes.note")}
+              empty={votes.total ? null : tm(locale, "empty.memberVotes")}
+            >
+              {votes.rows.map((v) => (
+                <VoteRow key={v.rollCallId} locale={locale} vote={v} from={id} />
+              ))}
+            </Section>
+            <Pager locale={locale} page={params.vp} size={VOTE_PAGE} total={votes.total} href={(vp) => `${deputyHref(id, { ...params, vp })}#votes`} label={tm(locale, "paging.votes")} />
+          </div>
           <Presence locale={locale} presence={presence} year={params.year} />
           <Fronts locale={locale} fronts={profile.fronts} />
+          <ScrollToHash />
         </>
       )}
     </div>

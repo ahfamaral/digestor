@@ -29,7 +29,7 @@ export function Positions({ locale, positions, today }: { locale: MonitorLocale;
       {leading.length > 0 && <ul className="divide-y divide-border rounded-xl border border-border bg-white">{leading.map(row)}</ul>}
       {members.length > 0 && (
         <details className="rounded-xl border border-border bg-white">
-          <summary className="cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <summary className="cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-stone-500">
             {bodies === 1 ? tm(locale, "positions.membersOne") : tm(locale, "positions.members", { n: bodies })}
           </summary>
           <ul className="divide-y divide-border border-t border-border">{members.map(row)}</ul>

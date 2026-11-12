@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { landingHref, parseDeputy, parseLanding, type LandingParams } from "@/lib/monitor/params";
+import { landingHref, parseDeputy, parseDirectory, parseLanding, type LandingParams } from "@/lib/monitor/params";
 import { DeputyView } from "./DeputyView";
+import { DirectoryView } from "./DirectoryView";
 import { Highlighted } from "./Highlighted";
 import { AuthoredBills } from "./AuthoredBills";
 import { LandingView } from "./LandingView";
@@ -12,10 +13,15 @@ import { ProfileLine } from "./ProfileLine";
 import { Pager } from "./Pager";
 import { RollCallItem } from "./RollCallItem";
 import { RollCallView } from "./RollCallView";
+import { SearchedFor } from "./SearchedFor";
 import { SpeechItem } from "./SpeechItem";
 import { VoteRow } from "./VoteRow";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  usePathname: () => "/monitor",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 const member = { id: 1, externalId: 999, name: "Suplente Teste", party: "PT", uf: "SP", photoUrl: null, inOffice: false };
 const emptyWorkspace = {
@@ -34,13 +40,13 @@ describe("monitor components", () => {
   it("VoteRow shows the vote label exactly as published", () => {
     const html = renderToStaticMarkup(
       <ul>
-        <VoteRow locale="en" vote={{ rollCallId: "2449741-72", date: "2026-03-10", description: "Mantido o texto.", billId: 2449741, billLabel: "PL 2942/2024", billSummary: "Ementa", vote: "Artigo 17" }} />
+        <VoteRow locale="en" from={204407} vote={{ rollCallId: "2449741-72", date: "2026-03-10", description: "Mantido o texto.", billId: 2449741, billLabel: "PL 2942/2024", billSummary: "Ementa", vote: "Artigo 17" }} />
       </ul>,
     );
     expect(html).toContain(">Artigo 17<");
     expect(html).toContain('href="https://www.camara.leg.br/propostas-legislativas/2449741"');
-    // a vote row opens the roll-call page
-    expect(html).toContain('href="/monitor/votacoes/2449741-72"');
+    // a vote row opens the roll-call page, which then offers the way back to this deputy
+    expect(html).toContain('href="/monitor/votacoes/2449741-72?from=204407"');
   });
 
   it("a deputy with no speeches and no votes shows both empty states", () => {
@@ -53,26 +59,147 @@ describe("monitor components", () => {
     expect(html).toContain('href="https://www.camara.leg.br/deputados/999"');
   });
 
+  it("the deputy page lists its sections at the top and pages the votes", () => {
+    const vote = (i: number) => ({ rollCallId: `1-${i}`, date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: null, billSummary: "", vote: "Sim" });
+    const html = renderToStaticMarkup(
+      <DeputyView
+        locale="en" member={{ ...member, inOffice: true }} params={parseDeputy({})} searched={null} speeches={{ total: 0, rows: [] }}
+        {...emptyWorkspace} profile={{ ...emptyWorkspace.profile, fronts: ["Frente A"] }}
+        votes={{ total: 45, rows: Array.from({ length: 20 }, (_, i) => vote(i)) }}
+      />,
+    );
+    const nav = html.slice(html.indexOf('aria-label="On this page"'));
+    for (const id of ["speeches", "bills", "votes", "presence", "fronts"]) expect(nav).toContain(`href="#${id}"`);
+    expect(html).toContain('id="presence"');
+    expect(html).toContain('id="fronts"');
+    expect(html).toContain('href="/monitor/deputados/999?vp=1#votes"');
+    expect(html).toContain("1–20 of 45");
+    // no Fronts link when there are none
+    const none = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={parseDeputy({})} searched={null} speeches={{ total: 0, rows: [] }} votes={{ total: 0, rows: [] }} {...emptyWorkspace} />,
+    );
+    expect(none).not.toContain('href="#fronts"');
+  });
+
   it("an untranscribed speech says the full text is not published yet", () => {
     const html = renderToStaticMarkup(
       <DeputyView
         locale="en" member={{ ...member, inOffice: true }} params={parseDeputy({})} searched={null} votes={{ total: 0, rows: [] }} {...emptyWorkspace}
-        speeches={{ total: 1, rows: [{ id: 1, startsAt: "2026-10-14T20:12", phase: "Breves Comunicações", kind: null, summary: "Resumo.", text: "" }] }}
+        speeches={{ total: 1, rows: [{ id: 1, startsAt: "2026-10-14T20:12", phase: "Breves Comunicações", kind: null, summary: "Resumo.", text: "", urlText: null, textFile: false }] }}
       />,
     );
     expect(html).toContain("Full text not published yet");
     expect(html).not.toContain("Not in office now");
   });
 
-  const searched = { q: "feminicídio", terms: ["feminicídio"], translatedFrom: null, notice: null };
+  const searched = { q: "feminicídio", terms: ["feminicídio"], translatedFrom: null, notice: null, exact: false };
   const hit = {
     id: 7, startsAt: "2026-04-08T11:28", phase: "Comissão Geral", kind: null, summary: "RESUMO OFICIAL", text: "texto",
-    member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS", partyThen: "PSOL", ufThen: "RS",
+    urlText: null, textFile: false, member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS", partyThen: "PSOL", ufThen: "RS",
   };
 
   const facets = { parties: ["PL", "PSOL"], ufs: ["RS", "SP"], phases: ["Breves Comunicações"] };
   const landing = (o: Partial<LandingParams> = {}) => ({ ...parseLanding({}), ...o });
   const rollCall = { id: "2449741-72", date: "2026-07-08", description: "Aprovado o projeto", yes: 300, no: 100, other: 2, billId: 2449741, billLabel: "PL 2942/2024", snippet: "o \u0001projeto\u0002" };
+
+  it("Searched for names the typed words and labels the terms added automatically", () => {
+    const more = renderToStaticMarkup(<SearchedFor locale="en" searched={{ ...searched, q: "saúde", terms: ["saúde", "sistema de saúde", "assistência médica"] }} />);
+    expect(more).toContain("Searched for: saúde");
+    expect(more).toContain("plus related terms added automatically: sistema de saúde, assistência médica");
+    const translated = renderToStaticMarkup(<SearchedFor locale="en" searched={{ ...searched, q: "health", terms: ["saúde"], translatedFrom: "health" }} />);
+    expect(translated).toContain("Searched for: saúde (from “health”)");
+    expect(translated).not.toContain("related terms");
+    const exact = renderToStaticMarkup(<SearchedFor locale="pt-BR" searched={{ ...searched, q: "reforma tributária", terms: ["reforma tributária"], exact: true }} />);
+    expect(exact).toContain("Buscado exatamente: reforma tributária");
+  });
+
+  it("the topic form offers exact words and marks the speech-only filters", () => {
+    const html = renderToStaticMarkup(<LandingView locale="en" params={landing({ exact: true })} facets={facets} result={null} />);
+    expect(html).toMatch(/<input[^>]*name="exact"[^>]*checked=""[^>]*value="1"/);
+    expect(html).toContain("Exact words only");
+    expect(html).toContain("Speeches only");
+    // the note above roll-call results when speech-only filters are set and only roll calls are shown
+    const only = renderToStaticMarkup(
+      <LandingView locale="en" params={landing({ q: "saúde", party: "PL", show: { speeches: false, rollCalls: true } })} facets={facets} result={{ ...searched, q: "saúde", speeches: null, rollCalls: { total: 1, rows: [rollCall] } }} />,
+    );
+    expect(only).toContain("Party, state, phase and “in office” filter speeches only; roll calls ignore them.");
+  });
+
+  it("results start with their counts, each jumping to its group", () => {
+    const html = renderToStaticMarkup(
+      <LandingView locale="en" params={landing({ q: "saúde" })} facets={facets} result={{ ...searched, q: "saúde", speeches: { total: 1556, rows: [] }, rollCalls: { total: 1, rows: [rollCall] } }} />,
+    );
+    expect(html).toContain('href="#speeches"');
+    expect(html).toContain("1,556 speeches");
+    expect(html).toContain('href="#rollcalls"');
+    expect(html).toContain("1 roll call");
+    expect(html).toContain('id="rollcalls"');
+  });
+
+  it("an empty topic search says what to type", () => {
+    const html = renderToStaticMarkup(<LandingView locale="en" params={landing({ party: "PL" })} facets={facets} result={null} askedEmpty />);
+    expect(html).toContain("Type a topic to search; the filters narrow it.");
+    expect(renderToStaticMarkup(<LandingView locale="en" params={landing()} facets={facets} result={null} />)).not.toContain("Type a topic to search");
+  });
+
+  it("landing links the directory of all deputies under the name box, with the count in office", () => {
+    const html = renderToStaticMarkup(<LandingView locale="en" params={landing()} facets={facets} result={null} deputies={513} />);
+    expect(html).toContain('href="/monitor/deputados"');
+    expect(html).toContain("Browse all deputies (513)");
+    const pt = renderToStaticMarkup(<LandingView locale="pt-BR" params={landing()} facets={facets} result={null} deputies={513} />);
+    expect(pt).toContain("Ver todos os deputados (513)");
+  });
+
+  it("a deputy's page links the directory next to the name box", () => {
+    const html = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={parseDeputy({})} speeches={{ total: 0, rows: [] }} searched={null} votes={{ total: 0, rows: [] }} {...emptyWorkspace} />,
+    );
+    expect(html).toMatch(/href="\/monitor\/deputados"[^>]*>All deputies</);
+  });
+
+  describe("directory", () => {
+    const dep = (externalId: number, name: string, party: string, uf: string, inOffice = true) => ({ externalId, name, party, uf, photoUrl: null, inOffice });
+    const members = [
+      dep(1, "Ana Paula", "PT", "SP"), dep(2, "Átila Lira", "PP", "PI"), dep(3, "Bia Kicis", "PL", "DF"), dep(4, "Bruno Ganem", "PT", "SP", false),
+      dep(5, "Zé Silva", "SOLIDARIEDADE", "MG"),
+    ];
+
+    it("lists the deputies in office by letter, each linking their page, with a letter row", () => {
+      const html = renderToStaticMarkup(<DirectoryView locale="en" params={parseDirectory({})} members={members} />);
+      expect(html).toContain("<h1");
+      expect(html).toContain("All deputies</h1>");
+      expect(html).toContain("4 deputies");
+      expect(html).toContain('href="/monitor/deputados/2"');
+      expect(html).not.toContain("Bruno Ganem");
+      // Átila sits under A, accents ignored
+      expect(html.indexOf("Átila Lira")).toBeGreaterThan(html.indexOf('id="letter-A"'));
+      expect(html.indexOf("Átila Lira")).toBeLessThan(html.indexOf('id="letter-B"'));
+      expect(html).toContain('aria-label="Jump to a letter"');
+      expect(html).toContain('href="#letter-Z"');
+      expect(html).not.toContain("Clear filters");
+      // alphabetical only: nothing about activity
+      expect(html.replace(/<[^>]*>/g, " ")).not.toMatch(/speech|vote|%|rank/i);
+    });
+
+    it("filters by today's party and state, and adds former deputies on request", () => {
+      const html = renderToStaticMarkup(<DirectoryView locale="en" params={parseDirectory({ party: "PT", former: "1" })} members={members} />);
+      expect(html).toContain("Ana Paula");
+      expect(html).toContain("Bruno Ganem");
+      expect(html).toContain("Not in office now");
+      expect(html).not.toContain("Bia Kicis");
+      expect(html).toContain("2 deputies");
+      expect(html).toContain('href="/monitor/deputados"');
+      expect(html).toContain("Clear filters");
+    });
+
+    it("says when nothing matches, in Portuguese too", () => {
+      const html = renderToStaticMarkup(<DirectoryView locale="pt-BR" params={parseDirectory({ uf: "AC" })} members={members} />);
+      expect(html).toContain("Nenhum deputado corresponde a estes filtros.");
+      expect(html).toContain("0 deputados");
+      expect(html).not.toContain("Ir para uma letra");
+      expect(html).toContain('lang="pt-BR"');
+    });
+  });
 
   it("landing without a query shows both doors and no results", () => {
     const html = renderToStaticMarkup(<LandingView locale="en" params={landing()} facets={facets} result={null} />);
@@ -81,6 +208,27 @@ describe("monitor components", () => {
     expect(html).toContain('role="combobox"');
     expect(html).not.toContain("No speeches match.");
     expect(html).not.toContain("Speeches</h2>");
+  });
+
+  it("a speech's summary is labelled as the Câmara's and links to its official text", () => {
+    const row = { id: 3, startsAt: "2026-02-24T19:08", phase: "Breves Comunicações", kind: null, summary: "A Deputada denunciou.", text: "A SRA. X - Presidente…", urlText: "https://imagem.camara.gov.br/dc_20b.asp?Datain=25%2F2%2F2026&txPagina=152", textFile: false };
+    const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>);
+    expect(html).toContain("Câmara summary");
+    expect(html.indexOf("Câmara summary")).toBeLessThan(html.indexOf("A Deputada denunciou."));
+    expect(html).toContain('href="https://imagem.camara.gov.br/dc_20b.asp?Datain=25%2F2%2F2026&amp;txPagina=152"');
+    expect(html).toContain("Official record");
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="pt-BR" speech={row} /></ul>)).toContain("Resumo da Câmara");
+    // no link without one
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={{ ...row, urlText: null }} /></ul>)).not.toContain("Official record");
+  });
+
+  it("a speech published as an attached file says so instead of showing its text", () => {
+    const row = { id: 4, startsAt: "2026-10-13T13:55", phase: "Ordem do Dia", kind: null, summary: "", text: "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO X (SEM REGISTRO TAQUIGRÁFICO).", urlText: "https://imagem.camara.gov.br/x", textFile: true };
+    const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>);
+    expect(html).toContain("The Câmara published this speech as an attached file; read it in the official record.");
+    expect(html).not.toContain("Show full text");
+    expect(html).not.toContain("Full text not published yet");
+    expect(html).toContain('href="https://imagem.camara.gov.br/x"');
   });
 
   it("a speech match shows the highlighted snippet, the party on the day and \"now PL\" when it changed", () => {
@@ -166,8 +314,11 @@ describe("monitor components", () => {
     const html = renderToStaticMarkup(<PartyTimeline locale="en" bands={bands} today="2026-11-11" />);
     expect(html.indexOf("UNIÃO")).toBeLessThan(html.indexOf("PL"));
     expect(html).toContain("Secretário de Estado");
-    expect(html).toContain('tabindex="0"');
     expect(html).toContain("since Apr 29, 2026");
+    // the dates are printed for every width (not hover-only): the list shows on desktop too; the bar is a picture of it
+    expect(html).not.toContain("sm:hidden");
+    expect(html).toMatch(/<div aria-hidden="true" class="hidden sm:block/);
+    expect(html).not.toContain('tabindex="0"');
     expect(renderToStaticMarkup(<PartyTimeline locale="en" bands={[]} today="2026-11-11" />)).toBe("");
   });
 
@@ -219,10 +370,19 @@ describe("monitor components", () => {
       ],
     };
     const html = renderToStaticMarkup(<AuthoredBills locale="en" externalId={204407} params={parseDeputy({})} bills={bills} />);
-    expect(html).toContain("REQ 2");
-    expect(html).toContain('href="/monitor/deputados/204407?btype=RCP"');
-    expect(html.indexOf("Bills and requests")).toBeLessThan(html.indexOf("REQ 2"));
+    // Counts read as quantities: in parentheses, on the heading and on each type.
+    expect(html).toContain("REQ</abbr> (2)");
+    expect(html).toContain("All (3)");
+    expect(html).toMatch(/Bills and requests<span[^>]*>\(3\)</);
+    // A type filter or a page link lands on the list's heading, not the top of the page.
+    expect(html).toContain('href="/monitor/deputados/204407?btype=RCP#bills"');
+    expect(html).toContain('id="bills"');
+    expect(html.indexOf("Bills and requests")).toBeLessThan(html.indexOf("REQ</abbr> (2)"));
     expect(html).toContain("RCP 1/2026");
+    // the codes are explained: their official names on the chips and in a list that works on touch too
+    expect(html).toContain('<abbr title="Requerimento"');
+    expect(html).toContain("What the codes mean");
+    expect(html).toMatch(/RCP<\/dt><dd[^>]*>Requerimento de Instituição de CPI/);
     expect(html).toContain("co-author");
     expect(html.match(/co-author/g)).toHaveLength(1);
     expect(renderToStaticMarkup(<AuthoredBills locale="en" externalId={204407} params={parseDeputy({})} bills={{ total: 0, byType: [], rows: [] }} />)).toContain("No bills or requests filed in 2026.");
@@ -260,6 +420,57 @@ describe("monitor components", () => {
     expect(html).toContain("Party at the time of the vote, as published.");
     expect(html).toContain('href="https://www.camara.leg.br/propostas-legislativas/2449741"');
     expect(html.indexOf("UNIÃO")).toBeLessThan(html.indexOf("Alfredo Gaspar"));
+  });
+
+  it("a vote row leads with what was voted; the bill summary comes second; a request is marked", () => {
+    const v = { rollCallId: "1-1", date: "2026-03-10", description: "Rejeitado o Requerimento.", billId: 1, billLabel: "MPV 1313/2025", billSummary: "Dispõe sobre X", vote: "Não" };
+    const html = renderToStaticMarkup(<ul><VoteRow locale="en" vote={v} /></ul>);
+    expect(html.indexOf("Rejeitado o Requerimento.")).toBeLessThan(html.indexOf("Dispõe sobre X"));
+    expect(html).toMatch(/<p[^>]*text-muted-foreground[^>]*>Dispõe sobre X<\/p>/);
+    expect(html).toContain("Vote on a request");
+    expect(renderToStaticMarkup(<ul><VoteRow locale="pt-BR" vote={v} /></ul>)).toContain("Votação de requerimento");
+    const merit = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, description: "Aprovada a Subemenda Substitutiva." }} /></ul>);
+    expect(merit).not.toContain("Vote on a request");
+    const req = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, billLabel: "REQ 4063/2026", description: "Aprovado." }} /></ul>);
+    expect(req).toContain("Vote on a request");
+  });
+
+  it("roll-call party rows show a chevron, list the smallest vote group first and mark the deputy it was opened from", () => {
+    const detail = {
+      ...rollCallDetail,
+      parties: [{ party: "PL", counts: [{ vote: "Sim", n: 3 }, { vote: "Não", n: 1 }], deputies: [
+        { externalId: 1, name: "Ana", uf: "SP", vote: "Sim" }, { externalId: 2, name: "Bia", uf: "SP", vote: "Sim" },
+        { externalId: 3, name: "Zé", uf: "RJ", vote: "Não" }, { externalId: 4, name: "Caio", uf: "MG", vote: "Sim" },
+      ] }],
+    };
+    const html = renderToStaticMarkup(<RollCallView locale="en" rollCall={detail} from={2} back={{ href: "/monitor/deputados/2#votes", label: "Bia" }} />);
+    expect(html).toContain("lucide-chevron-right");
+    const list = html.slice(html.indexOf("By party"));
+    expect(list.indexOf(">Zé<")).toBeLessThan(list.indexOf(">Ana<"));
+    expect(list.indexOf(">Ana<")).toBeLessThan(list.indexOf(">Bia<"));
+    expect(html).toContain('aria-current="true"');
+    expect(html).toMatch(/Bia: <span[^>]*>Sim<\/span>/);
+    // the party holding that deputy opens by itself
+    expect(html).toMatch(/<details[^>]*open=""/);
+    // the motion leads the header, the bill summary is secondary
+    expect(html.indexOf("Aprovado o projeto.")).toBeLessThan(html.indexOf("Altera a Lei"));
+  });
+
+  it("a roll call found by a search leads back to that search", () => {
+    const html = renderToStaticMarkup(<ul><RollCallItem locale="en" rollCall={rollCall} back="/monitor?q=sa%C3%BAde" /></ul>);
+    expect(html).toContain('href="/monitor/votacoes/2449741-72?back=%2Fmonitor%3Fq%3Dsa%25C3%25BAde"');
+    const view = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} back={{ href: "/monitor?q=sa%C3%BAde", label: "Câmara monitor" }} />);
+    expect(view).toContain('href="/monitor?q=sa%C3%BAde"');
+  });
+
+  it("the back link names the deputy the roll call was opened from, else the monitor", () => {
+    const html = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} back={{ href: "/monitor/deputados/204407#votes", label: "Fernanda Melchionna" }} />);
+    expect(html).toContain('href="/monitor/deputados/204407#votes"');
+    expect(html.indexOf("Fernanda Melchionna")).toBeLessThan(html.indexOf("<h1"));
+    expect(html).not.toContain("Câmara monitor");
+    const plain = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} />);
+    expect(plain).toContain('href="/monitor"');
+    expect(plain).toContain("Câmara monitor");
   });
 
   it('empty guidance reads "No guidance"', () => {

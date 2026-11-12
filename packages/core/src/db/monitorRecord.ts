@@ -224,6 +224,12 @@ export type RollCallDetail = {
 const VOTE_ORDER = ["Sim", "Não", "Abstenção", "Obstrução", "Artigo 17"];
 const byName = (a: string, b: string) => a.localeCompare(b, "pt-BR");
 
+/** Just the roll call's bill label (a page title), or null when the roll call is unknown. */
+export async function getRollCallTitle(db: Db, id: string): Promise<{ billLabel: string | null } | null> {
+  const [r] = await db.select({ billLabel: parlRollCalls.billLabel }).from(parlRollCalls).where(eq(parlRollCalls.id, id));
+  return r ?? null;
+}
+
 /** A roll call with its votes grouped by the party at the time of the vote, and the guidance as published. */
 export async function getRollCall(db: Db, id: string): Promise<RollCallDetail | null> {
   const [rc] = await db.select().from(parlRollCalls).where(eq(parlRollCalls.id, id));

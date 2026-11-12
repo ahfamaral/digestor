@@ -450,6 +450,13 @@ export const parlSpeeches = pgTable(
     /** Full official text; empty until the Câmara publishes the transcription. */
     text: text("text").notNull().default(""),
     keywords: text("keywords").notNull().default(""),
+    /** The Câmara's page for the speech's text in the Diário (`urlTexto`), https on a Câmara host only; else null. */
+    urlText: text("url_text"),
+    /**
+     * The Câmara published the speech as an attached file (a .docx's bytes inside `transcricao`): `text` then holds only
+     * the heading before it, and the full text is only in the official record.
+     */
+    textFile: boolean("text_file").notNull().default(false),
     /** `{externalId}:{startsAt}:{text fingerprint}`: survives the nightly window replace (a later video link points here). */
     speechKey: text("speech_key"),
     /** The speaker's party and state on the day (`fillSpeechParties`, from the history); null without history. */

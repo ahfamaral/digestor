@@ -5,7 +5,7 @@ import { createDb, type Db } from "./client.ts";
 import { parlMembers, parlSpeeches, parlVotes } from "./schema.ts";
 import { fillSpeechParties, replaceHistory } from "./monitorRecord.ts";
 import {
-  countSpeechesInWindow, speechFacets, getMember, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
+  countSpeechesInWindow, speechFacets, getMember, listMembers, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
   searchMembers, searchRollCalls, searchSpeeches, setInOffice, upsertMembers, upsertRollCalls, type MemberInput, type RollCallInput,
   type SpeechInput,
 } from "./monitor.ts";
@@ -61,6 +61,23 @@ describe("members", () => {
     expect((await searchMembers(db, "MAXIMO")).map((r) => r.name)).toEqual(["Fernando Máximo"]);
   });
 
+  it("listMembers: the whole house, alphabetical with accents and case ignored", async () => {
+    await upsertMembers(db, [member(3, "Zé Silva"), member(1, "Átila Lira"), member(2, "ana Paula"), member(4, "Bia Kicis")]);
+    await setInOffice(db, "camara", [1, 2, 3]);
+    const rows = await listMembers(db, "camara");
+    expect(rows.map((r) => r.name)).toEqual(["ana Paula", "Átila Lira", "Bia Kicis", "Zé Silva"]);
+    expect(rows.find((r) => r.name === "Bia Kicis")!.inOffice).toBe(false);
+  });
+
+  it("searchMembers: a name starting with the text first, then a word starting with it, then the text inside a word", async () => {
+    await upsertMembers(db, [member(1, "Ana Vermelho"), member(2, "João Melo"), member(3, "Mel Souza")]);
+    expect((await searchMembers(db, "mel")).map((r) => r.name)).toEqual(["Mel Souza", "João Melo", "Ana Vermelho"]);
+    await upsertMembers(db, [member(4, "Vermel"), member(5, "Carlos Augusto Melo da Silva Santos Junior")]);
+    expect((await searchMembers(db, "mel")).map((r) => r.name)).toEqual([
+      "Mel Souza", "João Melo", "Carlos Augusto Melo da Silva Santos Junior", "Vermel", "Ana Vermelho",
+    ]);
+  });
+
   it("upsertMembers updates in place and setInOffice flips the rest of the house", async () => {
     const { a } = await twoMembers();
     const again = await upsertMembers(db, [{ ...member(204407, "Fernanda Melchionna"), party: "PSOL", uf: "RS" }]);
@@ -110,6 +127,18 @@ describe("speeches", () => {
     expect(list.rows[0]!.startsAt).toBe("2026-11-09T10:00");
   });
 
+  it("stores the official text link and the attached-file flag; lists and search return them", async () => {
+    const { a } = await twoMembers();
+    await replaceSpeechWindow(db, a, "2026-02-01", "2026-11-11", [
+      { ...speech("2026-10-13T13:55", "DISCURSO NA ÍNTEGRA (SEM REGISTRO TAQUIGRÁFICO)."), urlText: "https://imagem.camara.gov.br/x", textFile: true },
+      speech("2026-10-14T10:00", "feminicídio"),
+    ]);
+    const list = await listMemberSpeeches(db, a, {});
+    expect(list.rows.map((r) => [r.urlText, r.textFile])).toEqual([[null, false], ["https://imagem.camara.gov.br/x", true]]);
+    const hit = await searchSpeeches(db, { terms: ["taquigráfico"] });
+    expect(hit.rows[0]).toMatchObject({ urlText: "https://imagem.camara.gov.br/x", textFile: true });
+  });
+
   it("a speech keeps its key across a window replace; duplicates get distinct keys", async () => {
     const { a } = await twoMembers();
     await replaceSpeechWindow(db, a, "2026-02-01", "2026-11-11", [speech("2026-03-17T18:00", "O feminicídio no RS")]);
@@ -128,6 +157,33 @@ describe("speeches", () => {
 });
 
 describe("roll calls", () => {
+  it("`phrase`: speeches and roll calls holding the typed words together rank first", async () => {
+    const { a } = await twoMembers();
+    await replaceSpeechWindow(db, a, "2026-02-01", "2026-11-11", [
+      speech("2026-03-01T10:00", "A reforma do sistema tributário, reforma e outra reforma; muita coisa tributária e tributária e tributária."),
+      speech("2026-03-02T10:00", "Falo da reforma tributária."),
+    ]);
+    const terms = ["reforma tributária", '"sistema tributário"'];
+    const plain = await searchSpeeches(db, { terms });
+    expect(plain.rows[0]!.text).toMatch(/^A reforma do sistema/);
+    const boosted = await searchSpeeches(db, { terms, phrase: "reforma tributária" });
+    expect(boosted.total).toBe(2);
+    expect(boosted.rows[0]!.text).toBe("Falo da reforma tributária.");
+    // a long speech repeating the terms scores far above 1: the typed words together must still come first
+    const dense = Array.from({ length: 40 }, () => "reforma do sistema tributário; tributária e outra reforma").join(". ");
+    await replaceSpeechWindow(db, a, "2026-02-01", "2026-11-11", [
+      speech("2026-03-01T10:00", dense, { summary: "Reforma do sistema tributário.", keywords: "Sistema tributário" }),
+      speech("2026-03-02T10:00", "Falo da reforma tributária."),
+    ]);
+    const heavy = await searchSpeeches(db, { terms, phrase: "reforma tributária" });
+    expect(heavy.rows[0]!.text).toBe("Falo da reforma tributária.");
+    await upsertRollCalls(db, [
+      rollCall("1-1", "2026-03-01", { description: "Reforma do sistema tributário: reforma e outra reforma; muita coisa tributária, tributária." }),
+      rollCall("1-2", "2026-03-02", { description: "Aprovada a reforma tributária." }),
+    ]);
+    expect((await searchRollCalls(db, { terms, phrase: "reforma tributária" })).rows[0]!.id).toBe("1-2");
+  });
+
   it("searchRollCalls skips symbolic votes", async () => {
     const summary = "monitoramento eletrônico para agressores em casos de violência doméstica";
     await upsertRollCalls(db, [

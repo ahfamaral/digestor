@@ -6,12 +6,24 @@ const START = "2023-02-01";
 const dayMs = (d: string) => Date.parse(`${d}T00:00:00Z`);
 /** Neutral greys only: colour is reserved for highlight types. Consecutive parties alternate two greys. */
 const GREYS = ["bg-stone-200", "bg-stone-300"];
+/** One grey per band: consecutive in-office parties alternate the two greys (out-of-office gaps keep the last one). */
+function shadesOf(bands: TimelineBand[]): string[] {
+  let grey = 0;
+  let lastParty: string | null | undefined;
+  return bands.map((b) => {
+    if (b.inOffice && b.party !== lastParty) {
+      if (lastParty !== undefined) grey = 1 - grey;
+      lastParty = b.party;
+    }
+    return GREYS[grey]!;
+  });
+}
 const HATCH = { backgroundImage: "repeating-linear-gradient(135deg, var(--border) 0 3px, transparent 3px 7px)" };
 
 /**
- * The deputy's party and in-office state since 1 Feb 2023, from the official history. From `sm` up: one bar, band widths
- * by days, year ticks, out-of-office stretches as hatched gaps (focusable, with their description). Below `sm`: a list.
- * Nothing without history.
+ * The deputy's party and in-office state since 1 Feb 2023, from the official history: a list with every date (all
+ * widths), and from `sm` up a bar above it drawing the same bands by days, with year ticks and out-of-office stretches
+ * as hatched gaps (a picture of the list, hidden from screen readers). Nothing without history.
  */
 export function PartyTimeline({ locale, bands, today }: { locale: MonitorLocale; bands: TimelineBand[]; today: string }) {
   if (bands.length === 0) return null;
@@ -24,21 +36,13 @@ export function PartyTimeline({ locale, bands, today }: { locale: MonitorLocale;
     const who = b.inOffice ? [b.party, b.uf].filter(Boolean).join("-") || "—" : tm(locale, "timeline.outOfOffice");
     return [who, when, b.inOffice ? "" : b.description].filter(Boolean).join(" · ");
   };
-  let grey = 0;
-  let lastParty: string | null | undefined;
-  const shades = bands.map((b) => {
-    if (b.inOffice && b.party !== lastParty) {
-      if (lastParty !== undefined) grey = 1 - grey;
-      lastParty = b.party;
-    }
-    return GREYS[grey]!;
-  });
+  const shades = shadesOf(bands);
   const years: number[] = [];
   for (let y = Number(START.slice(0, 4)) + 1; `${y}-01-01` <= today; y++) years.push(y);
   return (
     <section className="grid gap-2" aria-labelledby="timeline-title">
       <h2 id="timeline-title" className="text-base font-semibold">{tm(locale, "timeline.title")}</h2>
-      <div className="hidden sm:block">
+      <div aria-hidden className="hidden sm:block">
         <div className="flex h-9 overflow-hidden rounded-lg border border-border bg-white">
           {bands.map((b, i) => {
             const width = pct(b.to ?? today) - pct(b.from);
@@ -46,22 +50,13 @@ export function PartyTimeline({ locale, bands, today }: { locale: MonitorLocale;
             return b.inOffice ? (
               <div key={i} title={label(b)} style={{ width: `${width}%` }} className={cn("flex min-w-0 items-center border-r border-white px-1.5 text-xs font-semibold", shades[i])}>
                 <span className="truncate">{b.party}</span>
-                <span className="sr-only">{label(b)}</span>
               </div>
             ) : (
-              <div
-                key={i}
-                tabIndex={0}
-                title={label(b)}
-                style={{ width: `${width}%`, ...HATCH }}
-                className="min-w-1 border-r border-white bg-white outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-              >
-                <span className="sr-only">{label(b)}</span>
-              </div>
+              <div key={i} title={label(b)} style={{ width: `${width}%`, ...HATCH }} className="min-w-1 border-r border-white bg-white" />
             );
           })}
         </div>
-        <div aria-hidden className="relative h-5 font-mono text-xs text-muted-foreground">
+        <div className="relative h-5 font-mono text-xs text-muted-foreground">
           {years.map((y) => (
             <span key={y} style={{ left: `${pct(`${y}-01-01`)}%` }} className="absolute top-1 -translate-x-1/2 border-l border-border pl-1">
               {y}
@@ -69,7 +64,7 @@ export function PartyTimeline({ locale, bands, today }: { locale: MonitorLocale;
           ))}
         </div>
       </div>
-      <ul className="grid gap-1 text-sm sm:hidden">
+      <ul className="grid gap-1 text-sm sm:flex sm:flex-wrap sm:gap-1.5 sm:text-xs">
         {bands.map((b, i) => (
           <li key={i} className={cn("rounded-md px-2 py-1", b.inOffice ? shades[i] : "border border-dashed border-border bg-white")}>
             {label(b)}

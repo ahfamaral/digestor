@@ -16,7 +16,7 @@ export function LanguageSwitch({ locale, back }: { locale: MonitorLocale; back: 
             <a
               href={`/monitor/lang?to=${value}&back=${encodeURIComponent(back)}`}
               lang={lang}
-              className="rounded px-1 text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded px-1 text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-stone-500"
             >
               {label}
             </a>

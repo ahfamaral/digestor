@@ -33,6 +33,7 @@ export const en = {
     progress: "Progress",
     sessions: "Sessions",
     monitor: "Monitor",
+    skip: "Skip to content",
     stepOf: "Step {n} of {total} · {name}",
     step: {
       Upload: "Upload",

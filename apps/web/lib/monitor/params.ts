@@ -57,6 +57,8 @@ const sortParam = (v: Raw): "best" | "new" => (first(v) === "new" ? "new" : "bes
 export type LandingParams = {
   q: string; show: { speeches: boolean; rollCalls: boolean }; from: string | null; to: string | null; party: string | null;
   uf: string | null; phase: string | null; inOffice: boolean; sort: "best" | "new"; year: number; p: number; rp: number;
+  /** Search the words exactly as typed: no translation, no related terms. */
+  exact: boolean;
 };
 
 export function parseLanding(sp: RawParams): LandingParams {
@@ -78,12 +80,13 @@ export function parseLanding(sp: RawParams): LandingParams {
     year,
     p: pageParam(sp.p),
     rp: pageParam(sp.rp),
+    exact: first(sp.exact) === "1",
   };
 }
 
 export type DeputyParams = {
   q: string; rel: "by" | "mentions"; from: string | null; to: string | null; phase: string | null; sort: "best" | "new"; year: number;
-  p: number; btype: string | null; bp: number;
+  p: number; btype: string | null; bp: number; vp: number; exact: boolean;
 };
 
 export function parseDeputy(sp: RawParams): DeputyParams {
@@ -98,7 +101,18 @@ export function parseDeputy(sp: RawParams): DeputyParams {
     p: pageParam(sp.p),
     btype: cleaned(sp.btype, 10),
     bp: pageParam(sp.bp),
+    vp: pageParam(sp.vp),
+    exact: first(sp.exact) === "1",
   };
+}
+
+/** The deputies directory: today's party and state; `former`: also the deputies not in office now. */
+export type DirectoryParams = { party: string | null; uf: string | null; former: boolean };
+
+export function parseDirectory(sp: RawParams): DirectoryParams {
+  const party = (first(sp.party) ?? "").trim();
+  const uf = first(sp.uf) ?? "";
+  return { party: PARTY.test(party) ? party : null, uf: UF.test(uf) ? uf : null, former: first(sp.former) === "1" };
 }
 
 function href(path: string, pairs: [string, string | number | null | undefined | false][]): string {
@@ -112,7 +126,7 @@ function href(path: string, pairs: [string, string | number | null | undefined |
 export function landingHref(p: Partial<LandingParams>): string {
   const show = p.show && p.show.speeches !== p.show.rollCalls ? (p.show.speeches ? "speeches" : "rollcalls") : null;
   return href("/monitor", [
-    ["q", p.q], ["show", show], ["from", p.from], ["to", p.to], ["party", p.party], ["uf", p.uf], ["phase", p.phase],
+    ["q", p.q], ["exact", p.exact ? "1" : null], ["show", show], ["from", p.from], ["to", p.to], ["party", p.party], ["uf", p.uf], ["phase", p.phase],
     ["inOffice", p.inOffice ? "1" : null], ["sort", p.sort === "new" ? "new" : null], ["year", p.year && p.year !== DEFAULT_YEAR ? p.year : null],
     ["p", p.p], ["rp", p.rp],
   ]);
@@ -121,11 +135,30 @@ export function landingHref(p: Partial<LandingParams>): string {
 /** A deputy's page with only the non-default values, keys in a fixed order. */
 export function deputyHref(externalId: number, p: Partial<DeputyParams> = {}): string {
   return href(`/monitor/deputados/${externalId}`, [
-    ["q", p.q], ["rel", p.rel === "mentions" ? "mentions" : null], ["from", p.from], ["to", p.to], ["phase", p.phase],
+    ["q", p.q], ["exact", p.exact ? "1" : null], ["rel", p.rel === "mentions" ? "mentions" : null], ["from", p.from], ["to", p.to], ["phase", p.phase],
     ["sort", p.sort === "new" ? "new" : null], ["year", p.year && p.year !== DEFAULT_YEAR ? p.year : null], ["p", p.p],
-    ["btype", p.btype], ["bp", p.bp],
+    ["btype", p.btype], ["bp", p.bp], ["vp", p.vp],
   ]);
 }
 
-export const rollCallHref = (id: string) => `/monitor/votacoes/${id}`;
+/** The deputies directory with only the non-default values. */
+export const directoryHref = (p: Partial<DirectoryParams> = {}) =>
+  href("/monitor/deputados", [["party", p.party], ["uf", p.uf], ["former", p.former ? "1" : null]]);
+
+/**
+ * A roll call's page. `from`: the deputy whose page it was opened from (its back link names them); `back`: the search it
+ * was found by (its back link returns there, even where the browser can't go back in history).
+ */
+export const rollCallHref = (id: string, ctx: { from?: number; back?: string } = {}) =>
+  href(`/monitor/votacoes/${id}`, [["from", ctx.from], ["back", ctx.from ? null : ctx.back]]);
+/** The roll-call page's `back`: a monitor search address (`/monitor` with a query only), else null. */
+export const backToSearch = (sp: RawParams): string | null => {
+  const s = first(sp.back);
+  return s && s.length <= 1000 && /^\/monitor(\?[^#\s]*)?$/.test(s) ? s : null;
+};
+/** The roll-call page's `from`: a Câmara deputy id, else null. */
+export const fromDeputy = (sp: RawParams): number | null => {
+  const s = first(sp.from);
+  return s && /^[1-9]\d{0,8}$/.test(s) ? Number(s) : null;
+};
 export const isRollCallId = (id: string) => /^\d{1,9}-\d{1,4}$/.test(id);

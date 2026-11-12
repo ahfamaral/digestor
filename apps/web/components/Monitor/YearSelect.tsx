@@ -15,7 +15,7 @@ export function YearSelect({ locale, year, hrefs }: { locale: MonitorLocale; yea
         if (y !== null && y !== year && hrefs[y]) router.push(hrefs[y]);
       }}
     >
-      <SelectTrigger aria-label={tm(locale, "year.label")} className="bg-white font-mono">
+      <SelectTrigger aria-label={tm(locale, "year.label")} className="bg-white font-mono focus-visible:border-stone-500 focus-visible:ring-stone-500">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

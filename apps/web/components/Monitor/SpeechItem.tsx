@@ -2,11 +2,13 @@ import Link from "next/link";
 import type { SpeechHit, SpeechRow } from "@digestor/core/server";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref } from "@/lib/monitor/params";
+import { ExternalLink } from "./ExternalLink";
 import { Highlighted } from "./Highlighted";
 
 /**
  * One official speech: who (with the party and state on the day, and "now …" when the party changed since), when, the
- * session phase, the Câmara's summary (or, for a search match, the matching passages), the full text on demand.
+ * session phase, the Câmara's summary, labelled as theirs (or, for a search match, the matching passages), the full text
+ * on demand and the link to the official text. A speech the Câmara published as an attached file says so instead.
  */
 export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLocale; speech: SpeechRow | SpeechHit; showMember?: boolean }) {
   const hit = "snippet" in speech ? speech : null;
@@ -36,14 +38,17 @@ export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLoca
         </p>
       ) : (
         speech.summary && (
-          <p lang="pt-BR" className="break-words">
-            {speech.summary}
+          <p className="break-words">
+            <span className="mr-1.5 text-xs text-muted-foreground">{tm(locale, "speech.summaryLabel")}:</span>
+            <span lang="pt-BR">{speech.summary}</span>
           </p>
         )
       )}
-      {speech.text ? (
+      {speech.textFile ? (
+        <p className="text-xs text-muted-foreground">{tm(locale, "speech.attachedFile")}</p>
+      ) : speech.text ? (
         <details className="group">
-          <summary className="w-fit cursor-pointer rounded text-sm font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+          <summary className="w-fit cursor-pointer rounded text-sm font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
             {tm(locale, "speech.showFullText")}
           </summary>
           <p lang="pt-BR" className="mt-2 break-words whitespace-pre-line">
@@ -52,6 +57,11 @@ export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLoca
         </details>
       ) : (
         <p className="text-xs text-muted-foreground">{tm(locale, "speech.noText")}</p>
+      )}
+      {speech.urlText && (
+        <ExternalLink href={speech.urlText} className="w-fit text-xs">
+          {tm(locale, "member.officialRecord")}
+        </ExternalLink>
       )}
     </li>
   );

@@ -51,6 +51,37 @@ describe("Câmara monitor client", () => {
     expect(row!.summary).toBe("o feminicídio. Destacou A & B > C 'x' – y");
   });
 
+  it("fetchSpeeches keeps the Câmara's text page (https on a Câmara host only)", async () => {
+    const { f } = fakeCamaraMonitorFetch();
+    const rows = await fetchSpeeches(f, 204407, "2026-02-01", "2026-11-11");
+    expect(rows[0]!.urlText).toMatch(/^https:\/\/imagem\.camara\.gov\.br\/dc_20b\.asp\?/);
+    const odd = { dados: [
+      { dataHoraInicio: "2026-04-08T11:28", sumario: "s", transcricao: "t", keywords: "", urlTexto: "javascript:alert(1)" },
+      { dataHoraInicio: "2026-04-08T11:32", sumario: "s", transcricao: "t", keywords: "", urlTexto: "https://evil.example/x.camara.gov.br" },
+      { dataHoraInicio: "2026-04-08T11:36", sumario: "s", transcricao: "t", keywords: "", urlTexto: "" },
+      { dataHoraInicio: "2026-04-08T11:40", sumario: "s", transcricao: "t", keywords: "", urlTexto: "http://www.camara.leg.br/x" },
+    ], links: [] };
+    const other = await fetchSpeeches(fakeCamaraMonitorFetch({ "/deputados/204407/discursos": odd }).f, 204407, "2026-02-01", "2026-11-11");
+    expect(other.map((r) => r.urlText)).toEqual([null, null, null, "https://www.camara.leg.br/x"]);
+  });
+
+  it("fetchSpeeches maps Windows-1252 leftovers (C1 characters) to what they stand for", async () => {
+    const body = { dados: [{ dataHoraInicio: "2026-04-08T11:28", sumario: "\u0093aspas\u0094 \u0096 x", transcricao: "esquecidos \u0097 pelos\u0085\u0081fim", keywords: "a\u0092b" }], links: [] };
+    const [row] = await fetchSpeeches(fakeCamaraMonitorFetch({ "/deputados/204407/discursos": body }).f, 204407, "2026-02-01", "2026-11-11");
+    expect(row!.summary).toBe("“aspas” – x");
+    expect(row!.text).toBe("esquecidos — pelos… fim");
+    expect(row!.keywords).toBe("a’b");
+    expect(row!.textFile).toBe(false);
+  });
+
+  it("fetchSpeeches: a speech published as an attached .docx keeps only its heading", async () => {
+    const docx = "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO X (SEM REGISTRO TAQUIGRÁFICO). PK\u0003\u0004\u0014\u0000!J\ufffdqm([Content_Types].xml \ufffd\ufffd word/document.xml";
+    const body = { dados: [{ dataHoraInicio: "2026-10-13T13:55", sumario: "", transcricao: docx, keywords: "" }], links: [] };
+    const [row] = await fetchSpeeches(fakeCamaraMonitorFetch({ "/deputados/204407/discursos": body }).f, 204407, "2026-02-01", "2026-11-11");
+    expect(row!.text).toBe("DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO X (SEM REGISTRO TAQUIGRÁFICO).");
+    expect(row!.textFile).toBe(true);
+  });
+
   it("fetchSpeeches: an unknown deputy (404) gives no speeches", async () => {
     const notFound = (async () => new Response("{}", { status: 404 })) as typeof fetch;
     expect(await fetchSpeeches(notFound, 999, "2026-02-01", "2026-11-11")).toEqual([]);

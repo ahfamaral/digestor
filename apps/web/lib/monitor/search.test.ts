@@ -61,6 +61,24 @@ describe("runSearch", () => {
     expect((await runSearch(db, L("violência mulher"))).speeches!.total).toBe(2);
   });
 
+  it("exact: no translation, only the words as typed", async () => {
+    const translate = vi.fn(async (): Promise<TranslateResult> => ({ terms: ["x"], translated: true, failed: false }));
+    const r = await runSearch(db, L("reforma tributária", { exact: true }), translate);
+    expect(translate).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ terms: ["reforma tributária"], translatedFrom: null, exact: true });
+  });
+
+  it("speeches holding the typed words together come first under Best match", async () => {
+    const ids = await upsertMembers(db, [{ house: "camara", externalId: 1, name: "A", party: null, uf: null, photoUrl: null }]);
+    const speech = (startsAt: string, text: string) => ({ startsAt, phase: null, kind: null, summary: "", text, keywords: "" });
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-02-01", "2026-11-11", [
+      speech("2026-03-01T10:00", "A reforma do sistema tributário, reforma e outra reforma; muita coisa tributária e tributária."),
+      speech("2026-03-02T10:00", "Falo da reforma tributária."),
+    ]);
+    const r = await runSearch(db, L("reforma tributária"), async () => ({ terms: ["reforma tributária", "sistema tributário"], translated: false, failed: false }));
+    expect(r.speeches!.rows[0]!.text).toBe("Falo da reforma tributária.");
+  });
+
   it("strips control characters (a NUL would make Postgres throw)", async () => {
     const r = await runSearch(db, L("femi\u0000nicídio\u0007"));
     expect(r.q).toBe("femi nicídio");

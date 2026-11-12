@@ -1,8 +1,11 @@
 import { Search } from "lucide-react";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, MAX_QUERY, type DeputyParams } from "@/lib/monitor/params";
+import { ExactBox } from "./ExactBox";
+import { FormSelect } from "./FormSelect";
+import { GetForm } from "./GetForm";
 
-const field = "h-9 w-full min-w-0 rounded-lg border border-input bg-white px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const field = "h-9 w-full min-w-0 rounded-lg border border-input bg-white px-2 text-sm outline-none focus-visible:border-stone-500 focus-visible:ring-3 focus-visible:ring-stone-500";
 
 /**
  * The deputy page's speech search (a GET form, works without JavaScript): this deputy's own speeches, or other
@@ -12,12 +15,12 @@ export function DeputySearch({ locale, externalId, params, phases }: { locale: M
   const min = `${params.year}-01-01`;
   const max = `${params.year}-12-31`;
   return (
-    <form role="search" action={deputyHref(externalId)} method="get" className="grid gap-3 rounded-xl border border-border bg-white p-4">
+    <GetForm action={`${deputyHref(externalId)}#speeches`} className="grid gap-3 rounded-xl border border-border bg-white p-4">
       <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <legend className="sr-only">{tm(locale, "deputySearch.rel")}</legend>
         {(["by", "mentions"] as const).map((rel) => (
           <label key={rel} className="flex items-center gap-1.5">
-            <input type="radio" name="rel" value={rel} defaultChecked={params.rel === rel} className="size-4 accent-brand outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+            <input type="radio" name="rel" value={rel} data-default="by" defaultChecked={params.rel === rel} className="size-4 accent-brand outline-none focus-visible:ring-2 focus-visible:ring-stone-500" />
             {tm(locale, rel === "by" ? "deputySearch.by" : "deputySearch.mentions")}
           </label>
         ))}
@@ -31,16 +34,17 @@ export function DeputySearch({ locale, externalId, params, phases }: { locale: M
           defaultValue={params.q}
           maxLength={MAX_QUERY}
           placeholder={tm(locale, "deputySearch.placeholder")}
-          className="h-10 w-full min-w-0 rounded-lg border border-input bg-white px-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+          className="h-10 w-full min-w-0 rounded-lg border border-input bg-white px-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-stone-500 focus-visible:ring-3 focus-visible:ring-stone-500 md:text-sm"
         />
         <button
           type="submit"
-          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-3 focus-visible:ring-stone-500"
         >
           <Search className="size-4" aria-hidden />
           {tm(locale, "search.button")}
         </button>
       </div>
+      <ExactBox locale={locale} checked={params.exact} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <label className="grid gap-1 text-sm">
           <span className="text-muted-foreground">{tm(locale, "filters.from")}</span>
@@ -50,18 +54,13 @@ export function DeputySearch({ locale, externalId, params, phases }: { locale: M
           <span className="text-muted-foreground">{tm(locale, "filters.to")}</span>
           <input type="date" name="to" min={min} max={max} defaultValue={params.to ?? ""} className={field} />
         </label>
-        <label className="col-span-2 grid gap-1 text-sm sm:col-span-1">
-          <span className="text-muted-foreground">{tm(locale, "filters.phase")}</span>
-          <select name="phase" defaultValue={params.phase ?? ""} className={field}>
-            <option value="">{tm(locale, "filters.any")}</option>
-            {phases.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </label>
+        <FormSelect
+          name="phase" label={tm(locale, "filters.phase")} anyLabel={tm(locale, "filters.any")} options={phases} value={params.phase} lang="pt-BR"
+          className="col-span-2 sm:col-span-1"
+        />
       </div>
       {params.sort === "new" && <input type="hidden" name="sort" value="new" />}
       {params.btype && <input type="hidden" name="btype" value={params.btype} />}
-    </form>
+    </GetForm>
   );
 }
