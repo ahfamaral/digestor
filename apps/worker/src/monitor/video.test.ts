@@ -5,7 +5,7 @@ import { createDb, replaceSpeechWindow, speechVideos, upsertMembers, upsertSessi
 import { captionInfo, type Captions } from "../youtube/captions.js";
 import { YouTubeDownloadError } from "../youtube/ytdlp.js";
 import { fakeCamaraMonitorFetch } from "./fakeCamaraMonitor.js";
-import { brasiliaLocal, runSessionVideos } from "./video.js";
+import { brasiliaLocal, runSessionVideos, videoJobEnabled } from "./video.js";
 
 const fixture = (name: string) => readFileSync(new URL(`../../test/fixtures/camara-video/${name}`, import.meta.url), "utf8");
 const vtt = fixture("NmI46Y25mEU-first16min.pt-orig.vtt");
@@ -37,6 +37,15 @@ const sessionRow = async () =>
   (await db.execute<{ status: string; video_id: string | null; stream_start: string | null; spoken: number; matched: number; attempts: number; error: string | null; retry_at: string | null }>(
     sql`select status, video_id, stream_start::text, spoken, matched, attempts, error, retry_at from parl_session_videos where session_id = 82635`,
   )).rows[0]!;
+
+describe("videoJobEnabled", () => {
+  it("is on only for exactly \"true\"; missing, blank or anything else is off", () => {
+    expect(videoJobEnabled({ MONITOR_VIDEO_ENABLED: "true" })).toBe(true);
+    expect(videoJobEnabled({ MONITOR_VIDEO_ENABLED: " true " })).toBe(true);
+    for (const v of [undefined, "", "false", "0", "1", "yes", "TRUE"]) expect(videoJobEnabled({ MONITOR_VIDEO_ENABLED: v })).toBe(false);
+    expect(videoJobEnabled({})).toBe(false);
+  });
+});
 
 describe("monitor.video", () => {
   it("brasiliaLocal is UTC minus 3 hours", () => {

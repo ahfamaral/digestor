@@ -11,6 +11,15 @@ export const MONITOR_VIDEO_QUEUE = "monitor.video";
 export const MONITOR_VIDEO_CRON = "2-59/5 * * * *";
 export const SESSIONS_PER_RUN = 1;
 
+/**
+ * The worker's own video job runs only with `MONITOR_VIDEO_ENABLED=true`; missing or anything else is off. A server's IP
+ * gets blocked by YouTube (2026-11-12, even with cookies), so production leaves it off and the sessions are matched from
+ * a home connection instead (`scripts/monitor-videos.ts`, which ignores this switch).
+ */
+export function videoJobEnabled(env: NodeJS.ProcessEnv): boolean {
+  return env.MONITOR_VIDEO_ENABLED?.trim() === "true";
+}
+
 const HOUR = 3_600_000;
 /** A live stream starting further than this from the session's official start is not trusted as its anchor. */
 const MAX_START_GAP_S = 6 * 3600;

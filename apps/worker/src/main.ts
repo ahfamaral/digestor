@@ -50,7 +50,7 @@ import { createE5Embedder } from "./search/embed.js";
 import { searchTranscript } from "./search/index.js";
 import { RECORDS_RETRY_CRON, RECORDS_RETRY_QUEUE, namesJob, runRecordRetries } from "./records/retry.js";
 import { MONITOR_REFRESH_CRON, MONITOR_REFRESH_QUEUE, nightlyWindow, refreshMonitor } from "./monitor/refresh.js";
-import { MONITOR_VIDEO_CRON, MONITOR_VIDEO_QUEUE, runSessionVideos } from "./monitor/video.js";
+import { MONITOR_VIDEO_CRON, MONITOR_VIDEO_QUEUE, runSessionVideos, videoJobEnabled } from "./monitor/video.js";
 import { fetchCaptions } from "./youtube/captions.js";
 import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 import { downloadYouTube } from "./youtube/ytdlp.js";
@@ -121,7 +121,10 @@ async function main() {
   await boss.schedule(SWEEP_QUEUE, SWEEP_CRON, {}, { tz: "UTC" });
   await boss.schedule(RECORDS_RETRY_QUEUE, RECORDS_RETRY_CRON, {}, { tz: "UTC" });
   await boss.schedule(MONITOR_REFRESH_QUEUE, MONITOR_REFRESH_CRON, {}, { tz: "UTC" });
-  await boss.schedule(MONITOR_VIDEO_QUEUE, MONITOR_VIDEO_CRON, {}, { tz: "UTC" });
+  // The schedule lives in the database: switched off, it is removed, so a restart never brings the job back.
+  const videoJob = videoJobEnabled(process.env);
+  if (videoJob) await boss.schedule(MONITOR_VIDEO_QUEUE, MONITOR_VIDEO_CRON, {}, { tz: "UTC" });
+  else await boss.unschedule(MONITOR_VIDEO_QUEUE);
 
   // includeMetadata: handlers need retryCount/retryLimit to fail the session only on the final attempt.
   const workOptions = { batchSize: 1, includeMetadata: true } as const;
@@ -159,11 +162,15 @@ async function main() {
     const counts = await refreshMonitor({ db, fetch }, nightlyWindow());
     console.log("monitor.refresh:", JSON.stringify(counts));
   });
-  // Video evidence: a few sessions per run; a session's failure is recorded on its row (retried later), never thrown.
-  await boss.work(MONITOR_VIDEO_QUEUE, { batchSize: 1 }, async () => {
-    const out = await runSessionVideos({ db, fetch, captions: (id) => fetchCaptions(id), pause: () => new Promise((r) => setTimeout(r, 5000)) });
-    if (out.results.length > 0 || out.queued.added > 0) console.log("monitor.video:", JSON.stringify(out));
-  });
+  // Video evidence (only with MONITOR_VIDEO_ENABLED=true): a session's failure is recorded on its row, never thrown.
+  if (videoJob) {
+    await boss.work(MONITOR_VIDEO_QUEUE, { batchSize: 1 }, async () => {
+      const out = await runSessionVideos({ db, fetch, captions: (id) => fetchCaptions(id), pause: () => new Promise((r) => setTimeout(r, 5000)) });
+      if (out.results.length > 0 || out.queued.added > 0) console.log("monitor.video:", JSON.stringify(out));
+    });
+  } else {
+    console.log("monitor.video: off (MONITOR_VIDEO_ENABLED is not \"true\")");
+  }
 
   let stopping = false;
   const shutdown = async () => {
