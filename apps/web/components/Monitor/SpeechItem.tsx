@@ -1,14 +1,17 @@
 import Link from "next/link";
+import { isWrittenOnly } from "@digestor/core";
 import type { SpeechHit, SpeechRow } from "@digestor/core/server";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref } from "@/lib/monitor/params";
 import { ExternalLink } from "./ExternalLink";
 import { Highlighted } from "./Highlighted";
+import { SpeechVideo } from "./SpeechVideo";
 
 /**
  * One official speech: who (with the party and state on the day, and "now …" when the party changed since), when, the
  * session phase, the Câmara's summary, labelled as theirs (or, for a search match, the matching passages), the full text
  * on demand and the link to the official text. A speech the Câmara published as an attached file says so instead.
+ * A speech placed in the session's official video gets "Watch the speech"; one sent in writing says it wasn't spoken.
  */
 export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLocale; speech: SpeechRow | SpeechHit; showMember?: boolean }) {
   const hit = "snippet" in speech ? speech : null;
@@ -32,6 +35,11 @@ export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLoca
         </time>
         {speech.phase && <span className="text-xs text-muted-foreground">{speech.phase}</span>}
       </div>
+      {speech.video ? (
+        <SpeechVideo locale={locale} video={speech.video} />
+      ) : (
+        isWrittenOnly(speech.text) && <p className="text-xs text-muted-foreground">{tm(locale, "speech.writtenOnly")}</p>
+      )}
       {hit ? (
         <p lang="pt-BR" className="break-words">
           <Highlighted text={hit.snippet} />

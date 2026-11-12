@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { and, count, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from "drizzle-orm";
 import { HIGHLIGHT_END, HIGHLIGHT_START, normName } from "../monitorText.ts";
 import type { Db } from "./client.ts";
-import { parlMembers, parlRollCalls, parlSpeeches, parlVotes } from "./schema.ts";
+import type { SpeechVideo } from "./monitorVideo.ts";
+import { parlMembers, parlRollCalls, parlSpeeches, parlSpeechVideos, parlVotes } from "./schema.ts";
 
 // Parliament monitor (Câmara preview): official records only, stored as published.
 
@@ -25,6 +26,8 @@ export type MemberRow = {
 export type SpeechRow = {
   id: number; startsAt: string; phase: string | null; kind: string | null; summary: string; text: string;
   urlText: string | null; textFile: boolean;
+  /** Where the speech is in the session's official video (`parl_speech_videos`), or null. */
+  video: SpeechVideo | null;
 };
 /** `member` carries today's party and state; `partyThen`/`ufThen` are the speaker's on the day (null without history). */
 export type SpeechHit = SpeechRow & {
@@ -208,13 +211,20 @@ export async function listMemberSpeeches(
     .select({
       id: parlSpeeches.id, startsAt: parlSpeeches.startsAt, phase: parlSpeeches.phase, kind: parlSpeeches.kind,
       summary: parlSpeeches.summary, text: parlSpeeches.text, urlText: parlSpeeches.urlText, textFile: parlSpeeches.textFile,
+      videoId: parlSpeechVideos.videoId, startS: parlSpeechVideos.startS, endS: parlSpeechVideos.endS,
     })
     .from(parlSpeeches)
+    .leftJoin(parlSpeechVideos, eq(parlSpeechVideos.speechKey, parlSpeeches.speechKey))
     .where(where)
     .orderBy(desc(parlSpeeches.startsAt), desc(parlSpeeches.id))
     .limit(a.limit ?? 50)
     .offset(a.offset ?? 0);
-  return { total: c?.n ?? 0, rows: rows.map((r) => ({ ...r, startsAt: localMinute(r.startsAt) })) };
+  return {
+    total: c?.n ?? 0,
+    rows: rows.map(({ videoId, startS, endS, ...r }) => ({
+      ...r, startsAt: localMinute(r.startsAt), video: videoId !== null && startS !== null && endS !== null ? { videoId, startS, endS } : null,
+    })),
+  };
 }
 
 /** The filters as `and …` conditions on speeches aliased `s`. */
@@ -231,7 +241,7 @@ function speechFilterSql(f: SpeechFilters = {}): SQL {
 
 type SpeechHitSql = {
   id: number; starts_at: string; phase: string | null; kind: string | null; summary: string; text: string; external_id: number;
-  url_text: string | null; text_file: boolean;
+  url_text: string | null; text_file: boolean; video_id: string | null; start_s: number | null; end_s: number | null;
   name: string; party: string | null; uf: string | null; party_then: string | null; uf_then: string | null; snippet: string;
 };
 
@@ -266,9 +276,11 @@ export async function searchSpeeches(
     with q as (select (${match}) as q, (${head}) as hq)
     select p.id, to_char(p.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, p.phase, p.kind, p.summary, p.text,
       p.url_text, p.text_file, p.party as party_then, p.uf as uf_then, m.external_id, m.name, m.party, m.uf,
+      v.video_id, v.start_s, v.end_s,
       ts_headline('pt_unaccent', concat_ws(' … ', nullif(p.summary, ''), nullif(p.text, '')), q.hq, ${HEADLINE}) as snippet
     from (${hits} order by ${inner} limit ${a.limit ?? 20} offset ${a.offset ?? 0}) p
-    join parl_members m on m.id = p.member_id, q
+    join parl_members m on m.id = p.member_id
+    left join parl_speech_videos v on v.speech_key = p.speech_key, q
     order by ${outer}`);
   return {
     total,
@@ -276,6 +288,7 @@ export async function searchSpeeches(
       id: x.id, startsAt: x.starts_at, phase: x.phase, kind: x.kind, summary: x.summary, text: x.text,
       urlText: x.url_text, textFile: x.text_file, member: { externalId: x.external_id, name: x.name, party: x.party, uf: x.uf }, snippet: x.snippet,
       partyThen: x.party_then, ufThen: x.uf_then,
+      video: x.video_id !== null && x.start_s !== null && x.end_s !== null ? { videoId: x.video_id, startS: x.start_s, endS: x.end_s } : null,
     })),
   };
 }

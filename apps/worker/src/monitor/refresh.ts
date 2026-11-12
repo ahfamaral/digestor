@@ -1,5 +1,5 @@
 import {
-  countHistory, countInOffice, countSpeechesInWindow, fillSpeechParties, getProfile, monitorRowCounts, membersNeedingProfile, replaceBillAuthors, replaceHistory, replaceOrientations,
+  countHistory, countInOffice, countSpeechesInWindow, dropMisfiledSpeeches, fillSpeechParties, getProfile, monitorRowCounts, membersNeedingProfile, replaceBillAuthors, replaceHistory, replaceOrientations,
   replacePresence, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, setProfile, upsertBills, upsertMembers,
   upsertRollCalls, upsertSessions, type Db,
 } from "@digestor/core/server";
@@ -18,7 +18,7 @@ export const MONITOR_REFRESH_CRON = "0 9 * * *";
 const CONCURRENCY = 4;
 
 export type RefreshCounts = {
-  members: number; speeches: { inserted: number; kept: number; failed: number }; rollCalls: number; votes: number; bills: number;
+  members: number; speeches: { inserted: number; kept: number; failed: number }; misfiled: number; rollCalls: number; votes: number; bills: number;
   history: { ok: number; failed: number; kept: number }; profiles: { ok: number; failed: number; kept: number };
   orientations: number; sessions: number; presence: number; authoredBills: number;
 };
@@ -102,6 +102,9 @@ export async function refreshMonitor(
   if (failed > ids.size / 2) throw new Error(`monitor.refresh: speeches failed for ${failed} of ${ids.size} deputies`);
   const speeches = { inserted, kept, failed };
   await fillSpeechParties(db);
+  // The Câmara files some speeches under two deputies with overlapping names; the copy the header doesn't name goes.
+  const misfiled = await dropMisfiledSpeeches(db);
+  if (misfiled > 0) console.info(`monitor.refresh: removed ${misfiled} speeches the Câmara filed under the wrong deputy`);
 
   // Profiles change rarely: all of them on Mondays, otherwise only deputies never fetched. Failures never throw. An
   // all-empty answer over a stored profile is kept (and not marked refreshed, so a "missing" night asks again).
@@ -126,7 +129,7 @@ export async function refreshMonitor(
   if (profiles.failed > 0) {
     console.warn(`monitor.refresh: profiles of ${profiles.failed} deputies failed; last error:`, profileError instanceof Error ? profileError.message : profileError);
   }
-  const counts = { members: members.length, speeches, history, profiles, rollCalls: 0, votes: 0, bills: 0, orientations: 0, sessions: 0, presence: 0, authoredBills: 0 };
+  const counts = { members: members.length, speeches, misfiled, history, profiles, rollCalls: 0, votes: 0, bills: 0, orientations: 0, sessions: 0, presence: 0, authoredBills: 0 };
 
   // One file at a time: three large parallel downloads are what the Câmara cut off. A file that doesn't exist (a 4xx,
   // e.g. the new year's on 1 January) is final: no roll calls this run, no retry.

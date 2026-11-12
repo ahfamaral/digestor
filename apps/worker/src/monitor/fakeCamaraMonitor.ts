@@ -43,6 +43,7 @@ export function fakeCamaraMonitorFetch(overrides: Record<string, unknown> = {}) 
     if (/^\/api\/v2\/deputados\/\d+\/discursos$/.test(p)) return ok(JSON.stringify({ dados: [], links: [] }));
     const sub = /^\/api\/v2\/deputados\/(\d+)\/(historico|profissoes|mandatosExternos|frentes|orgaos)$/.exec(p);
     if (sub) return ok(RECORDED.has(`${sub[2]}-${sub[1]}`) ? monitorFixture(`${sub[2]}-${sub[1]}.recorded.json`) : JSON.stringify({ dados: [], links: [] }));
+    if (p === "/api/v2/eventos/82635") return ok(monitorFixture("evento-82635.recorded.json"));
     if (p === "/api/v2/proposicoes/2462009") return ok(monitorFixture("proposicao-2462009.recorded.json"));
     if (p === "/api/v2/proposicoes" && q.get("siglaTipo") === "PL" && q.get("ano") === "2024") {
       const n = q.get("numero");

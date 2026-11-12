@@ -4,7 +4,7 @@ import { createDb, type Db } from "./client.ts";
 import { parlSpeeches } from "./schema.ts";
 import { replaceSpeechWindow, replaceVotes, upsertMembers, upsertRollCalls, type MemberInput, type SpeechInput } from "./monitor.ts";
 import {
-  fillSpeechParties, getHistory, getPresence, getRollCall, listMemberBills, membersNeedingProfile, replaceBillAuthors, replaceHistory,
+  dropMisfiledSpeeches, fillSpeechParties, getHistory, getPresence, getRollCall, listMemberBills, membersNeedingProfile, replaceBillAuthors, replaceHistory,
   replaceOrientations, replacePresence, setProfile, upsertBills, upsertSessions, type HistoryInput,
 } from "./monitorRecord.ts";
 
@@ -32,6 +32,24 @@ export const gasparHistory = [
 ];
 
 describe("monitor record", () => {
+  it("dropMisfiledSpeeches removes the copy filed under the wrong deputy and keeps everything else", async () => {
+    const ids = await upsertMembers(db, [member(160535, "Marcon", "PT", "RS"), member(220550, "Mauricio Marcon", "PL", "RS")]);
+    const marcon = ids.get(160535)!;
+    const mauricio = ids.get(220550)!;
+    await replaceHistory(db, marcon, [{ at: "2023-02-01T00:00", party: "PT", uf: "RS", status: "Exercício", description: "" }]);
+    await replaceHistory(db, mauricio, [{ at: "2023-02-01T00:00", party: "PL", uf: "RS", status: "Exercício", description: "" }]);
+    const his = "O SR. MAURICIO MARCON (PL - RS. Sem revisão do orador.) - Presidente Charles, é sempre uma alegria.";
+    const own = "O SR. MARCON (PT - RS. Sem revisão do orador.) - Sr. Presidente, quero registrar.";
+    await replaceSpeechWindow(db, marcon, "2026-02-01", "2026-11-11", [speech("2026-06-30T16:20", his), speech("2026-06-30T17:00", own)]);
+    await replaceSpeechWindow(db, mauricio, "2026-02-01", "2026-11-11", [speech("2026-06-30T16:20", his)]);
+    await fillSpeechParties(db);
+    expect(await dropMisfiledSpeeches(db)).toBe(1);
+    const rows = await db.select({ memberId: parlSpeeches.memberId, text: parlSpeeches.text }).from(parlSpeeches).orderBy(parlSpeeches.id);
+    expect(rows).toEqual([{ memberId: marcon, text: own }, { memberId: mauricio, text: his }]);
+    expect(await dropMisfiledSpeeches(db)).toBe(0);
+  });
+
+
   it("fillSpeechParties takes the party on the day", async () => {
     const ids = await upsertMembers(db, [member(220576, "Alfredo Gaspar"), member(1, "Sem Histórico")]);
     await replaceHistory(db, ids.get(220576)!, gasparHistory);

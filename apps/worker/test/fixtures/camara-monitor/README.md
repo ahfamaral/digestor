@@ -27,3 +27,6 @@ The second group was recorded 2026-11-11 14:40–14:50 the same way; the five bu
 Real-data notes (whole 2026 files): 126 plenary roll calls of 1,575 plenary votações; 36 have no main bill among their
 objects (urgency requests, appeals), 11 of them no objects at all; vote labels are `Sim`, `Não`, `Abstenção`,
 `Obstrução`, `Artigo 17` and `""` (466 rows).
+
+- `evento-82635.recorded.json` (recorded 2026-11-12): `GET /api/v2/eventos/82635`, the plenary of 30 Jun 2026; its
+  `urlRegistro` is the session's official YouTube video (the video-evidence job reads only that field).

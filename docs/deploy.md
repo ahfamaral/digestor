@@ -168,6 +168,16 @@ Dev on 2026-11-11 printed: 568 deputies, history and profiles 568 ok / 0 failed,
 
 `up -d --build` runs migration 0024: speeches get `url_text` (the Câmara's page for the text) and `text_file` (published as an attached file), the Windows-1252 leftovers in speech texts become the characters they stand for (em dashes, curly quotes), and the speeches that carried a .docx keep only their heading. The backfill above (run once for 0023) also fills `url_text` for older speeches; when 0023 and 0024 deploy together, one backfill run covers both. Dev on 2026-11-11: 8,055 speeches reloaded, 4,353 with a text link (the API has none for the rest), 5 attached files, no C1 characters left, in 718 s. The nightly refresh recomputes the speech keys of the cleaned speeches inside its 60-day window once (nothing links to keys yet).
 
+### Once, when updating to video evidence (migration 0025)
+
+`up -d --build` runs migration 0025: `parl_session_videos` (each held plenary's official YouTube video and the state of matching it) and `parl_speech_videos` (each speech's start and end second in that video, keyed by the speech key). The worker then matches about 9 sessions an hour on its own (`monitor.video`, at :07, :27 and :47; captions only, no video is downloaded; needs the YouTube cookies on a server, see below). To load 2026 sooner, run this once (one session every 20 s, about 40 minutes for 2026 so far; safe to stop and rerun):
+
+```
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-videos.ts --pause 20
+```
+
+The same update makes the nightly refresh remove speeches the Câmara files under two deputies with overlapping names (Mauricio Marcon's under Marcon too); the first refresh after the update cleans the stored ones (109 in dev on 2026-11-12).
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:

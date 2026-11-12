@@ -85,7 +85,7 @@ describe("monitor components", () => {
     const html = renderToStaticMarkup(
       <DeputyView
         locale="en" member={{ ...member, inOffice: true }} params={parseDeputy({})} searched={null} votes={{ total: 0, rows: [] }} {...emptyWorkspace}
-        speeches={{ total: 1, rows: [{ id: 1, startsAt: "2026-10-14T20:12", phase: "Breves Comunicações", kind: null, summary: "Resumo.", text: "", urlText: null, textFile: false }] }}
+        speeches={{ total: 1, rows: [{ id: 1, startsAt: "2026-10-14T20:12", phase: "Breves Comunicações", kind: null, summary: "Resumo.", text: "", urlText: null, textFile: false, video: null }] }}
       />,
     );
     expect(html).toContain("Full text not published yet");
@@ -95,7 +95,7 @@ describe("monitor components", () => {
   const searched = { q: "feminicídio", terms: ["feminicídio"], translatedFrom: null, notice: null, exact: false };
   const hit = {
     id: 7, startsAt: "2026-04-08T11:28", phase: "Comissão Geral", kind: null, summary: "RESUMO OFICIAL", text: "texto",
-    urlText: null, textFile: false, member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS", partyThen: "PSOL", ufThen: "RS",
+    urlText: null, textFile: false, video: null, member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS", partyThen: "PSOL", ufThen: "RS",
   };
 
   const facets = { parties: ["PL", "PSOL"], ufs: ["RS", "SP"], phases: ["Breves Comunicações"] };
@@ -211,7 +211,7 @@ describe("monitor components", () => {
   });
 
   it("a speech's summary is labelled as the Câmara's and links to its official text", () => {
-    const row = { id: 3, startsAt: "2026-02-24T19:08", phase: "Breves Comunicações", kind: null, summary: "A Deputada denunciou.", text: "A SRA. X - Presidente…", urlText: "https://imagem.camara.gov.br/dc_20b.asp?Datain=25%2F2%2F2026&txPagina=152", textFile: false };
+    const row = { id: 3, startsAt: "2026-02-24T19:08", phase: "Breves Comunicações", kind: null, summary: "A Deputada denunciou.", text: "A SRA. X - Presidente…", urlText: "https://imagem.camara.gov.br/dc_20b.asp?Datain=25%2F2%2F2026&txPagina=152", textFile: false, video: null };
     const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>);
     expect(html).toContain("Câmara summary");
     expect(html.indexOf("Câmara summary")).toBeLessThan(html.indexOf("A Deputada denunciou."));
@@ -222,8 +222,35 @@ describe("monitor components", () => {
     expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={{ ...row, urlText: null }} /></ul>)).not.toContain("Official record");
   });
 
+  it("a speech placed in the session's video offers Watch and a YouTube link, and loads nothing from YouTube before the click", () => {
+    const row = {
+      id: 5, startsAt: "2026-06-30T14:24", phase: "Breves Comunicações", kind: null, summary: "", text: "O SR. X (PL - RS.) - Quero falar hoje.",
+      urlText: null, textFile: false, video: { videoId: "NmI46Y25mEU", startS: 76, endS: 414 },
+    };
+    const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>);
+    expect(html).toContain("Watch the speech (5:38)");
+    expect(html).toContain('aria-label="Watch the speech in the session&#x27;s official video, from 0:01:16"');
+    expect(html).toContain('href="https://www.youtube.com/watch?v=NmI46Y25mEU&amp;t=76s"');
+    expect(html).toContain("Open on YouTube at 0:01:16");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("youtube-nocookie");
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="pt-BR" speech={row} /></ul>)).toContain("Ver o discurso (5:38)");
+  });
+
+  it("a speech sent in writing says it wasn't spoken; a spoken one without a match says nothing about video", () => {
+    const written = {
+      id: 6, startsAt: "2026-06-30T13:55", phase: "Encerramento", kind: null, summary: "",
+      text: "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO X (SEM REGISTRO TAQUIGRÁFICO). Senhor Presidente…", urlText: null, textFile: false, video: null,
+    };
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={written} /></ul>)).toContain("Sent in writing: not spoken in the session, so there is no video.");
+    const spoken = { ...written, text: "O SR. X (PL - RS.) - Presidente…" };
+    const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={spoken} /></ul>);
+    expect(html).not.toContain("Sent in writing");
+    expect(html).not.toContain("Watch the speech");
+  });
+
   it("a speech published as an attached file says so instead of showing its text", () => {
-    const row = { id: 4, startsAt: "2026-10-13T13:55", phase: "Ordem do Dia", kind: null, summary: "", text: "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO X (SEM REGISTRO TAQUIGRÁFICO).", urlText: "https://imagem.camara.gov.br/x", textFile: true };
+    const row = { id: 4, startsAt: "2026-10-13T13:55", phase: "Ordem do Dia", kind: null, summary: "", text: "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO X (SEM REGISTRO TAQUIGRÁFICO).", urlText: "https://imagem.camara.gov.br/x", textFile: true, video: null };
     const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>);
     expect(html).toContain("The Câmara published this speech as an attached file; read it in the official record.");
     expect(html).not.toContain("Show full text");

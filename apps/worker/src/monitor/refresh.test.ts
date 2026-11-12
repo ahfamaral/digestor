@@ -52,6 +52,17 @@ describe("refreshMonitor", () => {
     expect((await listMemberVotes(db, her!.id, {})).rows.find((v) => v.rollCallId === "2449741-72")!.billLabel).toBe("PL 2942/2024");
   });
 
+  it("drops copies of a deputy's speeches the Câmara also files under another deputy", async () => {
+    // the Câmara lists Fernanda Melchionna's speeches under Acácio Favacho too (as it does for Mauricio Marcon / Marcon)
+    const { f } = fakeCamaraMonitorFetch({ "/deputados/204379/discursos": monitorFixture("discursos-204407.recorded.json") });
+    const counts = await refreshMonitor({ db, fetch: f }, window);
+    expect(counts.misfiled).toBe(3); // the fourth has no text yet, so it can't be told apart and is kept
+    const her = await getMember(db, "camara", 204407);
+    const him = await getMember(db, "camara", 204379);
+    expect((await listMemberSpeeches(db, her!.id, {})).total).toBe(4);
+    expect((await listMemberSpeeches(db, him!.id, {})).total).toBe(1);
+  });
+
   it("keeps speeches on an empty answer", async () => {
     await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

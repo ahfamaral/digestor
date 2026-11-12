@@ -1,9 +1,10 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { misfiledCopies } from "../monitorText.ts";
 import { inOfficeSpans, type ExternalMandate, type HistoryRow, type Position } from "../monitorTimeline.ts";
 import type { Db } from "./client.ts";
 import type { House } from "./monitor.ts";
 import {
-  parlBillAuthors, parlBills, parlMemberHistory, parlMembers, parlOrientations, parlPresence, parlRollCalls, parlSessions, parlVotes,
+  parlBillAuthors, parlBills, parlMemberHistory, parlMembers, parlOrientations, parlPresence, parlRollCalls, parlSessions, parlSpeeches, parlVotes,
 } from "./schema.ts";
 
 // Parliament monitor: the deputy's record beyond speeches and votes (history, profile, authored bills, presence) and
@@ -66,6 +67,26 @@ export async function fillSpeechParties(db: Db): Promise<number> {
     ) x
     where x.id = s.id and (s.party is distinct from x.party or s.uf is distinct from x.uf)`);
   return r.rowCount ?? 0;
+}
+
+/**
+ * Deletes the copies of speeches the Câmara filed under the wrong deputy (`misfiledCopies`): copies are speeches with the
+ * same text at the same minute under different deputies. Run after `fillSpeechParties` (it compares the party on the
+ * day). Returns the rows deleted.
+ */
+export async function dropMisfiledSpeeches(db: Db): Promise<number> {
+  const r = await db.execute<{ id: number; name: string; party: string | null; uf: string | null; text: string; grp: string }>(sql`
+    with dup as (
+      select starts_at, md5(text) as h from parl_speeches where text <> '' group by 1, 2 having count(distinct member_id) > 1
+    )
+    select s.id, m.name, s.party, s.uf, s.text, s.starts_at::text || ':' || dup.h as grp
+    from parl_speeches s join dup on dup.starts_at = s.starts_at and dup.h = md5(s.text) join parl_members m on m.id = s.member_id
+    order by s.id`);
+  const groups = new Map<string, typeof r.rows>();
+  for (const row of r.rows) groups.set(row.grp, [...(groups.get(row.grp) ?? []), row]);
+  const ids = [...groups.values()].flatMap((g) => misfiledCopies(g[0]!.text, g));
+  for (const part of chunks(ids)) await db.delete(parlSpeeches).where(inArray(parlSpeeches.id, part));
+  return ids.length;
 }
 
 export async function upsertBills(db: Db, rows: BillInput[]): Promise<void> {

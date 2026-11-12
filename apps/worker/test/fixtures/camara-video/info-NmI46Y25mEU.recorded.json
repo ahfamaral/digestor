@@ -1,0 +1,36 @@
+{
+ "_meta": {
+  "recorded": "2026-11-12",
+  "tool": "yt-dlp 2026.10.26 in the worker container, no cookies (home IP)",
+  "args": "--js-runtimes node --skip-download --ignore-no-formats-error --write-auto-subs --sub-langs pt-orig --sub-format vtt --write-info-json",
+  "input": "https://www.youtube.com/watch?v=NmI46Y25mEU (Câmara plenary 30 Jun 2026)",
+  "note": "trimmed to the fields the caption job reads (plus a few for context)"
+ },
+ "id": "NmI46Y25mEU",
+ "title": "Plenário - Discussão e Votação de Propostas - 30/06/2026",
+ "channel": "Câmara dos Deputados",
+ "duration": 20736,
+ "release_timestamp": 1782840292,
+ "timestamp": 1782840271,
+ "upload_date": "20260630",
+ "live_status": "was_live",
+ "was_live": true,
+ "is_live": false,
+ "automatic_captions_langs_sample": [
+  "aa",
+  "ab",
+  "af",
+  "ak",
+  "am"
+ ],
+ "subtitles": {
+  "live_chat": [
+   {
+    "url": "https://www.youtube.com/watch?v=NmI46Y25mEU&bpctr=9999999999&has_verified=1",
+    "video_id": "NmI46Y25mEU",
+    "ext": "json",
+    "protocol": "youtube_live_chat_replay"
+   }
+  ]
+ }
+}

@@ -95,3 +95,9 @@ Needs `API_DATA_GOV_KEY` in `.env` for the US houses (then `docker compose up -d
 - [ ] US Senate and House: open the evidence link of a matched name (Who's who → the name's source) in a browser. It points to `https://www.congress.gov/congressional-record/<yyyy>/<mm>/<dd>/house-section` (or `senate-section`); congress.gov refuses curl (403), so the shape was never checked.
 - [ ] US: link a day whose record is only partly published (the House section out, the Senate not yet, or the reverse) and check that the row waits ("hasn't published the record … yet") instead of matching an empty list.
 - [ ] Bundestag: link a sitting from the current week. The row waits, and `records.retry` matches it once the Plenarprotokoll is out (the lag was up to 19 days on 2026-11-04).
+
+## Monitor video evidence (`monitor.video`, captions only)
+
+- [x] A finished Câmara plenary stream has automatic `pt-orig` captions fetchable with `--skip-download --ignore-no-formats-error` (30 Jun 2026, NmI46Y25mEU, 2026-11-12; fixture `apps/worker/test/fixtures/camara-video/`).
+- [ ] UNVERIFIED: a video with no automatic captions exits 0 and writes no `.vtt` (the job records `no_captions` and waits). Check on a fresh stream right after it ends.
+- [ ] UNVERIFIED: a stream still live (`live_status: "is_live"`) is recorded as `no_captions` and looked at again later.

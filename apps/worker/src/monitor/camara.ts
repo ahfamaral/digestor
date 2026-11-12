@@ -273,3 +273,32 @@ export async function fetchBill(
     .dados.find((p) => p.siglaTipo === sigla && p.numero === Number(numero) && p.ano === Number(ano));
   return hit ? toBill(hit) : null;
 }
+
+const evento = z.object({ dados: z.object({ id: z.coerce.number(), urlRegistro: text }).passthrough() }).passthrough();
+
+/** The 11-character id of a YouTube link (watch?v=, youtu.be/, /live/, /embed/), or null. */
+export function youtubeId(url: string | null): string | null {
+  if (!url) return null;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.replace(/^(www|m)\./, "");
+  const id =
+    host === "youtu.be" ? u.pathname.slice(1)
+    : host === "youtube.com" ? (u.searchParams.get("v") ?? /^\/(?:live|embed|shorts)\/([^/?#]+)/.exec(u.pathname)?.[1] ?? "")
+    : "";
+  return /^[\w-]{11}$/.test(id) ? id : null;
+}
+
+/**
+ * The official video of a session: the event's `urlRegistro` (a YouTube link on the Câmara's channel), or null when
+ * the event has none yet or is unknown (404).
+ */
+export async function fetchEventVideoId(f: typeof fetch, eventId: number): Promise<string | null> {
+  const res = await getJson(`${API}/eventos/${eventId}`, f, LABEL);
+  if (res.status === 404) return null;
+  return youtubeId(evento.parse(res.body).dados.urlRegistro);
+}

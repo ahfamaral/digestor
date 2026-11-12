@@ -1,5 +1,5 @@
 import {
-  boolean, check, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid,
+  boolean, check, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { AttributionEvidence, AttributionSource, AttributionStatus } from "../attribution.ts";
@@ -584,6 +584,52 @@ export const parlSessions = pgTable("parl_sessions", {
   /** `situacao`: "Encerrada" when held. */
   status: text("status").notNull(),
 });
+
+/**
+ * The official video of a plenary session (the event's `urlRegistro`, a YouTube link on the Câmara's channel) and the
+ * state of matching its speeches to the video's automatic captions (`monitor.video`). Rows are claimed with
+ * compare-and-set (`claimSessionVideo`): `pending` (or `running` untouched for 30 min) → `running` → `done`, `no_video`
+ * (the event has no link yet; looked at again later), `no_captions` or `failed`. `stream_start` is the stream's start in
+ * Brasília local time (no zone, like `parl_speeches.starts_at`): the anchor for each speech's 4-minute stamp.
+ */
+export const parlSessionVideos = pgTable("parl_session_videos", {
+  sessionId: integer("session_id")
+    .primaryKey()
+    .references(() => parlSessions.id, { onDelete: "cascade" }),
+  videoId: text("video_id"),
+  streamStart: timestamp("stream_start", { mode: "string" }),
+  durationS: integer("duration_s"),
+  status: text("status").$type<"pending" | "running" | "done" | "no_video" | "no_captions" | "failed">().notNull().default("pending"),
+  /** Speeches with text in the session's range at the last run, and how many got a video moment. */
+  spoken: integer("spoken").notNull().default(0),
+  matched: integer("matched").notNull().default(0),
+  attempts: integer("attempts").notNull().default(0),
+  error: text("error"),
+  /** When the row may be claimed again (a `no_video` / `failed` row waits; a `done` row is re-run when new texts arrive). */
+  retryAt: timestamp("retry_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Where a speech is in its session's video: seconds from the video's start, and the match score (cosine of the speech's
+ * words against the captions between start and end). Keyed by `parl_speeches.speech_key`, which survives the nightly
+ * window replace. Only matches at or above `VIDEO_MATCH_MIN` are stored.
+ */
+export const parlSpeechVideos = pgTable(
+  "parl_speech_videos",
+  {
+    speechKey: text("speech_key").primaryKey(),
+    sessionId: integer("session_id")
+      .notNull()
+      .references(() => parlSessions.id, { onDelete: "cascade" }),
+    videoId: text("video_id").notNull(),
+    startS: integer("start_s").notNull(),
+    endS: integer("end_s").notNull(),
+    score: real("score").notNull(),
+    alignedAt: timestamp("aligned_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("parl_speech_videos_session").on(t.sessionId)],
+);
 
 /** A recorded presence of a deputy at a session (`eventosPresencaDeputados-*.csv`). */
 export const parlPresence = pgTable(
