@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { copyFile, readFile, rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { FfmpegError, run } from "../media/ffmpeg.js";
+import { withYouTubeCookies } from "./cookieJar.js";
 
 export type YouTubeMetadata = {
   title: string;
@@ -71,46 +72,29 @@ export function ytDlpArgs(url: string, outPathNoExt: string, env: NodeJS.Process
   ];
 }
 
-/**
- * `YTDLP_COOKIES_FILE` (a Netscape cookies.txt exported from a logged-in browser) gets past YouTube's bot check on
- * server IPs. yt-dlp writes the jar back when it exits, so each download gets its own copy: the original stays
- * untouched (it is mounted read-only) and parallel downloads don't share one file.
- */
-async function cookiesCopy(outPathNoExt: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
-  const file = env.YTDLP_COOKIES_FILE?.trim();
-  if (!file) return undefined;
-  if (!existsSync(file)) {
-    console.warn(`[youtube] YTDLP_COOKIES_FILE=${file} does not exist; downloading without cookies.`);
-    return undefined;
-  }
-  const copy = `${outPathNoExt}.cookies.txt`;
-  await copyFile(file, copy);
-  return copy;
-}
-
 export async function downloadYouTube(
   url: string,
   outPathNoExt: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ videoPath: string; metadata: YouTubeMetadata }> {
   const infoPath = `${outPathNoExt}.info.json`;
-  const cookies = await cookiesCopy(outPathNoExt, env);
   let output = "";
-  try {
-    const { stdout, stderr } = await run("yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies));
-    output = `${stdout}\n${stderr}`;
-  } catch (err) {
-    // Verified against yt-dlp 2026.10.26: --break-match-filters rejecting a live stream exits 101 with the
-    // "does not pass filter" text on stdout (which run() does not keep in the error), so the exit code is the signal.
-    if (err instanceof FfmpegError && err.code === 101) throw new YouTubeDownloadError(LIVE_MESSAGE, err.stderrTail);
-    const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
-    if (cookies && /Sign in to confirm|not a bot/i.test(stderr)) {
-      console.warn("[youtube] blocked even with YTDLP_COOKIES_FILE: the cookies may have expired; export fresh ones (docs/deploy.md).");
+  // The live cookie jar (`cookieJar.ts`): yt-dlp keeps YouTube's refreshed cookies in it, one run at a time.
+  await withYouTubeCookies(env, async (cookies) => {
+    try {
+      const { stdout, stderr } = await run("yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies));
+      output = `${stdout}\n${stderr}`;
+    } catch (err) {
+      // Verified against yt-dlp 2026.10.26: --break-match-filters rejecting a live stream exits 101 with the
+      // "does not pass filter" text on stdout (which run() does not keep in the error), so the exit code is the signal.
+      if (err instanceof FfmpegError && err.code === 101) throw new YouTubeDownloadError(LIVE_MESSAGE, err.stderrTail);
+      const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
+      if (cookies && /Sign in to confirm|not a bot/i.test(stderr)) {
+        console.warn("[youtube] blocked even with YTDLP_COOKIES_FILE: the cookies may have expired; export fresh ones (docs/deploy.md).");
+      }
+      throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
     }
-    throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
-  } finally {
-    if (cookies) await rm(cookies, { force: true });
-  }
+  });
   try {
     // An over-size file is a *skip*: yt-dlp exits 0, prints "File is larger than max-filesize" on stdout and writes
     // only the info json.

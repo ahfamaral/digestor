@@ -170,10 +170,10 @@ Dev on 2026-11-11 printed: 568 deputies, history and profiles 568 ok / 0 failed,
 
 ### Once, when updating to video evidence (migration 0025)
 
-`up -d --build` runs migration 0025: `parl_session_videos` (each held plenary's official YouTube video and the state of matching it) and `parl_speech_videos` (each speech's start and end second in that video, keyed by the speech key). The worker then matches about 9 sessions an hour on its own (`monitor.video`, at :07, :27 and :47; captions only, no video is downloaded; needs the YouTube cookies on a server, see below). To load 2026 sooner, run this once (one session every 20 s, about 40 minutes for 2026 so far; safe to stop and rerun):
+`up -d --build` runs migration 0025: `parl_session_videos` (each held plenary's official YouTube video and the state of matching it) and `parl_speech_videos` (each speech's start and end second in that video, keyed by the speech key). The worker then matches one session every 5 minutes on its own (`monitor.video`; captions only, no video is downloaded; needs the YouTube cookies on a server, see below). To load 2026 sooner, run this once (safe to stop and rerun; keep the pause long, a burst of requests got the cookies rotated on 2026-11-12). It runs in its own process, so its YouTube requests are not queued behind the worker's; the worker's own schedule alone is usually enough:
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-videos.ts --pause 20
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-videos.ts --pause 180
 ```
 
 The same update makes the nightly refresh remove speeches the Câmara files under two deputies with overlapping names (Mauricio Marcon's under Marcon too); the first refresh after the update cleans the stored ones (109 in dev on 2026-11-12).
@@ -230,7 +230,7 @@ To get past the bot check, give the worker the cookies of a logged-in YouTube se
 4. Save the file as `secrets/youtube-cookies.txt` in the repo folder on the server (`secrets/` is git-ignored and kept out of images; the worker mounts it read-only at `/secrets`), and `chmod 600` it.
 5. Set `YTDLP_COOKIES_FILE=/secrets/youtube-cookies.txt` in `.env` and run `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d worker`.
 
-Each download uses its own temporary copy, so the file is never changed. When YouTube blocks a download despite cookies, the worker logs "blocked even with YTDLP_COOKIES_FILE: the cookies may have expired"; export fresh ones. A missing file is logged and the download goes ahead without cookies.
+The mounted file is never changed. The worker keeps a live copy in the data volume (`/data/.youtube/cookies.txt`, owner-only) that yt-dlp updates after every request with the cookies YouTube refreshed, as a browser would; on 2026-11-12 a session used with a fresh copy every time was rotated after about 20 requests. Requests that use the cookies run one at a time. Replacing `secrets/youtube-cookies.txt` with a new export is enough: the worker notices the change on the next request and starts the live copy again from it (no restart needed). When YouTube blocks a download or a caption fetch despite cookies, the worker logs "blocked even with YTDLP_COOKIES_FILE: the cookies may have expired"; export fresh ones (and never open that account in a browser afterwards). A missing file is logged and the request goes ahead without cookies.
 
 ## US House and Senate records (key required)
 

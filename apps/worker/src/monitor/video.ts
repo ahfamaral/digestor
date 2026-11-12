@@ -7,9 +7,9 @@ import { fetchEventVideoId } from "./camara.js";
 import { alignSpeeches, alignWithoutStart, captionWords, secondsBetween } from "./videoAlign.js";
 
 export const MONITOR_VIDEO_QUEUE = "monitor.video";
-/** Every 20 minutes, a few sessions at a time: about 9 sessions an hour, gentle on YouTube. */
-export const MONITOR_VIDEO_CRON = "7,27,47 * * * *";
-export const SESSIONS_PER_RUN = 3;
+/** One session every 5 minutes (12 an hour): a steady trickle rather than bursts, gentle on YouTube and its cookies. */
+export const MONITOR_VIDEO_CRON = "2-59/5 * * * *";
+export const SESSIONS_PER_RUN = 1;
 
 const HOUR = 3_600_000;
 /** A live stream starting further than this from the session's official start is not trusted as its anchor. */

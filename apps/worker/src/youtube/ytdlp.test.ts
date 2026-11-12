@@ -73,16 +73,16 @@ describe("downloadYouTube outcomes", () => {
     expect(existsSync(`${base}.info.json`)).toBe(false);
   });
 
-  it("passes a private copy of the cookies file and removes it afterwards (yt-dlp writes cookies back)", async () => {
+  it("passes the live cookie jar in the data folder, never the mounted file (yt-dlp writes cookies back)", async () => {
     const cookies = `${out()}-cookies.txt`;
+    const dataDir = `${out()}-data`;
     writeFileSync(cookies, "# Netscape HTTP Cookie File\n");
     runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
-    await expect(downloadYouTube("https://youtu.be/x", out(), { YTDLP_COOKIES_FILE: cookies })).rejects.toThrow();
+    await expect(downloadYouTube("https://youtu.be/x", out(), { YTDLP_COOKIES_FILE: cookies, DATA_DIR: dataDir })).rejects.toThrow();
     const args: string[] = runMock.mock.lastCall![1];
-    expect(args).toContain("--cookies");
     const used = args[args.indexOf("--cookies") + 1]!;
-    expect(used).not.toBe(cookies);
-    expect(existsSync(used)).toBe(false);
+    expect(used).toBe(path.join(dataDir, ".youtube", "cookies.txt"));
+    expect(existsSync(used)).toBe(true); // kept for the next run
     expect(readFileSync(cookies, "utf8")).toBe("# Netscape HTTP Cookie File\n");
   });
 

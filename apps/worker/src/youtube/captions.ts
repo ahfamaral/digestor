@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FfmpegError, run } from "../media/ffmpeg.js";
+import { withYouTubeCookies } from "./cookieJar.js";
 import { mapYtDlpError, YouTubeDownloadError } from "./ytdlp.js";
 
 /** What the caption job needs from a video's info JSON. */
@@ -27,6 +28,11 @@ export function captionInfo(info: unknown): CaptionInfo {
   };
 }
 
+/** yt-dlp's output says YouTube refused the request (bot check, or cookies it no longer accepts). */
+export function blocked(output: string): boolean {
+  return /Sign in to confirm|not a bot|cookies are no longer valid/i.test(output);
+}
+
 export function captionArgs(videoId: string, outPathNoExt: string, cookiesPath?: string): string[] {
   return [
     "--js-runtimes", "node",
@@ -44,7 +50,7 @@ export function captionArgs(videoId: string, outPathNoExt: string, cookiesPath?:
 
 /**
  * A video's automatic Portuguese captions (`pt-orig`, word-timed VTT, ~2.3 MB for a 6-hour session) and its info.
- * `vtt` is null when YouTube has none (yet). Uses `YTDLP_COOKIES_FILE` like downloads do (a per-run copy). Everything is
+ * `vtt` is null when YouTube has none (yet). Uses the live cookie jar like downloads do. Everything is
  * written to a temporary folder that is removed before returning: nothing is kept but what the caller stores.
  * UNVERIFIED: a video without automatic captions is assumed to exit 0 and write no .vtt (yt-dlp warns "There are no
  * subtitles for the requested languages"); scripts/smoke.md lists it.
@@ -53,23 +59,32 @@ export async function fetchCaptions(videoId: string, env: NodeJS.ProcessEnv = pr
   const dir = await mkdtemp(join(tmpdir(), "captions-"));
   const base = join(dir, "v");
   try {
-    let cookies: string | undefined;
-    const file = env.YTDLP_COOKIES_FILE?.trim();
-    if (file && existsSync(file)) {
-      cookies = `${base}.cookies.txt`;
-      await copyFile(file, cookies);
-    }
-    try {
-      await run("yt-dlp", captionArgs(videoId, base, cookies), { timeoutMs: 120_000 });
-    } catch (err) {
-      const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
-      if (cookies && /Sign in to confirm|not a bot/i.test(stderr)) {
-        console.warn("[youtube] blocked even with YTDLP_COOKIES_FILE: the cookies may have expired; export fresh ones (docs/deploy.md).");
+    // The live cookie jar (`cookieJar.ts`): yt-dlp keeps YouTube's refreshed cookies in it, one run at a time.
+    const { output, withCookies } = await withYouTubeCookies(env, async (cookies) => {
+      try {
+        const r = await run("yt-dlp", captionArgs(videoId, base, cookies), { timeoutMs: 120_000 });
+        return { output: `${r.stdout}\n${r.stderr}`, withCookies: cookies !== undefined };
+      } catch (err) {
+        const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
+        if (cookies && blocked(stderr)) {
+          console.warn("[youtube] blocked even with YTDLP_COOKIES_FILE: the cookies may have expired; export fresh ones (docs/deploy.md).");
+        }
+        throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
       }
-      throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
+    });
+    const vttPath = `${base}.pt-orig.vtt`;
+    // Seen 2026-11-12 on the server: with rotated cookies yt-dlp warns "cookies are no longer valid" and "Sign in to
+    // confirm you're not a bot", then exits 0 with "There are no subtitles for the requested languages". That is a
+    // block, not a video without captions.
+    if (!existsSync(vttPath) && blocked(output)) {
+      console.warn(
+        withCookies
+          ? "[youtube] blocked even with YTDLP_COOKIES_FILE: the cookies may have expired; export fresh ones (docs/deploy.md)."
+          : "[youtube] blocked by YouTube's bot check; set YTDLP_COOKIES_FILE (docs/deploy.md).",
+      );
+      throw new YouTubeDownloadError(mapYtDlpError(output), output.slice(-2000));
     }
     const info = existsSync(`${base}.info.json`) ? captionInfo(JSON.parse(await readFile(`${base}.info.json`, "utf8"))) : captionInfo(null);
-    const vttPath = `${base}.pt-orig.vtt`;
     return { vtt: existsSync(vttPath) ? await readFile(vttPath, "utf8") : null, info };
   } finally {
     await rm(dir, { recursive: true, force: true });
