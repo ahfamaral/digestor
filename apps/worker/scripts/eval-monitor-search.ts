@@ -18,8 +18,13 @@ import { searchSpeechMeaning } from "../src/monitor/embedSpeeches.js";
 
 type Golden = {
   labelledBy: string;
-  queries: { id: string; q: string; lang: string; terms: string[]; relevant: { externalId: number; startsAt: string }[] }[];
+  queries: { id: string; q: string; lang: string; terms: string[]; relevant: SpeechId[] }[];
 };
+/**
+ * A speech's identity without its key (keys change when the Câmara revises a text): deputy, start minute and session
+ * phase; `n` (1-based, in stored order) only when the same deputy has several speeches in that minute and phase.
+ */
+type SpeechId = { externalId: number; startsAt: string; phase: string | null; n?: number };
 const TOP = 10;
 const FUSE = 100;
 
@@ -34,17 +39,27 @@ const chromaUrl = new URL(process.env.CHROMA_URL ?? "http://localhost:8000");
 const chroma = new ChromaClient({ host: chromaUrl.hostname, port: Number(chromaUrl.port || 80), ssl: chromaUrl.protocol === "https:" });
 const deps = { db, chroma, embedder: createE5Embedder() };
 
-const id = (externalId: number, startsAt: string) => `${externalId}@${startsAt}`;
-const ids = await db.execute<{ speech_key: string; external_id: number; starts_at: string; summary: string; text: string }>(sql`
-  select s.speech_key, m.external_id, to_char(s.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, s.summary, left(s.text, 600) as text
-  from parl_speeches s join parl_members m on m.id = s.member_id where s.speech_key is not null`);
+const id = (r: SpeechId) => `${r.externalId}@${r.startsAt}@${r.phase ?? ""}${r.n ? `#${r.n}` : ""}`;
+const ids = await db.execute<{
+  speech_key: string; external_id: number; starts_at: string; phase: string | null; n: number; same: number; summary: string; text: string;
+}>(sql`
+  select s.speech_key, m.external_id, to_char(s.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, s.phase,
+    (row_number() over (w order by s.id))::int as n, (count(*) over w)::int as same, s.summary, left(s.text, 600) as text
+  from parl_speeches s join parl_members m on m.id = s.member_id where s.speech_key is not null
+  window w as (partition by m.external_id, s.starts_at, s.phase)`);
 const byKey = new Map(ids.rows.map((r) => [r.speech_key, r]));
-const ident = (key: string) => {
+const speechId = (key: string): SpeechId | null => {
   const r = byKey.get(key);
-  return r ? id(r.external_id, r.starts_at) : key;
+  return r ? { externalId: r.external_id, startsAt: r.starts_at, phase: r.phase, ...(r.same > 1 ? { n: r.n } : {}) } : null;
 };
+const ident = (key: string) => {
+  const r = speechId(key);
+  return r ? id(r) : key;
+};
+const known = new Set([...byKey.keys()].map(ident));
 
-const recall = (top: string[], rel: Set<string>) => (rel.size ? top.filter((k) => rel.has(k)).length / rel.size : 0);
+/** Distinct relevant speeches in the top (ids, so two keys of one speech never count twice). */
+const recall = (top: string[], rel: Set<string>) => (rel.size ? new Set(top.filter((k) => rel.has(k))).size / rel.size : 0);
 const rr = (top: string[], rel: Set<string>) => {
   const i = top.findIndex((k) => rel.has(k));
   return i < 0 ? 0 : 1 / (i + 1);
@@ -61,7 +76,9 @@ try {
     const meaning = (await searchSpeechMeaning(deps, g.q, FUSE)).map((h) => h.speechKey);
     const hybrid = rrf([words, meaning]).map((r) => r.key);
     const lists = { words, meaning, hybrid };
-    const rel = new Set(g.relevant.map((r) => id(r.externalId, r.startsAt)));
+    const rel = new Set(g.relevant.map(id));
+    const missing = [...rel].filter((r) => !known.has(r));
+    if (missing.length) console.warn(`${g.id}: ${missing.length} relevant speech(es) not in the database: ${missing.join(", ")}`);
     const row = { id: g.id, q: g.q, lang: g.lang, rel: rel.size } as Row;
     for (const m of methods) {
       const top = lists[m].slice(0, TOP).map(ident);
@@ -75,7 +92,7 @@ try {
         candidates: keys.map((k) => {
           const s = byKey.get(k)!;
           return {
-            id: ident(k), by: methods.filter((m) => lists[m].slice(0, TOP).includes(k)),
+            id: ident(k), speech: speechId(k), key: k, by: methods.filter((m) => lists[m].slice(0, TOP).includes(k)),
             summary: s.summary.slice(0, 400), opening: s.text.replace(/^\s*(?:O|A)\s+SRA?\.\s+[^(\n]+?\s*\([^)\n]*\)\s*[-–—]\s*/, "").slice(0, 300),
           };
         }),

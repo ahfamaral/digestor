@@ -1,5 +1,5 @@
 {
-  "labelledBy": "Drafted by Claude (Opus 5.5) on 2026-11-13 by reading the official summaries, openings and term counts of the pooled top 10 of words / meaning / hybrid for each query (no LLM labelling): relevant = the speech is about the query's topic, not a passing mention in a list. Paired queries (q01/q17, q02/q15, q05/q16, q07/q18: the same topic in Portuguese and English) share their relevant speeches. Owner to review. `terms`: the query translator's answer on 2026-11-13 (OpenRouter), frozen so the evaluation needs no paid call.",
+  "labelledBy": "Labelled on 2026-11-13 by the coding agent (Claude) reading the pooled texts (official summary, opening and term counts in the full text) of the top 10 of words / meaning / hybrid for each query; not an automated LLM judge, no labelling calls. Owner review pending. Relevant = the speech is about the query's topic, not a passing mention in a list. The pool includes each method's own top 10, hybrid's too (q11's only relevant speech was found only by hybrid). Paired queries (q01/q17, q02/q15, q05/q16, q07/q18: the same topic in Portuguese and English) share their relevant speeches. A speech is identified by deputy, start minute and session phase, plus `n` (1-based, in stored order) when the same deputy has several speeches in that minute and phase; keys are not used because they change when the Câmara revises a text. `terms`: the query translator's answer on 2026-11-13 (OpenRouter), frozen so the evaluation needs no paid call.",
   "queries": [
     {
       "id": "q01",
@@ -14,111 +14,138 @@
       "relevant": [
         {
           "externalId": 178887,
-          "startsAt": "2026-06-02T13:55"
+          "startsAt": "2026-06-02T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 73531,
-          "startsAt": "2026-02-26T11:12"
+          "startsAt": "2026-02-26T11:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-06-17T14:08"
+          "startsAt": "2026-06-17T14:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74161,
-          "startsAt": "2026-02-24T17:28"
+          "startsAt": "2026-02-24T17:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 81055,
-          "startsAt": "2026-02-24T14:48"
+          "startsAt": "2026-02-24T14:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220632,
-          "startsAt": "2026-05-26T16:20"
+          "startsAt": "2026-05-26T16:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 152605,
-          "startsAt": "2026-10-14T18:00"
+          "startsAt": "2026-10-14T18:00",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 80815,
-          "startsAt": "2026-05-27T23:00"
+          "startsAt": "2026-05-27T23:00",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220588,
-          "startsAt": "2026-04-17T10:30"
+          "startsAt": "2026-04-17T10:30",
+          "phase": "Encerramento"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-07-07T15:28"
+          "startsAt": "2026-07-07T15:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74161,
-          "startsAt": "2026-04-14T20:40"
+          "startsAt": "2026-04-14T20:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 74161,
-          "startsAt": "2026-05-27T23:32"
+          "startsAt": "2026-05-27T23:32",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204441,
-          "startsAt": "2026-06-30T17:36"
+          "startsAt": "2026-06-30T17:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-05-05T19:44"
+          "startsAt": "2026-05-05T19:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220615,
-          "startsAt": "2026-07-15T12:04"
+          "startsAt": "2026-07-15T12:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204464,
-          "startsAt": "2026-09-02T16:08"
+          "startsAt": "2026-09-02T16:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 224333,
-          "startsAt": "2026-06-16T14:12"
+          "startsAt": "2026-06-16T14:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220558,
-          "startsAt": "2026-05-12T16:28"
+          "startsAt": "2026-05-12T16:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-04-15T21:52"
+          "startsAt": "2026-04-15T21:52",
+          "phase": "Encerramento"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-05-27T23:32"
+          "startsAt": "2026-05-27T23:32",
+          "phase": "Encerramento"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-06-17T14:48"
+          "startsAt": "2026-06-17T14:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-10-15T10:00"
+          "startsAt": "2026-10-15T10:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220617,
-          "startsAt": "2026-05-26T14:56"
+          "startsAt": "2026-05-26T14:56",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220582,
-          "startsAt": "2026-02-11T15:24"
+          "startsAt": "2026-02-11T15:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-05-26T20:36"
+          "startsAt": "2026-05-26T20:36",
+          "phase": "Encerramento"
         },
         {
           "externalId": 74400,
-          "startsAt": "2026-05-27T20:20"
+          "startsAt": "2026-05-27T20:20",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 74057,
-          "startsAt": "2026-05-27T21:00"
+          "startsAt": "2026-05-27T21:00",
+          "phase": "Ordem do Dia"
         }
       ]
     },
@@ -135,35 +162,43 @@
       "relevant": [
         {
           "externalId": 220550,
-          "startsAt": "2026-06-10T17:52"
+          "startsAt": "2026-06-10T17:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204455,
-          "startsAt": "2026-07-01T15:20"
+          "startsAt": "2026-07-01T15:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204455,
-          "startsAt": "2026-04-28T14:04"
+          "startsAt": "2026-04-28T14:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220588,
-          "startsAt": "2026-04-09T10:00"
+          "startsAt": "2026-04-09T10:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-09-02T16:28"
+          "startsAt": "2026-09-02T16:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 162067,
-          "startsAt": "2026-03-17T14:28"
+          "startsAt": "2026-03-17T14:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204455,
-          "startsAt": "2026-03-17T14:16"
+          "startsAt": "2026-03-17T14:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 141555,
-          "startsAt": "2026-05-20T22:36"
+          "startsAt": "2026-05-20T22:36",
+          "phase": "Encerramento"
         }
       ]
     },
@@ -180,99 +215,123 @@
       "relevant": [
         {
           "externalId": 220704,
-          "startsAt": "2026-03-03T16:16"
+          "startsAt": "2026-03-03T16:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160575,
-          "startsAt": "2026-03-18T22:16"
+          "startsAt": "2026-03-18T22:16",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220527,
-          "startsAt": "2026-02-03T19:20"
+          "startsAt": "2026-02-03T19:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74856,
-          "startsAt": "2026-03-18T21:36"
+          "startsAt": "2026-03-18T21:36",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220668,
-          "startsAt": "2026-03-03T16:28"
+          "startsAt": "2026-03-03T16:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74398,
-          "startsAt": "2026-02-24T18:12"
+          "startsAt": "2026-02-24T18:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204535,
-          "startsAt": "2026-02-24T19:20"
+          "startsAt": "2026-02-24T19:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204355,
-          "startsAt": "2026-04-07T18:28"
+          "startsAt": "2026-04-07T18:28",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-07-07T20:00"
+          "startsAt": "2026-07-07T20:00",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 160575,
-          "startsAt": "2026-03-25T20:08"
+          "startsAt": "2026-03-25T20:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204572,
-          "startsAt": "2026-10-13T13:55"
+          "startsAt": "2026-10-13T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-05-05T16:12"
+          "startsAt": "2026-05-05T16:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74398,
-          "startsAt": "2026-04-08T09:40"
+          "startsAt": "2026-04-08T09:40",
+          "phase": "Comissão Geral"
         },
         {
           "externalId": 74398,
-          "startsAt": "2026-07-14T17:00"
+          "startsAt": "2026-07-14T17:00",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74856,
-          "startsAt": "2026-03-10T21:24"
+          "startsAt": "2026-03-10T21:24",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204407,
-          "startsAt": "2026-03-17T18:44"
+          "startsAt": "2026-03-17T18:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74041,
-          "startsAt": "2026-03-10T15:24"
+          "startsAt": "2026-03-10T15:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204535,
-          "startsAt": "2026-07-01T17:32"
+          "startsAt": "2026-07-01T17:32",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 235088,
-          "startsAt": "2026-03-18T19:24"
+          "startsAt": "2026-03-18T19:24",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-03-19T10:32"
+          "startsAt": "2026-03-19T10:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220527,
-          "startsAt": "2026-03-02T23:28"
+          "startsAt": "2026-03-02T23:28",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220554,
-          "startsAt": "2026-06-16T16:04"
+          "startsAt": "2026-06-16T16:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220652,
-          "startsAt": "2026-03-04T15:32"
+          "startsAt": "2026-03-04T15:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-03-24T18:40"
+          "startsAt": "2026-03-24T18:40",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -289,15 +348,18 @@
       "relevant": [
         {
           "externalId": 160538,
-          "startsAt": "2026-05-13T15:16"
+          "startsAt": "2026-05-13T15:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160610,
-          "startsAt": "2026-05-27T15:04"
+          "startsAt": "2026-05-27T15:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-05-26T20:08"
+          "startsAt": "2026-05-26T20:08",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -314,107 +376,133 @@
       "relevant": [
         {
           "externalId": 220574,
-          "startsAt": "2026-06-09T17:40"
+          "startsAt": "2026-06-09T17:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220590,
-          "startsAt": "2026-06-02T15:48"
+          "startsAt": "2026-06-02T15:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178871,
-          "startsAt": "2026-06-09T19:00"
+          "startsAt": "2026-06-09T19:00",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 156190,
-          "startsAt": "2026-06-03T12:12"
+          "startsAt": "2026-06-03T12:12",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204355,
-          "startsAt": "2026-02-25T15:24"
+          "startsAt": "2026-02-25T15:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220594,
-          "startsAt": "2026-06-09T14:36"
+          "startsAt": "2026-06-09T14:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 128760,
-          "startsAt": "2026-05-19T16:16"
+          "startsAt": "2026-05-19T16:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74428,
-          "startsAt": "2026-03-04T19:36"
+          "startsAt": "2026-03-04T19:36",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204501,
-          "startsAt": "2026-03-04T18:40"
+          "startsAt": "2026-03-04T18:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 227310,
-          "startsAt": "2026-03-18T16:52"
+          "startsAt": "2026-03-18T16:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-10-14T15:44"
+          "startsAt": "2026-10-14T15:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220588,
-          "startsAt": "2026-05-05T13:55"
+          "startsAt": "2026-05-05T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204387,
-          "startsAt": "2026-06-03T12:24"
+          "startsAt": "2026-06-03T12:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74428,
-          "startsAt": "2026-03-04T17:04"
+          "startsAt": "2026-03-04T17:04",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 160604,
-          "startsAt": "2026-05-12T19:48"
+          "startsAt": "2026-05-12T19:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160604,
-          "startsAt": "2026-02-24T22:48"
+          "startsAt": "2026-02-24T22:48",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 81055,
-          "startsAt": "2026-05-12T15:20"
+          "startsAt": "2026-05-12T15:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204572,
-          "startsAt": "2026-02-25T13:55"
+          "startsAt": "2026-02-25T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220666,
-          "startsAt": "2026-07-07T21:24"
+          "startsAt": "2026-07-07T21:24",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204531,
-          "startsAt": "2026-02-24T21:28"
+          "startsAt": "2026-02-24T21:28",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-02-24T14:52"
+          "startsAt": "2026-02-24T14:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220621,
-          "startsAt": "2026-06-09T20:08"
+          "startsAt": "2026-06-09T20:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220554,
-          "startsAt": "2026-05-12T14:40"
+          "startsAt": "2026-05-12T14:40",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178908,
-          "startsAt": "2026-06-02T16:04"
+          "startsAt": "2026-06-02T16:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220621,
-          "startsAt": "2026-05-12T16:16"
+          "startsAt": "2026-05-12T16:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-05-12T20:00"
+          "startsAt": "2026-05-12T20:00",
+          "phase": "Encerramento"
         }
       ]
     },
@@ -431,47 +519,58 @@
       "relevant": [
         {
           "externalId": 220574,
-          "startsAt": "2026-04-07T18:28"
+          "startsAt": "2026-04-07T18:28",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 205865,
-          "startsAt": "2026-03-24T16:32"
+          "startsAt": "2026-03-24T16:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 156190,
-          "startsAt": "2026-08-11T19:52"
+          "startsAt": "2026-08-11T19:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-06-03T10:28"
+          "startsAt": "2026-06-03T10:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204378,
-          "startsAt": "2026-03-16T20:08"
+          "startsAt": "2026-03-16T20:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-08-11T19:52"
+          "startsAt": "2026-08-11T19:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 156190,
-          "startsAt": "2026-06-03T10:56"
+          "startsAt": "2026-06-03T10:56",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204572,
-          "startsAt": "2026-05-26T20:36"
+          "startsAt": "2026-05-26T20:36",
+          "phase": "Encerramento"
         },
         {
           "externalId": 178857,
-          "startsAt": "2026-08-11T15:44"
+          "startsAt": "2026-08-11T15:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220559,
-          "startsAt": "2026-03-10T18:16"
+          "startsAt": "2026-03-10T18:16",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178871,
-          "startsAt": "2026-05-20T15:12"
+          "startsAt": "2026-05-20T15:12",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -488,79 +587,99 @@
       "relevant": [
         {
           "externalId": 162067,
-          "startsAt": "2026-11-03T18:48"
+          "startsAt": "2026-11-03T18:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178857,
-          "startsAt": "2026-11-03T18:52"
+          "startsAt": "2026-11-03T18:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204480,
-          "startsAt": "2026-11-03T17:16"
+          "startsAt": "2026-11-03T17:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204364,
-          "startsAt": "2026-02-24T23:48"
+          "startsAt": "2026-02-24T23:48",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204441,
-          "startsAt": "2026-02-24T22:40"
+          "startsAt": "2026-02-24T22:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204441,
-          "startsAt": "2026-10-13T16:36"
+          "startsAt": "2026-10-13T16:36",
+          "phase": "Breves Comunicações",
+          "n": 1
         },
         {
           "externalId": 220682,
-          "startsAt": "2026-07-15T15:32"
+          "startsAt": "2026-07-15T15:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-07-01T16:32"
+          "startsAt": "2026-07-01T16:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-06-30T15:28"
+          "startsAt": "2026-06-30T15:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220629,
-          "startsAt": "2026-07-15T16:36"
+          "startsAt": "2026-07-15T16:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160635,
-          "startsAt": "2026-03-10T21:24"
+          "startsAt": "2026-03-10T21:24",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220698,
-          "startsAt": "2026-08-11T15:00"
+          "startsAt": "2026-08-11T15:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-07-08T14:36"
+          "startsAt": "2026-07-08T14:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 98057,
-          "startsAt": "2026-07-15T16:20"
+          "startsAt": "2026-07-15T16:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-05-19T21:24"
+          "startsAt": "2026-05-19T21:24",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-02-26T10:00"
+          "startsAt": "2026-02-26T10:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-09-02T13:55"
+          "startsAt": "2026-09-02T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204387,
-          "startsAt": "2026-07-01T16:48"
+          "startsAt": "2026-07-01T16:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-05-05T13:55"
+          "startsAt": "2026-05-05T13:55",
+          "phase": "Encerramento"
         }
       ]
     },
@@ -577,7 +696,8 @@
       "relevant": [
         {
           "externalId": 204495,
-          "startsAt": "2026-11-10T14:12"
+          "startsAt": "2026-11-10T14:12",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -594,47 +714,58 @@
       "relevant": [
         {
           "externalId": 160604,
-          "startsAt": "2026-07-07T21:16"
+          "startsAt": "2026-07-07T21:16",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204501,
-          "startsAt": "2026-07-07T17:16"
+          "startsAt": "2026-07-07T17:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220682,
-          "startsAt": "2026-06-03T12:24"
+          "startsAt": "2026-06-03T12:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204495,
-          "startsAt": "2026-06-02T14:48"
+          "startsAt": "2026-06-02T14:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204472,
-          "startsAt": "2026-06-02T15:44"
+          "startsAt": "2026-06-02T15:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160575,
-          "startsAt": "2026-06-02T16:48"
+          "startsAt": "2026-06-02T16:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204387,
-          "startsAt": "2026-06-03T10:16"
+          "startsAt": "2026-06-03T10:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-02-24T17:20"
+          "startsAt": "2026-02-24T17:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160604,
-          "startsAt": "2026-06-09T17:44"
+          "startsAt": "2026-06-09T17:44",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-07-07T15:16"
+          "startsAt": "2026-07-07T15:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160604,
-          "startsAt": "2026-07-15T15:00"
+          "startsAt": "2026-07-15T15:00",
+          "phase": "Ordem do Dia"
         }
       ]
     },
@@ -651,15 +782,18 @@
       "relevant": [
         {
           "externalId": 204518,
-          "startsAt": "2026-04-29T15:28"
+          "startsAt": "2026-04-29T15:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74171,
-          "startsAt": "2026-04-30T12:40"
+          "startsAt": "2026-04-30T12:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204512,
-          "startsAt": "2026-03-25T14:12"
+          "startsAt": "2026-03-25T14:12",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -676,7 +810,8 @@
       "relevant": [
         {
           "externalId": 235800,
-          "startsAt": "2026-06-30T16:08"
+          "startsAt": "2026-06-30T16:08",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -693,39 +828,48 @@
       "relevant": [
         {
           "externalId": 204460,
-          "startsAt": "2026-05-05T14:24"
+          "startsAt": "2026-05-05T14:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 73692,
-          "startsAt": "2026-03-24T16:16"
+          "startsAt": "2026-03-24T16:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-03-18T14:52"
+          "startsAt": "2026-03-18T14:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160635,
-          "startsAt": "2026-03-05T10:00"
+          "startsAt": "2026-03-05T10:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 73692,
-          "startsAt": "2026-05-19T19:24"
+          "startsAt": "2026-05-19T19:24",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220695,
-          "startsAt": "2026-05-19T18:44"
+          "startsAt": "2026-05-19T18:44",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 74376,
-          "startsAt": "2026-06-16T22:08"
+          "startsAt": "2026-06-16T22:08",
+          "phase": "Encerramento"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-05-19T19:12"
+          "startsAt": "2026-05-19T19:12",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 74398,
-          "startsAt": "2026-08-12T15:28"
+          "startsAt": "2026-08-12T15:28",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -742,11 +886,13 @@
       "relevant": [
         {
           "externalId": 136811,
-          "startsAt": "2026-04-07T15:44"
+          "startsAt": "2026-04-07T15:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204572,
-          "startsAt": "2026-10-28T13:55"
+          "startsAt": "2026-10-28T13:55",
+          "phase": "Encerramento"
         }
       ]
     },
@@ -763,59 +909,73 @@
       "relevant": [
         {
           "externalId": 204427,
-          "startsAt": "2026-04-22T18:52"
+          "startsAt": "2026-04-22T18:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74057,
-          "startsAt": "2026-05-19T16:32"
+          "startsAt": "2026-05-19T16:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 221338,
-          "startsAt": "2026-02-24T18:08"
+          "startsAt": "2026-02-24T18:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204427,
-          "startsAt": "2026-04-22T21:44"
+          "startsAt": "2026-04-22T21:44",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204427,
-          "startsAt": "2026-04-16T12:16"
+          "startsAt": "2026-04-16T12:16",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220629,
-          "startsAt": "2026-04-07T15:00"
+          "startsAt": "2026-04-07T15:00",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204536,
-          "startsAt": "2026-05-20T17:28"
+          "startsAt": "2026-05-20T17:28",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 74398,
-          "startsAt": "2026-05-20T17:16"
+          "startsAt": "2026-05-20T17:16",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204533,
-          "startsAt": "2026-05-20T17:24"
+          "startsAt": "2026-05-20T17:24",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178884,
-          "startsAt": "2026-05-20T17:20"
+          "startsAt": "2026-05-20T17:20",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 160575,
-          "startsAt": "2026-05-20T17:12"
+          "startsAt": "2026-05-20T17:12",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 74171,
-          "startsAt": "2026-05-20T17:08"
+          "startsAt": "2026-05-20T17:08",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 73579,
-          "startsAt": "2026-05-20T17:32"
+          "startsAt": "2026-05-20T17:32",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 221338,
-          "startsAt": "2026-06-02T17:36"
+          "startsAt": "2026-06-02T17:36",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -832,35 +992,43 @@
       "relevant": [
         {
           "externalId": 204455,
-          "startsAt": "2026-04-28T14:04"
+          "startsAt": "2026-04-28T14:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-09-02T16:28"
+          "startsAt": "2026-09-02T16:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 162067,
-          "startsAt": "2026-03-17T14:28"
+          "startsAt": "2026-03-17T14:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220588,
-          "startsAt": "2026-04-09T10:00"
+          "startsAt": "2026-04-09T10:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204455,
-          "startsAt": "2026-03-17T14:16"
+          "startsAt": "2026-03-17T14:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220550,
-          "startsAt": "2026-06-10T17:52"
+          "startsAt": "2026-06-10T17:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 141555,
-          "startsAt": "2026-05-20T22:36"
+          "startsAt": "2026-05-20T22:36",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204455,
-          "startsAt": "2026-07-01T15:20"
+          "startsAt": "2026-07-01T15:20",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -877,107 +1045,133 @@
       "relevant": [
         {
           "externalId": 160604,
-          "startsAt": "2026-05-12T19:48"
+          "startsAt": "2026-05-12T19:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160604,
-          "startsAt": "2026-02-24T22:48"
+          "startsAt": "2026-02-24T22:48",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 81055,
-          "startsAt": "2026-05-12T15:20"
+          "startsAt": "2026-05-12T15:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74428,
-          "startsAt": "2026-03-04T17:04"
+          "startsAt": "2026-03-04T17:04",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204572,
-          "startsAt": "2026-02-25T13:55"
+          "startsAt": "2026-02-25T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220666,
-          "startsAt": "2026-07-07T21:24"
+          "startsAt": "2026-07-07T21:24",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204531,
-          "startsAt": "2026-02-24T21:28"
+          "startsAt": "2026-02-24T21:28",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-02-24T14:52"
+          "startsAt": "2026-02-24T14:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220621,
-          "startsAt": "2026-06-09T20:08"
+          "startsAt": "2026-06-09T20:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220588,
-          "startsAt": "2026-05-05T13:55"
+          "startsAt": "2026-05-05T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204387,
-          "startsAt": "2026-06-03T12:24"
+          "startsAt": "2026-06-03T12:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220554,
-          "startsAt": "2026-05-12T14:40"
+          "startsAt": "2026-05-12T14:40",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204355,
-          "startsAt": "2026-02-25T15:24"
+          "startsAt": "2026-02-25T15:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178908,
-          "startsAt": "2026-06-02T16:04"
+          "startsAt": "2026-06-02T16:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220621,
-          "startsAt": "2026-05-12T16:16"
+          "startsAt": "2026-05-12T16:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-05-12T20:00"
+          "startsAt": "2026-05-12T20:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-06-09T17:40"
+          "startsAt": "2026-06-09T17:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220590,
-          "startsAt": "2026-06-02T15:48"
+          "startsAt": "2026-06-02T15:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178871,
-          "startsAt": "2026-06-09T19:00"
+          "startsAt": "2026-06-09T19:00",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 156190,
-          "startsAt": "2026-06-03T12:12"
+          "startsAt": "2026-06-03T12:12",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220594,
-          "startsAt": "2026-06-09T14:36"
+          "startsAt": "2026-06-09T14:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 128760,
-          "startsAt": "2026-05-19T16:16"
+          "startsAt": "2026-05-19T16:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74428,
-          "startsAt": "2026-03-04T19:36"
+          "startsAt": "2026-03-04T19:36",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204501,
-          "startsAt": "2026-03-04T18:40"
+          "startsAt": "2026-03-04T18:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 227310,
-          "startsAt": "2026-03-18T16:52"
+          "startsAt": "2026-03-18T16:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-10-14T15:44"
+          "startsAt": "2026-10-14T15:44",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -994,111 +1188,138 @@
       "relevant": [
         {
           "externalId": 178887,
-          "startsAt": "2026-04-15T21:52"
+          "startsAt": "2026-04-15T21:52",
+          "phase": "Encerramento"
         },
         {
           "externalId": 74161,
-          "startsAt": "2026-04-14T20:40"
+          "startsAt": "2026-04-14T20:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-05-27T23:32"
+          "startsAt": "2026-05-27T23:32",
+          "phase": "Encerramento"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-06-17T14:48"
+          "startsAt": "2026-06-17T14:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-10-15T10:00"
+          "startsAt": "2026-10-15T10:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220617,
-          "startsAt": "2026-05-26T14:56"
+          "startsAt": "2026-05-26T14:56",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220582,
-          "startsAt": "2026-02-11T15:24"
+          "startsAt": "2026-02-11T15:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-05-26T20:36"
+          "startsAt": "2026-05-26T20:36",
+          "phase": "Encerramento"
         },
         {
           "externalId": 74400,
-          "startsAt": "2026-05-27T20:20"
+          "startsAt": "2026-05-27T20:20",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 74057,
-          "startsAt": "2026-05-27T21:00"
+          "startsAt": "2026-05-27T21:00",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-06-02T13:55"
+          "startsAt": "2026-06-02T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 73531,
-          "startsAt": "2026-02-26T11:12"
+          "startsAt": "2026-02-26T11:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-06-17T14:08"
+          "startsAt": "2026-06-17T14:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74161,
-          "startsAt": "2026-02-24T17:28"
+          "startsAt": "2026-02-24T17:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 81055,
-          "startsAt": "2026-02-24T14:48"
+          "startsAt": "2026-02-24T14:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220632,
-          "startsAt": "2026-05-26T16:20"
+          "startsAt": "2026-05-26T16:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 152605,
-          "startsAt": "2026-10-14T18:00"
+          "startsAt": "2026-10-14T18:00",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 80815,
-          "startsAt": "2026-05-27T23:00"
+          "startsAt": "2026-05-27T23:00",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 220588,
-          "startsAt": "2026-04-17T10:30"
+          "startsAt": "2026-04-17T10:30",
+          "phase": "Encerramento"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-07-07T15:28"
+          "startsAt": "2026-07-07T15:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74161,
-          "startsAt": "2026-05-27T23:32"
+          "startsAt": "2026-05-27T23:32",
+          "phase": "Encerramento"
         },
         {
           "externalId": 204441,
-          "startsAt": "2026-06-30T17:36"
+          "startsAt": "2026-06-30T17:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-05-05T19:44"
+          "startsAt": "2026-05-05T19:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220615,
-          "startsAt": "2026-07-15T12:04"
+          "startsAt": "2026-07-15T12:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204464,
-          "startsAt": "2026-09-02T16:08"
+          "startsAt": "2026-09-02T16:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 224333,
-          "startsAt": "2026-06-16T14:12"
+          "startsAt": "2026-06-16T14:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220558,
-          "startsAt": "2026-05-12T16:28"
+          "startsAt": "2026-05-12T16:28",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -1115,79 +1336,99 @@
       "relevant": [
         {
           "externalId": 162067,
-          "startsAt": "2026-11-03T18:48"
+          "startsAt": "2026-11-03T18:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178857,
-          "startsAt": "2026-11-03T18:52"
+          "startsAt": "2026-11-03T18:52",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204480,
-          "startsAt": "2026-11-03T17:16"
+          "startsAt": "2026-11-03T17:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204364,
-          "startsAt": "2026-02-24T23:48"
+          "startsAt": "2026-02-24T23:48",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-07-01T16:32"
+          "startsAt": "2026-07-01T16:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204441,
-          "startsAt": "2026-02-24T22:40"
+          "startsAt": "2026-02-24T22:40",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204441,
-          "startsAt": "2026-10-13T16:36"
+          "startsAt": "2026-10-13T16:36",
+          "phase": "Breves Comunicações",
+          "n": 1
         },
         {
           "externalId": 220682,
-          "startsAt": "2026-07-15T15:32"
+          "startsAt": "2026-07-15T15:32",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-06-30T15:28"
+          "startsAt": "2026-06-30T15:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 98057,
-          "startsAt": "2026-07-15T16:20"
+          "startsAt": "2026-07-15T16:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160635,
-          "startsAt": "2026-03-10T21:24"
+          "startsAt": "2026-03-10T21:24",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220698,
-          "startsAt": "2026-08-11T15:00"
+          "startsAt": "2026-08-11T15:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-09-02T13:55"
+          "startsAt": "2026-09-02T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-05-19T21:24"
+          "startsAt": "2026-05-19T21:24",
+          "phase": "Encerramento"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-07-08T14:36"
+          "startsAt": "2026-07-08T14:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204387,
-          "startsAt": "2026-07-01T16:48"
+          "startsAt": "2026-07-01T16:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220629,
-          "startsAt": "2026-07-15T16:36"
+          "startsAt": "2026-07-15T16:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-02-26T10:00"
+          "startsAt": "2026-02-26T10:00",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220543,
-          "startsAt": "2026-05-05T13:55"
+          "startsAt": "2026-05-05T13:55",
+          "phase": "Encerramento"
         }
       ]
     },
@@ -1204,75 +1445,93 @@
       "relevant": [
         {
           "externalId": 162067,
-          "startsAt": "2026-03-18T15:28"
+          "startsAt": "2026-03-18T15:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 221148,
-          "startsAt": "2026-03-18T15:24"
+          "startsAt": "2026-03-18T15:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220550,
-          "startsAt": "2026-03-18T15:28"
+          "startsAt": "2026-03-18T15:28",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-04-07T19:36"
+          "startsAt": "2026-04-07T19:36",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204364,
-          "startsAt": "2026-04-07T19:44"
+          "startsAt": "2026-04-07T19:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-03-18T15:04"
+          "startsAt": "2026-03-18T15:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220568,
-          "startsAt": "2026-03-17T19:28"
+          "startsAt": "2026-03-17T19:28",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 160604,
-          "startsAt": "2026-03-17T20:44"
+          "startsAt": "2026-03-17T20:44",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 188097,
-          "startsAt": "2026-05-20T20:44"
+          "startsAt": "2026-05-20T20:44",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 205476,
-          "startsAt": "2026-03-18T16:44"
+          "startsAt": "2026-03-18T16:44",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178884,
-          "startsAt": "2026-07-08T16:44"
+          "startsAt": "2026-07-08T16:44",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 204455,
-          "startsAt": "2026-03-17T14:16"
+          "startsAt": "2026-03-17T14:16",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220684,
-          "startsAt": "2026-03-17T14:20"
+          "startsAt": "2026-03-17T14:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-04-08T16:20"
+          "startsAt": "2026-04-08T16:20",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 205865,
-          "startsAt": "2026-03-24T16:56"
+          "startsAt": "2026-03-24T16:56",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220574,
-          "startsAt": "2026-03-18T16:24"
+          "startsAt": "2026-03-18T16:24",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220550,
-          "startsAt": "2026-03-11T15:04"
+          "startsAt": "2026-03-11T15:04",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178873,
-          "startsAt": "2026-04-28T14:44"
+          "startsAt": "2026-04-28T14:44",
+          "phase": "Breves Comunicações"
         }
       ]
     },
@@ -1289,51 +1548,63 @@
       "relevant": [
         {
           "externalId": 206018,
-          "startsAt": "2026-03-11T20:20"
+          "startsAt": "2026-03-11T20:20",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178986,
-          "startsAt": "2026-06-16T18:48"
+          "startsAt": "2026-06-16T18:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74376,
-          "startsAt": "2026-05-05T13:55"
+          "startsAt": "2026-05-05T13:55",
+          "phase": "Encerramento"
         },
         {
           "externalId": 220670,
-          "startsAt": "2026-03-11T19:56"
+          "startsAt": "2026-03-11T19:56",
+          "phase": "Ordem do Dia"
         },
         {
           "externalId": 178970,
-          "startsAt": "2026-07-08T16:12"
+          "startsAt": "2026-07-08T16:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178986,
-          "startsAt": "2026-05-19T16:08"
+          "startsAt": "2026-05-19T16:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 74848,
-          "startsAt": "2026-06-10T17:08"
+          "startsAt": "2026-06-10T17:08",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 220599,
-          "startsAt": "2026-02-24T14:48"
+          "startsAt": "2026-02-24T14:48",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 204495,
-          "startsAt": "2026-11-10T14:12"
+          "startsAt": "2026-11-10T14:12",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 160538,
-          "startsAt": "2026-11-10T16:00"
+          "startsAt": "2026-11-10T16:00",
+          "phase": "Breves Comunicações"
         },
         {
           "externalId": 178887,
-          "startsAt": "2026-06-10T18:28"
+          "startsAt": "2026-06-10T18:28",
+          "phase": "Encerramento"
         },
         {
           "externalId": 74856,
-          "startsAt": "2026-07-15T11:00"
+          "startsAt": "2026-07-15T11:00",
+          "phase": "Encerramento"
         }
       ]
     }

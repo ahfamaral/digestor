@@ -46,6 +46,14 @@ describe("translateQuery", () => {
     expect(r.terms[1]).toBe("b");
   });
 
+  it("a term over 60 characters is cut at a word boundary, never mid-word", async () => {
+    const long = "isenção do imposto de renda para quem ganha até cinco mil reais por mês";
+    const { f } = fakeFetch(JSON.stringify({ terms: [long, "y".repeat(80)] }));
+    const r = await translateQuery("q", { apiKey: "k", fetch: f });
+    expect(r.terms[0]).toBe("isenção do imposto de renda para quem ganha até cinco mil");
+    expect(r.terms[1]).toBe("y".repeat(60)); // one word longer than the limit is cut at the limit
+  });
+
   it("a Portuguese query that comes back unchanged is not 'translated'", async () => {
     const { f } = fakeFetch(JSON.stringify({ terms: ["Feminicidio"] }));
     expect(await translateQuery("feminicídio", { apiKey: "k", fetch: f })).toEqual({ terms: ["Feminicidio"], translated: false, failed: false });

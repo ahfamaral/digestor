@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, replaceSpeechWindow, upsertMembers, type Db, type SpeechInput } from "@digestor/core/server";
 import { FakeEmbedder } from "../search/embed.js";
 import {
-  chunkSpeech, embedSpeeches, MeaningIndexMissingError, searchSpeechMeaning, speechPassages, splitSentences, type MeaningDeps,
+  chunkSpeech, embedSpeeches, MAX_FLY_CHUNKS, MeaningIndexMissingError, searchSpeechMeaning, speechPassages, splitSentences, type MeaningDeps,
 } from "./embedSpeeches.js";
 
 const sentence = (i: number, words = 12) => `Frase ${i} ${"palavra ".repeat(words).trim()}.`;
@@ -44,6 +44,9 @@ describe("chunkSpeech", () => {
     const header = "O SR. CABO GILBERTO SILVA (PL - PB. Pela ordem. Sem revisão do orador.) - ";
     const [first] = chunkSpeech(`${header}Sr. Presidente, o PL orienta "não".`);
     expect(first).toBe('Sr. Presidente, o PL orienta "não".');
+    const written =
+      "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO RUY CARNEIRO (SEM REGISTRO TAQUIGRÁFICO). O Sr. RUY CARNEIRO (PODE-PB) pronuncia o seguinte discurso: Senhor Presidente, as apostas cresceram.";
+    expect(chunkSpeech(written)).toEqual(["Senhor Presidente, as apostas cresceram."]);
     const long = `${"longa ".repeat(400).trim()}.`;
     const parts = chunkSpeech(long);
     expect(parts.length).toBeGreaterThan(1);
@@ -165,5 +168,15 @@ describe("searchSpeechMeaning / speechPassages", () => {
     expect(out.filter((p) => p.speechKey === rows[1]!.speech_key)).toHaveLength(2);
     expect(out.map((p) => p.score)).toEqual([...out.map((p) => p.score)].sort((a, b) => b - a));
     expect(await speechPassages(d, target, [], 3)).toEqual([]);
+  });
+
+  it("passages embed at most MAX_FLY_CHUNKS chunks on the fly per call", async () => {
+    const d = deps(); // never built: every speech is scored on the fly
+    const huge = Array.from({ length: 2 * MAX_FLY_CHUNKS }, (_, i) => `Bloco ${i} ${"palavra ".repeat(150).trim()}.`).join(" ");
+    const { rows } = await seed([{ startsAt: "2026-03-01T10:00", text: huge }]);
+    expect(chunkSpeech(huge).length).toBeGreaterThan(MAX_FLY_CHUNKS);
+    await speechPassages(d, "palavra", [rows[0]!.speech_key], 3);
+    const passageCalls = d.embedder.calls.filter((c) => c.kind === "passage");
+    expect(passageCalls.reduce((n, c) => n + c.texts.length, 0)).toBe(MAX_FLY_CHUNKS);
   });
 });

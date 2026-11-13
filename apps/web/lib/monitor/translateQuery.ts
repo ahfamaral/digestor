@@ -32,12 +32,19 @@ export function clearTranslateCache(): void {
   cache.clear();
 }
 
-/** Trim, drop empties, cut to 60 characters, dedupe (case and accents), keep 4. */
+/** At most `max` characters, cut at the last space so no word is cut in half (a single longer word is cut at `max`). */
+function cutAtWord(t: string, max: number): string {
+  if (t.length <= max) return t;
+  const space = t.lastIndexOf(" ", max);
+  return (space > 0 ? t.slice(0, space) : t.slice(0, max)).trim();
+}
+
+/** Trim, drop empties, cut to 60 characters at a word boundary, dedupe (case and accents), keep 4. */
 function cleanTerms(terms: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of terms) {
-    const t = raw.trim().replace(/\s+/g, " ").slice(0, MAX_TERM).trim();
+    const t = cutAtWord(raw.trim().replace(/\s+/g, " "), MAX_TERM);
     const key = normName(t);
     if (!key || seen.has(key)) continue;
     seen.add(key);

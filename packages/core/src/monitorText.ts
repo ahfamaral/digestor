@@ -83,3 +83,12 @@ export function phraseTerms(q: string, terms: string[]): string[] {
   const typed = normName(q);
   return terms.map((t) => (normName(t) === typed || !/\s/.test(t.trim()) ? t : `"${t.replace(/"/g, "")}"`));
 }
+
+/**
+ * A speech text's header, case-insensitive: the stenographer's "O SR. FULANO (PL - PB. Sem revisão do orador.) - ", or
+ * a speech sent in writing: "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO FULANO (SEM REGISTRO TAQUIGRÁFICO)."
+ * plus "O Sr. FULANO (…) pronuncia o seguinte discurso:" or "Discurso pronunciado … :". Valid both as a JavaScript
+ * RegExp source (flag "i") and as a Postgres regular expression (`regexp_replace(text, pattern, '', 'i')`).
+ */
+export const SPEECH_HEADER_PATTERN =
+  "^\\s*(?:DISCURSO NA ÍNTEGRA ENCAMINHADO PEL[OA] SRA?\\. DEPUTAD[OA] [^)]*\\)\\.?\\s*)?(?:(?:Discurso pronunciado [^:]{0,160}:\\s*)|(?:(?:O|A) SRA?\\.? [^(]+\\([^)]*\\)\\s*(?:[-–—]|pronuncia o seguinte discurso:)\\s*))?";

@@ -1,4 +1,5 @@
 import type { ChromaClient, Collection } from "chromadb";
+import { SPEECH_HEADER_PATTERN } from "@digestor/core";
 import {
   forgetEmbeddings, markEmbedded, orphanEmbeddings, speechesToEmbed, speechTextsByKeys, type Db,
 } from "@digestor/core/server";
@@ -13,6 +14,11 @@ export const MONITOR_COLLECTION = "monitor_camara_speeches";
 export const MONITOR_EMBED_QUEUE = "monitor.embed";
 /** Daily, an hour after the refresh (09:00 UTC) brought new and revised speeches. */
 export const MONITOR_EMBED_CRON = "0 10 * * *";
+/**
+ * Speeches one daily run embeds at most (about 10 minutes of CPU in the live worker); a day brings tens. A larger
+ * backlog (a new server, a revised year) catches up over the following days, or at once with `scripts/monitor-embed.ts`.
+ */
+export const MONITOR_EMBED_MAX_PER_RUN = 2000;
 
 export const MAX_CHUNK_CHARS = 1000;
 /** Speeches embedded per round (one Chroma write and one bookkeeping write per round). */
@@ -66,8 +72,8 @@ export function splitSentences(text: string): string[] {
   return out;
 }
 
-/** The stenographer's header ("O SR. FULANO (PL - PB. Pela ordem. Sem revisão do orador.) - "): who, not what. */
-const HEADER = /^\s*(?:O|A)\s+SRA?\.\s+[^(\n]+?\s*\([^)\n]*\)\s*[-–—]\s*/;
+/** The speech's header (spoken or sent in writing, core's `SPEECH_HEADER_PATTERN`): who, not what. */
+const HEADER = new RegExp(SPEECH_HEADER_PATTERN, "i");
 
 /** An overlong sentence cut at word boundaries into pieces of at most `max` characters. */
 function cutLong(sentence: string, max: number): string[] {
@@ -199,12 +205,16 @@ export async function searchSpeechMeaning(d: MeaningDeps, q: string, k: number):
   return [...best].map(([speechKey, score]) => ({ speechKey, score }));
 }
 
+/** Chunks embedded on the fly per passages call (speeches not in the index yet): about 15 s of CPU at most. */
+export const MAX_FLY_CHUNKS = 200;
+
 const dot = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * (b[i] ?? 0), 0);
 
 /**
  * The passages of these speeches closest to the query: each speech's chunks scored against it, the best `perSpeech`
  * of each, as sentences, best first. Speeches not in the index yet (published since the last run) are chunked and
- * embedded on the fly; unknown keys are skipped.
+ * embedded on the fly, at most `MAX_FLY_CHUNKS` chunks per call (a speech's later chunks beyond that are not scored);
+ * unknown keys are skipped.
  */
 export async function speechPassages(d: MeaningDeps, q: string, keys: string[], perSpeech: number): Promise<Passage[]> {
   if (keys.length === 0) return [];
@@ -225,7 +235,9 @@ export async function speechPassages(d: MeaningDeps, q: string, keys: string[], 
   const missing = keys.filter((k) => !byKey.has(k));
   if (missing.length > 0) {
     const texts = await speechTextsByKeys(d.db, missing);
-    const rows = texts.flatMap((s) => chunkSpeech(s.text || s.summary).map((text) => ({ key: s.speechKey, text })));
+    const rows = texts
+      .flatMap((s) => chunkSpeech(s.text || s.summary).map((text) => ({ key: s.speechKey, text })))
+      .slice(0, MAX_FLY_CHUNKS);
     const vectors = await d.embedder.embed(rows.map((r) => r.text), "passage");
     for (const [i, r] of rows.entries()) byKey.set(r.key, [...(byKey.get(r.key) ?? []), { text: r.text, vector: vectors[i]! }]);
   }

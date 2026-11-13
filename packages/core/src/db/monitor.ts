@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, count, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from "drizzle-orm";
-import { HIGHLIGHT_END, HIGHLIGHT_START, normName } from "../monitorText.ts";
+import { HIGHLIGHT_END, HIGHLIGHT_START, normName, SPEECH_HEADER_PATTERN } from "../monitorText.ts";
 import { DIRECTED_GUIDANCE, guidanceLabels, REQUEST_DESCRIPTION_PG, REQUEST_LABEL_PG } from "../monitorVotes.ts";
 import type { Db } from "./client.ts";
 import type { SpeechVideo } from "./monitorVideo.ts";
@@ -51,9 +51,6 @@ export type VoteRow = {
   guidanceFrom: string | null;
 };
 
-/** A speech text's header: "O SR. FULANO (PL - PB. Sem revisão do orador.) - " or "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO FULANO (SEM REGISTRO TAQUIGRÁFICO)." plus "O Sr. FULANO (…) pronuncia o seguinte discurso:". */
-const OPENING_HEADER =
-  "^\\s*(?:DISCURSO NA ÍNTEGRA ENCAMINHADO PEL[OA] SRA?\\. DEPUTAD[OA] [^)]*\\)\\.?\\s*)?(?:(?:Discurso pronunciado [^:]{0,160}:\\s*)|(?:(?:O|A) SRA?\\.? [^(]+\\([^)]*\\)\\s*(?:[-–—]|pronuncia o seguinte discurso:)\\s*))?";
 const HEADLINE = `StartSel=${HIGHLIGHT_START},StopSel=${HIGHLIGHT_END},MaxFragments=2,MaxWords=30,MinWords=10`;
 const CHUNK = 500;
 
@@ -348,7 +345,7 @@ export async function speechesByKeys(
   const hq = tsQuery(highlight.terms ?? []);
   const doc = sql`concat_ws(' … ', nullif(s.summary, ''), nullif(s.text, ''))`;
   // The opening: the summary, else the text without the stenographer's header (spoken or sent in writing).
-  const body = sql`coalesce(nullif(s.summary, ''), regexp_replace(s.text, ${OPENING_HEADER}, '', 'i'))`;
+  const body = sql`coalesce(nullif(s.summary, ''), regexp_replace(s.text, ${SPEECH_HEADER_PATTERN}, '', 'i'))`;
   const opening = sql`array_to_string((regexp_split_to_array(btrim(${body}), '\\s+'))[1:30], ' ')`;
   const snippet = hq ? sql`case when s.tsv @@ (${hq}) then ts_headline('pt_unaccent', ${doc}, ${hq}, ${HEADLINE}) else ${opening} end` : opening;
   const r = await db.execute<SpeechHitSql>(sql`
