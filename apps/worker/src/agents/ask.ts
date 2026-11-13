@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { Command, MemorySaver, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
-  GRANULARITY, HIGHLIGHT_TYPES, type HighlightTypeId, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
+  GRANULARITY, HIGHLIGHT_TYPES, defaultCredit, type HighlightTypeId, HighlightTypeIdSchema, LANGUAGES, PROFILES, ProfileIdSchema, QUEUES, findBoundaries, formatTimestamp,
   normaliseName, parseTimestamp, personAt, renderTranscript, sliceWords, snapRange, toSentences, VIDEO_REMOVED,
-  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ContextCard, type Person, type SelectionStatus, type ToolApprovalCall,
+  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ClipFormat, type ContextCard, type Person, type SelectionStatus, type ToolApprovalCall,
   type ToolApprovalResolution, type Transcript, type Word,
 } from "@digestor/core";
 import {
-  claimAskMessage, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
+  claimAskMessage, claimClipRender, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
-  setSelection, updateClip, type AskMessage, type Db, type Session,
+  setClipRenderStatus, setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
 import type { StructuredLLM } from "../llm/structured.js";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
@@ -18,7 +18,7 @@ import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
 import { buildAskGraph, interruptedBy, threadConfig, type AskGraph, type AskGraphInput } from "./askGraph.js";
 
-export const ASK_PROMPT_VERSION = "ask@6";
+export const ASK_PROMPT_VERSION = "ask@7";
 export const MAX_ASK_STEPS = 6;
 export const MAX_TOOL_OUTPUT = 4000;
 export const HISTORY_LIMIT = 10;
@@ -36,6 +36,12 @@ const MAX_DIRECT_CHANGES = 3;
 const MAX_SEARCH_K = 10;
 const DEFAULT_SEARCH_K = 6;
 const MAX_TITLE_CHARS = 120;
+/** find_clip_candidates: `count` clips wanted (default 3, at most 5); it offers up to 2 more for the journalist to pick from. */
+const DEFAULT_PACKAGE = 3;
+const MAX_PACKAGE = 5;
+const EXTRA_CANDIDATES = 2;
+/** Candidates overlapping an earlier one by more than this share of the shorter are the same passage. */
+const SAME_PASSAGE = 0.5;
 /** A clip spans the punchline minimum to the exchange maximum. */
 const MIN_CLIP_MS = GRANULARITY.punchline.acceptMs[0];
 const MAX_CLIP_MS = GRANULARITY.exchange.acceptMs[1];
@@ -68,10 +74,17 @@ export type AskDeps = {
    * resumed by this process.
    */
   checkpointer?: BaseCheckpointSaver;
+  /**
+   * Sends a job (pg-boss in the worker, with JOB_OPTIONS and `singletonKey`). make_clip_package needs it for the
+   * subtitle drafts (`track.prepare`) and plain renders (`clip.render`); without it (scripts) packages are refused.
+   */
+  send?: JobSender;
 };
 
+export type JobSender = (queue: string, data: Record<string, string>, singletonKey: string) => Promise<void>;
+
 /** The tools that change the journalist's clips or selections: the graph asks for approval before they run. */
-export const MUTATING_TOOLS: ReadonlySet<string> = new Set(["propose_clip", "trim_clip", "set_selection"]);
+export const MUTATING_TOOLS: ReadonlySet<string> = new Set(["propose_clip", "trim_clip", "set_selection", "make_clip_package"]);
 
 export type { AskToolCallRecord };
 
@@ -93,6 +106,7 @@ class ToolInputError extends Error {}
 export type AskContext = {
   db: Db;
   search: AskDeps["search"];
+  send: JobSender | undefined;
   messageId: string;
   ownerId: string;
   session: Session;
@@ -117,8 +131,8 @@ export type AskContext = {
   callId: string;
 };
 
-/** Plan mode only: `summary` means the change needs approval; `range` and `moments` are for the card's Edit. */
-export type ToolResult = { text: string } & Partial<Pick<ToolApprovalCall, "summary" | "range" | "moments">> & Pick<AskToolCallRecord, "undo" | "clipId">;
+/** Plan mode only: `summary` means the change needs approval; `range`, `moments` and `package` are for the card's Edit. */
+export type ToolResult = { text: string } & Partial<Pick<ToolApprovalCall, "summary" | "range" | "moments" | "package">> & Pick<AskToolCallRecord, "undo" | "clipId" | "clipIds">;
 type Tool = { spec: ToolSpec; run(ctx: AskContext, args: never): Promise<ToolResult> };
 
 // ---------------------------------------------------------------- names
@@ -335,6 +349,61 @@ function willWrite(ctx: AskContext): void {
 
 const normSpeaker = (s: string) => s.trim().replace(/^speaker\s+/i, "").toLowerCase();
 
+// ---------------------------------------------------------------- clip packages
+
+type Range = { startMs: number; endMs: number };
+type Candidate = Range & { title: string; why: string; cut: boolean };
+
+/** Words a topic carries no meaning in (a few languages); everything else of 3+ letters is matched. */
+const TOPIC_STOPWORDS = new Set(["the", "and", "for", "with", "about", "der", "die", "das", "und", "que", "dos", "com", "para", "les", "des"]);
+
+/** The topic's words as 5-letter prefixes, accents and case ignored ("Ukraine" also finds "Ukrainian"). */
+function topicStems(topic: string): string[] {
+  return [...new Set(normaliseName(topic).split(" ").filter((w) => w.length >= 3 && !TOPIC_STOPWORDS.has(w)).map((w) => w.slice(0, 5)))];
+}
+
+function mentions(stems: string[], text: string): boolean {
+  const ws = normaliseName(text).split(" ");
+  return stems.some((stem) => ws.some((w) => w.startsWith(stem)));
+}
+
+const overlapMs = (a: Range, b: Range) => Math.max(0, Math.min(a.endMs, b.endMs) - Math.max(a.startMs, b.startMs));
+const samePassage = (a: Range, b: Range) => overlapMs(a, b) > SAME_PASSAGE * Math.min(a.endMs - a.startMs, b.endMs - b.startMs);
+
+/**
+ * A candidate's range on sentence boundaries (snapRange), cut at the last boundary that keeps it within `maxMs`; null
+ * when it can't be a clip (no transcript, or shorter than a punchline).
+ */
+function fitClip(ctx: AskContext, r: Range, maxMs: number): (Range & { cut: boolean }) | null {
+  const b = ctx.boundaries;
+  if (b.length < 2) return null;
+  let out = snapRange(b, r);
+  let cut = false;
+  if (out.endMs - out.startMs > maxMs) {
+    const limit = out.startMs + maxMs;
+    const last = b.filter((x) => x.afterWordEndMs > out.startMs && Math.min(x.beforeWordStartMs, x.afterWordEndMs + 150) <= limit).at(-1);
+    if (!last) return null;
+    out = snapRange(b, { startMs: out.startMs, endMs: last.afterWordEndMs });
+    cut = true;
+  }
+  const len = out.endMs - out.startMs;
+  return len >= MIN_CLIP_MS && len <= Math.min(maxMs, MAX_CLIP_MS) ? { ...out, cut } : null;
+}
+
+/** A search hit's first sentence as a working title (the model writes a better one). */
+function hitTitle(text: string): string {
+  const first = text.trim().split(/(?<=[.!?])\s+/)[0] ?? "";
+  return first.length <= 80 ? first : `${first.slice(0, 79)}…`;
+}
+
+/** A subtitle language the package may ask for: one Prepare offers (the list, or the video's own language). */
+function subtitleLanguageOk(ctx: AskContext, code: string): boolean {
+  return LANGUAGES.some((l) => l.code === code) || code === ctx.session.language;
+}
+
+const languageLabel = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? code;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 // ---------------------------------------------------------------- tools
 
 export const TOOLS: Tool[] = [
@@ -467,6 +536,58 @@ export const TOOLS: Tool[] = [
   },
   {
     spec: {
+      name: "find_clip_candidates",
+      description:
+        `Candidate clips on a topic, best first: moments of the analysis that match it, then passages the transcript search finds, all snapped to whole sentences. Returns up to count + ${EXTRA_CANDIDATES}, so the user can pick. Use it before make_clip_package.`,
+      schema: z.object({
+        topic: z.string().min(1).describe("What the clips are about, e.g. \"Ukraine\" (the video's language finds more)"),
+        count: z.number().int().optional().describe(`How many clips the user wants (1–${MAX_PACKAGE}, default ${DEFAULT_PACKAGE})`),
+        maxSeconds: z.number().optional().describe("Longest clip in seconds, e.g. 60 or 90 for social media; longer passages are cut at a sentence end"),
+      }),
+    },
+    async run(ctx, a: { topic: string; count?: number; maxSeconds?: number }) {
+      const count = Math.min(MAX_PACKAGE, Math.max(1, a.count ?? DEFAULT_PACKAGE));
+      const maxMs = a.maxSeconds === undefined ? MAX_CLIP_MS : Math.min(MAX_CLIP_MS, Math.max(MIN_CLIP_MS, Math.round(a.maxSeconds * 1000)));
+      const stems = topicStems(a.topic);
+      const selections = ctx.analysis ? await listSelections(ctx.db, ctx.ownerId, ctx.session.id) : {};
+      // The analysis' own moments, minus those the journalist skipped.
+      const moments = (ctx.analysis?.moments ?? []).filter((m) => selections[m.id] !== "rejected");
+      const byRelevance = <T extends { relevance: number; startMs: number }>(xs: T[]) => [...xs].sort((x, y) => y.relevance - x.relevance || x.startMs - y.startMs);
+      const named = byRelevance(moments.filter((m) => mentions(stems, `${m.title} ${m.why}`)));
+
+      let hits: SearchHit[] = [];
+      let note = "";
+      try {
+        hits = await ctx.search(ctx.session.id, a.topic, MAX_SEARCH_K);
+      } catch (err) {
+        console.error(`[ask] search failed for session ${ctx.session.id}:`, err);
+        note = `\n${SEARCH_UNAVAILABLE}`;
+      }
+      // A moment the search lands in stands for that hit (its title and reason are better than raw text).
+      const found = hits.map((h) => byRelevance(moments.filter((m) => samePassage(m, h)))[0] ?? h);
+
+      const all: Candidate[] = [];
+      const offer = (r: Range, title: string, why: string) => {
+        if (all.length >= count + EXTRA_CANDIDATES) return;
+        const fit = fitClip(ctx, r, maxMs);
+        if (!fit || all.some((c) => samePassage(c, fit))) return;
+        all.push({ ...fit, title: title.slice(0, MAX_TITLE_CHARS), why });
+      };
+      for (const m of named) offer(m, m.title, m.why);
+      for (const f of found) {
+        if ("id" in f) offer(f, f.title, f.why);
+        else offer(f, hitTitle(f.text), "Why: the transcript search found this passage for the topic.");
+      }
+      if (all.length === 0) return { text: `No clip candidates match. Try other words for the topic, or the video's language.${note}` };
+      const lines = all.map((c, i) => `${i + 1}. ${span(c)} ${c.title} — ${c.why}${c.cut ? ` (cut to ${Math.round((c.endMs - c.startMs) / 1000)} s)` : ""}`);
+      // Titles, reasons and hit text come from the transcript: evidence, never instructions (R31).
+      return {
+        text: `${evidence(lines.join("\n"))}\nPass the best ${count} to make_clip_package with these times; the user picks before anything is made.${note}`,
+      };
+    },
+  },
+  {
+    spec: {
       name: "propose_clip",
       description:
         `Create a clip for the user (only when they ask for one). Times are snapped to whole sentences. Returns the clip id. Counts toward the ${MAX_DIRECT_CHANGES} changes allowed per question.`,
@@ -561,6 +682,105 @@ export const TOOLS: Tool[] = [
       return { text: `Set ${ids.length} moment${ids.length === 1 ? "" : "s"} to ${a.status}.`, undo };
     },
   },
+  {
+    spec: {
+      name: "make_clip_package",
+      description:
+        `Make a set of clips at once (only when the user asks for several): each snapped to whole sentences, all in one format, with subtitle drafts in one language and a plain render each. The user picks and edits them on the approval card. The whole package counts as one of the ${MAX_DIRECT_CHANGES} changes allowed per question. Burned-in subtitles stay for the user to approve on Prepare.`,
+      schema: z.object({
+        clips: z.array(z.object({ start: TimeArg, end: TimeArg, title: z.string().describe("Short title in the language of the video") })).min(1).max(MAX_PACKAGE),
+        format: z.enum(["16:9", "9:16"]).describe("9:16 for Instagram, TikTok, Reels and Shorts; 16:9 otherwise"),
+        subtitles: z.string().nullable().optional().describe("Language code of the subtitle drafts (e.g. en, pt, de), or null for none"),
+      }),
+    },
+    async run(ctx, a: { clips: { start: string | number; end: string | number; title: string }[]; format: ClipFormat; subtitles?: string | null }) {
+      const analysis = requireAnalysis(ctx);
+      requireVideo(ctx);
+      const send = ctx.send;
+      if (!send) throw new ToolInputError("clip packages can't be made here. Use propose_clip for single clips.");
+      const clips = a.clips.map((c, i) => {
+        const where = `clip ${i + 1} (${typeof c.start === "number" ? ts(c.start * 1000) : c.start}–${typeof c.end === "number" ? ts(c.end * 1000) : c.end})`;
+        const title = c.title.trim().slice(0, MAX_TITLE_CHARS);
+        if (!title) throw new ToolInputError(`${where}: the title is empty.`);
+        try {
+          return { ...snapClip(ctx, c), title };
+        } catch (err) {
+          throw err instanceof ToolInputError ? new ToolInputError(`${where}: ${err.message}`) : err;
+        }
+      });
+      const subtitles = a.subtitles?.trim() || null;
+      if (subtitles !== null && !subtitleLanguageOk(ctx, subtitles)) {
+        const offered = [...new Set([ctx.session.language, ...LANGUAGES.map((l) => l.code)].filter((c): c is string => !!c))];
+        throw new ToolInputError(`subtitle language "${subtitles.slice(0, 20)}" isn't offered. Use one of ${offered.join(", ")}, or null for none.`);
+      }
+      requireDirectChange(ctx);
+      if (ctx.mode === "plan") {
+        ctx.directChanges += 1;
+        const what = `Make ${plural(clips.length, "clip")} (${a.format})${subtitles ? ` with ${languageLabel(subtitles)} subtitle drafts` : ""}`;
+        return {
+          text: "",
+          summary: `${what}: ${clips.map((c) => `${ts(c.startMs)}–${ts(c.endMs)} ${quoted(c.title)}`).join(", ")}`,
+          package: { clips, format: a.format, subtitles },
+        };
+      }
+      requireApproved(ctx);
+      willWrite(ctx);
+      ctx.directChanges += 1;
+      const credit = defaultCredit(ctx.session);
+      const made: { id: string; range: Range; title: string }[] = [];
+      for (const c of clips) {
+        const range = { startMs: c.startMs, endMs: c.endMs };
+        const moment = await createPersonalMoment(ctx.db, { analysisId: analysis.version.id, ownerId: ctx.ownerId, ...range, title: c.title, origin: "ask" });
+        const clip = await createClip(ctx.db, { sessionId: ctx.session.id, ownerId: ctx.ownerId, momentId: moment.id, ...range, format: a.format, actor: "ask" });
+        // The channel credit Prepare would save on opening, set now: saved after the render, it would make it stale.
+        if (clip.credit === null && !clip.noCreditNeeded && credit) await updateClip(ctx.db, clip.id, { credit }, "ask");
+        await setSelection(ctx.db, ctx.ownerId, moment.id, "approved"); // so Prepare never shows "Approval dismissed"
+        made.push({ id: clip.id, range, title: c.title });
+      }
+      // Each job-owned row is claimed in the database first, then its job sent; a send that fails gives the claim back.
+      let draftsFailed = 0;
+      let rendersFailed = 0;
+      for (const clip of made) {
+        const track = subtitles ? await createTrack(ctx.db, clip.id, subtitles) : null;
+        if (track) {
+          try {
+            await send(QUEUES.prepareTrack, { trackId: track.id }, track.id);
+          } catch (err) {
+            console.error(`[ask] couldn't queue the subtitle draft of clip ${clip.id}:`, err);
+            draftsFailed += 1;
+            await deleteTrack(ctx.db, track.id).catch((e: unknown) => console.error("[ask] removing the unqueued track failed", e));
+          }
+        }
+        if (await claimClipRender(ctx.db, clip.id)) {
+          try {
+            await send(QUEUES.renderClip, { clipId: clip.id }, clip.id);
+          } catch (err) {
+            console.error(`[ask] couldn't queue the render of clip ${clip.id}:`, err);
+            rendersFailed += 1;
+            await setClipRenderStatus(ctx.db, clip.id, "none").catch((e: unknown) => console.error("[ask] releasing the render claim failed", e));
+          }
+        }
+      }
+      const list = made.map((c) => `${c.id} ${span(c.range)} "${c.title}"`).join("; ");
+      const started = subtitles ? `${languageLabel(subtitles)} subtitle drafts are being prepared and plain renders are running.` : "Plain renders are running.";
+      const failed = [
+        draftsFailed > 0 ? `Couldn't start ${plural(draftsFailed, "subtitle draft")}: the user can add them on Prepare.` : "",
+        rendersFailed > 0 ? `Couldn't start ${plural(rendersFailed, "render")}: the user can render them from Export.` : "",
+      ].filter(Boolean);
+      return {
+        // The chip shows the first 300 characters: what happened first, the clip ids (for the model) last.
+        text: [
+          `Created ${plural(made.length, "clip")} (${a.format}), snapped to whole sentences.`,
+          started,
+          ...failed,
+          "Burned-in subtitles need the user to review and approve each language on Prepare.",
+          "These clips, this format and this subtitle language are what the user approved on the card.",
+          `Clips: ${list}.`,
+        ].join(" "),
+        clipIds: made.map((c) => c.id),
+      };
+    },
+  },
 ];
 
 const byName = new Map(TOOLS.map((t) => [t.spec.name, t]));
@@ -620,7 +840,8 @@ Rules:
 - Never invent names. Refer to speakers by their speaker id (for example "Speaker A"), unless the known participants below name them. Say "probably" with a name that is not confirmed. For what a named person said, use list_speeches, then get_transcript for the turns that matter.
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
-- propose_clip, trim_clip and set_selection change the user's own clips and selections. Use them only when the user asks for that change. You can't render, export or change the official analysis.
+- propose_clip, trim_clip, set_selection and make_clip_package change the user's own clips and selections. Use them only when the user asks for that change. You can't export, burn in subtitles or change the official analysis.
+- For a set of clips ('3 clips on Ukraine for Instagram'), call find_clip_candidates, then make_clip_package with the best ones; Instagram, TikTok, Reels and Shorts mean 9:16.
 - The user approves each change before it is made, and may edit it first. When a result says "${DECLINED}", nothing was changed: say so plainly and don't try it again unless they ask.
 - Write plain text only: no Markdown (no **, #, backticks or asterisk bullets; use "-" for a list). Timestamps stay as [hh:mm:ss].
 - Keep answers short.
@@ -659,6 +880,7 @@ export const record = (call: ToolCallRequest, out: ToolResult & { ok: boolean })
     ok: out.ok,
     ...(out.undo ? { undo: out.undo } : {}),
     ...(out.clipId ? { clipId: out.clipId } : {}),
+    ...(out.clipIds ? { clipIds: out.clipIds } : {}),
   };
 };
 
@@ -666,7 +888,7 @@ export const record = (call: ToolCallRequest, out: ToolResult & { ok: boolean })
 export type AskRun = { ctx: AskContext; system: string };
 
 /** Loads the session, analysis, transcript and names for answer `msg`, and builds the system prompt. */
-export async function loadAskRun(deps: Pick<AskDeps, "db" | "search">, msg: AskMessage): Promise<AskRun> {
+export async function loadAskRun(deps: Pick<AskDeps, "db" | "search" | "send">, msg: AskMessage): Promise<AskRun> {
   const { db } = deps;
   const session = await getSession(db, msg.sessionId);
   if (!session) throw new Error(`Session not found: ${msg.sessionId}`);
@@ -678,6 +900,7 @@ export async function loadAskRun(deps: Pick<AskDeps, "db" | "search">, msg: AskM
   const ctx: AskContext = {
     db,
     search: deps.search,
+    send: deps.send,
     messageId: msg.id,
     ownerId: msg.ownerId,
     session,

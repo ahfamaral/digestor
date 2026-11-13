@@ -234,15 +234,24 @@ export type VerifyResult = { unsupported: string[]; unchecked: string[]; checked
  * found is unsupported, unless it looks like a translation (`sameLanguage`): then it is judged as a claim against the
  * window of its own sentence's citations (already covered when that sentence cites a time), else of the nearest
  * citing sentence. Every citing sentence is judged against the transcript ±45 s around its times, all in one call.
+ * A quote that is one of `titles` (a clip, moment or topic name) is skipped.
  */
-export async function verifyAnswer(deps: { judge: StructuredLLM }, answer: string, transcript: { words: Word[] } | null): Promise<VerifyResult> {
+export async function verifyAnswer(
+  deps: { judge: StructuredLLM },
+  answer: string,
+  transcript: { words: Word[] } | null,
+  opts: { titles?: string[] } = {},
+): Promise<VerifyResult> {
   const result: VerifyResult = { unsupported: [], unchecked: [], checked: 0, judgeFailed: false };
   const words = transcript?.words ?? [];
   if (words.length === 0) return result;
   const all = sentences(answer);
   const claims: { text: string; window: string; part: string }[] = [];
+  // Clip, moment and topic titles are names written by the AI or the user: quoted, they are not quotes of the recording.
+  const titles = new Set((opts.titles ?? []).map(normaliseText).filter(Boolean));
 
   for (const quote of extractQuotes(answer)) {
+    if (titles.has(normaliseText(quote))) continue;
     if (findQuote(quote, words).found) result.checked += 1;
     else if (sameLanguage(quote, words)) result.unsupported.push(asQuote(quote));
     else {

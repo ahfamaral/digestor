@@ -71,7 +71,7 @@ function lastTurn(state: AskStateValue): AssistantTurn {
 const mutatingCalls = (turn: AssistantTurn): ToolCallRequest[] =>
   (turn.toolCalls ?? []).slice(0, MAX_CALLS_PER_STEP).filter((c) => MUTATING_TOOLS.has(c.name));
 
-/** Edited arguments replace the model's, key by key (the card edits times, title or moments, never ids or status). */
+/** Edited arguments replace the model's, key by key (the card edits times, title, moments or a package's picks, never ids or status). */
 function withEdits(call: ToolCallRequest, edits: Map<string, unknown>): ToolCallRequest {
   const edit = edits.get(call.id);
   if (edit === undefined) return call;
@@ -90,6 +90,17 @@ function verifyRecord(r: VerifyResult, rounds: number): AskToolCallRecord[] {
   if (r.checked + r.unsupported.length + r.unchecked.length === 0) return [];
   const args = { rounds, checked: r.checked, unsupported: r.unsupported.length, unchecked: r.unchecked.length, judgeFailed: r.judgeFailed };
   return [{ name: "verify_answer", args, result: verifySummary(r), ok: r.unsupported.length === 0 }];
+}
+
+/** Titles the answer may quote that aren't the recording's words: topics, moments, and the clips this answer made. */
+function knownTitles(ctx: AskRun["ctx"], records: AskToolCallRecord[]): string[] {
+  const titles = [...(ctx.analysis?.topics ?? []).map((t) => t.title), ...(ctx.analysis?.moments ?? []).map((m) => m.title)];
+  for (const r of records) {
+    const args = (typeof r.args === "object" && r.args !== null ? r.args : {}) as { title?: unknown; clips?: unknown };
+    if (typeof args.title === "string") titles.push(args.title);
+    if (Array.isArray(args.clips)) for (const c of args.clips as { title?: unknown }[]) if (typeof c?.title === "string") titles.push(c.title);
+  }
+  return titles;
 }
 
 /** Answers that are never verified: the fixed refusal and the step-limit line. */
@@ -154,7 +165,7 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
     try {
       const { ctx } = await load(config);
       // A "couldn't confirm" line the model wrote itself is not checked; it is merged into ours at the end.
-      const result = await verifyAnswer({ judge }, splitCouldntConfirm(answer).body, ctx.transcript);
+      const result = await verifyAnswer({ judge }, splitCouldntConfirm(answer).body, ctx.transcript, { titles: knownTitles(ctx, state.records) });
       if (result.unsupported.length > 0 && state.verifyRounds < VERIFY_RETRIES && state.steps < MAX_ASK_STEPS) {
         return {
           final: null,
@@ -193,6 +204,7 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
           id: call.id, name: call.name, args: call.args, summary: out.summary,
           ...(out.range ? { range: out.range } : {}),
           ...(out.moments ? { moments: out.moments } : {}),
+          ...(out.package ? { package: out.package } : {}),
         });
       }
       if (calls.length === 0) return { approval: null };

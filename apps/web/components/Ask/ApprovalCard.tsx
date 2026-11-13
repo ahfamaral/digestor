@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Busy } from "@/components/ui/spinner";
 import { checkClipEdit, editHasClip, parseApprovalPayload } from "@/lib/askText";
 import { t } from "@/lib/i18n";
+import { PackageCard } from "./PackageCard";
 
 type ClipDraft = { start: string; end: string; title: string };
 type Draft = Record<string, ClipDraft | string[]>;
@@ -38,9 +39,11 @@ function initialDraft(calls: ToolApprovalCall[]): Draft {
  * or the moments of a selection, then "Approve with changes". Once decided, it says so and the answer continues.
  */
 export function ApprovalCard({
-  action, lang, busy, error, videoRemoved, onDecide,
+  action, sessionId, lang, busy, error, videoRemoved, onDecide,
 }: {
   action: AskAction;
+  /** For the package card's link to Prepare. */
+  sessionId?: string;
   lang: string | undefined;
   busy: boolean;
   error: string | undefined;
@@ -55,6 +58,13 @@ export function ApprovalCard({
   const [editError, setEditError] = useState<string | null>(null);
   if (!payload || payload.calls.length === 0) return null;
   const { calls } = payload;
+  // A clip package on its own: the card is where the journalist picks the clips.
+  const only = calls.length === 1 ? calls[0]! : null;
+  if (only?.package) {
+    return (
+      <PackageCard action={action} call={{ ...only, package: only.package }} sessionId={sessionId} lang={lang} busy={busy} error={error} videoRemoved={videoRemoved} onDecide={onDecide} />
+    );
+  }
   const editable = calls.filter((c) => (isClip(c) && c.range) || (c.name === "set_selection" && c.moments?.length));
 
   function startEditing() {

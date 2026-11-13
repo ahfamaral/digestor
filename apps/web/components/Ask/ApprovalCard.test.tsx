@@ -29,3 +29,45 @@ describe("ApprovalCard", () => {
     expect(editHasClip([{ ...clipCall, name: "trim_clip" }, selectionCall])).toBe(true);
   });
 });
+
+describe("ApprovalCard: clip package (C3)", () => {
+  const pkg = {
+    id: "pkg", name: "make_clip_package", args: {}, summary: "Make 3 clips (9:16) with English subtitle drafts: …",
+    package: {
+      clips: [
+        { startMs: 60_000, endMs: 90_000, title: "Ajuda à Ucrânia" },
+        { startMs: 180_000, endMs: 220_000, title: "Two" },
+        { startMs: 300_000, endMs: 330_000, title: "Three" },
+      ],
+      format: "9:16", subtitles: "en",
+    },
+  };
+
+  it("is the pick: a ticked checkbox per clip, the format, the subtitle language, then Make 3 clips or Reject", () => {
+    const html = render([pkg], false);
+    expect(html).toContain("Make these clips?");
+    expect(html.match(/role="checkbox"/g)).toHaveLength(3);
+    expect(html.match(/aria-checked="true"/g)).toHaveLength(3);
+    expect(html).toContain("00:01:00–00:01:30");
+    expect(html).toContain("Ajuda à Ucrânia");
+    expect(html).toMatch(/<input[^>]*type="radio"[^>]*checked=""[^>]*value="9:16"|<input[^>]*type="radio"[^>]*value="9:16"[^>]*checked=""/);
+    expect(html).toMatch(/<option value="en" selected="">English<\/option>/);
+    expect(buttons(html)).toContain("Make 3 clips");
+    expect(buttons(html)).toContain("Reject");
+    expect(buttons(html)).toContain("Edit times and titles");
+  });
+
+  it("once the video is removed only Reject is offered", () => {
+    const html = render([pkg], true);
+    expect(buttons(html)).toContain("Reject");
+    expect(buttons(html).some((b) => b.startsWith("Make"))).toBe(false);
+  });
+
+  it("decided: says how many clips are being made, with a link to Prepare", () => {
+    const action: AskAction = { ...card([pkg]), status: "confirmed", resolution: { decision: "edit", edits: [{ id: "pkg", args: { clips: [{}, {}], format: "9:16", subtitles: "de" } }] } };
+    const html = renderToStaticMarkup(<ApprovalCard action={action} sessionId="s1" lang="pt" busy={false} error={undefined} videoRemoved={false} onDecide={() => {}} />);
+    expect(html).toContain("2 clips are being made (9:16, German subtitle drafts).");
+    expect(html).toContain('href="/s/s1/prepare"');
+    expect(html).not.toContain("role=\"checkbox\"");
+  });
+});

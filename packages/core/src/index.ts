@@ -14,6 +14,7 @@ export * from "./moments.ts";
 export * from "./subtitleText.ts";
 export * from "./subtitleStyle.ts";
 export * from "./checklist.ts";
+export * from "./credit.ts";
 export * from "./upload.ts";
 export * from "./briefingText.ts";
 export * from "./attribution.ts";

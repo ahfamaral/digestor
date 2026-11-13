@@ -188,3 +188,15 @@ describe("JUDGE_SYSTEM", () => {
     expect(JUDGE_SYSTEM.indexOf('- "unsupported"')).toBeLessThan(JUDGE_SYSTEM.indexOf('- "unclear"'));
   });
 });
+
+describe("verifyAnswer: titles are names, not quotes (C3)", () => {
+  const words = wordsOf("Eine klare und deutliche Verurteilung des Überfalls, sagte sie, auf die Ukraine. Wir haben es damals ausreichend versucht.", 60_000);
+  const judge = new FakeLLM([]);
+  it("a quoted clip or moment title is skipped; a misquote of the recording still fails", async () => {
+    const answer = `Ich habe den Clip „Klare Verurteilung des Überfalls auf die Ukraine“ erstellt. Sie sagte „Wir haben es nie versucht“.`;
+    const r = await verifyAnswer({ judge }, answer, { words }, { titles: ["Klare Verurteilung des Überfalls auf die  Ukraine"] });
+    expect(r.unsupported).toEqual(["“Wir haben es nie versucht”"]);
+    const without = await verifyAnswer({ judge }, answer, { words });
+    expect(without.unsupported).toHaveLength(2);
+  });
+});

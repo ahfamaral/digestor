@@ -103,6 +103,15 @@ export interface ToolApprovalCall {
   summary: string;
   range?: { startMs: number; endMs: number };
   moments?: { id: string; title: string; startMs: number; endMs: number }[];
+  /** A `make_clip_package` call: its clips after snapping, the format and the subtitle language, for the card's picks. */
+  package?: ClipPackagePlan;
+}
+
+/** What a clip package will make: the clips (snapped), one format for all, and subtitle drafts in one language or none. */
+export interface ClipPackagePlan {
+  clips: { startMs: number; endMs: number; title: string }[];
+  format: ClipFormat;
+  subtitles: string | null;
 }
 
 /** Payload of a `tool_approval` action: the changes of one model turn (`step`). */
@@ -143,6 +152,8 @@ export interface AskToolCallRecord {
   undo?: Record<string, SelectionStatus | null>;
   /** propose_clip: the clip it created (undo deletes it). */
   clipId?: string;
+  /** make_clip_package: the clips it created (undo deletes each). */
+  clipIds?: string[];
 }
 
 export type AskMessageWithActions = AskMessage & { actions: AskAction[] };

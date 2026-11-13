@@ -421,6 +421,80 @@ describe("runAsk tools", () => {
   });
 });
 
+describe("find_clip_candidates (C3)", () => {
+  const boundaries = findBoundaries(words, DURATION_MS);
+  const fmt = (ms: number) => new Date(ms).toISOString().slice(11, 19);
+  const spanOf = (startMs: number, endMs: number) => {
+    const r = snapRange(boundaries, { startMs, endMs });
+    return `[${fmt(r.startMs)}–${fmt(r.endMs)}]`;
+  };
+  const hit = (startMs: number, endMs: number, text = "We spoke about it."): SearchHit => ({ startMs, endMs, speakers: ["A"], text, score: 0.8 });
+  const moment = (startMs: number, endMs: number, title: string, why: string, relevance: number) => ({
+    topicId: null, granularity: "passage" as const, startMs, endMs, title, why, relevance, speakers: ["A"], evidence: [], origin: "ai" as const, highlights: [],
+  });
+
+  async function candidates(args: unknown, hits: SearchHit[], setup?: (s: { analysisId: string; sessionId: string }) => Promise<void>) {
+    const { s, analysisId } = await seed();
+    await setup?.({ analysisId: analysisId!, sessionId: s.id });
+    const msg = await ask(s.id, "3 clips on Ukraine for Instagram");
+    const llm = new FakeToolLLM([toolStep(call("find_clip_candidates", args)), answer("Here they are.")]);
+    const searched: string[] = [];
+    await runAsk(depsFor(llm, async (_id, q) => (searched.push(q), hits)), msg.id);
+    return { text: toolResults(llm.calls[1]!)[0]!, searched };
+  }
+  const lines = (text: string) => text.split("\n").filter((l) => /^\d+\. \[/.test(l));
+
+  it("moments matching the topic come first, then moments the search lands in, then search hits; at most count + 2, all snapped", async () => {
+    const { text, searched } = await candidates(
+      { topic: "Ukraine" },
+      [hit(60_000, 105_000), hit(365_000, 385_000), hit(600_000, 650_000, "Kyiv needs air defence now."), hit(720_000, 770_000), hit(840_000, 885_000)],
+      async ({ analysisId, sessionId }) => {
+        const [, , skipped] = await saveMoments(db, analysisId, [
+          moment(360_000, 390_000, "Ukraine aid package", "Why: the aid for Ukraine is announced.", 90),
+          moment(480_000, 520_000, "Kyiv visit", "Why: what was agreed for the Ukrainian army.", 70),
+          moment(780_000, 810_000, "Ukraine sanctions", "Why: sanctions.", 95),
+        ]);
+        await setSelection(db, OWNER_ID, skipped!.id, "rejected"); // skipped on the Briefing: never offered again
+        void sessionId;
+      },
+    );
+    expect(searched).toEqual(["Ukraine"]);
+    const got = lines(text);
+    expect(got).toHaveLength(5);
+    expect(got[0]).toContain(`${spanOf(360_000, 390_000)} Ukraine aid package`);
+    expect(got[1]).toContain(`${spanOf(480_000, 520_000)} Kyiv visit`);
+    expect(got[2]).toContain(`${spanOf(60_000, 90_000)} Moment 1`);
+    expect(got[3]).toContain(`${spanOf(600_000, 650_000)} Kyiv needs air defence now.`);
+    expect(got[4]).toContain(spanOf(720_000, 770_000));
+    expect(text).not.toContain("Ukraine sanctions");
+    expect(text.startsWith("<transcript>")).toBe(true); // titles, reasons and hit text are evidence (R31)
+  });
+
+  it("count and maxSeconds: a long passage is cut to fit, still on sentence boundaries", async () => {
+    const { text } = await candidates({ topic: "zzz", count: 1, maxSeconds: 20 }, [hit(600_000, 650_000), hit(720_000, 770_000), hit(840_000, 885_000), hit(960_000, 1_000_000)]);
+    const got = lines(text);
+    expect(got).toHaveLength(3);
+    for (const line of got) {
+      const [, a, b] = /\[(\d\d:\d\d:\d\d)–(\d\d:\d\d:\d\d)\]/.exec(line)!;
+      const [start, end] = [a!, b!].map((v) => v.split(":").reduce((t, x) => t * 60 + Number(x), 0) * 1000);
+      expect(end! - start!).toBeLessThanOrEqual(20_000);
+      expect(line).toContain(spanOf(start!, end!)); // snapping it again changes nothing
+    }
+    expect(got[0]).toContain(`[${fmt(snapRange(boundaries, { startMs: 600_000, endMs: 620_000 }).startMs)}–`);
+  });
+
+  it("without search the matching moments still come back, with a note", async () => {
+    const { s, analysisId } = await seed();
+    await saveMoments(db, analysisId!, [moment(360_000, 390_000, "Ukraine aid package", "Why: aid.", 90)]);
+    const msg = await ask(s.id, "clips on Ukraine");
+    const llm = new FakeToolLLM([toolStep(call("find_clip_candidates", { topic: "ukraine" })), answer("Here.")]);
+    await runAsk(depsFor(llm, async () => { throw new Error("no index"); }), msg.id);
+    const text = toolResults(llm.calls[1]!)[0]!;
+    expect(lines(text)).toHaveLength(1);
+    expect(text).toContain(SEARCH_UNAVAILABLE);
+  });
+});
+
 describe("runAsk loop", () => {
   it("names participants from the current attributions and says which are confirmed", async () => {
     const { s } = await seed();
@@ -471,11 +545,12 @@ describe("runAsk loop", () => {
     expect(c!.system).toMatch(/language of the (user's )?question/);
     expect(c!.system).toMatch(/true or false/);
     expect(c!.system).toContain("Speakers: A, B");
+    expect(c!.system).toContain("For a set of clips ('3 clips on Ukraine for Instagram'), call find_clip_candidates, then make_clip_package with the best ones; Instagram, TikTok, Reels and Shorts mean 9:16.");
     // Every tool's zod schema converts to an Anthropic tool definition.
     const formatted = new ChatAnthropic({ apiKey: "x", model: "claude-sonnet-5-5" }).formatStructuredToolToAnthropic(c!.tools) as { input_schema: { type: string } }[];
     expect(formatted.every((t) => t.input_schema.type === "object")).toBe(true);
     expect(c!.tools.map((t) => t.name).sort()).toEqual(
-      ["get_transcript", "list_moments", "list_speeches", "list_topics", "propose_clip", "search_transcript", "set_selection", "trim_clip"],
+      ["find_clip_candidates", "get_transcript", "list_moments", "list_speeches", "list_topics", "make_clip_package", "propose_clip", "search_transcript", "set_selection", "trim_clip"],
     );
   });
 

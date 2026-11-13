@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  asToolCalls, awaitsApproval, formatToolCall, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
+  asToolCalls, awaitsApproval, formatToolCall, isChange, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
 } from "@/lib/askText";
 import { ApprovalCard } from "./ApprovalCard";
 import { errorMessage } from "@/lib/http";
@@ -191,13 +191,19 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     setBusyKey(key, true);
     setError(key, null);
     try {
-      if (call.clipId) {
-        const res = await fetch(`/api/clips/${call.clipId}/undo`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ifActor: "ask" }),
-        });
-        if (!res.ok) throw new Error(await errorMessage(res, t("ask.undoFailed")));
+      const clipIds = call.clipIds ?? (call.clipId ? [call.clipId] : []);
+      if (clipIds.length > 0) {
+        // A package undoes clip by clip; a clip already undone or changed since is reported, the rest still go.
+        let failed: string | null = null;
+        for (const clipId of clipIds) {
+          const res = await fetch(`/api/clips/${clipId}/undo`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ifActor: "ask" }),
+          });
+          if (!res.ok) failed ??= await errorMessage(res, t("ask.undoFailed"));
+        }
+        if (failed) throw new Error(failed);
       } else {
         // Only moments still at what the tool call set; anything the user changed since is left alone.
         const res = await fetch(`/api/sessions/${sessionId}/selections`);
@@ -308,6 +314,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
                 <MessageItem
                   key={m.id}
                   message={m}
+                  sessionId={sessionId}
                   lang={lang}
                   videoRemoved={videoRemoved}
                   stale={isWorkingOn(m) && !isWaiting(m)}
@@ -367,9 +374,10 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
 }
 
 function MessageItem({
-  message, lang, videoRemoved, stale, undone, busy, errors, onTime, onUndo, onDecide,
+  message, sessionId, lang, videoRemoved, stale, undone, busy, errors, onTime, onUndo, onDecide,
 }: {
   message: Message;
+  sessionId: string;
   lang: string | undefined;
   videoRemoved: boolean;
   stale: boolean;
@@ -392,7 +400,7 @@ function MessageItem({
   }
   const calls = asToolCalls(message.toolCalls);
   // Calls that changed something keep their Undo; everything else a call looked at goes under "Sources".
-  const changes = calls.flatMap((call, i) => (call.ok && (call.clipId !== undefined || call.undo !== undefined) ? [{ call, key: `${message.id}:${i}` }] : []));
+  const changes = calls.flatMap((call, i) => (isChange(call) ? [{ call, key: `${message.id}:${i}` }] : []));
   const sources = calls.flatMap(sourceLines);
   const verified = message.status === "done" ? verifyResult(calls) : null;
   return (
@@ -479,6 +487,7 @@ function MessageItem({
           <ApprovalCard
             key={action.id}
             action={action}
+            sessionId={sessionId}
             lang={lang}
             busy={busy.has(`action:${action.id}`)}
             error={errors[`action:${action.id}`]}

@@ -295,7 +295,7 @@ async function afterBoundsChange(tx: Tx, clipId: string, bounds: { startMs: numb
   await outdateTracks(tx, clipId, bounds);
 }
 
-type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor };
+type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; startMs: number; endMs: number; actor: ClipActor; format?: ClipFormat };
 
 async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
   // The style of the clip whose style was set (or that was created) last: render writes bump updated_at, so not that.
@@ -326,6 +326,7 @@ async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
       momentId: a.momentId ?? null,
       startMs: a.startMs,
       endMs: a.endMs,
+      ...(a.format ? { format: a.format } : {}),
       subtitleStyle: last?.subtitleStyle ?? "yellow",
       subtitlePosition: profile.success ? defaultSubtitlePosition(profile.data) : "bottom",
       credit: remembered?.credit?.trim() ? remembered.credit : null, // a cleared line was the last word: no default

@@ -1,10 +1,10 @@
 import { INTERRUPT, MemorySaver } from "@langchain/langgraph";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { OWNER_ID, findBoundaries, snapRange, type AskToolCallRecord, type ToolApprovalPayload, type ToolApprovalResolution, type Word } from "@digestor/core";
+import { OWNER_ID, QUEUES, findBoundaries, snapRange, type AskToolCallRecord, type ToolApprovalPayload, type ToolApprovalResolution, type Word } from "@digestor/core";
 import {
   addAskMessage, completeAnalysisVersion, createClip, createDb, createSession, getAskMessage, listAskMessages, listClips, listPersonalMoments,
-  listSelections, resolveToolApproval, saveMoments, saveTopics, saveTranscript, startAnalysisVersion, updateSession, type Db,
+  listSelections, listTracks, resolveToolApproval, saveMoments, saveTopics, saveTranscript, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
 import { handleAskResume } from "../jobs.js";
 import { FakeLLM, type GenerateArgs, type StructuredLLM } from "../llm/structured.js";
@@ -119,8 +119,8 @@ async function decide(deps: ReturnType<typeof depsFor>, sessionId: string, messa
 }
 
 describe("Ask graph", () => {
-  it("MUTATING_TOOLS are the three tools that change clips or selections", () => {
-    expect([...MUTATING_TOOLS].sort()).toEqual(["propose_clip", "set_selection", "trim_clip"]);
+  it("MUTATING_TOOLS are the four tools that change clips or selections", () => {
+    expect([...MUTATING_TOOLS].sort()).toEqual(["make_clip_package", "propose_clip", "set_selection", "trim_clip"]);
   });
 
   it("a read-only turn answers without a pause, with the same tool records as before plus the verify chip", async () => {
@@ -617,5 +617,178 @@ describe("handleAskResume", () => {
     err.mockRestore();
     expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "failed", text: ASK_FAILED });
     expect(await listClips(db, OWNER_ID, s.id)).toEqual([]);
+  });
+});
+
+describe("Clip packages (C3)", () => {
+  const fmt = (ms: number) => new Date(ms).toISOString().slice(11, 19);
+  const three = [
+    { start: "00:01:01", end: "00:01:31", title: "One" },
+    { start: "00:03:01", end: "00:03:41", title: "Two" },
+    { start: "00:05:01", end: "00:05:31", title: "Three" },
+  ];
+  /** Records every job the tools send, as main.ts's pg-boss sender would receive it. */
+  const sender = () => {
+    const sent: { queue: string; data: Record<string, string>; key: string }[] = [];
+    return { sent, send: async (queue: string, data: Record<string, string>, key: string) => void sent.push({ queue, data, key }) };
+  };
+
+  it("a package pauses for approval with its snapped clips, format and subtitle language; nothing is made yet", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "3 clips on rents for Instagram");
+    const c = call("make_clip_package", { clips: three, format: "9:16", subtitles: "en" }, "pkg");
+    const jobs = sender();
+    const llm = new FakeToolLLM([toolStep(c), answer("Made them.")]);
+    await runAsk({ ...depsFor(llm), send: jobs.send }, msg.id);
+    expect((await getAskMessage(db, msg.id))!.status).toBe("waiting");
+    const [action] = await approvals(s.id, msg.id);
+    const ranges = [snapped(61_000, 91_000), snapped(181_000, 221_000), snapped(301_000, 331_000)];
+    const [only, ...more] = (action!.payload as ToolApprovalPayload).calls;
+    expect(more).toEqual([]);
+    expect(only).toMatchObject({
+      id: "pkg",
+      name: "make_clip_package",
+      package: { clips: ranges.map((r, i) => ({ ...r, title: three[i]!.title })), format: "9:16", subtitles: "en" },
+    });
+    expect(only!.summary).toBe(`Make 3 clips (9:16) with English subtitle drafts: ${ranges.map((r, i) => `${fmt(r.startMs)}–${fmt(r.endMs)} '${three[i]!.title}'`).join(", ")}`);
+    expect(await listClips(db, OWNER_ID, s.id)).toEqual([]);
+    expect(jobs.sent).toEqual([]);
+  });
+
+  it("approved with 2 of 3 picked: 2 clips in 9:16, a subtitle draft and a plain render each, burned subtitles left to the journalist", async () => {
+    const { s, analysisId } = await seed();
+    const msg = await ask(s.id, "3 clips on rents for Instagram");
+    const jobs = sender();
+    const llm = new FakeToolLLM([toolStep(call("make_clip_package", { clips: three, format: "16:9", subtitles: null }, "pkg")), answer("Made two.")]);
+    const deps = { ...depsFor(llm), send: jobs.send };
+    await runAsk(deps, msg.id);
+    const picked = [three[0]!, { ...three[2]!, title: "Three, edited" }];
+    await decide(deps, s.id, msg.id, { decision: "edit", edits: [{ id: "pkg", args: { clips: picked, format: "9:16", subtitles: "en" } }] });
+
+    const clips = (await listClips(db, OWNER_ID, s.id)).sort((a, b) => a.startMs - b.startMs);
+    expect(clips.map((c) => ({ startMs: c.startMs, endMs: c.endMs, format: c.format, renderStatus: c.renderStatus }))).toEqual([
+      { ...snapped(61_000, 91_000), format: "9:16", renderStatus: "queued" },
+      { ...snapped(301_000, 331_000), format: "9:16", renderStatus: "queued" },
+    ]);
+    const tracks = await Promise.all(clips.map((c) => listTracks(db, c.id)));
+    expect(tracks.map((ts) => ts.map((t) => [t.language, t.status, t.approvedAt]))).toEqual([[["en", "preparing", null]], [["en", "preparing", null]]]);
+    expect(jobs.sent.filter((j) => j.queue === QUEUES.prepareTrack).map((j) => j.data.trackId).sort()).toEqual(tracks.map((ts) => ts[0]!.id).sort());
+    expect(jobs.sent.filter((j) => j.queue === QUEUES.renderClip).map((j) => j.data.clipId).sort()).toEqual(clips.map((c) => c.id).sort());
+    expect(jobs.sent.map((j) => j.queue).filter((q) => q !== QUEUES.prepareTrack && q !== QUEUES.renderClip)).toEqual([]); // never a burn
+    expect(jobs.sent.every((j) => j.key === (j.data.trackId ?? j.data.clipId))).toBe(true);
+    const moments = await listPersonalMoments(db, OWNER_ID, analysisId);
+    expect(moments.map((m) => m.title).sort()).toEqual(["One", "Three, edited"]);
+    const selections = await listSelections(db, OWNER_ID, s.id);
+    expect(moments.every((m) => selections[m.id] === "approved")).toBe(true);
+    const [rec] = (await getAskMessage(db, msg.id))!.toolCalls as AskToolCallRecord[];
+    expect(rec).toMatchObject({ name: "make_clip_package", ok: true, clipIds: expect.arrayContaining(clips.map((c) => c.id)) });
+    expect(toolResults(llm.calls[1]!)[0]).toMatch(/^Created 2 clips \(9:16\)/);
+  });
+
+  it("the whole package is one change for the cap of 3: two more clips may follow, a third is refused", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "A package, then three more clips.");
+    const jobs = sender();
+    const llm = new FakeToolLLM([
+      toolStep(call("make_clip_package", { clips: three, format: "9:16", subtitles: null })),
+      toolStep(
+        call("propose_clip", { start: "00:07:00", end: "00:07:30", title: "Four" }),
+        call("propose_clip", { start: "00:09:00", end: "00:09:30", title: "Five" }),
+        call("propose_clip", { start: "00:11:00", end: "00:11:30", title: "Six" }),
+      ),
+      answer("Done."),
+    ]);
+    const deps = { ...depsFor(llm), send: jobs.send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    const second = (await approvals(s.id, msg.id)).find((a) => a.status === "pending")!;
+    expect((second.payload as ToolApprovalPayload).calls).toHaveLength(2);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await listClips(db, OWNER_ID, s.id)).toHaveLength(5);
+    expect(toolResults(llm.calls[2]!)[2]).toMatch(/^Error: .*confirm/i);
+    expect(jobs.sent.filter((j) => j.queue === QUEUES.prepareTrack)).toEqual([]); // no subtitle language asked
+  });
+
+  it("a YouTube video's channel is the credit line before the render starts (Prepare would set it and make the render stale)", async () => {
+    const { s } = await seed();
+    await updateSession(db, s.id, { source: "youtube", metadata: { channel: " City Radio " } });
+    const msg = await ask(s.id, "2 clips");
+    let creditsAtRender: (string | null)[] = [];
+    const send = async (queue: string, data: Record<string, string>) => {
+      if (queue === QUEUES.renderClip) creditsAtRender = [...creditsAtRender, (await listClips(db, OWNER_ID, s.id)).find((c) => c.id === data.clipId)!.credit];
+    };
+    const llm = new FakeToolLLM([toolStep(call("make_clip_package", { clips: three.slice(0, 2), format: "9:16", subtitles: null })), answer("Done.")]);
+    const deps = { ...depsFor(llm), send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(creditsAtRender).toEqual(["City Radio", "City Radio"]);
+  });
+
+  it("an answer quoting the titles of the clips it made is not sent back as a misquote", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "2 clips");
+    const clips = [{ ...three[0]!, title: "Rent caps in the whole city" }, three[1]!];
+    const llm = new FakeToolLLM([
+      toolStep(call("make_clip_package", { clips, format: "9:16", subtitles: null })),
+      answer("I made „Rent caps in the whole city“ and one more."),
+    ]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(llm.calls).toHaveLength(2); // no verification retry
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done.text).toBe("I made „Rent caps in the whole city“ and one more.");
+    expect((done.toolCalls as AskToolCallRecord[]).map((r) => r.name)).toEqual(["make_clip_package"]); // nothing left to check: no verify chip
+  });
+
+  it("a session whose video was removed refuses the package with the VIDEO_REMOVED sentence, without a card", async () => {
+    const { s } = await seed();
+    await updateSession(db, s.id, { videoDeletedAt: new Date() });
+    const msg = await ask(s.id, "3 clips for Instagram");
+    const jobs = sender();
+    const llm = new FakeToolLLM([toolStep(call("make_clip_package", { clips: three, format: "9:16", subtitles: "en" })), answer("No.")]);
+    await runAsk({ ...depsFor(llm), send: jobs.send }, msg.id);
+    expect(toolResults(llm.calls[1]!)[0]).toBe("Error: The video was removed after 14 days. Re-upload it to make new clips.");
+    expect(await approvals(s.id, msg.id)).toEqual([]);
+    expect(jobs.sent).toEqual([]);
+  });
+
+  it("a subtitle language that isn't offered, or a clip too short, is refused before the card", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Clips please");
+    const llm = new FakeToolLLM([
+      toolStep(call("make_clip_package", { clips: three, format: "9:16", subtitles: "tlh" })),
+      toolStep(call("make_clip_package", { clips: [three[0]!, { start: "00:02:00", end: "00:02:01", title: "Tiny" }], format: "9:16", subtitles: null })),
+      answer("Couldn't."),
+    ]);
+    await runAsk({ ...depsFor(llm), send: sender().send }, msg.id);
+    expect(toolResults(llm.calls[1]!)[0]).toMatch(/^Error: .*subtitle language "tlh"/);
+    expect(toolResults(llm.calls[2]!)[0]).toMatch(/^Error: clip 2 .*After snapping/);
+    expect(await approvals(s.id, msg.id)).toEqual([]);
+  });
+
+  it("a job that can't be queued leaves the clip without a render or that draft, and says so; the other clips go on", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "2 clips");
+    const sent: string[] = [];
+    let n = 0;
+    const send = async (queue: string, data: Record<string, string>) => {
+      if (n++ === 0) throw new Error("queue down");
+      sent.push(`${queue}:${data.trackId ?? data.clipId}`);
+    };
+    const llm = new FakeToolLLM([toolStep(call("make_clip_package", { clips: three.slice(0, 2), format: "9:16", subtitles: "en" })), answer("Done.")]);
+    const deps = { ...depsFor(llm), send };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    err.mockRestore();
+    const clips = await listClips(db, OWNER_ID, s.id);
+    expect(clips).toHaveLength(2);
+    const tracks = (await Promise.all(clips.map((c) => listTracks(db, c.id)))).flat();
+    expect(tracks).toHaveLength(1); // the first draft couldn't be queued: its row is gone, so Prepare offers the language again
+    expect(clips.map((c) => c.renderStatus).sort()).toEqual(["queued", "queued"]);
+    expect(sent).toHaveLength(3);
+    expect(toolResults(llm.calls[1]!)[0]).toMatch(/Couldn't start 1 subtitle draft/);
+    expect((await getAskMessage(db, msg.id))!.status).toBe("done");
   });
 });

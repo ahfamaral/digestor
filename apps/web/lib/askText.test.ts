@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, sourceLines, isAnswering, isStalePending,
-  isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, verifyResult,
+  ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, initialPackageDraft, isChange, packageDecision,
+  sourceLines, isAnswering, isStalePending, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, verifyResult,
 } from "./askText";
 
 describe("linkifyTimestamps", () => {
@@ -225,5 +225,52 @@ describe("tool approvals (C1)", () => {
     expect(checkClipEdit({ start: "abc", end: "00:01:30" }, false)).toBe("time");
     expect(checkClipEdit({ start: "00:01:30", end: "00:01:30" }, false)).toBe("order");
     expect(checkClipEdit({ start: "00:01:00", end: "00:01:30", title: "  " }, true)).toBe("title");
+  });
+});
+
+describe("clip packages (C3)", () => {
+  const plan = { clips: [{ startMs: 60_000, endMs: 90_000, title: "One" }, { startMs: 180_000, endMs: 220_000, title: "Two" }], format: "9:16" as const, subtitles: "en" };
+  const pkgCall = { id: "pkg", name: "make_clip_package", args: {}, summary: "Make 2 clips (9:16)", package: plan };
+
+  it("parseApprovalPayload keeps a package's clips, format and subtitle language, dropping junk clips", () => {
+    const raw = { step: 1, calls: [{ ...pkgCall, package: { ...plan, clips: [...plan.clips, { startMs: "x" }] } }] };
+    expect(parseApprovalPayload(raw)!.calls[0]!.package).toEqual(plan);
+    expect(parseApprovalPayload({ step: 1, calls: [{ ...pkgCall, package: { ...plan, format: "1:1" } }] })!.calls[0]!.package).toBeUndefined();
+    expect(parseApprovalPayload({ step: 1, calls: [{ ...pkgCall, package: { ...plan, subtitles: 5 } }] })!.calls[0]!.package!.subtitles).toBeNull();
+  });
+
+  it("a package's chip keeps its clip ids, is a change (Undo) and never a source", () => {
+    const [rec] = asToolCalls([{ name: "make_clip_package", args: {}, result: "Created 2 clips (9:16)", ok: true, clipIds: ["a", 5, "b"] }]);
+    expect(rec!.clipIds).toEqual(["a", "b"]);
+    expect(isChange(rec!)).toBe(true);
+    expect(sourceLines(rec!)).toEqual([]);
+    expect(isChange({ ...rec!, ok: false })).toBe(false);
+  });
+
+  it("the card approves as is when nothing changed, and sends the picks as an edit otherwise", () => {
+    const draft = initialPackageDraft(plan);
+    expect(draft).toEqual({
+      clips: [{ on: true, start: "00:01:00", end: "00:01:30", title: "One" }, { on: true, start: "00:03:00", end: "00:03:40", title: "Two" }],
+      format: "9:16",
+      subtitles: "en",
+    });
+    expect(packageDecision("pkg", draft, draft)).toEqual({ decision: "approve" });
+    const picked = { ...draft, clips: [draft.clips[0]!, { ...draft.clips[1]!, on: false }], subtitles: null };
+    expect(packageDecision("pkg", picked, draft)).toEqual({
+      decision: "edit",
+      edits: [{ id: "pkg", args: { clips: [{ start: "00:01:00", end: "00:01:30", title: "One" }], format: "9:16", subtitles: null } }],
+    });
+    expect(packageDecision("pkg", { ...draft, clips: draft.clips.map((c) => ({ ...c, title: ` ${c.title} ` })) }, draft)).toEqual({ decision: "approve" });
+  });
+
+  it("the card says what's wrong: nothing picked, a bad time, the end first, no title (only picked clips count)", () => {
+    const draft = initialPackageDraft(plan);
+    expect(packageDecision("pkg", { ...draft, clips: draft.clips.map((c) => ({ ...c, on: false })) }, draft)).toEqual({ error: "none" });
+    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, start: "soon" }, draft.clips[1]!] }, draft)).toEqual({ error: "time" });
+    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, end: "00:00:10" }, draft.clips[1]!] }, draft)).toEqual({ error: "order" });
+    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, title: " " }, draft.clips[1]!] }, draft)).toEqual({ error: "title" });
+    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, title: " " , on: false }, draft.clips[1]!] }, draft)).toEqual(
+      expect.objectContaining({ decision: "edit" }),
+    );
   });
 });

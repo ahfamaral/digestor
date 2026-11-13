@@ -1,4 +1,7 @@
-import { parseTimestamp, type AskToolCallRecord, type SelectionStatus, type ToolApprovalCall, type ToolApprovalPayload } from "@digestor/core";
+import {
+  formatTimestamp, parseTimestamp, type AskToolCallRecord, type ClipFormat, type ClipPackagePlan, type SelectionStatus, type ToolApprovalCall, type ToolApprovalPayload,
+  type ToolApprovalResolution,
+} from "@digestor/core";
 
 export type AskTextPart = { kind: "text"; value: string } | { kind: "time"; ms: number; label: string };
 
@@ -57,6 +60,10 @@ export function asToolCalls(raw: unknown): AskToolCallRecord[] {
       if (Object.keys(undo).length > 0) call.undo = undo;
     }
     if (typeof r.clipId === "string") call.clipId = r.clipId;
+    if (Array.isArray(r.clipIds)) {
+      const ids = (r.clipIds as unknown[]).filter((id): id is string => typeof id === "string");
+      if (ids.length > 0) call.clipIds = ids;
+    }
     calls.push(call);
   }
   return calls;
@@ -122,6 +129,11 @@ export function verifyResult(calls: AskToolCallRecord[]): VerifyState | null {
   return { kind: "ok" };
 }
 
+/** A call that changed something (a clip, a package of clips, selections): it has Undo and is never a source. */
+export function isChange(call: AskToolCallRecord): boolean {
+  return call.ok && (call.clipId !== undefined || call.clipIds !== undefined || call.undo !== undefined);
+}
+
 /** One source line: `text` is a time range (transcript, speech) or text from the recording (moment, topic, note). */
 export interface SourceLine {
   kind: "transcript" | "speech" | "moment" | "topic" | "note";
@@ -135,7 +147,7 @@ export interface SourceLine {
  */
 export function sourceLines(call: AskToolCallRecord): SourceLine[] {
   if (call.name === VERIFY_CALL) return []; // shown by `verifyResult`, not a source
-  if (call.ok && (call.clipId !== undefined || call.undo !== undefined)) return [];
+  if (isChange(call)) return [];
   const stored = call.result.length >= STORED_RESULT_CHARS;
   const raw = call.result.replace(/<\/?transcript>/gi, "").replace(UUID, "").replace(/[<>]/g, "");
   const rows = raw.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -236,6 +248,15 @@ export function parseApprovalPayload(raw: unknown): ToolApprovalPayload | null {
     if (!isRecord(c) || typeof c.id !== "string" || typeof c.name !== "string" || typeof c.summary !== "string") continue;
     const call: ToolApprovalCall = { id: c.id, name: c.name, args: c.args, summary: c.summary };
     if (isRange(c.range)) call.range = { startMs: c.range.startMs, endMs: c.range.endMs };
+    if (isRecord(c.package) && Array.isArray(c.package.clips) && (c.package.format === "16:9" || c.package.format === "9:16")) {
+      const clips = (c.package.clips as unknown[]).flatMap((x) =>
+        isRecord(x) && isRange(x) && typeof (x as Record<string, unknown>).title === "string"
+          ? [{ startMs: x.startMs, endMs: x.endMs, title: (x as Record<string, unknown>).title as string }]
+          : [],
+      );
+      const subtitles = typeof c.package.subtitles === "string" ? c.package.subtitles : null;
+      if (clips.length > 0) call.package = { clips, format: c.package.format, subtitles };
+    }
     if (Array.isArray(c.moments)) {
       call.moments = (c.moments as unknown[]).flatMap((m) =>
         isRecord(m) && isRange(m) && typeof (m as Record<string, unknown>).id === "string" && typeof (m as Record<string, unknown>).title === "string"
@@ -269,4 +290,45 @@ export function checkClipEdit(e: { start: string; end: string; title?: string },
 /** Whether an approval card's edit holds a clip (its times snap to whole sentences, so the card says so). */
 export function editHasClip(calls: { name: string }[]): boolean {
   return calls.some((c) => c.name === "propose_clip" || c.name === "trim_clip");
+}
+
+/** The package card's fields: each offered clip ticked or not, with its times and title, one format and a subtitle language. */
+export type PackageDraft = {
+  clips: { on: boolean; start: string; end: string; title: string }[];
+  format: ClipFormat;
+  subtitles: string | null;
+};
+
+/** Every clip ticked, at the snapped times the card shows, with the model's titles, format and language. */
+export function initialPackageDraft(plan: ClipPackagePlan): PackageDraft {
+  return {
+    clips: plan.clips.map((c) => ({ on: true, start: formatTimestamp(c.startMs), end: formatTimestamp(c.endMs), title: c.title })),
+    format: plan.format,
+    subtitles: plan.subtitles,
+  };
+}
+
+/**
+ * What "Make N clips" sends: Approve when the journalist changed nothing (every clip ticked, same fields), otherwise
+ * an edit with the ticked clips only; or which problem to show (`none`: nothing ticked).
+ */
+export function packageDecision(
+  callId: string,
+  draft: PackageDraft,
+  initial: PackageDraft,
+): ToolApprovalResolution | { error: "none" | "time" | "order" | "title" } {
+  const picked = draft.clips.filter((c) => c.on);
+  if (picked.length === 0) return { error: "none" };
+  for (const c of picked) {
+    const problem = checkClipEdit(c, true);
+    if (problem) return { error: problem };
+  }
+  const clips = picked.map((c) => ({ start: c.start.trim(), end: c.end.trim(), title: c.title.trim() }));
+  const same =
+    picked.length === initial.clips.length &&
+    draft.format === initial.format &&
+    draft.subtitles === initial.subtitles &&
+    clips.every((c, i) => c.start === initial.clips[i]!.start && c.end === initial.clips[i]!.end && c.title === initial.clips[i]!.title.trim());
+  if (same) return { decision: "approve" };
+  return { decision: "edit", edits: [{ id: callId, args: { clips, format: draft.format, subtitles: draft.subtitles } }] };
 }

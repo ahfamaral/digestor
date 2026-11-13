@@ -31,15 +31,7 @@ export function mergePairs(clips: { startMs: number; endMs: number }[]): Map<num
   return out;
 }
 
-/** The credit line a clip starts with: the YouTube channel (or uploader); uploads have none. */
-export function defaultCredit(session: { source: string; metadata: Record<string, unknown> }): string {
-  if (session.source !== "youtube") return "";
-  for (const key of ["channel", "uploader"]) {
-    const v = session.metadata[key];
-    if (typeof v === "string" && v.trim() !== "") return v.trim();
-  }
-  return "";
-}
+export { defaultCredit } from "@digestor/core";
 
 /** What Prepare's Undo would revert; a merge also says the range the clip goes back to. */
 export type UndoStep = { kind: "bounds" | "format" | "style" } | { kind: "merge"; range: Range };

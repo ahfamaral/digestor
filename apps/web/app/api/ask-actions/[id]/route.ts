@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { JOB_OPTIONS, OWNER_ID, QUEUES, parseTimestamp, type AskAction, type ToolApprovalPayload, type ToolApprovalResolution } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, type AskAction, type ToolApprovalPayload, type ToolApprovalResolution } from "@digestor/core";
 import {
   confirmBulkSelection, getAskAction, getAskMessage, getMoment, getSession, reopenToolApproval, resolveAskAction, resolveToolApproval,
 } from "@digestor/core/server";
+import { readEdits } from "@/lib/askEdits";
 import { asSelectionStatus } from "@/lib/askText";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
@@ -21,44 +22,7 @@ const PayloadSchema = z.object({
 });
 
 const NOT_PENDING = "This suggestion was already handled.";
-const BAD_EDIT = "Check the changes: times as hh:mm:ss with the end after the start, a title, and at least one moment.";
-
-function toMs(v: unknown): number | null {
-  if (typeof v !== "string") return null;
-  try {
-    return parseTimestamp(v);
-  } catch {
-    return null;
-  }
-}
-const Time = z.string().refine((v) => toMs(v) !== null);
-const ClipTimes = z.object({ start: z.unknown(), end: z.unknown() }).refine((a) => {
-  const start = toMs(a.start);
-  const end = toMs(a.end);
-  return start !== null && end !== null && end > start;
-});
-/** What the card may edit, per tool: times and title of a clip, which moments of a selection. Ids and status stay. */
-const EDIT_SCHEMAS: Record<string, (original: unknown) => z.ZodType<unknown>> = {
-  propose_clip: () => z.object({ start: Time, end: Time, title: z.string().trim().min(1).max(120) }).strict().and(ClipTimes),
-  trim_clip: () => z.object({ start: Time, end: Time }).strict().and(ClipTimes),
-  set_selection: (original) => {
-    const allowed = new Set(((original as { momentIds?: unknown } | null)?.momentIds as string[] | undefined) ?? []);
-    return z.object({ momentIds: z.array(z.string()).min(1).max(200).refine((ids) => ids.every((id) => allowed.has(id))) }).strict();
-  },
-};
-
-/** The edits checked against the card's calls (the stored payload): each edits one call on it, with the arguments its tool allows. */
-function readEdits(payload: ToolApprovalPayload, edits: { id: string; args: unknown }[]): { id: string; args: unknown }[] | null {
-  const out: { id: string; args: unknown }[] = [];
-  for (const edit of edits) {
-    const call = payload.calls.find((c) => c.id === edit.id);
-    const schema = call ? EDIT_SCHEMAS[call.name]?.(call.args) : undefined;
-    const parsed = schema?.safeParse(edit.args);
-    if (!parsed?.success || out.some((e) => e.id === edit.id)) return null;
-    out.push({ id: edit.id, args: parsed.data });
-  }
-  return out;
-}
+const BAD_EDIT = "Check the changes: times as hh:mm:ss with the end after the start, a title, at least one moment or clip, and a subtitle language from the list.";
 
 /**
  * POST /api/ask-actions/[id]. A `bulk_selection` card takes `{ decision: "confirm" | "dismiss" }`; confirming applies
@@ -95,16 +59,16 @@ async function decideApproval(raw: unknown, action: AskAction, messageStatus: st
   if (action.status !== "pending" || messageStatus !== "waiting") return errorResponse(409, NOT_PENDING);
 
   let resolution: ToolApprovalResolution = { decision: parsed.data.decision };
-  if (parsed.data.decision === "edit") {
-    const edits = readEdits(action.payload as ToolApprovalPayload, parsed.data.edits as { id: string; args: unknown }[]);
-    if (!edits) return errorResponse(400, BAD_EDIT);
-    resolution = { decision: "edit", edits };
-  }
-  if (resolution.decision !== "reject") {
+  if (parsed.data.decision !== "reject") {
     // A change can't be made once the video is gone (R30); rejecting still lets the answer finish.
     const session = await getSession(db, sessionId);
     if (!session) return errorResponse(404, "Suggestion not found.");
     if (session.videoDeletedAt) return errorResponse(409, VIDEO_REMOVED);
+    if (parsed.data.decision === "edit") {
+      const edits = readEdits(action.payload as ToolApprovalPayload, parsed.data.edits as { id: string; args: unknown }[], { sessionLanguage: session.language });
+      if (!edits) return errorResponse(400, BAD_EDIT);
+      resolution = { decision: "edit", edits };
+    }
   }
 
   if (!(await resolveToolApproval(db, action.id, resolution))) return errorResponse(409, NOT_PENDING);
