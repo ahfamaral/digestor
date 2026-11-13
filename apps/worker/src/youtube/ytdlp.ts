@@ -54,15 +54,25 @@ function maxFilesizeGb(env: NodeJS.ProcessEnv): number {
   return Number.isFinite(n) && n > 0 ? n : 5;
 }
 
-export function ytDlpArgs(url: string, outPathNoExt: string, env: NodeJS.ProcessEnv = process.env, cookiesPath?: string): string[] {
+/** Part of a video, whole seconds from its start (a speech clipped from the monitor). */
+export type VideoSection = { startS: number; endS: number };
+
+export function ytDlpArgs(
+  url: string, outPathNoExt: string, env: NodeJS.ProcessEnv = process.env, cookiesPath?: string, section?: VideoSection,
+): string[] {
   return [
     // yt-dlp needs a JS runtime to solve YouTube's challenges; it only looks for deno unless told otherwise.
     "--js-runtimes", "node",
     ...(cookiesPath ? ["--cookies", cookiesPath] : []),
-    "-f", "bv*[height<=1080]+ba/b[height<=1080]",
+    // A section is read by ffmpeg straight from YouTube: from the plain https (DASH) files it seeks at once; from the
+    // HLS playlist YouTube offers for long streams (itag 616) it crawled for 25 min without writing a byte (2026-11-13).
+    "-f", section ? "bv*[height<=1080][protocol=https]+ba[protocol=https]/b[height<=1080][protocol=https]/b[height<=1080]" : "bv*[height<=1080]+ba/b[height<=1080]",
     "--merge-output-format", "mp4",
     "--no-playlist",
-    "--max-filesize", `${maxFilesizeGb(env)}G`,
+    // A section is cut by ffmpeg at the nearest keyframe (no --force-keyframes-at-cuts: re-encoding is slow, and the
+    // transcript shows where the speech really starts). The size cap is for whole videos: a section is short by
+    // construction, and the cap would compare against the whole stream's size.
+    ...(section ? ["--download-sections", `*${section.startS}-${section.endS}`] : ["--max-filesize", `${maxFilesizeGb(env)}G`]),
     "--break-match-filters", "!is_live",
     "--write-info-json",
     "--no-progress",
@@ -76,13 +86,14 @@ export async function downloadYouTube(
   url: string,
   outPathNoExt: string,
   env: NodeJS.ProcessEnv = process.env,
+  section?: VideoSection,
 ): Promise<{ videoPath: string; metadata: YouTubeMetadata }> {
   const infoPath = `${outPathNoExt}.info.json`;
   let output = "";
   // The live cookie jar (`cookieJar.ts`): yt-dlp keeps YouTube's refreshed cookies in it, one run at a time.
   await withYouTubeCookies(env, async (cookies) => {
     try {
-      const { stdout, stderr } = await run("yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies));
+      const { stdout, stderr } = await run("yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies, section));
       output = `${stdout}\n${stderr}`;
     } catch (err) {
       // Verified against yt-dlp 2026.10.26: --break-match-filters rejecting a live stream exits 101 with the

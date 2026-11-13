@@ -448,6 +448,36 @@ describe("pipeline", () => {
     expect((await getContextCard(db, sessionId))!.card.dateOrYear).toEqual(fact("2026-03-14", "metadata", "2026-03-14"));
   });
 
+  it("a session clipped from a monitor speech downloads only its section and keeps its own title", async () => {
+    const calls: unknown[][] = [];
+    const stub = youtubeStub({ title: "Sessão Deliberativa Extraordinária - 18/03/2026", description: "", channel: "Câmara dos Deputados", uploadDate: "2026-03-18", webpageUrl: "https://www.youtube.com/watch?v=abc", durationS: 30060 });
+    const { start, sessionId } = await setup({
+      youtube: async (...a) => {
+        calls.push(a);
+        return stub(...a);
+      },
+      context: [draft()],
+    });
+    await updateSession(db, sessionId, { title: "Chico Alencar (PSOL-RJ), Câmara plenary, 18 Mar 2026", sourceStartMs: 24_416_000, sourceEndMs: 24_553_000 });
+    await start();
+    expect(calls[0]![3]).toEqual({ startS: 24416, endS: 24553 });
+    expect((await getSession(db, sessionId))!.title).toBe("Chico Alencar (PSOL-RJ), Câmara plenary, 18 Mar 2026");
+  });
+
+  it("a whole-video session passes no section", async () => {
+    const calls: unknown[][] = [];
+    const stub = youtubeStub({ title: "T", description: "", channel: "C", uploadDate: null, webpageUrl: "https://www.youtube.com/watch?v=abc", durationS: 100 });
+    const { start } = await setup({
+      youtube: async (...a) => {
+        calls.push(a);
+        return stub(...a);
+      },
+      context: [draft()],
+    });
+    await start();
+    expect(calls[0]![3]).toBeUndefined();
+  });
+
   describe("record suggestion from the YouTube details", () => {
     const meta = (over: Partial<YouTubeMetadata> = {}): YouTubeMetadata => ({
       title: "92. Sitzung vom 09.09.2026. TOP Epl 04: Bundeskanzler und Bundeskanzleramt",

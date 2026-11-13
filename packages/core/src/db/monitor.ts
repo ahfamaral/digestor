@@ -29,6 +29,8 @@ export type SpeechRow = {
   urlText: string | null; textFile: boolean;
   /** Where the speech is in the session's official video (`parl_speech_videos`), or null. */
   video: SpeechVideo | null;
+  /** `parl_speeches.speech_key` ("Clip this speech" is keyed by it); always set by the queries, optional for fixtures. */
+  speechKey?: string | null;
 };
 /** `member` carries today's party and state; `partyThen`/`ufThen` are the speaker's on the day (null without history). */
 export type SpeechHit = SpeechRow & {
@@ -222,7 +224,7 @@ export async function listMemberSpeeches(
     .select({
       id: parlSpeeches.id, startsAt: parlSpeeches.startsAt, phase: parlSpeeches.phase, kind: parlSpeeches.kind,
       summary: parlSpeeches.summary, text: parlSpeeches.text, urlText: parlSpeeches.urlText, textFile: parlSpeeches.textFile,
-      videoId: parlSpeechVideos.videoId, startS: parlSpeechVideos.startS, endS: parlSpeechVideos.endS,
+      speechKey: parlSpeeches.speechKey, videoId: parlSpeechVideos.videoId, startS: parlSpeechVideos.startS, endS: parlSpeechVideos.endS,
     })
     .from(parlSpeeches)
     .leftJoin(parlSpeechVideos, eq(parlSpeechVideos.speechKey, parlSpeeches.speechKey))

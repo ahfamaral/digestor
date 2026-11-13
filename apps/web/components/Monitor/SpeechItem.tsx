@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { isWrittenOnly } from "@digestor/core";
 import type { SpeechHit, SpeechRow } from "@digestor/core/server";
+import { monitorClipEnabled } from "@/lib/monitor/clip";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref } from "@/lib/monitor/params";
 import type { LandingSpeech } from "@/lib/monitor/search";
@@ -12,7 +13,8 @@ import { SpeechVideo } from "./SpeechVideo";
  * One official speech: who (with the party and state on the day, and "now …" when the party changed since), when, the
  * session phase, the Câmara's summary, labelled as theirs (or, for a search match, the matching passages), the full text
  * on demand and the link to the official text. A speech the Câmara published as an attached file says so instead.
- * A speech placed in the session's official video gets "Watch the speech"; one sent in writing says it wasn't spoken.
+ * A speech placed in the session's official video gets "Watch the speech" (and "Clip this speech" when
+ * `MONITOR_CLIP_ENABLED=true`); one sent in writing says it wasn't spoken.
  * A topic-search row found only by the search by meaning (none of the searched words) is marked "Related by meaning".
  */
 export function SpeechItem({
@@ -44,7 +46,7 @@ export function SpeechItem({
         )}
       </div>
       {speech.video ? (
-        <SpeechVideo locale={locale} video={speech.video} />
+        <SpeechVideo locale={locale} video={speech.video} clip={speech.speechKey ? { speechKey: speech.speechKey, enabled: monitorClipEnabled() } : undefined} />
       ) : (
         isWrittenOnly(speech.text) && <p className="text-xs text-muted-foreground">{tm(locale, "speech.writtenOnly")}</p>
       )}

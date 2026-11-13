@@ -19,6 +19,7 @@ export function ConfirmDialog({
   description,
   actionLabel,
   busyLabel,
+  cancelLabel,
   onConfirm,
 }: {
   open: boolean;
@@ -27,6 +28,8 @@ export function ConfirmDialog({
   description: string;
   actionLabel: string;
   busyLabel?: string;
+  /** Default "Cancel" (`t()`); the monitor passes its own language's word. */
+  cancelLabel?: string;
   onConfirm: () => Promise<void>;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -67,7 +70,7 @@ export function ConfirmDialog({
         )}
         <DialogFooter>
           <Button ref={cancelRef} type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
-            {t("confirm.cancel")}
+            {cancelLabel ?? t("confirm.cancel")}
           </Button>
           <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90" disabled={busy} onClick={() => void confirm()}>
             <Busy busy={busy}>{busy && busyLabel ? busyLabel : actionLabel}</Busy>

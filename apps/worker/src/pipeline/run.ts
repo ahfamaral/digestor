@@ -159,8 +159,12 @@ const download: Step = async (deps, s) => {
   let result: Awaited<ReturnType<typeof downloadYouTube>>;
   try {
     if (!session.sourceUrl) throw new Error("YouTube session has no source URL");
+    // A speech clipped from the monitor: only its part of the video (times in the session are relative to it).
+    const section = session.sourceStartMs !== null && session.sourceEndMs !== null
+      ? { startS: Math.floor(session.sourceStartMs / 1000), endS: Math.ceil(session.sourceEndMs / 1000) }
+      : undefined;
     // yt-dlp appends the extension (.mp4).
-    result = await deps.youtube.downloadYouTube(session.sourceUrl, storage.resolve(storage.key(s.sessionId, "original")));
+    result = await deps.youtube.downloadYouTube(session.sourceUrl, storage.resolve(storage.key(s.sessionId, "original")), undefined, section);
   } catch (err) {
     if (err instanceof YouTubeDownloadError) {
       await setStage(db, s.sessionId, "failed", 2, err.message);
@@ -173,7 +177,8 @@ const download: Step = async (deps, s) => {
   await updateSession(db, s.sessionId, {
     originalKey: storage.key(s.sessionId, path.basename(result.videoPath)),
     metadata: { ...session.metadata, ...result.metadata },
-    title: result.metadata.title || session.title,
+    // A part of a video keeps the title it was given (the whole plenary's title would name every speech alike).
+    title: session.sourceStartMs !== null ? session.title : result.metadata.title || session.title,
   });
   // A suggestion only: the journalist confirms it at the context check. Idempotent (no row yet), never fatal.
   try {

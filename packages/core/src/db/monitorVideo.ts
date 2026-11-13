@@ -139,3 +139,41 @@ export async function speechVideos(db: Db, keys: string[]): Promise<Map<string, 
   for (const r of rows) out.set(r.speechKey, { videoId: r.videoId, startS: r.startS, endS: r.endS });
   return out;
 }
+
+/** What clipping one speech needs: its video moment, the plenary (Câmara event id), the video's length and who spoke when. */
+export type SpeechClipSource = SpeechVideo & {
+  /** The plenary's Câmara event id (`parl_sessions.id`). */
+  eventId: number;
+  /** The video's length in seconds, when the matching run stored it. */
+  durationS: number | null;
+  name: string;
+  /** Party and state on the day, else today's. */
+  party: string | null;
+  uf: string | null;
+  /** Brasília local "YYYY-MM-DDTHH:MM". */
+  startsAt: string;
+};
+
+/** The video moment of one speech and who gave it, or null when the speech has none. */
+export async function speechClipSource(db: Db, speechKey: string): Promise<SpeechClipSource | null> {
+  const r = await db.execute<{
+    video_id: string; start_s: number; end_s: number; event_id: number; duration_s: number | null; name: string;
+    party: string | null; uf: string | null; starts_at: string;
+  }>(sql`
+    select v.video_id, v.start_s, v.end_s, v.session_id as event_id, sv.duration_s, m.name,
+      case when s.party is not null then s.party else m.party end as party,
+      case when s.party is not null then s.uf else m.uf end as uf,
+      to_char(s.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at
+    from parl_speech_videos v
+    join parl_speeches s on s.speech_key = v.speech_key
+    join parl_members m on m.id = s.member_id
+    left join parl_session_videos sv on sv.session_id = v.session_id
+    where v.speech_key = ${speechKey}
+    limit 1`);
+  const x = r.rows[0];
+  if (!x) return null;
+  return {
+    videoId: x.video_id, startS: x.start_s, endS: x.end_s, eventId: x.event_id, durationS: x.duration_s, name: x.name,
+    party: x.party, uf: x.uf, startsAt: x.starts_at,
+  };
+}

@@ -4,15 +4,19 @@ import { useState } from "react";
 import { Play, X } from "lucide-react";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { embedUrl, videoLength, videoPosition, watchUrl, type VideoMoment } from "@/lib/monitor/video";
+import { ClipSpeech } from "./ClipSpeech";
 import { ExternalLink } from "./ExternalLink";
 
 /**
  * "Watch the speech": the session's official video (the Câmara's YouTube channel) loads only when clicked, in the
  * privacy-enhanced player, from the speech's start to its end; plus a plain link to YouTube at that moment. Nothing
  * from YouTube loads before the click. `label="at"`: the button names the moment ("Watch at 1:18:42") instead of the
- * speech's length (a quoted passage on "Ask the record").
+ * speech's length (a quoted passage on "Ask the record"). `clip`: "Clip this speech" into a Digestor session when enabled
+ * (`MONITOR_CLIP_ENABLED=true`), else a line saying why it isn't offered.
  */
-export function SpeechVideo({ locale, video, label = "length" }: { locale: MonitorLocale; video: VideoMoment; label?: "length" | "at" }) {
+export function SpeechVideo({
+  locale, video, label = "length", clip,
+}: { locale: MonitorLocale; video: VideoMoment; label?: "length" | "at"; clip?: { speechKey: string; enabled: boolean } }) {
   const [open, setOpen] = useState(false);
   const src = embedUrl(video);
   const href = watchUrl(video);
@@ -41,10 +45,12 @@ export function SpeechVideo({ locale, video, label = "length" }: { locale: Monit
             {label === "at" ? tm(locale, "speech.watchAt", { at }) : tm(locale, "speech.watch", { length: videoLength(video.endS - video.startS) })}
           </button>
         )}
+        {clip?.enabled && <ClipSpeech locale={locale} speechKey={clip.speechKey} video={video} />}
         <ExternalLink href={href} className="text-xs">
           {tm(locale, "speech.openOnYouTube", { at })}
         </ExternalLink>
       </div>
+      {clip && !clip.enabled && <p className="text-xs text-muted-foreground">{tm(locale, "clip.disabled")}</p>}
       {open ? (
         <div className="aspect-video w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-black">
           <iframe

@@ -119,6 +119,30 @@ describe("ytDlpArgs", () => {
     expect(args[args.indexOf("--cookies") + 1]).toBe("/tmp/c.txt");
     expect(args.indexOf("--cookies")).toBeLessThan(args.indexOf("--"));
   });
+  it("a section downloads only that range, keeps the cookies and the live filter, and drops the whole-video size cap", () => {
+    const args = ytDlpArgs("u", "/o", {}, "/tmp/c.txt", { startS: 11879, endS: 12025 });
+    expect(args[args.indexOf("--download-sections") + 1]).toBe("*11879-12025");
+    expect(args.indexOf("--download-sections")).toBeLessThan(args.indexOf("--"));
+    expect(args[args.indexOf("--cookies") + 1]).toBe("/tmp/c.txt");
+    expect(args[args.indexOf("--break-match-filters") + 1]).toBe("!is_live");
+    expect(args).not.toContain("--force-keyframes-at-cuts");
+    expect(args).not.toContain("--max-filesize");
+    // Verified 2026-11-13 (yt-dlp 2026.10.26, an 8 h plenary stream, a 137 s section): the https DASH files took
+    // 2 min 49 s; the HLS format the plain selector picked (itag 616) wrote nothing in 25 min.
+    expect(args[args.indexOf("-f") + 1]).toBe("bv*[height<=1080][protocol=https]+ba[protocol=https]/b[height<=1080][protocol=https]/b[height<=1080]");
+    expect(args.slice(-2)).toEqual(["--", "u"]);
+  });
+  it("no section: the whole video, as before", () => {
+    const args = ytDlpArgs("u", "/o", {});
+    expect(args).not.toContain("--download-sections");
+    expect(args[args.indexOf("-f") + 1]).toBe("bv*[height<=1080]+ba/b[height<=1080]");
+  });
+  it("passes the section through downloadYouTube", async () => {
+    runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    await expect(downloadYouTube("https://youtu.be/x", path.join(os.tmpdir(), "ytdlp-section"), {}, { startS: 0, endS: 140 })).rejects.toThrow();
+    const args: string[] = runMock.mock.lastCall![1];
+    expect(args[args.indexOf("--download-sections") + 1]).toBe("*0-140");
+  });
   it("defaults the cap to 5 GB and ignores bad values", () => {
     expect(ytDlpArgs("u", "/o", {})[ytDlpArgs("u", "/o", {}).indexOf("--max-filesize") + 1]).toBe("5G");
     const bad = ytDlpArgs("u", "/o", { MAX_UPLOAD_GB: "abc" });
