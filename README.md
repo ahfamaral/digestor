@@ -104,7 +104,7 @@ Prerequisites (one-time, macOS):
 
 1. `brew install colima docker docker-compose`
 2. Add `"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]` to `~/.docker/config.json`.
-3. `colima start --cpu 4 --memory 8`, then check `docker compose version`.
+3. `colima start --cpu 4 --memory 8` (4 on an 8 GB Mac), then check `docker compose version`.
 4. Node 22 and pnpm via corepack (`corepack enable`). If corepack fails its signature check, run `npm i -g corepack@latest`.
 
 Configure `.env` (`cp .env.example .env`):
@@ -118,7 +118,7 @@ Configure `.env` (`cp .env.example .env`):
 | `OPENROUTER_MODEL_REASONING`, `OPENROUTER_MODEL_FAST` | Optional OpenRouter model ids; blank = `anthropic/claude-sonnet-5.5` and `anthropic/claude-haiku-5.5` |
 | `APP_PASSWORD` | Optional; leave empty to disable the password gate |
 | `MAX_UPLOAD_GB` | Upload size limit (default 5) |
-| `VIDEO_RETENTION_DAYS` | How long the source video is kept (default 14): `original.*`, `audio.mp3`, `proxy.mp4`, the pipeline run row, the session's paused Ask threads and its search index are deleted; analyses, selections and rendered clips stay |
+| `VIDEO_RETENTION_DAYS` | How long the source video is kept (default 14): `original.*`, `audio.mp3`, `proxy.mp4`, the pipeline run row, the session's paused Ask threads and its search index are deleted; analyses, selections, rendered clips and Ask's questions and answers (which quote the transcript) stay |
 | `MONITOR_VIDEO_ENABLED` | Optional, monitor only: `true` lets the worker place speeches in their plenary videos from YouTube captions. Leave it off on a server whose IP YouTube blocks |
 | `MONITOR_CLIP_ENABLED` | Optional, monitor only: `true` shows "Clip this speech" (downloads part of a plenary video with yt-dlp). Off on a server whose IP YouTube blocks |
 
@@ -157,7 +157,7 @@ Production runs on a single VPS with `docker compose -f docker-compose.yml -f do
 
 **Capstone round (13 November 2026).** All numbers, with the model, cost and caveats of each run, are in [docs/capstone/evaluation.md](docs/capstone/evaluation.md). In short (every golden file below was drafted by Claude and is not yet reviewed by the owner):
 
-- **Osang × Merkel interview** (German, 99 min, Claude Haiku 5.5 via OpenRouter): topic boundaries 31 s off on average; exchange recall 6/9, punchline 2/2, passage 0/3 (the analysis cuts the interview into short passages while the golden passages are whole 90–200 s answers); check warnings fired on all 8 traps (no control run on this video); both speakers named correctly (score 1.00). Analysis cost $0.145.
+- **Osang × Merkel interview** (German, 99 min, Claude Haiku 5.5 via OpenRouter): topic boundaries 31 s off on average; exchange recall 6/9, punchline 2/2, passage 0/3 (the analysis cuts the interview into short passages while the golden passages are whole 80–200 s answers); check warnings fired on all 8 traps (no control run on this video); both speakers named correctly (score 1.00). Analysis cost $0.145.
 - **Audio-only:** a 10-minute MP3 from the same interview went from upload to "Download all" in the real app; four wording and playback gaps found on the way were fixed.
 - **Ask** (12 questions per video on the Globo debate and the Osang interview, in three languages): retrieval recall@6 0.80 and 0.70. After the LangGraph, approval and verify changes, every answer that quoted text quoted it verbatim on both videos (before: 100% and 71%); citation hit moved from 80% to 90% on the debate and from 100% to 80% on the interview; verify sent one answer per video back, and both corrections passed. With 12 questions one question moves a rate by 8–10 points, so these changes are within run-to-run noise.
 - **Monitor speech search** (20 queries, 14 Portuguese and 6 English): recall@10 words 0.41, meaning 0.53, hybrid 0.61; MRR@10 0.66, 0.82, 0.87. Hybrid is the default under "Best match".
@@ -307,9 +307,9 @@ Digestor handles real people's words and faces, and its output is meant to be pu
 
 **Risk.** Video, audio and transcripts of identifiable people go to third parties.
 
-**What the code does.** The audio goes to AssemblyAI (transcription, United States). Transcript text and prompts go to the LLM provider chosen with `LLM_PROVIDER`: Anthropic or OpenRouter (which forwards to the model's vendor). Embeddings for Ask are computed locally. Files stay on the server's own disk. The source video, audio, preview copy, the pipeline run row (which holds the context answers), the session's paused Ask threads and its search index are deleted after `VIDEO_RETENTION_DAYS` (default 14); analyses, selections, thumbnails and rendered clips stay. Once the video is removed, kept clips are frozen. The password gate (`APP_PASSWORD`) can limit access.
+**What the code does.** The audio goes to AssemblyAI (transcription, United States). Transcript text and prompts go to the LLM provider chosen with `LLM_PROVIDER`: Anthropic or OpenRouter (which forwards to the model's vendor). Embeddings for Ask are computed locally. Files stay on the server's own disk. The source video, audio, preview copy, the pipeline run row (which holds the context answers), the session's paused Ask threads and its search index are deleted after `VIDEO_RETENTION_DAYS` (default 14); analyses, selections, thumbnails, rendered clips and the Ask questions and answers (per video and across videos, which quote transcript text) stay. Once the video is removed, kept clips are frozen. The password gate (`APP_PASSWORD`) can limit access.
 
-**Still open.** Transcripts and analyses are kept with no expiry, and there is no delete-session or delete-my-data function for the people who appear in a video. Data processing agreements with the vendors and a legal basis per use (journalism exemptions differ in Germany and Brazil) are the operator's job, not something the app provides.
+**Still open.** Transcripts, analyses and Ask answers are kept with no expiry, and there is no delete-session or delete-my-data function for the people who appear in a video. Data processing agreements with the vendors and a legal basis per use (journalism exemptions differ in Germany and Brazil) are the operator's job, not something the app provides.
 
 ### Speaker misattribution
 

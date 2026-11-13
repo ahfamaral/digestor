@@ -93,7 +93,7 @@ Videos, quotes, clip titles and subtitles are in the **spoken language** (Portug
 
 ## Media
 
-Players use the 480p proxy (`/api/files/<id>/proxy.mp4`, Range-enabled) with `preload="none"` and `#t=start,end` fragments for previews; thumbnails are `/api/files/<id>/thumbs/<clipId>.jpg`. Never point a player at `original.*`.
+Players use the 360p proxy (`/api/files/<id>/proxy.mp4`, Range-enabled) with `preload="none"` and `#t=start,end` fragments for previews; thumbnails are `/api/files/<id>/thumbs/<clipId>.jpg`. Never point a player at `original.*`.
 
 ## Plan 2 pieces (built)
 

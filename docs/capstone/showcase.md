@@ -19,7 +19,7 @@ Record at 1280 px wide, one pass, no voice-over of keyboard shortcuts. Examples:
 | 3 | 16-24 s | Processing with progress, then the Context check with questions | "It transcribes, works out what kind of event this is and asks you only what it cannot tell." |
 | 4 | 24-36 s | Briefing page: summary card, topic card, moment tree, highlight chips with "Why:" | "You get a briefing: topics, then moments as exchanges, passages and punchlines. Each AI highlight says why." |
 | 5 | 36-44 s | Click a moment, the quote and playback; Approve one, Skip one | "Quotes are checked against the transcript. You approve or skip each moment." |
-| 6 | 44-52 s | Ask drawer: a question with a cited answer. Second half only if Task C1 is done: Ask proposes a clip change and the approval card (re-check the button labels after C1) | "Ask answers from the video's own data." Only if C1 is done, add: "It asks before it changes your selection." |
+| 6 | 44-52 s | Ask drawer: a question with a cited answer, then Ask proposes a clip change and the approval card (Approve / Edit / Reject) | "Ask answers from the video's own data. It asks before it changes your selection." |
 | 7 | 52-62 s | Prepare: trim strip, 9:16 toggle, credit, German to English subtitle track | "Trim on sentence boundaries, pick the format, add translated subtitles you can edit." |
 | 8 | 62-72 s | Export: rendered clip playing, download buttons, Download all | "Export MP4 with subtitles burned in, or SRT and VTT files." |
 | 9 | 72-80 s | Who's who with speaker names and sources | "Speaker names carry their source, and an AI guess stays a proposal until you confirm it." |
@@ -41,7 +41,7 @@ Seed with the `digestor-run` skill. "Real" means one of the owner's analysed ses
 | 6 | Topic card and moment tree | `/s/<id>` | Globo debate; scroll to one topic; levels all ticked; two moments Approved, one Skipped | Exchange, passage and punchline rows, chips with "AI" badge and "Why:", Approve and Skip states |
 | 7 | Filters and hidden approved | `/s/<id>` | Choose a highlight-type chip that hides an approved moment | Footer "N approved · M hidden by filters" with "Show hidden" |
 | 8 | Ask answer | `/s/<id>` (press `/`) | Osang interview ready; ask "What does Merkel say about Russia?" | Drawer with an answer citing timestamps, German source quoted |
-| 9 | Ask approval (after Task C1) | `/s/<id>` (press `/`) | Ask "Trim the first clip to start at the question" | Approval card showing the proposed change with Approve and Reject, before anything changes |
+| 9 | Ask approval | `/s/<id>` (press `/`) | Ask "Trim the first clip to start at the question" | Approval card showing the proposed change with Approve / Edit / Reject, before anything changes |
 | 10 | Prepare | `/s/<id>/prepare` | Osang interview: two approved moments confirmed with "Prepare clips"; one clip at 9:16, credit filled, English track added | Trim strip with time, checks, crop position, credit, subtitle language and track status |
 | 11 | Subtitle track | `/s/<id>/prepare` | Same; open the English track with a preview | German to English cues, editable, approval state |
 | 12 | Export | `/s/<id>/export` | Wait until "Rendered" shows on both clips; toggle Watch on one | Rendered clip playing inline, MP4 / SRT / VTT downloads, "Download all" |
@@ -53,5 +53,5 @@ Notes for shooting:
 
 - Frame the stepper in shots 2 to 12 so the flow reads left to right: Upload, Processing, Context, Briefing, Prepare, Export.
 - Check `errors.txt` from `drive.mjs` is empty, and look at each PNG before using it.
-- Shots 8 and 9 need keys for the LLM provider in `.env`. Shot 9 exists only after Task C1; if it is not done, drop it and the approval sentence and approval card in video shot 6.
+- Shots 8 and 9 need keys for the LLM provider in `.env`.
 - Blur nothing: the sessions are public-interest videos. Do not show `.env`, the server's address or API keys in a terminal.

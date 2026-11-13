@@ -11,7 +11,7 @@ Language note: the interview is in German. A German-speaking tester can judge th
 ## Setup (facilitator, before the tester arrives)
 
 - Open https://digestor.freitasdoamaral.com in a fresh browser window on a laptop. Give the tester the password in person. Never write it in this document, in notes or in the recording.
-- The Osang x Merkel interview is already analysed. Check that it appears on the Sessions page as ready, and that no clips exist yet from an earlier test (otherwise use a clean account or session copy).
+- The Osang x Merkel interview is already analysed. Check that it appears on the Sessions page as ready, and that no clips exist yet from an earlier test (there are no accounts: delete earlier test clips on Prepare first).
 - Prepare a stopwatch, the results table below, and the screen recording.
 - Do not demonstrate anything. Do not hint at button names.
 
