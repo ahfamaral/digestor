@@ -2,7 +2,7 @@ import Link from "next/link";
 import { MessageSquareQuote } from "lucide-react";
 import { isWrittenOnly } from "@digestor/core";
 import { Spinner } from "@/components/ui/spinner";
-import type { AskPassage, AskResult } from "@/lib/monitor/askRecord";
+import { questionTopic, type AskPassage, type AskResult } from "@/lib/monitor/askRecord";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { askHref, deputyHref, landingHref, MAX_QUERY, MONITOR_YEARS, type AskParams } from "@/lib/monitor/params";
 import { ExternalLink } from "./ExternalLink";
@@ -25,7 +25,8 @@ export function AskRecordView({
   locale, params, result, searching = false, askedEmpty = false,
 }: { locale: MonitorLocale; params: AskParams; result: AskResult | null; searching?: boolean; askedEmpty?: boolean }) {
   const year = MONITOR_YEARS[0];
-  const words = landingHref({ q: params.q, from: params.from, to: params.to });
+  // The word search gets what the question is about ("price of food"), not its framing.
+  const words = landingHref({ q: params.q && questionTopic(params.q), from: params.from, to: params.to });
   return (
     <div lang={locale} className="grid gap-6">
       <div className="grid gap-1">

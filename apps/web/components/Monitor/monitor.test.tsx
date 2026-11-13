@@ -735,6 +735,9 @@ describe("Ask the record", () => {
     expect(down).toContain("Asking the record isn&#x27;t available right now.");
     expect(down).toContain('href="/monitor?q=pre%C3%A7o+da+comida&amp;from=2026-03-01"');
     expect(down).toContain("Try the word search.");
+    // the word search gets the question's topic, not its framing
+    const asked = renderToStaticMarkup(<AskRecordView locale="en" params={{ q: "What did deputies say about the price of food?", from: null, to: null }} result={{ ok: false, passages: [] }} />);
+    expect(asked).toContain('href="/monitor?q=price+of+food"');
     const none = renderToStaticMarkup(<AskRecordView locale="en" params={params} result={{ ok: true, passages: [] }} />);
     expect(none).toContain("No passages in the record match this question.");
   });

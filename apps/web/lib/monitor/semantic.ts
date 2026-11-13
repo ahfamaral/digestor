@@ -55,6 +55,12 @@ export async function semanticSearch(
   }
 }
 
+class WorkerAnswered extends Error {
+  constructor(readonly status: number) {
+    super(`worker answered ${status}`);
+  }
+}
+
 export type Passage = { speechKey: string; sentences: string[]; score: number };
 export type PassagesResult = { ok: boolean; passages: Passage[] };
 const passagesReply = z.object({
@@ -65,7 +71,8 @@ const passagesReply = z.object({
  * "Ask the record": the passages of these speeches closest in meaning to the question (`POST /monitor/passages`, the
  * worker's stored chunks scored against the question), best first, at most `perSpeech` each. Each passage is official
  * text split into sentences, as stored. A worker that is down, slow (10 s: speeches not indexed yet are embedded on
- * the fly) or answers garbage is `ok: false`, never a throw, and is left alone for 30 s like the search.
+ * the fly) or answers garbage is `ok: false`, never a throw; only a refused connection or a 5xx leaves it alone for
+ * 30 s (shared with the search).
  */
 export async function speechPassages(
   q: string, speechKeys: string[], perSpeech: number, o: { url?: string; fetch?: typeof fetch; timeoutMs?: number } = {},
@@ -81,10 +88,12 @@ export async function speechPassages(
       signal: AbortSignal.timeout(o.timeoutMs ?? 10_000),
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`worker answered ${res.status}`);
+    if (!res.ok) throw new WorkerAnswered(res.status);
     return { ok: true, passages: passagesReply.parse(await res.json()).passages };
   } catch (err) {
-    downUntil = Date.now() + RETRY_AFTER_MS;
+    // Only a worker that is down (connection refused, 5xx) stops the next searches for 30 s; a slow answer (embedding
+    // unindexed speeches on the fly) or an odd one fails this question only.
+    if (err instanceof TypeError || (err instanceof WorkerAnswered && err.status >= 500)) downUntil = Date.now() + RETRY_AFTER_MS;
     console.warn("monitor passages:", err instanceof Error ? err.message : err);
     return { ok: false, passages: [] };
   }

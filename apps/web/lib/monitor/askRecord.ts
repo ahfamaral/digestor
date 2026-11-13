@@ -15,6 +15,8 @@ export const ASK_SHOWN = 6;
 export const PER_DEPUTY = 2;
 /** Longest quote: whole sentences up to this many characters (a single longer sentence is cut at a word). */
 export const QUOTE_CHARS = 450;
+/** A passage with none of the question's words is quoted whole, up to this many characters (a stored chunk's cap). */
+export const WHOLE_CHARS = 1000;
 const QUOTE_SENTENCES = 3;
 
 export type Passages = (q: string, speechKeys: string[], perSpeech: number) => Promise<PassagesResult>;
@@ -83,19 +85,36 @@ const FRAMING = new Set(
     "disseram dizem disse diz falaram falam falou fala pensam acham"
   ).split(/\s+/).map(normName),
 );
-const isFraming = (token: string) => {
-  const w = normName(token).replace(/[^\p{L}\p{N}]/gu, "");
-  return FRAMING.has(w) || ASKED_ABOUT.test(w);
-};
+/** The words after which the topic starts ("about", "sobre"): from there a deputy is part of the topic. */
+const ABOUT = new Set(["about", "on", "sobre", "de", "acerca", "respeito"]);
+/** Saying or asking-about words: without one, "Deputados federais e o aborto" is a topic, not framing. */
+const SAYING = new Set(
+  [...ABOUT, ..."say says said tell told talk talked talking speak spoke spoken think thought dito falado disseram dizem disse diz falaram falam falou fala pensam acham".split(" ")],
+);
+const bare = (token: string) => normName(token).replace(/[^\p{L}\p{N}]/gu, "");
 
 /**
  * What a question is about: its opening framing ("What did deputies say about the", "O que os deputados disseram sobre
- * a") and the final question mark left out; the rest as typed. The whole question when nothing would be left.
+ * a") and the final question mark left out; the rest as typed. Deputies count as framing only before the about word
+ * and only when the question says or asks about something ("What did deputies say about deputies' pay?" keeps
+ * "deputies' pay"; "Deputados federais e o aborto" stays whole). The whole question when nothing would be left.
  */
 export function questionTopic(q: string): string {
   const tokens = q.trim().split(/\s+/);
   let i = 0;
-  while (i < tokens.length && isFraming(tokens[i]!)) i++;
+  let about = false;
+  let said = false;
+  let firstAsked = -1;
+  for (; i < tokens.length; i++) {
+    const w = bare(tokens[i]!);
+    if (FRAMING.has(w)) {
+      about ||= ABOUT.has(w);
+      said ||= SAYING.has(w);
+    } else if (!about && ASKED_ABOUT.test(w)) {
+      if (firstAsked < 0) firstAsked = i;
+    } else break;
+  }
+  if (firstAsked >= 0 && !said) i = firstAsked;
   const rest = tokens.slice(i).join(" ").replace(/[?？!.\s]+$/u, "");
   return rest || q;
 }
@@ -127,10 +146,43 @@ function cut(s: string, max: number): string {
   return `${s.slice(0, at > 0 ? at : max - 1).trimEnd()}…`;
 }
 
+/** Whole-sentence edges: a start in capitals, a digit or a quote; an end in . ! ? or … (closing marks allowed). */
+const WHOLE_START = /^["“‘'«(\[\p{Lu}\p{N}]/u;
+const WHOLE_END = /[.!?…]["”’'»)\]]*$/u;
+
+/** "…" at the quote's edges where it starts or ends mid-sentence (a long sentence the worker cut into pieces). */
+function edges(quote: string[]): string[] {
+  if (quote.length === 0) return quote;
+  const out = [...quote];
+  if (!WHOLE_START.test(out[0]!)) out[0] = `…${out[0]}`;
+  const last = out.length - 1;
+  if (!WHOLE_END.test(out[last]!)) out[last] = `${out[last]}…`;
+  return out;
+}
+
+/** The whole passage, in sentences, up to `WHOLE_CHARS`; the sentence that doesn't fit is cut at a word. */
+function wholePassage(s: string[]): string[] {
+  const out: string[] = [];
+  let size = 0;
+  for (const x of s) {
+    const room = WHOLE_CHARS - size - (out.length ? 1 : 0);
+    if (x.length <= room) {
+      out.push(x);
+      size += x.length + (out.length > 1 ? 1 : 0);
+      continue;
+    }
+    if (room >= 20) out.push(cut(x, room));
+    else out[out.length - 1] = `${out[out.length - 1]!.replace(/…$/u, "")}…`;
+    break;
+  }
+  return out;
+}
+
 /**
- * The 1–3 sentences of a passage to quote: the one holding most of the question's words (the first on a tie, or the
- * first sentence when none does), then its neighbours (next, then previous) while the quote stays within `QUOTE_CHARS`.
- * Sentences are never edited; only a single sentence longer than the cap is cut at a word, with an ellipsis.
+ * The sentences of a passage to quote: the one holding most of the question's words (the first on a tie), then its
+ * neighbours (next, then previous) while the quote stays within `QUOTE_CHARS`, at most 3. When no sentence holds any
+ * (an English question without the translator), the whole passage, up to `WHOLE_CHARS`. Sentences are never edited:
+ * a single sentence over the cap is cut at a word, and "…" marks a quote that starts or ends mid-sentence.
  */
 export function pickSentences(sentences: string[], stems: ReadonlySet<string>): string[] {
   const s = sentences.map((x) => x.trim()).filter((x) => x && !isHeader(x));
@@ -138,7 +190,8 @@ export function pickSentences(sentences: string[], stems: ReadonlySet<string>): 
   const hits = s.map((x) => new Set(words(x).map(stem).filter((w) => stems.has(w))).size);
   let best = 0;
   for (let i = 1; i < s.length; i++) if (hits[i]! > hits[best]!) best = i;
-  if (s[best]!.length > QUOTE_CHARS) return [cut(s[best]!, QUOTE_CHARS)];
+  if (hits[best] === 0) return edges(wholePassage(s));
+  if (s[best]!.length > QUOTE_CHARS) return edges([cut(s[best]!, QUOTE_CHARS)]);
   let [lo, hi] = [best, best];
   let size = s[best]!.length;
   while (hi - lo + 1 < QUOTE_SENTENCES) {
@@ -152,5 +205,5 @@ export function pickSentences(sentences: string[], stems: ReadonlySet<string>): 
       size += 1 + prev.length;
     } else break;
   }
-  return s.slice(lo, hi + 1);
+  return edges(s.slice(lo, hi + 1));
 }

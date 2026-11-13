@@ -127,6 +127,13 @@ describe("questionTopic", () => {
     expect(questionTopic("What did they say?")).toBe("What did they say?");
     expect(questionTopic("o que disseram sobre o 8 de janeiro")).toBe("8 de janeiro");
   });
+
+  it("deputies are framing only before the say/about word, and only when the question has one", () => {
+    expect(questionTopic("What did deputies say about deputies' pay?")).toBe("deputies' pay");
+    expect(questionTopic("O que os deputados disseram sobre os deputados federais?")).toBe("deputados federais");
+    expect(questionTopic("Deputados federais e o aborto")).toBe("Deputados federais e o aborto");
+    expect(questionTopic("Deputies and abortion")).toBe("Deputies and abortion");
+  });
 });
 
 describe("pickSentences", () => {
@@ -142,8 +149,23 @@ describe("pickSentences", () => {
     expect(pickSentences(s, stems)).toEqual(["Senhor Presidente, venho à tribuna.", "Falo do preço da comida na mesa."]);
   });
 
-  it("without the question's words, starts at the beginning", () => {
-    expect(pickSentences(["Primeira.", "Segunda.", "Terceira.", "Quarta."], new Set())).toEqual(["Primeira.", "Segunda.", "Terceira."]);
+  it("without the question's words (an English question, no translator), quotes the whole passage, cut at 1000", () => {
+    expect(pickSentences(["Primeira.", "Segunda.", "Terceira.", "Quarta."], new Set())).toEqual(["Primeira.", "Segunda.", "Terceira.", "Quarta."]);
+    expect(pickSentences(["Primeira.", "Segunda."], queryStems("price of food", []))).toEqual(["Primeira.", "Segunda."]);
+    const many = Array.from({ length: 30 }, (_, i) => `Frase número ${i} sobre outra coisa qualquer.`);
+    const whole = pickSentences(many, new Set());
+    expect(whole.join(" ").length).toBeLessThanOrEqual(1001);
+    expect(whole.at(-1)!.endsWith("…")).toBe(true);
+    expect(many.join(" ").startsWith(whole.join(" ").slice(0, -1))).toBe(true);
+  });
+
+  it("marks a quote that starts or ends mid-sentence (a long sentence the worker cut) with an ellipsis, only at its edges", () => {
+    expect(pickSentences(["e continuou falando do preço da comida.", "Fim."], stems)).toEqual(["…e continuou falando do preço da comida.", "Fim."]);
+    expect(pickSentences(["Início.", "O preço da comida subiu e"], stems)).toEqual(["Início.", "O preço da comida subiu e…"]);
+    // two pieces of one long sentence, shown together: no ellipsis between them
+    expect(pickSentences(["O preço da comida subiu e", "continua subindo."], stems)).toEqual(["O preço da comida subiu e", "continua subindo."]);
+    // quotes, digits and closing marks count as whole
+    expect(pickSentences(["“O preço da comida”, disse ele.", "70% subiu!”"], stems)).toEqual(["“O preço da comida”, disse ele.", "70% subiu!”"]);
   });
 
   it("never edits a sentence; one longer than the cap is cut at a word with an ellipsis", () => {

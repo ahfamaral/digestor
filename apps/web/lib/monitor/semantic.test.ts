@@ -90,4 +90,22 @@ describe("speechPassages", () => {
     expect(await speechPassages("q", ["a"], 1, { fetch: garbage })).toEqual({ ok: false, passages: [] });
     expect(garbage).toHaveBeenCalledTimes(1);
   });
+
+  it("a slow answer (timeout) doesn't stop the next searches; a refused connection or a 5xx does, for 30 s", async () => {
+    const slow = vi.fn(
+      (_u: string, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason))),
+    );
+    expect(await speechPassages("q", ["a"], 1, { fetch: slow as unknown as typeof fetch, timeoutMs: 20 })).toEqual({ ok: false, passages: [] });
+    const good = vi.fn(async () => new Response(JSON.stringify({ hits: [{ speechKey: "a", score: 0.9 }] }), { status: 200 }));
+    expect(await semanticSearch("after timeout", { fetch: good })).toEqual({ keys: ["a"], ok: true });
+    const passagesOk = vi.fn(async () => new Response(JSON.stringify({ passages: [passage] }), { status: 200 }));
+    expect((await speechPassages("q", ["a"], 1, { fetch: passagesOk })).ok).toBe(true);
+    const refused = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    expect((await speechPassages("q", ["a"], 1, { fetch: refused })).ok).toBe(false);
+    expect((await speechPassages("q", ["a"], 1, { fetch: passagesOk })).ok).toBe(false);
+    expect(passagesOk).toHaveBeenCalledTimes(1);
+  });
 });
