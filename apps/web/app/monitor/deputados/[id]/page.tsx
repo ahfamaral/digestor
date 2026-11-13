@@ -52,15 +52,18 @@ async function Deputy({ params, searchParams }: Pick<PageProps<"/monitor/deputad
   // while "Searching…" shows: a link to #speeches then lands on the search and stays there when the results arrive.
   const [profile, history] = await Promise.all([getProfile(db, member.id), getHistory(db, member.id)]);
   const record = { profile, bands: partyTimeline(history) };
-  if (!p.q) return <DeputyData locale={locale} member={member} params={p} {...record} />;
-  // A search is translated first (up to 10 s): the header and the search form show at once, with "Searching…" meanwhile.
-  // Keyed on the speech search only: filtering or paging the votes or bills keeps the page on screen while it loads.
+  // A search (speeches, votes or bills) is translated first (up to 10 s): on a first load the header and the search
+  // forms show at once, with "Searching…" meanwhile. Always the same boundary, keyed on the speech search only: filtering
+  // or paging the votes or bills in place keeps the page on screen while it loads.
   const empty = { total: 0, rows: [] };
   const workspace = { ...record, presence: null, bills: { total: 0, byType: [], rows: [] }, phases: [], today: today(), words: null };
+  const searching = p.q || p.vq || p.bq
+    ? <DeputyView locale={locale} member={member} params={p} searched={null} speeches={empty} votes={empty} {...workspace} searching />
+    : null;
   return (
     <Suspense
       key={deputyHref(member.externalId, { q: p.q, exact: p.exact, rel: p.rel, from: p.from, to: p.to, phase: p.phase, sort: p.sort, year: p.year, p: p.p })}
-      fallback={<DeputyView locale={locale} member={member} params={p} searched={null} speeches={empty} votes={empty} {...workspace} searching />}
+      fallback={searching}
     >
       <DeputyData locale={locale} member={member} params={p} {...record} />
     </Suspense>

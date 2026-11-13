@@ -330,6 +330,21 @@ describe("a deputy's vote filters", () => {
     expect(other.rows[0]).toMatchObject({ rollCallId: "1-4", guidance: null });
   });
 
+  it("counts the votes with a directed guidance (the ones the guidance filter can compare), within the filters and overall", async () => {
+    const { a, b } = await setup();
+    // A: 1-1, 1-2, 1-6, 1-8 (Liberado, empty, none and the chair's "Artigo 17" can't be compared)
+    expect(await listMemberVotes(db, a, {})).toMatchObject({ guided: 4, guidedAll: 4 });
+    expect(await listMemberVotes(db, a, { kind: "request" })).toMatchObject({ total: 2, guided: 1, guidedAll: 4 });
+    // the guidance filter doesn't narrow its own denominator
+    expect(await listMemberVotes(db, a, { kind: "request", differsFromGuidance: true })).toMatchObject({ total: 0, guided: 1, guidedAll: 4 });
+    expect(await listMemberVotes(db, a, { from: "2026-04", to: "2026-06" })).toMatchObject({ total: 3, guided: 0, guidedAll: 4 });
+    expect(await listMemberVotes(db, b, {})).toMatchObject({ all: 2, guided: 1, guidedAll: 1 });
+    // a party no published label names (MDB inside a cut-short bloc): no guidance at all, never "0 differ"
+    const c = (await upsertMembers(db, [{ ...member(3, "Deputado MDB"), party: "MDB" }])).get(3)!;
+    await replaceVotes(db, "1-6", [{ memberId: a, vote: "Abstenção", party: "PSD" }, { memberId: c, vote: "Não", party: "MDB" }]);
+    expect(await listMemberVotes(db, c, { differsFromGuidance: true })).toMatchObject({ total: 0, all: 1, guided: 0, guidedAll: 0 });
+  });
+
   it("the request rule in SQL is the one the page marks with", async () => {
     const samples = [
       "Rejeitado o Requerimento de adiamento.", "Aprovados os requerimentos.", "Requerimento de urgência", "  mantida a requerimento",

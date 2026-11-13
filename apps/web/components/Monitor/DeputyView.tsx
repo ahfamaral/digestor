@@ -25,7 +25,7 @@ import { Section } from "./Section";
 import { SortSwitch } from "./SortSwitch";
 import { SpeechItem } from "./SpeechItem";
 import { TopicNote } from "./TopicNote";
-import { VoteFilters, votesFiltered } from "./VoteFilters";
+import { VoteFilters, votesEmpty, votesFiltered, type Guided } from "./VoteFilters";
 import { VoteRow } from "./VoteRow";
 import { WordHeat } from "./WordHeat";
 import { YearSelect } from "./YearSelect";
@@ -56,7 +56,7 @@ export function DeputyView({
   locale: MonitorLocale; member: MemberRow; params: DeputyParams; searched: Searched | null; searching?: boolean;
   speeches: { total: number; rows: (SpeechRow | SpeechHit)[] };
   /** `total`: the votes the filters keep; `all`: every recorded vote of the deputy; `searched`: what `vq` searched. */
-  votes: { total: number; all?: number; rows: Vote[]; searched?: Searched | null };
+  votes: { total: number; all?: number; rows: Vote[]; searched?: Searched | null } & Guided;
 }) {
   const id = member.externalId;
   const mentions = params.rel === "mentions";
@@ -155,10 +155,11 @@ export function DeputyView({
                 allVotes > 0 && (
                   <VoteFilters
                     locale={locale} externalId={id} params={params} today={today} total={votes.total} all={allVotes} searched={votes.searched ?? null}
+                    guidedAll={votes.guidedAll}
                   />
                 )
               }
-              empty={votes.total ? null : tm(locale, allVotes > 0 && votesFiltered(params) ? "votes.none" : "empty.memberVotes")}
+              empty={votes.total ? null : allVotes > 0 && votesFiltered(params) ? votesEmpty(locale, params, votes) : tm(locale, "empty.memberVotes")}
             >
               {votes.rows.map((v) => (
                 <VoteRow key={v.rollCallId} locale={locale} vote={v} from={id} />

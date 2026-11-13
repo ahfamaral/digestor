@@ -429,11 +429,13 @@ async function guidanceTable(db: Db, memberId: number): Promise<SQL> {
 /**
  * The member's recorded votes, newest roll call first, each with the guidance that applies to the party at the vote
  * (`guidance`, null when there is none or it is empty; `guidanceFrom`: the federation or bloc it came from). `total`
- * counts the filtered votes, `all` every recorded vote of the member.
+ * counts the filtered votes, `all` every recorded vote of the member. `guided` / `guidedAll`: the votes a guidance can be
+ * compared with (Sim / Não / Obstrução / Abstenção applies, and the vote isn't the chair's "Artigo 17"), within the other
+ * filters / overall: zero overall means "Different from the party's guidance" can't be used for this deputy.
  */
 export async function listMemberVotes(
   db: Db, memberId: number, a: { limit?: number; offset?: number } & MemberVoteFilters = {},
-): Promise<{ total: number; all: number; rows: VoteRow[] }> {
+): Promise<{ total: number; all: number; guided: number; guidedAll: number; rows: VoteRow[] }> {
   const terms = a.q === undefined ? null : tsQuery(a.q);
   const where: SQL[] = [];
   if (a.q !== undefined) {
@@ -450,11 +452,10 @@ export async function listMemberVotes(
   if (a.kind === "bill") where.push(sql`and not ${request}`);
   if (a.from) where.push(sql`and r.date >= (${a.from} || '-01')::date`);
   if (a.to) where.push(sql`and r.date < ((${a.to} || '-01')::date + interval '1 month')`);
-  const differs = a.differsFromGuidance
-    ? sql`where b.guidance in (${sql.join(DIRECTED_GUIDANCE.map((g) => sql`${g}`), sql`, `)}) and b.vote <> b.guidance and b.vote <> 'Artigo 17'`
-    : sql``;
+  const directed = sql`b.guidance in (${sql.join(DIRECTED_GUIDANCE.map((g) => sql`${g}`), sql`, `)}) and b.vote <> 'Artigo 17'`;
+  const differs = a.differsFromGuidance ? sql`where ${directed} and b.vote <> b.guidance` : sql``;
   const g = await guidanceTable(db, memberId);
-  const base = sql`
+  const baseOf = (filters: SQL) => sql`
     with q as (select ${terms ?? sql`''::tsquery`} as q), g(party, label, rank) as (${g})
     select v.roll_call_id, to_char(r.date, 'YYYY-MM-DD') as date, r.date as day, r.registered_at, r.description, r.bill_id, r.bill_label,
       r.bill_summary, v.vote, o.guidance, o.guidance_from, o.guidance_rank
@@ -467,19 +468,21 @@ export async function listMemberVotes(
       join g on g.label = x.bloc and g.party = coalesce(v.party, m.party)
       where x.roll_call_id = v.roll_call_id order by g.rank, x.bloc limit 1
     ) o on true
-    where v.member_id = ${memberId} ${sql.join(where, sql` `)}`;
-  const c = await db.execute<{ n: number; n_all: number }>(sql`
-    select (select count(*)::int from (${base}) b ${differs}) as n, (select count(*)::int from parl_votes where member_id = ${memberId}) as n_all`);
+    where v.member_id = ${memberId} ${filters}`;
+  const base = baseOf(sql.join(where, sql` `));
+  const c = await db.execute<{ n: number; n_all: number; n_guided: number; n_guided_all: number }>(sql`
+    select (select count(*)::int from (${base}) b ${differs}) as n, (select count(*)::int from parl_votes where member_id = ${memberId}) as n_all,
+      (select count(*)::int from (${base}) b where ${directed}) as n_guided,
+      (select count(*)::int from (${baseOf(sql``)}) b where ${directed}) as n_guided_all`);
   const total = c.rows[0]?.n ?? 0;
-  const all = c.rows[0]?.n_all ?? 0;
-  if (total === 0) return { total, all, rows: [] };
+  const counts = { total, all: c.rows[0]?.n_all ?? 0, guided: c.rows[0]?.n_guided ?? 0, guidedAll: c.rows[0]?.n_guided_all ?? 0 };
+  if (total === 0) return { ...counts, rows: [] };
   const r = await db.execute<MemberVoteSql>(sql`
     select * from (${base}) b ${differs}
     order by b.day desc, b.registered_at desc nulls last, b.roll_call_id desc
     limit ${a.limit ?? 100} offset ${a.offset ?? 0}`);
   return {
-    total,
-    all,
+    ...counts,
     rows: r.rows.map((x) => ({
       rollCallId: x.roll_call_id, date: x.date, description: x.description, billId: x.bill_id, billLabel: x.bill_label,
       billSummary: x.bill_summary, vote: x.vote, guidance: x.guidance || null, guidanceFrom: x.guidance && x.guidance_rank ? x.guidance_from : null,

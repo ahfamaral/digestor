@@ -45,7 +45,7 @@ export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote
         {v.guidance && (
           <span className="text-xs text-muted-foreground sm:text-right">
             {tm(locale, "votes.guidance")} <span lang="pt-BR" className="font-semibold text-foreground">{v.guidance}</span>
-            {v.guidanceFrom && <span lang="pt-BR"> ({v.guidanceFrom})</span>}
+            {v.guidanceFrom && <> {tm(locale, /^Fdr\s/i.test(v.guidanceFrom) ? "votes.viaFederation" : "votes.viaBloc", { label: v.guidanceFrom })}</>}
           </span>
         )}
       </div>

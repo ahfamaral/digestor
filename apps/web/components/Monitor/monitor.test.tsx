@@ -489,7 +489,11 @@ describe("monitor components", () => {
     expect(own).not.toContain("(PSD)");
     const bloc = renderToStaticMarkup(<ul><VoteRow locale="pt-BR" vote={{ ...v, guidance: "Liberado", guidanceFrom: "Bl UniPpPsd..." }} /></ul>);
     expect(bloc).toMatch(/Orientação do partido: <span lang="pt-BR"[^>]*>Liberado<\/span>/);
-    expect(bloc).toContain("(Bl UniPpPsd...)");
+    expect(bloc).toContain("(bloco: Bl UniPpPsd...)");
+    const fed = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance: "Não", guidanceFrom: "Fdr PT-PCdoB-PV" }} /></ul>);
+    expect(fed).toContain("(federation: Fdr PT-PCdoB-PV)");
+    const blocEn = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance: "Sim", guidanceFrom: "Bl AvanSolidPrd..." }} /></ul>);
+    expect(blocEn).toContain("(bloc: Bl AvanSolidPrd...)");
     const none = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance: null, guidanceFrom: null }} /></ul>);
     expect(none).not.toContain("guidance");
   });
@@ -530,6 +534,40 @@ describe("monitor components", () => {
     );
     expect(plain).not.toContain("of 125 recorded votes");
     expect(plain).toMatch(/Votes<span[^>]*>\(125\)</);
+  });
+
+  it("the guidance filter says when it can't be used, how many votes it can compare, and why nothing differs", () => {
+    const view = (params: Record<string, string>, votes: { total: number; all: number; guided: number; guidedAll: number }, locale: "en" | "pt-BR" = "en") =>
+      renderToStaticMarkup(
+        <DeputyView locale={locale} member={member} params={parseDeputy(params)} searched={null} speeches={{ total: 0, rows: [] }} votes={{ ...votes, rows: [] }} {...emptyWorkspace} />,
+      );
+    // no guidance published under the party's name (MDB inside a cut-short bloc): no checkbox, never "0 differ"
+    const none = view({ vdiff: "1" }, { total: 0, all: 125, guided: 0, guidedAll: 0 });
+    expect(none).not.toMatch(/type="checkbox"[^>]*name="vdiff"/);
+    expect(none).toContain("No party guidance is published under this party&#x27;s name for these votes, so this filter can&#x27;t be used here.");
+    expect(none).not.toContain("No votes match these filters.");
+    expect(view({}, { total: 125, all: 125, guided: 0, guidedAll: 0 }, "pt-BR")).toContain(
+      "Nenhuma orientação de partido é publicada com o nome deste partido para estes votos, por isso este filtro não pode ser usado aqui.",
+    );
+    // guidance for some votes only: say how many (this deputy's own counts)
+    const some = view({}, { total: 125, all: 125, guided: 80, guidedAll: 80 });
+    expect(some).toMatch(/type="checkbox"[^>]*name="vdiff"/);
+    expect(some).toContain("80 of 125 votes have a published party guidance");
+    expect(view({}, { total: 125, all: 125, guided: 125, guidedAll: 125 })).not.toContain("have a published party guidance");
+    // nothing differs: say from how many
+    expect(view({ vdiff: "1" }, { total: 0, all: 125, guided: 80, guidedAll: 80 })).toContain("None of the 80 votes with a published guidance differ from it.");
+    expect(view({ vdiff: "1", vk: "request" }, { total: 0, all: 125, guided: 1, guidedAll: 80 }, "pt-BR")).toContain("O único voto com orientação publicada não difere dela.");
+    expect(view({ vdiff: "1", vfrom: "2026-04" }, { total: 0, all: 125, guided: 0, guidedAll: 80 })).toContain(
+      "None of the votes matching the other filters has a published party guidance.",
+    );
+  });
+
+  it("a first load with only a vote or bill search says it is searching", () => {
+    const html = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={parseDeputy({ vq: "urgência" })} searched={null} speeches={{ total: 0, rows: [] }} votes={{ total: 0, rows: [] }} {...emptyWorkspace} searching />,
+    );
+    expect(html).toContain("Searching…");
+    expect(html).not.toContain("No recorded votes in 2026.");
   });
 
   it("the bills have a filter row: words in the summary and the year presented when there is more than one; type links keep it", () => {

@@ -22,14 +22,34 @@ export function monthsOf(year: number, today: string): string[] {
 /** Any of the vote filters set. */
 export const votesFiltered = (p: DeputyParams) => !!(p.vq || p.vv || p.vk || p.vfrom || p.vto || p.vdiff);
 
+/** The votes a guidance can be compared with, within the other filters and overall (`listMemberVotes`); unknown = undefined. */
+export type Guided = { guided?: number; guidedAll?: number };
+
+/**
+ * The empty state of a filtered vote list, saying why: no guidance published for this deputy's party at all, none for
+ * the votes the other filters keep, or none of the comparable votes differs. Never "0 differ" when the guidance is unknown.
+ */
+export function votesEmpty(locale: MonitorLocale, p: DeputyParams, g: Guided): string {
+  if (p.vdiff && g.guidedAll === 0) return tm(locale, "voteFilters.noGuidance");
+  if (p.vdiff && g.guided === 0) return tm(locale, "votes.noneGuided");
+  if (p.vdiff && g.guided !== undefined) {
+    return g.guided === 1 ? tm(locale, "votes.noneDifferOne") : tm(locale, "votes.noneDiffer", { n: formatCount(g.guided, locale) });
+  }
+  return tm(locale, "votes.none");
+}
+
 /**
  * The deputy page's filter row for their recorded votes (a GET form, works without JavaScript): words in what was
  * voted, the vote as published, a bill or a request, months, and "Different from the party's guidance". Then, when a
  * filter is set, "N of M recorded votes" (this deputy's own records only) and a way to clear them.
  */
 export function VoteFilters({
-  locale, externalId, params, today, total, all, searched,
-}: { locale: MonitorLocale; externalId: number; params: DeputyParams; today: string; total: number; all: number; searched: Searched | null }) {
+  locale, externalId, params, today, total, all, searched, guidedAll,
+}: {
+  locale: MonitorLocale; externalId: number; params: DeputyParams; today: string; total: number; all: number; searched: Searched | null;
+  /** Votes a guidance can be compared with, overall; 0: the guidance checkbox is replaced by a line saying why. */
+  guidedAll?: number;
+}) {
   const months = monthsOf(params.year, today).map((m) => ({ value: m, label: formatMonth(m, locale) }));
   const filtered = votesFiltered(params);
   return (
@@ -65,13 +85,22 @@ export function VoteFilters({
           <FormSelect name="vfrom" label={tm(locale, "filters.from")} anyLabel={tm(locale, "filters.any")} options={months} value={params.vfrom} />
           <FormSelect name="vto" label={tm(locale, "filters.to")} anyLabel={tm(locale, "filters.any")} options={months} value={params.vto} />
         </div>
-        <div className="grid gap-1">
-          <label className="flex w-fit items-center gap-1.5 text-sm">
-            <input type="checkbox" name="vdiff" value="1" defaultChecked={params.vdiff} aria-describedby="votes-differs-note" className={box} />
-            {tm(locale, "voteFilters.differs")}
-          </label>
-          <p id="votes-differs-note" className="text-xs text-muted-foreground">{tm(locale, "voteFilters.differsNote")}</p>
-        </div>
+        {guidedAll === 0 ? (
+          <p className="text-xs text-muted-foreground">{tm(locale, "voteFilters.noGuidance")}</p>
+        ) : (
+          <div className="grid gap-1">
+            <label className="flex w-fit items-center gap-1.5 text-sm">
+              <input type="checkbox" name="vdiff" value="1" defaultChecked={params.vdiff} aria-describedby="votes-differs-note" className={box} />
+              {tm(locale, "voteFilters.differs")}
+            </label>
+            <p id="votes-differs-note" className="text-xs text-muted-foreground">
+              {tm(locale, "voteFilters.differsNote")}
+              {guidedAll !== undefined && guidedAll < all && (
+                <> {tm(locale, "voteFilters.guidedCount", { n: formatCount(guidedAll, locale), total: formatCount(all, locale) })}.</>
+              )}
+            </p>
+          </div>
+        )}
         <ExactBox locale={locale} checked={params.vexact} name="vexact" />
         <KeptFields params={keptBy("votes", params)} />
       </GetForm>
