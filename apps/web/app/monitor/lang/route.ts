@@ -6,11 +6,14 @@ function safeBack(back: string | null): string {
   return back;
 }
 
-/** The monitor's language switch: remembers the choice for a year and goes back to the page it came from. */
+/**
+ * The monitor's language switch: remembers the choice for a year and goes back to the page it came from. The redirect
+ * is a path, not an absolute URL: behind the proxy the request's own origin is the container's (0.0.0.0:3000).
+ */
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const to = url.searchParams.get("to");
-  const headers = new Headers({ location: new URL(safeBack(url.searchParams.get("back")), url.origin).toString() });
+  const headers = new Headers({ location: safeBack(url.searchParams.get("back")) });
   if (isMonitorLocale(to)) headers.append("set-cookie", `${MONITOR_LANG_COOKIE}=${to}; Path=/; Max-Age=31536000; SameSite=Lax`);
   return new Response(null, { status: 303, headers });
 }
