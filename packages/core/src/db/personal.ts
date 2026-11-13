@@ -963,6 +963,16 @@ export async function getToolApproval(db: Db, messageId: string, step: number): 
   return row ?? null;
 }
 
+/** Whether the answer still has an undecided `tool_approval` card (a `waiting` answer without one is about to continue). */
+export async function hasPendingToolApproval(db: Db, messageId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: askActions.id })
+    .from(askActions)
+    .where(and(eq(askActions.messageId, messageId), eq(askActions.kind, "tool_approval"), eq(askActions.status, "pending")))
+    .limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Records the journalist's decision on a `tool_approval` action: compare-and-set from `pending` (true only for the
  * caller that resolved it), with the resolution, and marks the waiting answer as touched now (the drawer measures

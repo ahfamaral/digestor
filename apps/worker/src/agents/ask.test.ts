@@ -1,5 +1,5 @@
 import { ChatAnthropic } from "@langchain/anthropic";
-import { MemorySaver } from "@langchain/langgraph";
+import { MemorySaver, emptyCheckpoint } from "@langchain/langgraph";
 import { ChromaClient } from "chromadb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OWNER_ID, findBoundaries, snapRange, type AskToolCallRecord, type Word } from "@digestor/core";
@@ -707,12 +707,16 @@ describe("ask message claim (T14)", () => {
     const msg = await ask(s.id, "Clip it.");
     expect(await claimAskMessage(db, msg.id)).toBe(true); // the attempt that crashed
     const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:00:10", end: "00:00:40", title: "x" })), answer("never")]);
+    const deps = depsFor(llm);
+    // the crashed attempt had written a checkpoint
+    await deps.checkpointer.put({ configurable: { thread_id: msg.id, checkpoint_ns: "" } }, emptyCheckpoint(), { source: "loop", step: 1, parents: {} });
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    await handleAsk(depsFor(llm), { messageId: msg.id }, { retryCount: 1, retryLimit: 2 });
+    await handleAsk(deps, { messageId: msg.id }, { retryCount: 1, retryLimit: 2 });
     err.mockRestore();
     expect(llm.calls).toHaveLength(0);
     expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "failed", text: ASK_FAILED });
     expect(await listClips(db, OWNER_ID, s.id)).toEqual([]);
+    expect(await deps.checkpointer.getTuple({ configurable: { thread_id: msg.id } })).toBeUndefined(); // its thread goes too
   });
 });
 

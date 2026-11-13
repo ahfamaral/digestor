@@ -7,7 +7,7 @@ import {
   type ToolApprovalResolution, type Transcript, type Word,
 } from "@digestor/core";
 import {
-  claimAskMessage, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard,
+  claimAskMessage, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
   setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
@@ -742,6 +742,7 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     // have changed something, so it is never run twice.
     console.error(`[ask] message ${messageId} was left running by an earlier attempt; failing it`);
     await finishAskMessage(db, msg.id, { text: ASK_FAILED, toolCalls: msg.toolCalls ?? [], status: "failed" });
+    await dropThread(deps.checkpointer ?? localSaver, msg.id);
     return;
   }
   if (!msg || msg.role !== "assistant" || msg.status !== "pending" || !(await claimAskMessage(db, msg.id))) {
@@ -762,7 +763,7 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
 }
 
 /** A stored resolution, or the decision its status implies (a row written without one). */
-function readResolution(raw: unknown, status: string): ToolApprovalResolution {
+export function readResolution(raw: unknown, status: string): ToolApprovalResolution {
   const r = raw as Partial<ToolApprovalResolution> | null;
   if (r && (r.decision === "approve" || r.decision === "reject" || r.decision === "edit")) {
     return { decision: r.decision, ...(Array.isArray(r.edits) ? { edits: r.edits } : {}) };
@@ -792,8 +793,12 @@ export async function resumeAsk(deps: AskDeps & { checkpointer: BaseCheckpointSa
   const graph = buildAskGraph(deps, checkpointer);
   const state = await graph.getState(threadConfig(msg.id));
   const pausedOn = interruptedBy(state);
-  if (pausedOn !== null && pausedOn !== actionId) {
-    console.log(`[ask] ignoring resume of action ${actionId}: the answer waits on ${pausedOn}`);
+  // A thread stopped before `approve` without an interrupt (the process died between storing the card and writing
+  // the checkpoint) waits on its current turn's card: the approve node uses that card's stored decision.
+  const card = pausedOn === null && state.next.includes("approve") ? await getToolApproval(db, msg.id, (state.values as { steps: number }).steps) : null;
+  const waitsOn = pausedOn ?? card?.id ?? null;
+  if (waitsOn !== null && waitsOn !== actionId) {
+    console.log(`[ask] ignoring resume of action ${actionId}: the answer waits on ${waitsOn}`);
     return;
   }
   if (!(await claimWaitingAskMessage(db, msg.id))) return;

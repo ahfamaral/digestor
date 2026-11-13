@@ -31,6 +31,7 @@ import {
   finishAskMessage,
   getAskAction,
   getAskMessage,
+  hasPendingToolApproval,
   releaseAskMessage,
   setMomentChecks,
   setStage,
@@ -293,7 +294,11 @@ async function runAskJob(deps: AskDeps, messageId: string, attempt: Attempt, rel
     if (deterministic || attempt.retryCount >= attempt.retryLimit) {
       console.error(`[jobs] ask ${messageId} failed:`, cause);
       const msg = await getAskMessage(deps.db, messageId);
-      if (msg?.status === "pending" || msg?.status === "running") {
+      // A resume that gives up before claiming leaves the answer `waiting` on a decided card: nothing would ever
+      // continue it, so it fails too. One waiting on an undecided card (a newer turn) is left for the journalist.
+      const stuck =
+        msg?.status === "pending" || msg?.status === "running" || (msg?.status === "waiting" && releaseTo === "waiting" && !(await hasPendingToolApproval(deps.db, messageId)));
+      if (stuck) {
         // A missing key says which one (as sessions do); anything else gets the generic line.
         const text = cause instanceof MissingApiKeyError ? cause.message : ASK_FAILED;
         await finishAskMessage(deps.db, messageId, { text, toolCalls: failed?.toolCalls ?? [], status: "failed" });

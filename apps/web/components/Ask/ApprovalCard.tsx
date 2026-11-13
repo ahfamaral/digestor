@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Busy } from "@/components/ui/spinner";
-import { checkClipEdit, parseApprovalPayload } from "@/lib/askText";
+import { checkClipEdit, editHasClip, parseApprovalPayload } from "@/lib/askText";
 import { t } from "@/lib/i18n";
 
 type ClipDraft = { start: string; end: string; title: string };
@@ -38,12 +38,14 @@ function initialDraft(calls: ToolApprovalCall[]): Draft {
  * or the moments of a selection, then "Approve with changes". Once decided, it says so and the answer continues.
  */
 export function ApprovalCard({
-  action, lang, busy, error, onDecide,
+  action, lang, busy, error, videoRemoved, onDecide,
 }: {
   action: AskAction;
   lang: string | undefined;
   busy: boolean;
   error: string | undefined;
+  /** The video is gone: no change can be made any more, so only Reject is offered (it lets the answer finish). */
+  videoRemoved: boolean;
   onDecide: (action: AskAction, resolution: ToolApprovalResolution) => void;
 }) {
   const headingId = useId();
@@ -105,7 +107,7 @@ export function ApprovalCard({
 
       {action.status !== "pending" ? (
         <p className="text-xs text-muted-foreground">{decided}</p>
-      ) : editing ? (
+      ) : editing && !videoRemoved ? (
         <form onSubmit={submitEdits} className="grid gap-3" noValidate>
           {editable.map((call, index) => {
             const value = draft[call.id];
@@ -165,7 +167,7 @@ export function ApprovalCard({
               </fieldset>
             );
           })}
-          <p className="text-xs text-muted-foreground">{t("ask.approval.snapHint")}</p>
+          {editHasClip(editable) && <p className="text-xs text-muted-foreground">{t("ask.approval.snapHint")}</p>}
           {editError && (
             <p role="alert" className="text-xs text-red-700">
               {editError}
@@ -182,10 +184,12 @@ export function ApprovalCard({
         </form>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, { decision: "approve" })} className="bg-brand text-white hover:brightness-90">
-            <Busy busy={busy}>{busy ? t("ask.approval.sending") : t("ask.approval.approve")}</Busy>
-          </Button>
-          {editable.length > 0 && (
+          {!videoRemoved && (
+            <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, { decision: "approve" })} className="bg-brand text-white hover:brightness-90">
+              <Busy busy={busy}>{busy ? t("ask.approval.sending") : t("ask.approval.approve")}</Busy>
+            </Button>
+          )}
+          {!videoRemoved && editable.length > 0 && (
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={startEditing}>
               {t("ask.approval.edit")}
             </Button>

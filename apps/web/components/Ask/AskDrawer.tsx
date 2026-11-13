@@ -466,7 +466,15 @@ function MessageItem({
       )}
       {message.actions.map((action) =>
         action.kind === "tool_approval" ? (
-          <ApprovalCard key={action.id} action={action} lang={lang} busy={busy.has(`action:${action.id}`)} error={errors[`action:${action.id}`]} onDecide={onDecide} />
+          <ApprovalCard
+            key={action.id}
+            action={action}
+            lang={lang}
+            busy={busy.has(`action:${action.id}`)}
+            error={errors[`action:${action.id}`]}
+            videoRemoved={videoRemoved}
+            onDecide={onDecide}
+          />
         ) : (
           <ActionItem key={action.id} action={action} busy={busy.has(`action:${action.id}`)} error={errors[`action:${action.id}`]} onDecide={onDecide} />
         ),

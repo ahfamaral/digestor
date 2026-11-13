@@ -5,7 +5,7 @@ import type { AskToolCallRecord, ToolApprovalCall, ToolApprovalResolution } from
 import { createToolApproval, getAskMessage, getToolApproval } from "@digestor/core/server";
 import type { ToolCallRequest, ToolMessage } from "../llm/tools.js";
 import {
-  AskRunError, DECLINED, EDITED, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
+  AskRunError, DECLINED, EDITED, readResolution, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
   type AskDeps, type AskRun, type ToolResult,
 } from "./ask.js";
 
@@ -142,8 +142,13 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
       if (calls.length === 0) return { approval: null };
       action = await createToolApproval(db, messageId, { step: state.steps, calls });
     }
-    // Paused here; on resume the node runs again from the top, finds the action and `interrupt` returns the decision.
-    const decision = interrupt<{ actionId: string }, ToolApprovalResolution>({ actionId: action.id });
+    // Paused here; on resume the node runs again from the top and finds the action. Once it is decided, its stored
+    // resolution is the decision, with or without a resume value: a crash between storing the card and writing the
+    // interrupt checkpoint leaves a thread that stops before `approve` with no interrupt, and it must still go on.
+    const decision =
+      action.status === "pending"
+        ? interrupt<{ actionId: string }, ToolApprovalResolution>({ actionId: action.id })
+        : readResolution(action.resolution, action.status);
     const ids = ((action.payload as { calls?: { id: string }[] }).calls ?? []).map((c) => c.id);
     return { approval: { decision: decision.decision, ...(decision.edits ? { edits: decision.edits } : {}), ids } };
   }

@@ -242,3 +242,8 @@ export function checkClipEdit(e: { start: string; end: string; title?: string },
   if (needsTitle && !(e.title ?? "").trim()) return "title";
   return null;
 }
+
+/** Whether an approval card's edit holds a clip (its times snap to whole sentences, so the card says so). */
+export function editHasClip(calls: { name: string }[]): boolean {
+  return calls.some((c) => c.name === "propose_clip" || c.name === "trim_clip");
+}

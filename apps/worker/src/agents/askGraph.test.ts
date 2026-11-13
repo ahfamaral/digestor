@@ -1,4 +1,5 @@
-import { MemorySaver } from "@langchain/langgraph";
+import { INTERRUPT, MemorySaver } from "@langchain/langgraph";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OWNER_ID, findBoundaries, snapRange, type AskToolCallRecord, type ToolApprovalPayload, type ToolApprovalResolution, type Word } from "@digestor/core";
 import {
@@ -70,6 +71,22 @@ const toolResults = (c: ToolStepCall): string[] => {
   }
   return out;
 };
+
+/**
+ * A MemorySaver that can lose the interrupt (as a crash between storing the card and writing the checkpoint would)
+ * and fail its reads (a database error before the resume claims the answer).
+ */
+class FlakySaver extends MemorySaver {
+  dropInterrupts = false;
+  failReads = false;
+  override async putWrites(config: RunnableConfig, writes: [string, unknown][], taskId: string): Promise<void> {
+    return super.putWrites(config, this.dropInterrupts ? writes.filter(([channel]) => channel !== INTERRUPT) : writes, taskId);
+  }
+  override async getTuple(config: RunnableConfig) {
+    if (this.failReads) throw new Error("connection reset");
+    return super.getTuple(config);
+  }
+}
 
 const noSearch = async (): Promise<SearchHit[]> => [];
 const depsFor = (llm: FakeToolLLM, checkpointer = new MemorySaver(), search: AskDeps["search"] = noSearch) => ({ db, llm, search, checkpointer });
@@ -308,6 +325,46 @@ describe("Ask graph", () => {
 
 describe("handleAskResume", () => {
   const FIRST = { retryCount: 0, retryLimit: 2 };
+  const LAST = { retryCount: 2, retryLimit: 2 };
+
+  it("a card stored without its interrupt checkpoint (crash in between) still continues once decided", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Clip it.");
+    const saver = new FlakySaver();
+    const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:01:01", end: "00:01:31", title: "x" })), answer("Done.")]);
+    const deps = depsFor(llm, saver);
+    saver.dropInterrupts = true;
+    await runAsk(deps, msg.id);
+    saver.dropInterrupts = false;
+    expect((await getAskMessage(db, msg.id))!.status).toBe("waiting");
+    const stored = await (await import("./askGraph.js")).buildAskGraph(deps, saver).getState({ configurable: { thread_id: msg.id } });
+    expect(stored.next).toEqual(["approve"]);
+    expect(stored.tasks.flatMap((t) => t.interrupts)).toEqual([]); // the checkpoint holds no interrupt
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "done", text: "Done." });
+    expect(await listClips(db, OWNER_ID, s.id)).toHaveLength(1);
+  });
+
+  it("a resume that gives up before claiming fails the answer on the final attempt (its card is decided), not before", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Clip it.");
+    const saver = new FlakySaver();
+    const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:01:01", end: "00:01:31", title: "x" })), answer("never")]);
+    const deps = depsFor(llm, saver);
+    await runAsk(deps, msg.id);
+    const [action] = await approvals(s.id, msg.id);
+    await resolveToolApproval(db, action!.id, { decision: "approve" });
+    saver.failReads = true;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(handleAskResume(deps, { actionId: action!.id }, FIRST)).rejects.toThrow("connection reset");
+    expect((await getAskMessage(db, msg.id))!.status).toBe("waiting");
+    await expect(handleAskResume(deps, { actionId: action!.id }, LAST)).rejects.toThrow("connection reset");
+    err.mockRestore();
+    saver.failReads = false;
+    expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "failed", text: ASK_FAILED });
+    expect(await threadOf(saver, msg.id)).toBeUndefined();
+    expect(await listClips(db, OWNER_ID, s.id)).toEqual([]);
+  });
 
   it("a paused answer whose thread is gone (retention) ends failed with a friendly line", async () => {
     const { s } = await seed();
