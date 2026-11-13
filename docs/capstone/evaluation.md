@@ -31,7 +31,7 @@ Reading the table: topics land within about half a minute of the hand-drawn boun
 
 ## Ask (RAG)
 
-- **What was measured:** the Ask copilot on two videos, with 12 hand-written questions each (`apps/worker/eval/ask/*.ask.json`; 10 answerable with the transcript spans that answer them, 2 unanswerable; at least 3 per video asked in a different language than the video). Two parts: **retrieval** (does the transcript search put a chunk that overlaps the answer span in the top k; recall@k and mean reciprocal rank, free) and **answers** (the full `runAsk` loop with its tools; `scripts/eval-ask.ts <golden> --answers`).
+- **What was measured:** the Ask copilot on two videos, with 12 hand-written questions each (`apps/worker/eval/ask/*.ask.json`; 10 answerable with the transcript spans that answer them, 2 unanswerable; 7 per video asked in a different language than the video). Two parts: **retrieval** (does the transcript search put a chunk that overlaps the answer span in the top k; recall@k and mean reciprocal rank, free) and **answers** (the full `runAsk` loop with its tools; `scripts/eval-ask.ts <golden> --answers`).
 - **Answer metrics:** citation hit = some cited `[hh:mm:ss]` time (both ends of a range) falls inside an expected span ±30 s, over the answerable questions; quote exact = of the answers that quote text, the share whose quotes all appear verbatim in the transcript; refusal correct = of the unanswerable questions, the share answered with "That isn't in this video's data." (or "I couldn't confirm"; a model that translated the first word still counts). Giving up on the step limit is not a refusal.
 - **On what:** Globo second-round presidential debate, Lula × Flávio Bolsonaro (Portuguese, 1 h 57 min, profile `electoral_debate`), questions in Portuguese, English and German; and the Osang × Merkel interview (German, 99 min), questions in German, English and Portuguese. Search: 45 to 60 s chunks, local `multilingual-e5-small`, k = 6.
 - **When / model:** 13 November 2026, before the LangGraph, approval and verify changes (the "before" numbers); Ask answered by `anthropic/claude-haiku-5.5` via OpenRouter (the dev machine's provider setup; production Ask uses the configured reasoning model, Sonnet 5.5 by default).
@@ -41,11 +41,13 @@ Reading the table: topics land within about half a minute of the hand-drawn boun
 | Metric | Globo debate | Osang × Merkel |
 | --- | --- | --- |
 | Retrieval recall@6 (10 answerable) | 0.80 | 0.70 |
-| Retrieval MRR | 0.70 | 0.70 |
+| Retrieval MRR | 0.75 | 0.70 |
 | Citation hit | 80% | 100% |
 | Quote exact | 100% | 71% |
 | Refusal correct (2 unanswerable) | 50% | 100% |
 | Answers that gave up on the step limit | 3 of 12 | 0 of 12 |
+
+q08 was reworded after this baseline run (it named the wrong speaker); the 'after' run uses the new wording. Retrieval was re-run with the new wording (Globo MRR 0.70 became 0.75, recall unchanged); the answer rows are from the baseline run.
 
 Reading the table:
 

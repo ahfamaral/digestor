@@ -10,6 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import { ChromaClient } from "chromadb";
+import { sql } from "drizzle-orm";
 import { createDb, addAskMessage, deleteAskMessages, getAskMessage, getTranscript } from "@digestor/core/server";
 import { runAsk } from "../src/agents/ask.js";
 import { answerScores, parseCitations, retrievalScores, type AskGolden } from "../src/eval/askMetrics.js";
@@ -47,6 +48,33 @@ const chroma = new ChromaClient({
 const embedder = createE5Embedder();
 const search = (id: string, q: string, n: number) => searchTranscript({ chroma, embedder }, id, q, n);
 const { db, close } = createDb(process.env.DATABASE_URL!);
+
+/**
+ * Deletes everything owner "eval" made for this session (an Ask tool can add selections, personal moments or clips),
+ * whatever the run's outcome, and logs what was left. Rows of any other owner are never matched.
+ */
+async function cleanup(): Promise<void> {
+  try {
+    const owner = sql`${EVAL_OWNER}`;
+    const analyses = sql`(select id from analysis_versions where session_id = ${sessionId})`;
+    const steps: [string, ReturnType<typeof sql>][] = [
+      ["subtitle tracks and clips", sql`delete from clips where owner_id = ${owner} and session_id = ${sessionId} returning 1`],
+      ["selections", sql`delete from selections where owner_id = ${owner} and moment_id in (select id from moments where analysis_id in ${analyses}) returning 1`],
+      ["personal moments", sql`delete from moments where owner_id = ${owner} and analysis_id in ${analyses} returning 1`],
+      ["find-more requests", sql`delete from find_more_requests where owner_id = ${owner} and analysis_id in ${analyses} returning 1`],
+      ["problem reports", sql`delete from problem_reports where owner_id = ${owner} and session_id = ${sessionId} returning 1`],
+      ["ask messages", sql`delete from ask_messages where owner_id = ${owner} and session_id = ${sessionId} returning 1`],
+    ];
+    const left: string[] = [];
+    for (const [label, q] of steps) {
+      const n = (await db.execute(q)).length;
+      if (n > 0) left.push(`${n} ${label}`);
+    }
+    console.error(left.length ? `eval cleanup removed leftovers: ${left.join(", ")}` : "eval cleanup: nothing left behind");
+  } catch (err) {
+    console.error("eval cleanup FAILED, check owner 'eval' rows by hand:", err);
+  }
+}
 
 try {
   // Retrieval (free).
@@ -102,5 +130,6 @@ try {
     for (const d of detail) console.log(d);
   }
 } finally {
+  await cleanup();
   await close();
 }
