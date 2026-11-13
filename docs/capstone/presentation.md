@@ -61,7 +61,7 @@ If the clock runs over, shorten slide 4 (show three screens instead of six) and 
   - "This is the Sessions page: each video and where it is."
   - "The Briefing page for the Merkel interview: a summary on top, then one card per topic. Inside each topic, the moment tree: exchanges, passages, punchlines. Each AI highlight says why it was picked; counted ones, like the longest speech, say 'counted'."
   - "I approve this moment, skip that one."
-  - "Ask, opened with the slash key, answers from the video's own transcript and cites times. When I ask it to change something, it doesn't do it: it shows a card, and I approve, edit or reject."
+  - "Ask, opened with the slash key, answers from the video's own transcript and cites times. When I ask it to change something, it asks me first: it shows a card, and I approve, edit or reject."
   - "Prepare: the trim strip snaps to sentence ends; a free cut is possible with Alt but carries a warning. Checks say if the argument continues or the speaker is quoting someone else. A German-to-English subtitle track, editable, approved per language."
   - "Export: MP4 with burned-in subtitles, or the files. The checklist blocks export until checks, credit and speaker names are settled."
 - **Fallback:** if the network or the server is slow, switch to the showcase video right away; don't wait for a page.
@@ -96,7 +96,7 @@ If the clock runs over, shorten slide 4 (show three screens instead of six) and 
 | US House, 3 Sep 2026 | English, 65 min | 33 turns, 16 people | not yet |
 | Ask questions | Globo + Osang | 12 per video (10 answerable, 2 not; 7 in another language) | not yet |
 
-- **Monitor data (extension):** Câmara open-data API and bulk files since 1 Feb 2026; dev data on 11 Nov: 568 deputies, about 8,000 speeches, 126 roll calls, about 51,000 votes.
+- **Monitor data (extension):** Câmara open-data API and bulk files since 1 Feb 2026; dev data, 11 Nov: 568 deputies, about 8,000 speeches, 126 roll calls, about 51,000 votes.
 - **Speaker notes (45 s):** "I evaluate on real videos, not synthetic ones. The golden files were drafted by Claude from the transcripts and then checked; the debate and the Senate ones I reviewed and accepted, the newer ones I have not yet, and I'll say that on every number that comes from them. The traps are hand-made: moments where a clip would cut an argument or show someone quoting an opponent. For the names, the official records of each house are the second data source: Senado, Câmara, Bundestag, US House. The monitor runs on the Câmara's open data only."
 
 ## Slide 7. Evaluation: the analysis and the names
@@ -135,11 +135,14 @@ Speaker names, attribution score `(correct − 5 × wrong) / total`: debate 0.99
 | Gave up on the step limit | 3 of 12 | 1 of 12 | 0 of 12 | 1 of 12 |
 | Sent back by verify | – | 1 of 12 | – | 1 of 12 |
 
-Monitor search (extension), words vs meaning vs hybrid, 20 queries:
+Monitor search (extension), words vs meaning vs hybrid, 20 queries. Search by meaning is in progress (results to come):
 
 <!-- D1 numbers: recall@10 / MRR words vs meaning vs hybrid -->
 
-- **Speaker notes (1:00):** "'Before' is the plain tool loop; 'after' is the LangGraph version with approval and verify. Retrieval misses 5 of 20 answerable questions; those are figures and names that the question's words don't resemble. The agent still finds most of them because it reads transcript ranges and searches again, which is why citation hit is higher than recall. Verify sent one answer back per video and both corrections passed. The debate got better and the interview got worse, but with 12 questions one question moves a rate by 8 to 10 points, so both changes are inside the noise. I would not claim more than that. For the monitor, search by meaning is fused with word search; here are recall at 10 and MRR for the three." (Read the D1 numbers when they are in.)
+- **If the D1 numbers are missing:** drop this box and say "search by meaning is next".
+
+- **Speaker notes (1:00):** "'Before' is the plain tool loop; 'after' is the LangGraph version with approval and verify. Retrieval misses 5 of 20 answerable questions; those are figures and names that the question's words don't resemble. The agent still finds most of them because it reads transcript ranges and searches again, which is why citation hit is higher than recall. Verify sent one answer back per video and both corrections passed. The debate got better and the interview got worse, but with 12 questions one question moves a rate by 8 to 10 points, so both changes are inside the noise. I would not claim more than that. For the monitor, search by meaning is fused with word search; here are recall at 10 and MRR for the three." (Read the D1 numbers when they are in; without them, say "search by meaning is next".)
+- **If short of time:** read only the citation-hit and refusal rows.
 
 ## Slide 9. Risks and safeguards
 
@@ -149,7 +152,7 @@ Monitor search (extension), words vs meaning vs hybrid, 20 queries:
 | Risk | Safeguard | Still open |
 |---|---|---|
 | Quote out of context | sentence snapping; checks for "argument continues", "quoting someone else"; export blocked until checks hold or are acknowledged | mid-argument check 2/4 on the debate |
-| Wrong name on a voice | AI names are proposals until confirmed; trial profile never shows unconfirmed names; record thresholds raised where the eval showed errors | 4 videos, 2 goldens not reviewed |
+| Wrong name on a voice | AI names are proposals until confirmed; trial profile never shows unconfirmed names; record thresholds raised where the eval showed errors | 4 videos; 4 goldens (Osang, Bundestag, US House, Ask) not reviewed |
 | Personal data | audio to AssemblyAI (US), text to the LLM provider; embeddings local; video, audio and index deleted after 14 days (default) | transcripts and analyses kept with no expiry; no delete-my-data |
 | Copyright | credit field drawn on the clip; export blocked until a credit or "No credit needed" | the app can't judge the right to quote |
 | Selection bias | the model proposes, the human chooses; "AI" badge and "Why:" line | side balance not measured yet |
@@ -170,17 +173,18 @@ Monitor search (extension), words vs meaning vs hybrid, 20 queries:
 ## Slide 11. What's next
 
 - **Message:** the next step is the Câmara monitor in front of a real journalist on 1 Dec, then accounts and more history.
-- **Visual:** a timeline from 17 Nov to 1 Feb 2027 with the four goals below; already built for the monitor this round shown as ticks: video moment per speech, words used more than the chamber (counted, no AI), vote and bill filters with party guidance, search by meaning.
-- **SMART goals** (dates from the monitor roadmap where it has them; the D4 and 2023–25 dates and targets are proposals to confirm):
+- **Visual:** a timeline from 17 Nov to 1 Feb 2027 with the four goals below; already built for the monitor this round shown as ticks: video moment per speech, words used more than the chamber (counted, no AI), vote and bill filters with party guidance; search by meaning is in progress (results to come). The D4 and 2023–25 boxes carry the tag "proposal to confirm" on the slide.
+- **SMART goals** (dates from the monitor roadmap where it has them; the D4 and 2023–25 rows are proposals to confirm, and say so on the slide):
 
 | Goal | Specific | Measurable | Achievable | Relevant | Time-bound |
 |---|---|---|---|---|---|
-| Câmara monitor demo | A Brazilian journalist uses the monitor on production: find a deputy, search a topic, open a speech at its video moment, read a roll call | the journalist completes the demo tasks without help; notes taken with the user-test checklist | the monitor preview, video moments per speech and the word heat map are built and reviewed | journalists are the target users of both products | feature cut-off Fri 27 Nov, production frozen Mon 30 Nov, demo Tue 1 Dec 2026 |
-| Sign-in and registration | email and password with verification and reset; real user ids replace the single owner on selections, clips and subtitle tracks | the demo journalist registers and signs in alone; all test suites green | proven auth library, sessions in Postgres | the journalist must be able to use it alone after the demo | built 23–25 Nov, live for the 1 Dec demo |
-| D4 topic labels | AI labels speeches with topics from a fixed list; labels only, never text about a person | agreement with owner-labelled speeches on a set of 50 (target to set after a first run) | same pattern as the word heat map, plus one fast-model call per speech | journalists search themes, not exact words | decide after the merge (week of 23 Nov); build in December if agreed |
-| 2023–25 history | load the legislature's earlier years (from 1 Feb 2023) of speeches, roll calls and votes; years selectable on every page | per-year counts match the Câmara API's totals | the backfill script and bulk-file parsers exist; the year list (`MONITOR_YEARS`) holds only 2026 today | a deputy's record since the start of the mandate is what journalists ask for | by 31 Dec 2026, before the public beta on 1 Feb 2027 |
+| Câmara monitor demo | A Brazilian journalist uses the monitor on production: find a deputy, search a topic, open a speech at its video moment, read a roll call | 4 tasks (find a deputy, search a topic, open a speech at its video moment, read a roll call); at least 3 of 4 done without help; time per task noted with the user-test checklist | the monitor preview, video moments per speech and the word heat map are built and reviewed | journalists are the target users of both products | feature cut-off Fri 27 Nov, production frozen Mon 30 Nov, demo Tue 1 Dec 2026 |
+| Sign-in and registration | email and password with verification and reset; real user ids replace the single owner on selections, clips and subtitle tracks | a new user registers, verifies the email and resets the password by email in under 5 minutes; 0 rows lost from the existing owner's selections, clips and subtitle tracks; all test suites green | proven auth library, sessions in Postgres | the journalist must be able to use it alone after the demo | built 23–25 Nov, live for the 1 Dec demo; if sign-in slips, the 1 Dec demo runs on the shared password |
+| D4 topic labels (proposal to confirm) | AI labels speeches with topics from a fixed list; labels only, never text about a person | provisional target: at least 80% agreement with a hand-labelled set of 50 speeches | same pattern as the word heat map, plus one fast-model call per speech | journalists search themes, not exact words | decide in the week of 23 Nov; if agreed, labelled set and first run by Fri 11 Dec 2026 |
+| 2023–25 history (proposal to confirm) | load the legislature's earlier years (from 1 Feb 2023) of speeches, roll calls and votes; years selectable on every page | per-year counts of speeches, roll calls and votes within 1% of the Câmara API's per-year totals | the backfill script and bulk-file parsers exist; the year list (`MONITOR_YEARS`) holds only 2026 today | a deputy's record since the start of the mandate is what journalists ask for | by 31 Dec 2026, before the public beta on 1 Feb 2027 |
 
-- **Speaker notes (45 s):** "Digestor is the capstone; the Câmara monitor is where it goes next. It applies the same rule to official records: the AI finds and labels, it never writes about a person. This round added the video moment for each speech, the words a deputy uses more than the rest of the chamber, counted with log-odds and no AI, vote filters against the party's guidance, and search by meaning. On 1 December a Brazilian journalist tries it on production. Before that: sign-in, so she can use it alone afterwards. In December: topic labels if we agree on them, and the history back to 2023, before the new legislature starts in February."
+- **Speaker notes (45 s):** "Digestor is the capstone; the Câmara monitor is where it goes next. It applies the same rule to official records: the AI finds and labels, it never writes about a person. This round added the video moment for each speech, the words a deputy uses more than the rest of the chamber, counted with log-odds and no AI, and vote filters against the party's guidance; search by meaning is in progress. On 1 December a Brazilian journalist tries it on production. Before that: sign-in, so she can use it alone afterwards. In December: topic labels if we agree on them, and the history back to 2023, before the new legislature starts in February."
+- **If short of time:** say two goals aloud: the 1 Dec demo and sign-in.
 
 ---
 
