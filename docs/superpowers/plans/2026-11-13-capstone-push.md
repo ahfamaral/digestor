@@ -290,6 +290,16 @@
 - [ ] **Step 3:** Playwright at 390 px and desktop on a deputy with many votes: each filter, the guidance checkbox, paging, Back. Commit `feat(monitor): filters for a deputy's votes and bills, incl. different from party guidance`.
 - [ ] **Step 4 (part 2, after D1):** embed roll-call descriptions + bill summaries in the worker's meaning index (own collection, same chunk-free short texts), fuse with the word results in `vq` / `bq` exactly as D1 does for speeches (worker down → words only + quiet note), 8 golden queries (4 votes, 4 bills) in the D1 golden file with recall@10/MRR. Commit `feat(monitor): search votes and bills by meaning`.
 
+### Task D7: Audio check (added by the owner 2026-11-13; audio-only support exists since Plan 2)
+
+**Files:** whatever the end-to-end run shows broken (expected: `apps/web/components/Briefing/*`, `Prepare/*`, `Names/*`, `Export*`, `apps/worker/src/pipeline/*`, `apps/worker/src/media/ffmpeg.ts`); tests beside each fix; `docs/capstone/evaluation.md` (a short "Audio-only run" note, no golden).
+
+- [ ] **Step 1:** In the worker container (never on the host), cut a 10-minute mp3 from the Osang session's original (`ffmpeg -ss 600 -t 600 -vn -c:a libmp3lame -q:a 4`), into the scratchpad or a temp dir, not `data/` of another session.
+- [ ] **Step 2:** Upload it through `POST /api/sessions/upload` with `audioOnlyAck=1` (language `de`), answer the context check if it pauses, wait for `ready`. Record cost (~US$0.10 cap).
+- [ ] **Step 3:** Walk the flow with Playwright at 390 px and desktop: Processing steps (no picture steps), Context check / Who's who voice samples, Briefing (moment rows show the small audio player, no broken image slots or empty thumbnail boxes), Ask (no "watch" wording that assumes video), Prepare (audio preview, 9:16 option hidden or explained), subtitle track, a rendered clip (waveform + subtitles), Export "Download all". Console clean.
+- [ ] **Step 4:** Fix each gap with a test (UI copy via digestor-ui); never weaken a video path.
+- [ ] **Step 5:** Delete the test session and its files; commit `fix(audio): audio-only sessions end to end` (or `test(audio)` if nothing needed fixing), with screenshots listed in the report.
+
 ### Task A6: "Why not LangGraph" PDF
 
 **Files:**
