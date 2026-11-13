@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, count, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from "drizzle-orm";
 import { HIGHLIGHT_END, HIGHLIGHT_START, normName, SPEECH_HEADER_PATTERN } from "../monitorText.ts";
-import { DIRECTED_GUIDANCE, guidanceLabels, REQUEST_DESCRIPTION_PG, REQUEST_LABEL_PG } from "../monitorVotes.ts";
+import { applicableGuidance, DIRECTED_GUIDANCE, REQUEST_DESCRIPTION_PG, REQUEST_LABEL_PG, type StoredBloc } from "../monitorVotes.ts";
 import type { Db } from "./client.ts";
 import type { SpeechVideo } from "./monitorVideo.ts";
 import { parlMembers, parlRollCalls, parlSpeeches, parlSpeechVideos, parlVotes } from "./schema.ts";
@@ -47,7 +47,11 @@ export type VoteRow = {
   rollCallId: string; date: string; description: string; billId: number | null; billLabel: string | null; billSummary: string; vote: string;
   /** The guidance that applies to the party at the vote (its own, its federation's or its bloc's), as published; null when none or empty. */
   guidance: string | null;
-  /** The federation or bloc that guidance was published under ("Fdr PT-PCdoB-PV", "Bl UniPpPsd..."); null when the party's own. */
+  /**
+   * Where that guidance came from, as shown: a federation's label ("Fdr PT-PCdoB-PV"), a bloc's full name from the
+   * Câmara API ("UNIÃO, PP, PSD, REPUBLICANOS, MDB, …") or, for a bloc not linked, its label as published
+   * ("Bl UniPpPsd..."); null when the party's own.
+   */
   guidanceFrom: string | null;
 };
 
@@ -468,47 +472,51 @@ export type MemberVoteFilters = {
 
 type MemberVoteSql = {
   roll_call_id: string; date: string; description: string; bill_id: number | null; bill_label: string | null; bill_summary: string; vote: string;
-  guidance: string | null; guidance_from: string | null; guidance_rank: number | null;
+  guidance: string | null; guidance_from: string | null;
 };
 
 /**
- * Which published guidance labels speak for each party this member voted under (`guidanceLabels`), as SQL rows
- * `(party, label, rank)`. Every party name of the house is needed so a cut-short label matches one party only.
+ * Which published guidance labels speak for each party this member voted under (`applicableGuidance`: stored bloc
+ * members first, the name rule as the fallback), as SQL rows `(party, label, rank, source)`. Every party name of the
+ * house is needed so a cut-short label matches one party only.
  */
 async function guidanceTable(db: Db, memberId: number): Promise<SQL> {
-  const r = await db.execute<{ kind: "mine" | "known" | "label"; v: string }>(sql`
-    select distinct 'mine' as kind, coalesce(v.party, m.party) as v from parl_votes v join parl_members m on m.id = v.member_id
-      where v.member_id = ${memberId} and coalesce(v.party, m.party) is not null
-    union select distinct 'known', party from parl_votes where party is not null
-    union select distinct 'known', party from parl_members where party is not null
-    union select distinct 'label', o.bloc from parl_orientations o join parl_votes v on v.roll_call_id = o.roll_call_id where v.member_id = ${memberId}`);
+  const [r, b] = await Promise.all([
+    db.execute<{ kind: "mine" | "known" | "label"; v: string }>(sql`
+      select distinct 'mine' as kind, coalesce(v.party, m.party) as v from parl_votes v join parl_members m on m.id = v.member_id
+        where v.member_id = ${memberId} and coalesce(v.party, m.party) is not null
+      union select distinct 'known', party from parl_votes where party is not null
+      union select distinct 'known', party from parl_members where party is not null
+      union select distinct 'label', o.bloc from parl_orientations o join parl_votes v on v.roll_call_id = o.roll_call_id where v.member_id = ${memberId}`),
+    db.execute<{ name: string; federation: boolean; parties: string[] }>(sql`
+      select b.name, b.federation, coalesce(array_agg(p.party order by p.party) filter (where p.party is not null), '{}') as parties
+      from parl_blocs b left join parl_bloc_parties p on p.bloc_id = b.id where b.house = 'camara' group by b.id order by b.id`),
+  ]);
   const of = (k: string) => r.rows.filter((x) => x.kind === k).map((x) => x.v);
   const known = of("known");
   const labels = of("label");
-  const rows = of("mine").flatMap((party) => guidanceLabels(party, labels, known).map((g) => sql`(${party}::text, ${g.label}::text, ${g.rank}::int)`));
-  return rows.length > 0 ? sql`values ${sql.join(rows, sql`, `)}` : sql`select null::text, null::text, null::int where false`;
+  const blocs: StoredBloc[] = b.rows;
+  const rows = of("mine").flatMap((party) =>
+    applicableGuidance(party, labels, known, blocs).map((g) => sql`(${party}::text, ${g.label}::text, ${g.rank}::int, ${g.source}::text)`),
+  );
+  return rows.length > 0 ? sql`values ${sql.join(rows, sql`, `)}` : sql`select null::text, null::text, null::int, null::text where false`;
 }
 
+/** The roll call's text as one vector: the stored one (bill summary + what was voted) and the bill label, as written and in parts. */
+const VOTE_VECTOR = sql`(r.tsv || to_tsvector('pt_unaccent', coalesce(r.bill_label, ''))
+  || to_tsvector('pt_unaccent', replace(coalesce(r.bill_label, ''), '/', ' ')))`;
+
+const textArray = (ids: string[]) => sql`array[${sql.join(ids.map((i) => sql`${i}`), sql`, `)}]::text[]`;
+
 /**
- * The member's recorded votes, newest roll call first, each with the guidance that applies to the party at the vote
- * (`guidance`, null when there is none or it is empty; `guidanceFrom`: the federation or bloc it came from). `total`
- * counts the filtered votes, `all` every recorded vote of the member. `guided` / `guidedAll`: the votes a guidance can be
- * compared with (Sim / Não / Obstrução / Abstenção applies, and the vote isn't the chair's "Artigo 17"), within the other
- * filters / overall: zero overall means "Different from the party's guidance" can't be used for this deputy.
+ * The member's votes with the guidance that applies (one row per vote, `b`), `rank` for the words, the filters in
+ * `where` and the guidance filter in `differs`; shared by `listMemberVotes` and `memberVoteIds`.
  */
-export async function listMemberVotes(
-  db: Db, memberId: number, a: { limit?: number; offset?: number } & MemberVoteFilters = {},
-): Promise<{ total: number; all: number; guided: number; guidedAll: number; rows: VoteRow[] }> {
+async function memberVoteQuery(db: Db, memberId: number, a: MemberVoteFilters & { phrase?: string; ids?: string[] }) {
   const terms = a.q === undefined ? null : tsQuery(a.q);
   const where: SQL[] = [];
-  if (a.q !== undefined) {
-    if (!terms) where.push(sql`and false`);
-    else {
-      // The label as written ("PL 300/2026") and in parts ("PL 300"), next to the stored text vector.
-      where.push(sql`and numnode(q.q) > 0 and (r.tsv || to_tsvector('pt_unaccent', coalesce(r.bill_label, ''))
-        || to_tsvector('pt_unaccent', replace(coalesce(r.bill_label, ''), '/', ' '))) @@ q.q`);
-    }
-  }
+  if (a.q !== undefined) where.push(terms ? sql`and numnode(q.q) > 0 and ${VOTE_VECTOR} @@ q.q` : sql`and false`);
+  if (a.ids !== undefined) where.push(a.ids.length > 0 ? sql`and v.roll_call_id = any(${textArray(a.ids)})` : sql`and false`);
   if (a.vote !== undefined) where.push(a.vote === "Artigo 17" ? sql`and false` : sql`and v.vote = ${a.vote}`);
   const request = sql`(coalesce(r.bill_label, '') ~ ${REQUEST_LABEL_PG} or r.description ~* ${REQUEST_DESCRIPTION_PG})`;
   if (a.kind === "request") where.push(sql`and ${request}`);
@@ -517,38 +525,74 @@ export async function listMemberVotes(
   if (a.to) where.push(sql`and r.date < ((${a.to} || '-01')::date + interval '1 month')`);
   const directed = sql`b.guidance in (${sql.join(DIRECTED_GUIDANCE.map((g) => sql`${g}`), sql`, `)}) and b.vote <> 'Artigo 17'`;
   const differs = a.differsFromGuidance ? sql`where ${directed} and b.vote <> b.guidance` : sql``;
+  const phrase = a.phrase?.trim();
+  const rank = !terms
+    ? sql`0`
+    : phrase
+      ? sql`ts_rank_cd(${VOTE_VECTOR}, q.q, 32) + case when ${VOTE_VECTOR} @@ phraseto_tsquery('pt_unaccent', ${phrase}) then 1 else 0 end`
+      : sql`ts_rank_cd(${VOTE_VECTOR}, q.q, 32)`;
   const g = await guidanceTable(db, memberId);
   const baseOf = (filters: SQL) => sql`
-    with q as (select ${terms ?? sql`''::tsquery`} as q), g(party, label, rank) as (${g})
+    with q as (select ${terms ?? sql`''::tsquery`} as q), g(party, label, rank, source) as (${g})
     select v.roll_call_id, to_char(r.date, 'YYYY-MM-DD') as date, r.date as day, r.registered_at, r.description, r.bill_id, r.bill_label,
-      r.bill_summary, v.vote, o.guidance, o.guidance_from, o.guidance_rank
+      r.bill_summary, v.vote, o.guidance, o.guidance_from, ${rank} as rank
     from parl_votes v
     join parl_roll_calls r on r.id = v.roll_call_id
     join parl_members m on m.id = v.member_id
     cross join q
     left join lateral (
-      select nullif(x.orientation, '') as guidance, x.bloc as guidance_from, g.rank as guidance_rank from parl_orientations x
+      select nullif(x.orientation, '') as guidance, g.source as guidance_from from parl_orientations x
       join g on g.label = x.bloc and g.party = coalesce(v.party, m.party)
       where x.roll_call_id = v.roll_call_id order by g.rank, x.bloc limit 1
     ) o on true
     where v.member_id = ${memberId} ${filters}`;
-  const base = baseOf(sql.join(where, sql` `));
+  const order = a.ids !== undefined
+    ? sql`array_position(${textArray(a.ids.length > 0 ? a.ids : [""])}, b.roll_call_id)`
+    : terms
+      ? sql`b.rank desc, b.day desc, b.roll_call_id desc`
+      : sql`b.day desc, b.registered_at desc nulls last, b.roll_call_id desc`;
+  return { base: baseOf(sql.join(where, sql` `)), unfiltered: baseOf(sql``), directed, differs, order };
+}
+
+/**
+ * The member's roll call ids that pass the filters (keys only, for the text box's fused list): with `q`, only word
+ * matches, best match first (`phrase`: the typed words together rank first); with `ids` (meaning hits), only those
+ * that pass the other filters, in the given order; else newest first.
+ */
+export async function memberVoteIds(db: Db, memberId: number, a: MemberVoteFilters & { phrase?: string; ids?: string[] }): Promise<string[]> {
+  const v = await memberVoteQuery(db, memberId, a);
+  const r = await db.execute<{ roll_call_id: string }>(sql`select b.roll_call_id from (${v.base}) b ${v.differs} order by ${v.order}`);
+  return r.rows.map((x) => x.roll_call_id);
+}
+
+/**
+ * The member's recorded votes, newest roll call first, each with the guidance that applies to the party at the vote
+ * (`guidance`, null when there is none or it is empty; `guidanceFrom`: the federation or bloc it came from). `total`
+ * counts the filtered votes, `all` every recorded vote of the member. `guided` / `guidedAll`: the votes a guidance can be
+ * compared with (Sim / Não / Obstrução / Abstenção applies, and the vote isn't the chair's "Artigo 17"), within the other
+ * filters / overall: zero overall means "Different from the party's guidance" can't be used for this deputy.
+ * `ids` (the text box's fused list, `q` unset): only these roll calls, in this order.
+ */
+export async function listMemberVotes(
+  db: Db, memberId: number, a: { limit?: number; offset?: number; ids?: string[] } & MemberVoteFilters = {},
+): Promise<{ total: number; all: number; guided: number; guidedAll: number; rows: VoteRow[] }> {
+  const { base, unfiltered, directed, differs, order } = await memberVoteQuery(db, memberId, a);
   const c = await db.execute<{ n: number; n_all: number; n_guided: number; n_guided_all: number }>(sql`
     select (select count(*)::int from (${base}) b ${differs}) as n, (select count(*)::int from parl_votes where member_id = ${memberId}) as n_all,
       (select count(*)::int from (${base}) b where ${directed}) as n_guided,
-      (select count(*)::int from (${baseOf(sql``)}) b where ${directed}) as n_guided_all`);
+      (select count(*)::int from (${unfiltered}) b where ${directed}) as n_guided_all`);
   const total = c.rows[0]?.n ?? 0;
   const counts = { total, all: c.rows[0]?.n_all ?? 0, guided: c.rows[0]?.n_guided ?? 0, guidedAll: c.rows[0]?.n_guided_all ?? 0 };
   if (total === 0) return { ...counts, rows: [] };
   const r = await db.execute<MemberVoteSql>(sql`
     select * from (${base}) b ${differs}
-    order by b.day desc, b.registered_at desc nulls last, b.roll_call_id desc
+    order by ${a.q === undefined ? order : sql`b.day desc, b.registered_at desc nulls last, b.roll_call_id desc`}
     limit ${a.limit ?? 100} offset ${a.offset ?? 0}`);
   return {
     ...counts,
     rows: r.rows.map((x) => ({
       rollCallId: x.roll_call_id, date: x.date, description: x.description, billId: x.bill_id, billLabel: x.bill_label,
-      billSummary: x.bill_summary, vote: x.vote, guidance: x.guidance || null, guidanceFrom: x.guidance && x.guidance_rank ? x.guidance_from : null,
+      billSummary: x.bill_summary, vote: x.vote, guidance: x.guidance || null, guidanceFrom: x.guidance ? x.guidance_from : null,
     })),
   };
 }

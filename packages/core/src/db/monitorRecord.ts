@@ -1,10 +1,11 @@
 import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { misfiledCopies } from "../monitorText.ts";
+import { linkBloc } from "../monitorVotes.ts";
 import { inOfficeSpans, type ExternalMandate, type HistoryRow, type Position } from "../monitorTimeline.ts";
 import type { Db } from "./client.ts";
 import { tsQuery, type House } from "./monitor.ts";
 import {
-  parlBillAuthors, parlBills, parlMemberHistory, parlMembers, parlOrientations, parlPresence, parlRollCalls, parlSessions, parlSpeeches, parlVotes,
+  parlBillAuthors, parlBills, parlBlocParties, parlBlocs, parlMemberHistory, parlMembers, parlOrientations, parlPresence, parlRollCalls, parlSessions, parlSpeeches, parlVotes,
 } from "./schema.ts";
 
 // Parliament monitor: the deputy's record beyond speeches and votes (history, profile, authored bills, presence) and
@@ -114,6 +115,41 @@ export async function replaceBillAuthors(
   });
 }
 
+/** A bloc or federation as the Câmara API lists it (`/blocos`), with its member parties (`/blocos/{id}/partidos`). */
+export type BlocInput = { id: number; legislature: number; name: string; federation: boolean; parties: string[] };
+
+/**
+ * Stores the blocs as listed: names and flags updated, each bloc's members replaced by the ones listed, except that a
+ * bloc listed with no members (dissolved, or the API failing) keeps the members last seen, so its past guidance still
+ * reaches them. Blocs not listed are kept (their votes stay). One transaction.
+ */
+export async function replaceBlocs(db: Db, rows: BlocInput[]): Promise<void> {
+  if (rows.length === 0) return;
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(parlBlocs)
+      .values(rows.map((b) => ({ id: b.id, house: "camara", legislature: b.legislature, name: b.name, federation: b.federation })))
+      .onConflictDoUpdate({
+        target: parlBlocs.id,
+        set: { legislature: sql`excluded.legislature`, name: sql`excluded.name`, federation: sql`excluded.federation`, fetchedAt: sql`now()` },
+      });
+    for (const b of rows) {
+      if (b.parties.length === 0) continue;
+      await tx.delete(parlBlocParties).where(eq(parlBlocParties.blocId, b.id));
+      await tx.insert(parlBlocParties).values([...new Set(b.parties)].map((party) => ({ blocId: b.id, party }))).onConflictDoNothing();
+    }
+  });
+}
+
+/** The stored blocs with their members (`parties` empty: none ever listed), by id. */
+export async function listBlocs(db: Db): Promise<BlocInput[]> {
+  const r = await db.execute<{ id: number; legislature: number; name: string; federation: boolean; parties: string[] }>(sql`
+    select b.id, b.legislature, b.name, b.federation,
+      coalesce(array_agg(p.party order by p.party) filter (where p.party is not null), '{}') as parties
+    from parl_blocs b left join parl_bloc_parties p on p.bloc_id = b.id group by b.id order by b.id`);
+  return r.rows;
+}
+
 export async function replaceOrientations(db: Db, rollCallId: string, rows: { bloc: string; orientation: string }[]): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(parlOrientations).where(eq(parlOrientations.rollCallId, rollCallId));
@@ -217,15 +253,9 @@ export type MemberBill = { id: number; type: string; number: number; year: numbe
  * `all` counts every bill the deputy signed; `years`: the years presented, newest first.
  */
 export async function listMemberBills(
-  db: Db, memberId: number, a: { type?: string; q?: string[]; year?: number; limit?: number; offset?: number },
+  db: Db, memberId: number, a: { type?: string; q?: string[]; year?: number; ids?: number[]; limit?: number; offset?: number },
 ): Promise<{ total: number; all: number; years: number[]; byType: { type: string; n: number }[]; rows: MemberBill[] }> {
-  const terms = a.q === undefined ? null : tsQuery(a.q);
-  const where: SQL[] = [];
-  if (a.q !== undefined) {
-    where.push(terms ? sql`and to_tsvector('pt_unaccent', b.summary) @@ (${terms}) and numnode(${terms}) > 0` : sql`and false`);
-  }
-  if (a.year !== undefined) where.push(sql`and extract(year from b.presented_at) = ${a.year}`);
-  const filters = sql.join(where, sql` `);
+  const filters = billFilters(a);
   const [by, years] = await Promise.all([
     db.execute<{ type: string; n: number }>(sql`
       select b.type, count(*)::int as n from parl_bill_authors a join parl_bills b on b.id = a.bill_id
@@ -236,11 +266,12 @@ export async function listMemberBills(
   ]);
   const typeWhere = a.type ? sql`and b.type = ${a.type}` : sql``;
   const total = a.type ? (by.rows.find((r) => r.type === a.type)?.n ?? 0) : by.rows.reduce((s, r) => s + r.n, 0);
+  const order = a.ids ? sql`array_position(${intArray(a.ids)}, b.id)` : sql`b.presented_at desc, b.id desc`;
   const rows = total === 0 ? { rows: [] } : await db.execute<{ id: number; type: string; number: number; year: number; summary: string; presented_at: string; first_author: boolean }>(sql`
     select b.id, b.type, b.number, b.year, b.summary, to_char(b.presented_at, 'YYYY-MM-DD"T"HH24:MI') as presented_at, a.first_author
     from parl_bill_authors a join parl_bills b on b.id = a.bill_id
     where a.member_id = ${memberId} ${typeWhere} ${filters}
-    order by b.presented_at desc, b.id desc limit ${a.limit ?? 20} offset ${a.offset ?? 0}`);
+    order by ${order} limit ${a.limit ?? 20} offset ${a.offset ?? 0}`);
   return {
     total,
     all: years.rows.reduce((s, r) => s + r.n, 0),
@@ -252,11 +283,48 @@ export async function listMemberBills(
   };
 }
 
+const intArray = (ids: number[]) => sql`array[${sql.join((ids.length > 0 ? ids : [0]).map((i) => sql`${i}`), sql`, `)}]::int[]`;
+
+/** Words in the summary (`q`, full text), the year presented and an id list (`ids`), as SQL conditions on `b`. */
+function billFilters(a: { q?: string[]; year?: number; ids?: number[] }): SQL {
+  const terms = a.q === undefined ? null : tsQuery(a.q);
+  const where: SQL[] = [];
+  if (a.q !== undefined) {
+    where.push(terms ? sql`and to_tsvector('pt_unaccent', b.summary) @@ (${terms}) and numnode(${terms}) > 0` : sql`and false`);
+  }
+  if (a.year !== undefined) where.push(sql`and extract(year from b.presented_at) = ${a.year}`);
+  if (a.ids !== undefined) where.push(a.ids.length > 0 ? sql`and b.id = any(${intArray(a.ids)})` : sql`and false`);
+  return sql.join(where, sql` `);
+}
+
+/**
+ * The deputy's bills that pass the filters (ids only, for the text box's fused list): with `q`, only word matches in
+ * the summary, best match first (`phrase`: the typed words together first); with `ids` (meaning hits), only those that
+ * pass the other filters, in the given order; else newest first. The type filter is left to `listMemberBills`, whose
+ * counts by type cover every type.
+ */
+export async function memberBillIds(db: Db, memberId: number, a: { q?: string[]; phrase?: string; year?: number; ids?: number[] }): Promise<number[]> {
+  const terms = a.q === undefined ? null : tsQuery(a.q);
+  const phrase = a.phrase?.trim();
+  const vector = sql`to_tsvector('pt_unaccent', b.summary)`;
+  const rank = !terms
+    ? sql``
+    : phrase
+      ? sql`ts_rank_cd(${vector}, ${terms}, 32) + case when ${vector} @@ phraseto_tsquery('pt_unaccent', ${phrase}) then 1 else 0 end desc,`
+      : sql`ts_rank_cd(${vector}, ${terms}, 32) desc,`;
+  const order = a.ids ? sql`array_position(${intArray(a.ids)}, b.id)` : sql`${rank} b.presented_at desc, b.id desc`;
+  const r = await db.execute<{ id: number }>(sql`
+    select b.id from parl_bill_authors a join parl_bills b on b.id = a.bill_id
+    where a.member_id = ${memberId} ${billFilters(a)} order by ${order}`);
+  return r.rows.map((x) => Number(x.id));
+}
+
 export type RollCallDetail = {
   id: string; date: string; description: string; yes: number; no: number; other: number; billId: number | null; billLabel: string | null;
   billSummary: string;
   parties: { party: string | null; counts: { vote: string; n: number }[]; deputies: { externalId: number; name: string; uf: string | null; vote: string }[] }[];
-  orientations: { bloc: string; orientation: string }[];
+  /** As published; `blocName`: a cut-short bloc label's full name ("Bl UniPpPsd..." → "UNIÃO, PP, PSD, …"), when one stored bloc fits. */
+  orientations: { bloc: string; orientation: string; blocName: string | null }[];
 };
 
 /** Labels in the order the Câmara lists them; anything else follows, as published. */
@@ -299,9 +367,15 @@ export async function getRollCall(db: Db, id: string): Promise<RollCallDetail | 
       };
     })
     .sort((a, b) => b.deputies.length - a.deputies.length || byName(a.party ?? "￿", b.party ?? "￿"));
-  const orientations = (
-    await db.select({ bloc: parlOrientations.bloc, orientation: parlOrientations.orientation }).from(parlOrientations).where(eq(parlOrientations.rollCallId, id))
-  ).sort((a, b) => byName(a.bloc, b.bloc));
+  const [published, blocs, known] = await Promise.all([
+    db.select({ bloc: parlOrientations.bloc, orientation: parlOrientations.orientation }).from(parlOrientations).where(eq(parlOrientations.rollCallId, id)),
+    listBlocs(db),
+    db.execute<{ party: string }>(sql`select distinct party from parl_votes where party is not null union select distinct party from parl_members where party is not null`),
+  ]);
+  const partyNames = known.rows.map((r) => r.party);
+  const orientations = published
+    .map((o) => ({ ...o, blocName: linkBloc(o.bloc, blocs, partyNames)?.name ?? null }))
+    .sort((a, b) => byName(a.bloc, b.bloc));
   return {
     id: rc.id, date: rc.date, description: rc.description, yes: rc.yes, no: rc.no, other: rc.other, billId: rc.billId, billLabel: rc.billLabel,
     billSummary: rc.billSummary, parties, orientations,

@@ -6,7 +6,7 @@ import type {
 import { BackLink } from "@/components/BackLink";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, directoryHref, MONITOR_YEARS, type DeputyParams } from "@/lib/monitor/params";
-import { deputyUrl, MEMBER_PAGE, VOTE_PAGE, type Searched } from "@/lib/monitor/search";
+import { deputyUrl, MEMBER_PAGE, VOTE_PAGE, type RecordMeaning, type Searched } from "@/lib/monitor/search";
 import { AuthoredBills } from "./AuthoredBills";
 import { DeputyCombobox } from "./DeputyCombobox";
 import { DeputySearch } from "./DeputySearch";
@@ -38,7 +38,10 @@ const NAV = ["speeches", "words", "bills", "votes", "presence", "fronts"] as con
 export type DeputyWorkspace = {
   profile: ProfileInput; bands: TimelineBand[]; presence: PresenceRecord | null;
   /** `all`: every bill the deputy signed (the filters aside); `years`: the years presented; `searched`: what `bq` searched. */
-  bills: { total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: MemberBill[]; searched?: Searched | null };
+  bills: {
+    total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: (MemberBill & { byMeaning?: boolean })[];
+    searched?: Searched | null; meaning?: RecordMeaning;
+  };
   phases: string[]; today: string;
   /** "Words used more than the chamber" (`distinctiveWords`); null while searching. */
   words: { enough: boolean; words: DistinctiveWord[] } | null;
@@ -56,7 +59,7 @@ export function DeputyView({
   locale: MonitorLocale; member: MemberRow; params: DeputyParams; searched: Searched | null; searching?: boolean;
   speeches: { total: number; rows: (SpeechRow | SpeechHit)[] };
   /** `total`: the votes the filters keep; `all`: every recorded vote of the deputy; `searched`: what `vq` searched. */
-  votes: { total: number; all?: number; rows: Vote[]; searched?: Searched | null } & Guided;
+  votes: { total: number; all?: number; rows: (Vote & { byMeaning?: boolean })[]; searched?: Searched | null; meaning?: RecordMeaning } & Guided;
 }) {
   const id = member.externalId;
   const mentions = params.rel === "mentions";
@@ -155,7 +158,7 @@ export function DeputyView({
                 allVotes > 0 && (
                   <VoteFilters
                     locale={locale} externalId={id} params={params} today={today} total={votes.total} all={allVotes} searched={votes.searched ?? null}
-                    guidedAll={votes.guidedAll}
+                    guidedAll={votes.guidedAll} meaning={votes.meaning} marked={votes.rows.some((v) => v.byMeaning)}
                   />
                 )
               }

@@ -4,7 +4,8 @@ import { createDb, type Db } from "./client.ts";
 import { parlSpeeches } from "./schema.ts";
 import { replaceSpeechWindow, replaceVotes, upsertMembers, upsertRollCalls, type MemberInput, type SpeechInput } from "./monitor.ts";
 import {
-  dropMisfiledSpeeches, fillSpeechParties, getHistory, getPresence, getRollCall, listMemberBills, membersNeedingProfile, replaceBillAuthors, replaceHistory,
+  listBlocs, replaceBlocs,
+  dropMisfiledSpeeches, fillSpeechParties, getHistory, getPresence, getRollCall, listMemberBills, memberBillIds, membersNeedingProfile, replaceBillAuthors, replaceHistory,
   replaceOrientations, replacePresence, setProfile, upsertBills, upsertSessions, type HistoryInput,
 } from "./monitorRecord.ts";
 
@@ -17,7 +18,7 @@ afterAll(() => close());
 beforeEach(async () => {
   const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
   await pool.query(
-    "TRUNCATE parl_presence, parl_sessions, parl_bill_authors, parl_bills, parl_orientations, parl_member_history, parl_votes, parl_roll_calls, parl_speeches, parl_members RESTART IDENTITY CASCADE",
+    "TRUNCATE parl_bloc_parties, parl_blocs, parl_presence, parl_sessions, parl_bill_authors, parl_bills, parl_orientations, parl_member_history, parl_votes, parl_roll_calls, parl_speeches, parl_members RESTART IDENTITY CASCADE",
   );
   await pool.end();
 });
@@ -178,6 +179,32 @@ describe("presence, bills and roll calls", () => {
     expect(await listMemberBills(db, f, { year: 1999 })).toMatchObject({ total: 0, rows: [] });
   });
 
+  it("memberBillIds: word matches best first; `ids` keeps the deputy's that pass the year, in order; listMemberBills with `ids` pages that list", async () => {
+    const ids = await upsertMembers(db, [member(204407, "Fernanda Melchionna"), member(5, "Outra Pessoa")]);
+    const f = ids.get(204407)!;
+    await upsertBills(db, [
+      { id: 1, type: "PL", number: 10, year: 2026, summary: "Dispõe sobre a violência doméstica e a violência contra a mulher", presentedAt: "2026-02-10T10:00" },
+      { id: 2, type: "PL", number: 11, year: 2025, summary: "Altera a lei da saúde", presentedAt: "2025-11-10T10:00" },
+      { id: 3, type: "REQ", number: 1, year: 2026, summary: "Requer informações sobre violência", presentedAt: "2026-03-02T09:54" },
+      { id: 4, type: "PL", number: 12, year: 2026, summary: "Violência doméstica, de outra autora", presentedAt: "2026-03-03T09:54" },
+    ]);
+    await replaceBillAuthors(db, [1, 2, 3, 4], [
+      { billId: 1, memberId: f, firstAuthor: true }, { billId: 2, memberId: f, firstAuthor: true }, { billId: 3, memberId: f, firstAuthor: false },
+      { billId: 4, memberId: ids.get(5)!, firstAuthor: true },
+    ]);
+    expect(await memberBillIds(db, f, {})).toEqual([3, 1, 2]);
+    // best match first: bill 1 says it twice and holds the typed words together
+    expect(await memberBillIds(db, f, { q: ["violência"], phrase: "violência doméstica" })).toEqual([1, 3]);
+    expect(await memberBillIds(db, f, { q: ["o"] })).toEqual([]);
+    expect(await memberBillIds(db, f, { ids: [2, 4, 1, 99], year: 2026 })).toEqual([1]);
+    expect(await memberBillIds(db, f, { ids: [2, 4, 1] })).toEqual([2, 1]);
+    expect(await memberBillIds(db, f, { ids: [] })).toEqual([]);
+    const listed = await listMemberBills(db, f, { ids: [2, 3, 1], limit: 2, offset: 1 });
+    expect(listed).toMatchObject({ total: 3, all: 3, byType: [{ type: "PL", n: 2 }, { type: "REQ", n: 1 }] });
+    expect(listed.rows.map((b) => b.id)).toEqual([3, 1]);
+    expect(await listMemberBills(db, f, { ids: [2, 3, 1], type: "PL" })).toMatchObject({ total: 2, rows: [{ id: 2 }, { id: 1 }] });
+  });
+
   it("getRollCall groups by party at the vote", async () => {
     const ids = await upsertMembers(db, [member(220576, "Alfredo Gaspar", "PL"), member(204407, "Fernanda Melchionna", "PSOL", "RS"), member(5, "Ana Pimentel", "PT", "MG"), member(6, "Bruno Teste", "PT", "BA")]);
     await upsertRollCalls(db, [{
@@ -197,7 +224,7 @@ describe("presence, bills and roll calls", () => {
     expect(r.parties[0]!.deputies.map((d) => d.name)).toEqual(["Ana Pimentel", "Bruno Teste"]);
     expect(r.parties[0]!.counts).toEqual([{ vote: "Sim", n: 1 }, { vote: "Artigo 17", n: 1 }]);
     expect(r.parties[2]!.deputies[0]).toEqual({ externalId: 220576, name: "Alfredo Gaspar", uf: "AL", vote: "Não" });
-    expect(r.orientations).toEqual([{ bloc: "Fdr PT-PCdoB-PV", orientation: "" }, { bloc: "PT", orientation: "Sim" }]);
+    expect(r.orientations).toEqual([{ bloc: "Fdr PT-PCdoB-PV", orientation: "", blocName: null }, { bloc: "PT", orientation: "Sim", blocName: null }]);
     expect(await getRollCall(db, "1-1")).toBeNull();
   });
 
@@ -207,5 +234,37 @@ describe("presence, bills and roll calls", () => {
     await setProfile(db, ids.get(204407)!, { profession: "Bibliotecária", externalMandates: mandates, fronts: ["F"], positions: [] });
     const { getProfile } = await import("./monitorRecord.ts");
     expect(await getProfile(db, ids.get(204407)!)).toMatchObject({ profession: "Bibliotecária", externalMandates: mandates, fronts: ["F"], positions: [] });
+  });
+});
+
+describe("blocs", () => {
+  it("getRollCall names a cut-short bloc label by the bloc's full name when one stored bloc fits it", async () => {
+    await upsertRollCalls(db, [{ id: "1-1", date: "2026-03-10", registeredAt: null, description: "A.", yes: 1, no: 0, other: 0, billId: null, billLabel: null, billSummary: "" }]);
+    await replaceOrientations(db, "1-1", [{ bloc: "Bl UniPpPsd...", orientation: "Sim" }, { bloc: "PL", orientation: "Não" }]);
+    expect((await getRollCall(db, "1-1"))!.orientations[0]).toEqual({ bloc: "Bl UniPpPsd...", orientation: "Sim", blocName: null });
+    const full = "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE";
+    await replaceBlocs(db, [{ id: 589, legislature: 57, name: full, federation: false, parties: ["MDB", "PP", "PSD", "UNIÃO"] }]);
+    expect((await getRollCall(db, "1-1"))!.orientations).toEqual([
+      { bloc: "Bl UniPpPsd...", orientation: "Sim", blocName: full },
+      { bloc: "PL", orientation: "Não", blocName: null },
+    ]);
+  });
+
+  it("stores blocs with their members; a bloc listed with none keeps the members last seen; names update", async () => {
+    await replaceBlocs(db, [
+      { id: 589, legislature: 57, name: "UNIÃO, PP", federation: false, parties: ["UNIÃO", "PP"] },
+      { id: 585, legislature: 57, name: "Federação PSDB CIDADANIA", federation: true, parties: ["PSDB", "CIDADANIA", "PSDB"] },
+      { id: 590, legislature: 57, name: "AVANTE, SOLIDARIEDADE, PRD", federation: false, parties: [] },
+    ]);
+    await replaceBlocs(db, [{ id: 589, legislature: 57, name: "UNIÃO, PP, MDB", federation: false, parties: [] }]);
+    expect(await listBlocs(db)).toEqual([
+      { id: 585, legislature: 57, name: "Federação PSDB CIDADANIA", federation: true, parties: ["CIDADANIA", "PSDB"] },
+      { id: 589, legislature: 57, name: "UNIÃO, PP, MDB", federation: false, parties: ["PP", "UNIÃO"] },
+      { id: 590, legislature: 57, name: "AVANTE, SOLIDARIEDADE, PRD", federation: false, parties: [] },
+    ]);
+    await replaceBlocs(db, [{ id: 589, legislature: 57, name: "UNIÃO, PP, MDB", federation: false, parties: ["MDB", "UNIÃO"] }]);
+    expect((await listBlocs(db)).find((b) => b.id === 589)?.parties).toEqual(["MDB", "UNIÃO"]);
+    await replaceBlocs(db, []);
+    expect(await listBlocs(db)).toHaveLength(3);
   });
 });

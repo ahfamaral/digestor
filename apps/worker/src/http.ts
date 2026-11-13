@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { RecordKind } from "@digestor/core/server";
 import type { MeaningHit, Passage } from "./monitor/embedSpeeches.js";
+import type { RecordHit } from "./monitor/embedRecords.js";
 
 /**
  * The worker's internal HTTP endpoint (node:http, no auth): never published beyond the host's loopback (dev) or the
@@ -10,6 +12,8 @@ import type { MeaningHit, Passage } from "./monitor/embedSpeeches.js";
 export type HttpDeps = {
   search(q: string, k: number): Promise<MeaningHit[]>;
   passages(q: string, speechKeys: string[], perSpeech: number): Promise<Passage[]>;
+  /** A deputy's own roll calls or bills (`ids`, already filtered by the web app) ranked by meaning. */
+  searchRecords(kind: RecordKind, q: string, ids: string[], k: number): Promise<RecordHit[]>;
 };
 
 export const DEFAULT_HTTP_PORT = 8790;
@@ -20,6 +24,10 @@ const MAX_K = 200;
 const MAX_KEYS = 50;
 const DEFAULT_PER_SPEECH = 3;
 const MAX_PER_SPEECH = 10;
+/** Record ids per search: a deputy's votes or bills (the most prolific signed about 2,800 bills in 2026); fits 64 KB. */
+const MAX_IDS = 5000;
+/** `kind` → the record kind and the shape of its ids (roll call "2643915-8", bill "2512345"). */
+const RECORD_KINDS = { rollCalls: { kind: "roll_call", id: /^\d{1,12}-\d{1,6}$/ }, bills: { kind: "bill", id: /^\d{1,12}$/ } } as const;
 const UNAVAILABLE = "Search by meaning isn't available right now.";
 
 class HttpError extends Error {
@@ -69,8 +77,15 @@ export function createHttpHandler(deps: HttpDeps): (req: IncomingMessage, res: S
     if (req.method === "POST" && path === "/monitor/search") {
       const body = await readJson(req);
       const q = query(body);
-      const hits = await deps.search(q, bounded(body.k, DEFAULT_K, MAX_K));
-      return send(res, 200, { hits });
+      const k = bounded(body.k, DEFAULT_K, MAX_K);
+      if (body.kind === undefined || body.kind === "speeches") return send(res, 200, { hits: await deps.search(q, k) });
+      if (body.kind !== "rollCalls" && body.kind !== "bills") throw new HttpError(400, "kind must be speeches, rollCalls or bills.");
+      const spec = RECORD_KINDS[body.kind];
+      const ids = body.ids;
+      if (!Array.isArray(ids) || ids.length > MAX_IDS || !ids.every((id) => typeof id === "string" && spec.id.test(id))) {
+        throw new HttpError(400, `ids must be a list of at most ${MAX_IDS} ${body.kind === "bills" ? "bill" : "roll call"} ids.`);
+      }
+      return send(res, 200, { hits: await deps.searchRecords(spec.kind, q, ids as string[], k) });
     }
     if (req.method === "POST" && path === "/monitor/passages") {
       const body = await readJson(req);

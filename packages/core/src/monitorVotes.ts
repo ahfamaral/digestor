@@ -69,3 +69,50 @@ export function guidanceLabels(party: string, labels: string[], known: string[])
   }
   return out.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
 }
+
+/** A party bloc or federation as the Câmara API lists it (`parl_blocs`), with its member parties (empty: dissolved). */
+export type StoredBloc = { name: string; federation: boolean; parties: string[] };
+
+const blocTokens = (label: string) => label.trim().replace(/^Bl\s+/i, "").replace(/(\.\.\.|…)$/, "").split(/(?=[A-Z])/).filter(Boolean);
+
+/**
+ * The stored bloc a cut-short guidance label stands for ("Bl UniPpPsd..." → "UNIÃO, PP, PSD, REPUBLICANOS, MDB, …"):
+ * the label's pieces name the first parties of the bloc's published name, in order (the same piece rule as
+ * `guidanceLabels`; the last piece may be cut). Only a bloc (never a federation), and only when exactly one fits.
+ */
+export function linkBloc(label: string, blocs: StoredBloc[], known: string[]): StoredBloc | null {
+  if (!/^Bl\s/i.test(label.trim())) return null;
+  const tokens = blocTokens(label);
+  if (tokens.length === 0) return null;
+  // the blocs' own members and listed names count as party names too (a party with no deputy in the data yet)
+  const all = [...new Set([...known, ...blocs.flatMap((b) => [...b.parties, ...b.name.split(/\s*,\s*/).filter((n) => !/\s/.test(n))])])];
+  const fits = blocs.filter((b) => {
+    if (b.federation) return false;
+    const parts = b.name.split(/\s*,\s*/);
+    return tokens.length <= parts.length && tokens.every((t, i) => names(t, parts[i]!, all) || (i === tokens.length - 1 && norm(t).length >= 3 && norm(parts[i]!).startsWith(norm(t))));
+  });
+  return fits.length === 1 ? fits[0]! : null;
+}
+
+/**
+ * The guidance labels that speak for `party`, as `guidanceLabels`, except that a bloc label linked to a stored bloc
+ * with members (`linkBloc`) applies exactly to those members, whatever its cut-short name shows: the guidance of
+ * "Bl UniPpPsd..." reaches MDB, REPUBLICANOS, PODE, PSDB and CIDADANIA. `source`: where the guidance came from, as
+ * shown to the reader (null for the party's own label; a federation's label; a linked bloc's full published name, else
+ * the bloc's label as published).
+ */
+export function applicableGuidance(
+  party: string, labels: string[], known: string[], blocs: StoredBloc[],
+): { label: string; rank: number; source: string | null }[] {
+  const out: { label: string; rank: number; source: string | null }[] = [];
+  const p = norm(party);
+  for (const label of new Set(labels)) {
+    const bloc = blocs.length > 0 ? linkBloc(label, blocs, known) : null;
+    if (bloc && bloc.parties.length > 0) {
+      if (p && bloc.parties.some((m) => norm(m) === p)) out.push({ label, rank: 2, source: bloc.name });
+      continue;
+    }
+    for (const g of guidanceLabels(party, [label], known)) out.push({ ...g, source: g.rank === 0 ? null : g.label });
+  }
+  return out.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
+}

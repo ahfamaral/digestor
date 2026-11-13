@@ -15,8 +15,10 @@ export const MONITOR_EMBED_QUEUE = "monitor.embed";
 /** Daily, an hour after the refresh (09:00 UTC) brought new and revised speeches. */
 export const MONITOR_EMBED_CRON = "0 10 * * *";
 /**
- * Speeches one daily run embeds at most (about 10 minutes of CPU in the live worker); a day brings tens. A larger
- * backlog (a new server, a revised year) catches up over the following days, or at once with `scripts/monitor-embed.ts`.
+ * Items one daily run embeds at most: speeches first (2,000 speeches are about 10 minutes of CPU in the live worker),
+ * then roll calls and bills with what is left (`embedMonitor`, one short text each); a day brings tens of speeches and
+ * roll calls and a few hundred bills. A larger backlog (a new server, a revised year) catches up over the following
+ * days, or at once with `scripts/monitor-embed.ts`.
  */
 export const MONITOR_EMBED_MAX_PER_RUN = 2000;
 

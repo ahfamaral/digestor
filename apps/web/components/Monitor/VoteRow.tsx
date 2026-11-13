@@ -5,15 +5,16 @@ import { rollCallHref } from "@/lib/monitor/params";
 import { billUrl } from "@/lib/monitor/search";
 import { isRequestVote } from "@/lib/monitor/votes";
 import { ExternalLink } from "./ExternalLink";
+import { ByMeaning } from "./MeaningNote";
 
 /**
  * One recorded vote: what was voted (the roll call's published description) first, then the bill it belongs to (opens
  * the roll-call page; the bill on the Câmara's site) and its summary, and the vote exactly as published. A vote on a
  * request is marked, since a "Não" on it is not a vote against the bill. The guidance that applied to the party at the
  * vote sits under the vote, as published, with the federation or bloc it came from. `from`: the deputy whose page lists
- * it, so the roll-call page leads back to them.
+ * it, so the roll-call page leads back to them. A vote only the search by meaning found is marked "Related by meaning".
  */
-export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote: Vote; from?: number }) {
+export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote: Vote & { byMeaning?: boolean }; from?: number }) {
   return (
     <li className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:gap-x-4">
       <div className="grid min-w-0 gap-1">
@@ -32,6 +33,7 @@ export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote
           {isRequestVote(v.description, v.billLabel) && (
             <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{tm(locale, "votes.request")}</span>
           )}
+          {v.byMeaning && <ByMeaning locale={locale} />}
         </div>
         <p lang="pt-BR" className="break-words whitespace-pre-line">
           {v.description}

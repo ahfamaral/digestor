@@ -13,7 +13,10 @@ import type { MonitorLocale } from "@/lib/monitor/i18n";
 import { requestLocale, translator } from "@/lib/monitor/server";
 import { deputyHref, parseDeputy, type DeputyParams } from "@/lib/monitor/params";
 import { VOTE_FILTERS } from "@digestor/core";
-import { MEMBER_PAGE, queryTerms, searchTerms, typedPhrase, VOTE_PAGE } from "@/lib/monitor/search";
+import {
+  billMeaning, hybridBills, hybridVotes, MEMBER_PAGE, queryTerms, searchTerms, typedPhrase, voteMeaning, VOTE_PAGE, type RecordSemantic,
+} from "@/lib/monitor/search";
+import { recordSearch } from "@/lib/monitor/semantic";
 import { getServer } from "@/lib/server";
 import { monitorTitle } from "@/lib/monitor/titles";
 import type { Metadata } from "next";
@@ -77,11 +80,19 @@ async function DeputyData({
 }: { locale: MonitorLocale; member: MemberRow; params: DeputyParams; profile: ProfileInput; bands: TimelineBand[] }) {
   const { db } = getServer();
   const translate = translator();
-  // The three text boxes (speeches, votes, bills) are translated side by side, each with its own "exact" box.
-  const [searched, votesSearched, billsSearched] = await Promise.all([
+  const semantic: RecordSemantic = (kind, q, ids) => recordSearch(kind, q, ids);
+  const voteFilters = {
+    vote: p.vv ? VOTE_FILTERS[p.vv] : undefined, kind: p.vk ?? undefined, from: p.vfrom ?? undefined, to: p.vto ?? undefined,
+    differsFromGuidance: p.vdiff || undefined,
+  };
+  // The three text boxes (speeches, votes, bills) are translated side by side, each with its own "exact" box. The vote
+  // and bill boxes are also searched by meaning (the typed words, any language) in parallel, unless "exact" is ticked.
+  const [searched, votesSearched, billsSearched, votesMeaning, billsMeaning] = await Promise.all([
     p.q ? searchTerms(p.q, translate, p.exact) : null,
     p.vq ? searchTerms(p.vq, translate, p.vexact) : null,
     p.bq ? searchTerms(p.bq, translate, p.bexact) : null,
+    p.vq && !p.vexact ? voteMeaning(db, member.id, voteFilters, p.vq, semantic) : null,
+    p.bq && !p.bexact ? billMeaning(db, member.id, { year: p.byear ?? undefined }, p.bq, semantic) : null,
   ]);
   const terms = searched ? queryTerms(searched) : [];
   const phrase = searched ? typedPhrase(searched.q) : undefined;
@@ -93,17 +104,29 @@ async function DeputyData({
       : searched
         ? searchSpeeches(db, { terms, phrase, memberId: member.id, filters, sort: p.sort, ...paging })
         : listMemberSpeeches(db, member.id, { ...paging, ...filters });
+  const votePage = { limit: VOTE_PAGE, offset: p.vp * VOTE_PAGE };
+  const votesOf = async () =>
+    votesSearched && votesMeaning
+      ? hybridVotes(db, member.id, { terms: queryTerms(votesSearched), phrase: typedPhrase(votesSearched.q), filters: voteFilters, meaning: votesMeaning, ...votePage })
+      : { ...(await listMemberVotes(db, member.id, { ...votePage, ...voteFilters, q: votesSearched ? queryTerms(votesSearched) : undefined })), meaning: "off" as const };
+  const billPage = { limit: BILL_PAGE, offset: p.bp * BILL_PAGE };
+  const billsOf = async () =>
+    billsSearched && billsMeaning
+      ? hybridBills(db, member.id, {
+          terms: queryTerms(billsSearched), phrase: typedPhrase(billsSearched.q), type: p.btype ?? undefined, year: p.byear ?? undefined, meaning: billsMeaning,
+          ...billPage,
+        })
+      : {
+          ...(await listMemberBills(db, member.id, {
+            type: p.btype ?? undefined, q: billsSearched ? queryTerms(billsSearched) : undefined, year: p.byear ?? undefined, ...billPage,
+          })),
+          meaning: "off" as const,
+        };
   const [speeches, votes, presence, bills, facets, words] = await Promise.all([
     speechesOf(),
-    listMemberVotes(db, member.id, {
-      limit: VOTE_PAGE, offset: p.vp * VOTE_PAGE, q: votesSearched ? queryTerms(votesSearched) : undefined, vote: p.vv ? VOTE_FILTERS[p.vv] : undefined,
-      kind: p.vk ?? undefined, from: p.vfrom ?? undefined, to: p.vto ?? undefined, differsFromGuidance: p.vdiff || undefined,
-    }),
+    votesOf(),
     getPresence(db, member.id, p.year),
-    listMemberBills(db, member.id, {
-      type: p.btype ?? undefined, q: billsSearched ? queryTerms(billsSearched) : undefined, year: p.byear ?? undefined, limit: BILL_PAGE,
-      offset: p.bp * BILL_PAGE,
-    }),
+    billsOf(),
     speechFacets(db),
     distinctiveWords(db, { memberId: member.id }, { year: p.year }),
   ]);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ExternalMandate, Position } from "@digestor/core";
-import type { HistoryInput, MemberInput, ProfileInput, SpeechInput } from "@digestor/core/server";
+import type { BlocInput, HistoryInput, MemberInput, ProfileInput, SpeechInput } from "@digestor/core/server";
 import { getJson, httpTiming } from "../records/http.js";
 
 /**
@@ -253,6 +253,28 @@ export async function fetchYearCsv(f: typeof fetch, kind: YearCsv, year: number)
 
 const LABEL_RE = /^([A-Z]+) (\d+)\/(\d{4})$/;
 const toBill = (p: z.infer<typeof proposicao>) => ({ id: p.id, label: `${p.siglaTipo} ${p.numero}/${p.ano}`, summary: p.ementa ?? "" });
+
+const bloco = z.object({ id: z.coerce.number(), nome: z.string(), idLegislatura: z.coerce.number().nullish(), federacao: z.boolean().nullish() }).passthrough();
+const blocoPartido = z.object({ sigla: z.string() }).passthrough();
+
+/**
+ * The party blocs and federations of this legislature (`/blocos?idLegislatura=57`: the full name, which the bulk
+ * guidance file cuts short as "Bl UniPpPsd...") with their member parties (`/blocos/{id}/partidos`; a bloc no longer
+ * in force answers an empty list). Recorded 2026-11-13 (fixtures `blocos-*.recorded.json`). One request at a time; any
+ * failure throws, so the caller keeps what it stored.
+ */
+export async function fetchBlocs(f: typeof fetch): Promise<BlocInput[]> {
+  const blocs = await pages(f, `${API}/blocos?idLegislatura=${LEGISLATURE}&itens=100`, bloco);
+  const out: BlocInput[] = [];
+  for (const b of blocs) {
+    const parties = await pages(f, `${API}/blocos/${b.id}/partidos`, blocoPartido);
+    out.push({
+      id: b.id, legislature: b.idLegislatura ?? LEGISLATURE, name: b.nome.trim(), federation: b.federacao ?? false,
+      parties: [...new Set(parties.map((p) => p.sigla.trim()).filter(Boolean))],
+    });
+  }
+  return out.sort((a, b) => a.id - b.id);
+}
 
 /** A bill (proposição) by id, or by its label ("PL 3880/2024"); null when the Câmara has none. */
 export async function fetchBill(

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import {
-  createDb, getHistory, getMember, getProfile, getRollCall, listMemberBills, listMemberSpeeches, listMemberVotes, searchSpeeches, type Db,
+  createDb, getHistory, getMember, getProfile, getRollCall, listBlocs, listMemberBills, listMemberSpeeches, listMemberVotes, searchSpeeches, type Db,
 } from "@digestor/core/server";
 import { httpTiming } from "../records/http.js";
 import { fakeCamaraMonitorFetch, monitorFixture } from "./fakeCamaraMonitor.js";
@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 afterAll(() => close());
 beforeEach(async () => {
-  await db.execute(sql`TRUNCATE parl_votes, parl_orientations, parl_roll_calls, parl_speeches, parl_member_history, parl_presence, parl_sessions, parl_bill_authors, parl_bills, parl_members RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE parl_bloc_parties, parl_blocs, parl_votes, parl_orientations, parl_roll_calls, parl_speeches, parl_member_history, parl_presence, parl_sessions, parl_bill_authors, parl_bills, parl_members RESTART IDENTITY CASCADE`);
 });
 
 describe("refreshMonitor", () => {
@@ -141,6 +141,30 @@ describe("refreshMonitor", () => {
     // votes carry the party and state of the vote row
     const v = await db.execute<{ party: string | null }>(sql`select party from parl_votes where member_id = ${her.id} limit 1`);
     expect(v.rows[0]!.party).toBe("PSOL");
+  });
+
+  it("stores the blocs and their members, so an MDB deputy gets the guidance of the bloc its cut-short label hides", async () => {
+    const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    expect(counts.blocs).toBe(7);
+    const big = (await listBlocs(db)).find((b) => b.id === 589)!;
+    expect(big.parties).toContain("MDB");
+    // Acácio Favacho (MDB) voted Não on 2462009-57, where "Bl UniPpPsd..." guided Não
+    const mdb = (await getMember(db, "camara", 204379))!;
+    const votes = await listMemberVotes(db, mdb.id, {});
+    expect(votes.rows.find((r) => r.rollCallId === "2462009-57")).toMatchObject({
+      vote: "Não", guidance: "Não", guidanceFrom: "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE",
+    });
+    expect(votes.guidedAll).toBeGreaterThan(0);
+  });
+
+  it("a failing bloc fetch keeps the stored blocs and the run goes on", async () => {
+    await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch({ "/blocos": { status: 500 } }).f }, window);
+    warn.mockRestore();
+    expect(counts.blocs).toBe(0);
+    expect(counts.orientations).toBe(26);
+    expect((await listBlocs(db)).find((b) => b.id === 589)?.parties).toContain("MDB");
   });
 
   it('profiles: "missing" refetches only members never refreshed', async () => {

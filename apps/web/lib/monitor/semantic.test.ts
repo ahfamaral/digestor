@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { clearSemanticCache, semanticSearch, speechPassages } from "./semantic";
+import { clearSemanticCache, recordSearch, semanticSearch, speechPassages } from "./semantic";
 
 const ok = (hits: { speechKey: string; score: number }[]) =>
   vi.fn(async () => new Response(JSON.stringify({ hits }), { status: 200, headers: { "content-type": "application/json" } }));
@@ -107,5 +107,51 @@ describe("speechPassages", () => {
     expect((await speechPassages("q", ["a"], 1, { fetch: refused })).ok).toBe(false);
     expect((await speechPassages("q", ["a"], 1, { fetch: passagesOk })).ok).toBe(false);
     expect(passagesOk).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("recordSearch", () => {
+  const hits = (h: { id: string; score: number }[]) =>
+    vi.fn(async () => new Response(JSON.stringify({ hits: h }), { status: 200, headers: { "content-type": "application/json" } }));
+
+  it("asks the worker to rank these roll calls or bills, and returns the hits in its order", async () => {
+    const f = hits([{ id: "2-1", score: 0.86 }, { id: "1-1", score: 0.8 }]);
+    expect(await recordSearch("rollCalls", "aposentadoria", ["1-1", "2-1"], { fetch: f, url: "http://w:1" })).toEqual({
+      hits: [{ id: "2-1", score: 0.86 }, { id: "1-1", score: 0.8 }], ok: true,
+    });
+    const [url, init] = f.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(url).toBe("http://w:1/monitor/search");
+    expect(JSON.parse(init.body as string)).toEqual({ q: "aposentadoria", kind: "rollCalls", ids: ["1-1", "2-1"], k: 50 });
+  });
+
+  it("caches per kind, query and id list; no ids or no query asks nothing", async () => {
+    const f = hits([{ id: "7", score: 0.9 }]);
+    await recordSearch("bills", "Saúde", ["7", "8"], { fetch: f });
+    await recordSearch("bills", "saude", ["7", "8"], { fetch: f });
+    expect(f).toHaveBeenCalledTimes(1);
+    await recordSearch("bills", "saude", ["7"], { fetch: f });
+    await recordSearch("rollCalls", "saude", ["7-1"], { fetch: f });
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(await recordSearch("bills", "saude", [], { fetch: f })).toEqual({ hits: [], ok: true });
+    expect(await recordSearch("bills", " ", ["7"], { fetch: f })).toEqual({ hits: [], ok: true });
+    expect(f).toHaveBeenCalledTimes(3);
+  });
+
+  it("a worker that is down gives ok: false and the speech search waits too; a 503 (that index not built yet) fails this search only", async () => {
+    const refused = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    expect(await recordSearch("bills", "x", ["1"], { fetch: refused })).toEqual({ hits: [], ok: false });
+    const never = ok([]);
+    expect(await semanticSearch("y", { fetch: never })).toEqual({ keys: [], ok: false });
+    expect(never).not.toHaveBeenCalled();
+    clearSemanticCache();
+    const missing = vi.fn(async () => new Response("{}", { status: 503 }));
+    expect(await recordSearch("bills", "x", ["1"], { fetch: missing })).toEqual({ hits: [], ok: false });
+    const asked = ok([{ speechKey: "a", score: 0.9 }]);
+    expect(await semanticSearch("y", { fetch: asked })).toEqual({ keys: ["a"], ok: true });
+    clearSemanticCache();
+    const garbage = vi.fn(async () => new Response(JSON.stringify({ hits: [{ speechKey: "a", score: 1 }] }), { status: 200 }));
+    expect(await recordSearch("bills", "x", ["1"], { fetch: garbage })).toEqual({ hits: [], ok: false });
   });
 });

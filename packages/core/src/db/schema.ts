@@ -711,3 +711,46 @@ export const parlSpeechEmbeddings = pgTable("parl_speech_embeddings", {
   chunks: integer("chunks").notNull(),
   embeddedAt: timestamp("embedded_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Roll calls and bills in the meaning index (Chroma collections `monitor_camara_rollcalls` and `monitor_camara_bills`,
+ * `embedRecords` in the worker): one row per record with the md5 of the text that was embedded (`kind`: "roll_call" or
+ * "bill"; `id`: the roll call id, or the bill id as text). A record whose text changed since is embedded again; a record
+ * gone has its vector deleted and its row removed on the next run.
+ */
+export const parlRecordEmbeddings = pgTable(
+  "parl_record_embeddings",
+  {
+    kind: text("kind").$type<"roll_call" | "bill">().notNull(),
+    id: text("id").notNull(),
+    hash: text("hash").notNull(),
+    embeddedAt: timestamp("embedded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.kind, t.id] })],
+);
+
+/**
+ * The Câmara's party blocs and federations of a legislature (`/blocos`), as published: the full name ("UNIÃO, PP,
+ * PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE"), whose guidance label in the bulk files is cut short
+ * ("Bl UniPpPsd..."). `parl_bloc_parties`: the member parties (`/blocos/{id}/partidos`); a bloc the API lists with no
+ * party (dissolved) keeps the members last seen.
+ */
+export const parlBlocs = pgTable("parl_blocs", {
+  id: integer("id").primaryKey(),
+  house: text("house").notNull(),
+  legislature: integer("legislature").notNull(),
+  name: text("name").notNull(),
+  federation: boolean("federation").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const parlBlocParties = pgTable(
+  "parl_bloc_parties",
+  {
+    blocId: integer("bloc_id")
+      .notNull()
+      .references(() => parlBlocs.id, { onDelete: "cascade" }),
+    party: text("party").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.blocId, t.party] })],
+);

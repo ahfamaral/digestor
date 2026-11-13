@@ -30,3 +30,12 @@ objects (urgency requests, appeals), 11 of them no objects at all; vote labels a
 
 - `evento-82635.recorded.json` (recorded 2026-11-12): `GET /api/v2/eventos/82635`, the plenary of 30 Jun 2026; its
   `urlRegistro` is the session's official YouTube video (the video-evidence job reads only that field).
+
+- Party blocs (recorded 2026-11-13 from the worker container, untrimmed): `blocos-57.recorded.json` is
+  `GET /api/v2/blocos?idLegislatura=57&itens=100` (7 rows: `id` and `idLegislatura` are strings, `nome` is the full
+  name, e.g. "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE" (589), `federacao` true for 584–586;
+  one page). `blocos-{584…590}-partidos.recorded.json` is `GET /api/v2/blocos/{id}/partidos` (`dados[]` with `id` = the
+  bloc's id, a number, `sigla`, `nome`, `uri`): 589 lists PSDB, CIDADANIA, UNIÃO, PP, REPUBLICANOS, PSD, MDB, PODE; 584
+  PT, PCdoB, PV; 585 PSDB, CIDADANIA; 586 PSOL, REDE; 587 (REPUBLICANOS), 588 (UNIÃO) and 590 (AVANTE, SOLIDARIEDADE,
+  PRD, whose guidance label "Bl AvanSolidPrd..." stops in 2026) answer an empty list. `GET /api/v2/blocos` without a
+  legislature lists only 584, 585, 586 and 589 (the blocs in force).

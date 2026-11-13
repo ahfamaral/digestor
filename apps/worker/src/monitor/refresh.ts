@@ -1,11 +1,11 @@
 import {
   countHistory, countInOffice, countSpeechesInWindow, dropMisfiledSpeeches, fillSpeechParties, getProfile, monitorRowCounts, membersNeedingProfile, replaceBillAuthors, replaceHistory, replaceOrientations,
   refreshWordCounts, replacePresence, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, setProfile, upsertBills, upsertMembers,
-  upsertRollCalls, upsertSessions, type Db,
+  replaceBlocs, upsertRollCalls, upsertSessions, type Db,
 } from "@digestor/core/server";
 import { mapLimit } from "../records/http.js";
 import {
-  fetchBill, fetchHistory, fetchInOfficeIds, fetchMembers, fetchProfile, fetchSpeeches, fetchYearCsv, MONITOR_FROM, type YearCsv,
+  fetchBill, fetchBlocs, fetchHistory, fetchInOfficeIds, fetchMembers, fetchProfile, fetchSpeeches, fetchYearCsv, MONITOR_FROM, type YearCsv,
 } from "./camara.js";
 import {
   AUTHOR_COLUMNS, BILL_COLUMNS, parseCsv, toBillAuthors, toBills, toOrientations, toPresence, toSessions, type CsvRow,
@@ -21,6 +21,8 @@ export type RefreshCounts = {
   members: number; speeches: { inserted: number; kept: number; failed: number }; misfiled: number; rollCalls: number; votes: number; bills: number;
   history: { ok: number; failed: number; kept: number }; profiles: { ok: number; failed: number; kept: number };
   orientations: number; sessions: number; presence: number; authoredBills: number;
+  /** Party blocs and federations listed by the API this run (0: the fetch failed or listed none; the stored ones kept). */
+  blocs: number;
   /** Rows of `parl_word_counts` after the rebuild ("Words used more than the chamber"). */
   words: number;
 };
@@ -32,7 +34,8 @@ export const SPEECH_WINDOW_DAYS = 60;
 /**
  * Deputies (everyone who sat since `MONITOR_FROM`, in office today flagged), each deputy's history (party changes,
  * leave), each deputy's speeches in [speechesFrom, to] (replaced, so late transcriptions arrive) with the party on the
- * day and the word counts rebuilt from them, profiles (all on Mondays, else only those never fetched), then the year's bulk files one at a time: roll calls
+ * day and the word counts rebuilt from them, profiles (all on Mondays, else only those never fetched), the party blocs and
+ * their member parties, then the year's bulk files one at a time: roll calls
  * and votes, bills still missing an id or summary, guidance, plenary sessions and presence, bills and their authors.
  * Upserts and replaces only: a rerun is harmless.
  * The Câmara sometimes answers 200 with an empty list when it is failing: a deputy whose stored speeches in the window
@@ -133,7 +136,20 @@ export async function refreshMonitor(
   if (profiles.failed > 0) {
     console.warn(`monitor.refresh: profiles of ${profiles.failed} deputies failed; last error:`, profileError instanceof Error ? profileError.message : profileError);
   }
-  const counts = { members: members.length, speeches, misfiled, words, history, profiles, rollCalls: 0, votes: 0, bills: 0, orientations: 0, sessions: 0, presence: 0, authoredBills: 0 };
+  // Party blocs and their members (the guidance file names a bloc only cut short: "Bl UniPpPsd..."). A failure or an
+  // empty list keeps the stored ones; never fails the run.
+  let blocs = 0;
+  try {
+    const listed = await fetchBlocs(f);
+    await replaceBlocs(db, listed);
+    blocs = listed.length;
+  } catch (err) {
+    console.warn("monitor.refresh: party blocs failed; kept the stored ones:", err instanceof Error ? err.message : err);
+  }
+  const counts = {
+    members: members.length, speeches, misfiled, words, history, profiles, rollCalls: 0, votes: 0, bills: 0, orientations: 0, sessions: 0, presence: 0,
+    authoredBills: 0, blocs,
+  };
 
   // One file at a time: three large parallel downloads are what the Câmara cut off. A file that doesn't exist (a 4xx,
   // e.g. the new year's on 1 January) is final: no roll calls this run, no retry.

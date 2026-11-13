@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { guidanceLabels, isRequestVote, VOTE_FILTERS } from "./monitorVotes.ts";
+import { applicableGuidance, guidanceLabels, isRequestVote, linkBloc, VOTE_FILTERS, type StoredBloc } from "./monitorVotes.ts";
 
 /** The parties at the vote in the dev data (2026), as the Câmara spells them. */
 const PARTIES = [
@@ -52,6 +52,57 @@ describe("guidanceLabels", () => {
   it("a label that could be two parties is no one's", () => {
     expect(guidanceLabels("PSDB", ["Ps"], ["PSDB", "PSOL"])).toEqual([]);
     expect(guidanceLabels("PSDB", ["Bl Ps..."], ["PSDB", "PSOL"])).toEqual([]);
+  });
+});
+
+/** As the Câmara API lists them on 2026-11-13 (`/blocos?idLegislatura=57`, `/blocos/{id}/partidos`). */
+const BIG = "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE";
+const BLOCS: StoredBloc[] = [
+  { name: "AVANTE, SOLIDARIEDADE, PRD", federation: false, parties: [] },
+  { name: "Federação Brasil da Esperança - Fe Brasil", federation: true, parties: ["PT", "PCdoB", "PV"] },
+  { name: "Federação PSDB CIDADANIA", federation: true, parties: ["PSDB", "CIDADANIA"] },
+  { name: "Federação PSOL REDE", federation: true, parties: ["PSOL", "REDE"] },
+  { name: "REPUBLICANOS", federation: false, parties: [] },
+  { name: "UNIÃO", federation: false, parties: [] },
+  { name: BIG, federation: false, parties: ["PSDB", "CIDADANIA", "UNIÃO", "PP", "REPUBLICANOS", "PSD", "MDB", "PODE"] },
+];
+
+describe("linkBloc", () => {
+  it("links a cut-short label to the one stored bloc whose listed parties start that way, in order", () => {
+    expect(linkBloc("Bl UniPpPsd...", BLOCS, PARTIES)?.name).toBe(BIG);
+    expect(linkBloc("Bl AvanSolidPrd...", BLOCS, PARTIES)?.name).toBe("AVANTE, SOLIDARIEDADE, PRD");
+    // not in order, a federation, or two blocs that fit: none
+    expect(linkBloc("Bl PpUni...", BLOCS, PARTIES)).toBeNull();
+    expect(linkBloc("Bl PsdbCid...", BLOCS, PARTIES)).toBeNull();
+    expect(linkBloc("Bl Uni...", [...BLOCS, { name: "UNIÃO, PL", federation: false, parties: ["UNIÃO", "PL"] }], PARTIES)).toBeNull();
+    expect(linkBloc("PL", BLOCS, PARTIES)).toBeNull();
+  });
+});
+
+describe("applicableGuidance", () => {
+  const of2 = (party: string) => applicableGuidance(party, LABELS, PARTIES, BLOCS);
+  it("a bloc's published members get its guidance, with the bloc's full name as the source", () => {
+    for (const party of ["MDB", "REPUBLICANOS", "PODE", "PSDB", "CIDADANIA"]) {
+      expect(of2(party)).toEqual([{ label: "Bl UniPpPsd...", rank: 2, source: BIG }]);
+    }
+    expect(of2("PSD")).toEqual([{ label: "Bl UniPpPsd...", rank: 2, source: BIG }]);
+  });
+
+  it("own label and federation as before (own: no source; federation: its label); stored members only for blocs", () => {
+    expect(of2("PL")).toEqual([{ label: "PL", rank: 0, source: null }]);
+    expect(of2("PT")).toEqual([{ label: "Fdr PT-PCdoB-PV", rank: 1, source: "Fdr PT-PCdoB-PV" }]);
+  });
+
+  it("a linked bloc listed with no members (dissolved): the name rule, with the label as the source", () => {
+    expect(of2("AVANTE")).toEqual([
+      { label: "Avante", rank: 0, source: null },
+      { label: "Bl AvanSolidPrd...", rank: 2, source: "Bl AvanSolidPrd..." },
+    ]);
+  });
+
+  it("no stored blocs: exactly the name rule", () => {
+    expect(applicableGuidance("MDB", LABELS, PARTIES, [])).toEqual([]);
+    expect(applicableGuidance("PSD", LABELS, PARTIES, [])).toEqual([{ label: "Bl UniPpPsd...", rank: 2, source: "Bl UniPpPsd..." }]);
   });
 });
 

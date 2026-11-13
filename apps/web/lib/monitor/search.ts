@@ -1,10 +1,10 @@
-import { phraseTerms, rrf, typedPhrase } from "@digestor/core";
+import { fuseRecords, phraseTerms, rrf, typedPhrase } from "@digestor/core";
 import {
-  filterSpeechKeys, searchRollCalls, searchSpeeches, speechesByKeys, speechKeysByWords, type Db, type RollCallHit, type SpeechFilters,
-  type SpeechHit,
+  filterSpeechKeys, listMemberBills, listMemberVotes, memberBillIds, memberVoteIds, searchRollCalls, searchSpeeches, speechesByKeys, speechKeysByWords,
+  type Db, type MemberBill, type MemberVoteFilters, type RollCallHit, type SpeechFilters, type SpeechHit, type VoteRow,
 } from "@digestor/core/server";
 import type { LandingParams } from "./params";
-import type { SemanticResult } from "./semantic";
+import type { RecordKindParam, RecordSearchResult, SemanticResult } from "./semantic";
 
 import { cleanQuery } from "./params";
 
@@ -107,6 +107,64 @@ export async function hybridSpeeches(
   const wordKeys = new Set(words.keys);
   const rows = await speechesByKeys(db, pageKeys, {}, { terms: a.terms });
   return { total: list.length, rows: rows.map((r) => ({ ...r, byMeaning: !wordKeys.has(r.speechKey ?? "") })) };
+}
+
+
+// ── A deputy's vote and bill text boxes ──────────────────────────────────────────────────────────────────────────
+
+/** The worker's search by meaning over a deputy's own roll calls or bills (`recordSearch`); `ok: false` when it can't answer. */
+export type RecordSemantic = (kind: RecordKindParam, q: string, ids: string[]) => Promise<RecordSearchResult>;
+/** The deputy's records sent to be ranked by meaning at most (the worker's limit). */
+const MAX_RECORD_IDS = 5000;
+/** "used": fused with the search by meaning; "unavailable": the worker didn't answer (words only, quiet note); "off": exact words or no text. */
+export type RecordMeaning = "used" | "unavailable" | "off";
+export type DeputyVote = VoteRow & { byMeaning?: boolean };
+export type DeputyBill = MemberBill & { byMeaning?: boolean };
+
+/**
+ * The search by meaning for the votes text box, started beside the query translation (the e5 model reads the typed
+ * words in any language): the deputy's votes that pass the other filters, ranked by the worker.
+ */
+export async function voteMeaning(
+  db: Db, memberId: number, filters: Omit<MemberVoteFilters, "q">, q: string, semantic: RecordSemantic,
+): Promise<RecordSearchResult> {
+  const ids = await memberVoteIds(db, memberId, filters);
+  return semantic("rollCalls", q, ids.slice(0, MAX_RECORD_IDS));
+}
+
+/** The same for the bills text box: the deputy's bills of the year filter (every type: the counts by type cover them all). */
+export async function billMeaning(db: Db, memberId: number, a: { year?: number }, q: string, semantic: RecordSemantic): Promise<RecordSearchResult> {
+  const ids = await memberBillIds(db, memberId, { year: a.year });
+  return semantic("bills", q, ids.slice(0, MAX_RECORD_IDS).map(String));
+}
+
+/**
+ * The votes text box with the search by meaning: word matches best first fused with the closest meaning hits
+ * (`fuseRecords`, Reciprocal Rank Fusion as the topic search), every other filter applied to both, paged over that list;
+ * rows only the meaning search found are marked `byMeaning`. A worker that didn't answer leaves the word matches, best
+ * first.
+ */
+export async function hybridVotes(
+  db: Db, memberId: number,
+  a: { terms: string[]; phrase?: string; filters: Omit<MemberVoteFilters, "q">; meaning: RecordSearchResult; limit: number; offset: number },
+): Promise<Omit<Awaited<ReturnType<typeof listMemberVotes>>, "rows"> & { rows: DeputyVote[]; meaning: RecordMeaning }> {
+  const words = await memberVoteIds(db, memberId, { ...a.filters, q: a.terms, phrase: a.phrase });
+  const { list, meaningOnly } = a.meaning.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
+  const r = await listMemberVotes(db, memberId, { ...a.filters, ids: list, limit: a.limit, offset: a.offset });
+  const only = new Set(meaningOnly);
+  return { ...r, rows: r.rows.map((v) => ({ ...v, byMeaning: only.has(v.rollCallId) })), meaning: a.meaning.ok ? "used" : "unavailable" };
+}
+
+/** The bills text box with the search by meaning, as `hybridVotes`; the type filter and the counts by type follow the fused list. */
+export async function hybridBills(
+  db: Db, memberId: number,
+  a: { terms: string[]; phrase?: string; type?: string; year?: number; meaning: RecordSearchResult; limit: number; offset: number },
+): Promise<Omit<Awaited<ReturnType<typeof listMemberBills>>, "rows"> & { rows: DeputyBill[]; meaning: RecordMeaning }> {
+  const words = (await memberBillIds(db, memberId, { q: a.terms, phrase: a.phrase, year: a.year })).map(String);
+  const { list, meaningOnly } = a.meaning.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
+  const r = await listMemberBills(db, memberId, { type: a.type, year: a.year, ids: list.map(Number), limit: a.limit, offset: a.offset });
+  const only = new Set(meaningOnly);
+  return { ...r, rows: r.rows.map((b) => ({ ...b, byMeaning: only.has(String(b.id)) })), meaning: a.meaning.ok ? "used" : "unavailable" };
 }
 
 

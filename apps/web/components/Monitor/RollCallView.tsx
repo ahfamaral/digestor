@@ -98,7 +98,10 @@ export function RollCallView({
           <ul className="divide-y divide-border rounded-xl border border-border bg-white">
             {r.orientations.map((o) => (
               <li key={o.bloc} className="flex items-baseline justify-between gap-3 px-4 py-2 text-sm">
-                <span lang="pt-BR" className="min-w-0 break-words">{o.bloc}</span>
+                <span lang="pt-BR" className="grid min-w-0 break-words">
+                  {o.bloc}
+                  {o.blocName && <span className="text-xs text-muted-foreground">{o.blocName}</span>}
+                </span>
                 <span lang="pt-BR" className={o.orientation ? "shrink-0 font-semibold" : "shrink-0 text-muted-foreground"}>
                   {o.orientation || tm(locale, "rollCallPage.noGuidance")}
                 </span>

@@ -57,8 +57,9 @@ import { RECORDS_RETRY_CRON, RECORDS_RETRY_QUEUE, namesJob, runRecordRetries } f
 import { MONITOR_REFRESH_CRON, MONITOR_REFRESH_QUEUE, nightlyWindow, refreshMonitor } from "./monitor/refresh.js";
 import { MONITOR_VIDEO_CRON, MONITOR_VIDEO_QUEUE, runSessionVideos, videoJobEnabled } from "./monitor/video.js";
 import {
-  embedSpeeches, MONITOR_EMBED_CRON, MONITOR_EMBED_MAX_PER_RUN, MONITOR_EMBED_QUEUE, searchSpeechMeaning, speechPassages,
+  MONITOR_EMBED_CRON, MONITOR_EMBED_MAX_PER_RUN, MONITOR_EMBED_QUEUE, searchSpeechMeaning, speechPassages,
 } from "./monitor/embedSpeeches.js";
+import { embedMonitor, searchRecordMeaning, warmRecordIndexes } from "./monitor/embedRecords.js";
 import { DEFAULT_HTTP_PORT, startHttpServer } from "./http.js";
 import { fetchCaptions } from "./youtube/captions.js";
 import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
@@ -191,11 +192,12 @@ async function main() {
     const counts = await refreshMonitor({ db, fetch }, nightlyWindow());
     console.log("monitor.refresh:", JSON.stringify(counts));
   });
-  // Search by meaning: new speeches into the index, revised ones' old chunks out, at most 2,000 a run (a backlog
-  // catches up over the next days, or at once with scripts/monitor-embed.ts). A throw retries; reruns are safe.
+  // Search by meaning: new speeches into the index, revised ones' old chunks out, then new or changed roll calls and
+  // bills, at most 2,000 items a run (a backlog catches up over the next days, or at once with
+  // scripts/monitor-embed.ts). A throw retries; reruns are safe.
   const meaning = { db, chroma, embedder };
   await boss.work(MONITOR_EMBED_QUEUE, { batchSize: 1 }, async () => {
-    const out = await embedSpeeches(meaning, { max: MONITOR_EMBED_MAX_PER_RUN });
+    const out = await embedMonitor(meaning, MONITOR_EMBED_MAX_PER_RUN);
     console.log("monitor.embed:", JSON.stringify(out));
   });
   // Video evidence (only with MONITOR_VIDEO_ENABLED=true): a session's failure is recorded on its row, never thrown.
@@ -211,11 +213,16 @@ async function main() {
   // Internal HTTP (search by meaning for the web app): loopback in dev, the compose network in prod; no auth.
   const httpPort = Number(process.env.WORKER_HTTP_PORT) || DEFAULT_HTTP_PORT;
   const http = startHttpServer(
-    { search: (q, k) => searchSpeechMeaning(meaning, q, k), passages: (q, keys, per) => speechPassages(meaning, q, keys, per) },
+    {
+      search: (q, k) => searchSpeechMeaning(meaning, q, k),
+      passages: (q, keys, per) => speechPassages(meaning, q, keys, per),
+      searchRecords: (kind, q, ids, k) => searchRecordMeaning(meaning, kind, q, ids, k),
+    },
     httpPort,
   );
   // Load the e5 model now, so the first search doesn't wait for it (the web gives up after 3 s).
   embedder.embed(["warm-up"], "query").catch((err) => console.error("e5 warm-up failed:", err));
+  void warmRecordIndexes(meaning);
 
   let stopping = false;
   const shutdown = async () => {

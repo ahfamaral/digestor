@@ -218,6 +218,13 @@
       "when": 1794595130110,
       "tag": "0030_monitor_embeddings",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794601091364,
+      "tag": "0031_monitor_records_blocs",
+      "breakpoints": true
     }
   ]
 }

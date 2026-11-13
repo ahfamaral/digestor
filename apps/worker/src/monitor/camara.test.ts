@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { httpTiming } from "../records/http.js";
 import {
+  fetchBlocs,
   fetchBill, fetchHistory, fetchInOfficeIds, fetchMembers, fetchProfile, fetchSpeeches, fetchYearCsv, LEGISLATURE_FROM, mergeMandates, MONITOR_FROM,
 } from "./camara.js";
 import { fakeCamaraMonitorFetch, monitorFixture } from "./fakeCamaraMonitor.js";
@@ -198,5 +199,23 @@ describe("Câmara monitor client", () => {
     expect(mergeMandates([m(2009, 2012), m(2013, 2016, "PT")])).toEqual([m(2009, 2012), m(2013, 2016, "PT")]);
     expect(mergeMandates([m(2009, 2012), m(2013, 2016, "PSOL", "Canoas")])).toEqual([m(2009, 2012), m(2013, 2016, "PSOL", "Canoas")]);
     expect(mergeMandates([m(2009, null), m(2013, 2016)])).toEqual([m(2009, null), m(2013, 2016)]);
+  });
+
+  it("fetchBlocs: the legislature's blocs with their full names and member parties, as recorded", async () => {
+    const { f, calls } = fakeCamaraMonitorFetch();
+    const blocs = await fetchBlocs(f);
+    expect(calls[0]).toBe("https://dadosabertos.camara.leg.br/api/v2/blocos?idLegislatura=57&itens=100");
+    expect(blocs.map((b) => b.id)).toEqual([584, 585, 586, 587, 588, 589, 590]);
+    expect(blocs.find((b) => b.id === 589)).toEqual({
+      id: 589, legislature: 57, name: "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE", federation: false,
+      parties: ["PSDB", "CIDADANIA", "UNIÃO", "PP", "REPUBLICANOS", "PSD", "MDB", "PODE"],
+    });
+    expect(blocs.find((b) => b.id === 585)).toMatchObject({ federation: true, parties: ["PSDB", "CIDADANIA"] });
+    expect(blocs.find((b) => b.id === 590)).toMatchObject({ name: "AVANTE, SOLIDARIEDADE, PRD", parties: [] });
+  });
+
+  it("fetchBlocs: a members request that fails fails the whole fetch (the stored blocs are kept by the caller)", async () => {
+    const { f } = fakeCamaraMonitorFetch({ "/blocos/589/partidos": { status: 500 } });
+    await expect(fetchBlocs(f)).rejects.toThrow();
   });
 });

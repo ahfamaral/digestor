@@ -611,6 +611,46 @@ describe("monitor components", () => {
     expect(none).toContain("Nenhuma proposição ou requerimento corresponde a estes filtros.");
   });
 
+  it("vote and bill text boxes searched by meaning: rows found only by meaning are marked, a line says why; a worker down says so", () => {
+    const vote = { rollCallId: "1-1", date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: "PL 1/2026", billSummary: "Previdência", vote: "Sim", guidance: null, guidanceFrom: null };
+    const params = parseDeputy({ vq: "pensions", bq: "pensions" });
+    const view = (meaning: "used" | "unavailable" | "off", marked: boolean, locale: "en" | "pt-BR" = "en") =>
+      renderToStaticMarkup(
+        <DeputyView
+          locale={locale} member={member} params={params} searched={null} speeches={{ total: 0, rows: [] }}
+          votes={{ total: 2, all: 125, meaning, rows: [{ ...vote, byMeaning: false }, { ...vote, rollCallId: "2-1", byMeaning: marked }] }}
+          {...emptyWorkspace}
+          bills={{
+            total: 2, all: 9, byType: [{ type: "PL", n: 2 }], meaning,
+            rows: [10, 11].map((id) => ({ id, type: "PL", number: id, year: 2026, summary: "Aposentadoria", presentedAt: "2026-03-01T10:00", firstAuthor: true, byMeaning: marked && id === 11 })),
+          }}
+        />,
+      );
+    const used = view("used", true);
+    const votes = used.slice(used.indexOf('id="votes"'));
+    const bills = used.slice(used.indexOf('id="bills"'), used.indexOf('id="votes"'));
+    expect(votes.match(/Related by meaning</g)).toHaveLength(1);
+    expect(votes).toContain("Also searched by meaning: votes marked “related by meaning” are about the topic without using these words. Closest matches first.");
+    expect(bills.match(/Related by meaning</g)).toHaveLength(1);
+    expect(bills).toContain("Also searched by meaning: bills marked “related by meaning”");
+    // used, nothing marked: only the order is said
+    const plain = view("used", false);
+    expect(plain).not.toContain("Also searched by meaning");
+    expect(plain).toContain("Closest matches first.");
+    const down = view("unavailable", false, "pt-BR");
+    expect(down).toContain("A busca pelo sentido não está disponível agora; mostramos as votações com as suas palavras, primeiro as mais próximas.");
+    expect(down).toContain("A busca pelo sentido não está disponível agora; mostramos as proposições com as suas palavras, primeiro as mais próximas.");
+    const exact = view("off", false);
+    expect(exact).not.toContain("by meaning");
+    expect(exact).not.toContain("Closest matches first.");
+  });
+
+  it("a bloc guidance names the bloc as the Câmara lists it", () => {
+    const v = { rollCallId: "1-1", date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: null, billSummary: "", vote: "Não", guidance: "Sim" };
+    const html = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidanceFrom: "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE" }} /></ul>);
+    expect(html).toContain("(bloc: UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE)");
+  });
+
   it("the profile line merges earlier mandates", () => {
     const html = renderToStaticMarkup(
       <ProfileLine locale="en" profile={{ profession: "Bibliotecária", externalMandates: [{ office: "Vereador(a)", place: "Porto Alegre", uf: "RS", from: 2009, to: 2018, party: "PSOL" }], fronts: [], positions: [] }} />,
@@ -625,7 +665,10 @@ describe("monitor components", () => {
 
   const rollCallDetail = {
     id: "2449741-72", date: "2026-03-10", description: "Aprovado o projeto.", yes: 2, no: 1, other: 0, billId: 2449741, billLabel: "PL 2942/2024",
-    billSummary: "Altera a Lei", orientations: [{ bloc: "PL", orientation: "Sim" }, { bloc: "PDT", orientation: "" }],
+    billSummary: "Altera a Lei", orientations: [
+      { bloc: "PL", orientation: "Sim", blocName: null }, { bloc: "PDT", orientation: "", blocName: null },
+      { bloc: "Bl UniPpPsd...", orientation: "Não", blocName: "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE" },
+    ],
     parties: [
       { party: "UNIÃO", counts: [{ vote: "Sim", n: 1 }, { vote: "Não", n: 1 }], deputies: [
         { externalId: 220576, name: "Alfredo Gaspar", uf: "AL", vote: "Sim" }, { externalId: 1, name: "Outro", uf: "BA", vote: "Não" },
@@ -643,6 +686,12 @@ describe("monitor components", () => {
     expect(html).toContain("Party at the time of the vote, as published.");
     expect(html).toContain('href="https://www.camara.leg.br/propostas-legislativas/2449741"');
     expect(html.indexOf("UNIÃO")).toBeLessThan(html.indexOf("Alfredo Gaspar"));
+  });
+
+  it("the guidance list names a cut-short bloc label by its full name", () => {
+    const html = renderToStaticMarkup(<RollCallView locale="pt-BR" rollCall={rollCallDetail} />);
+    expect(html).toContain("Bl UniPpPsd...");
+    expect(html).toContain("UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE");
   });
 
   it("a vote row leads with what was voted; the bill summary comes second; a request is marked", () => {

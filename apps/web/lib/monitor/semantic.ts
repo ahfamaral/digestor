@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { normName } from "@digestor/core";
 
@@ -23,6 +24,7 @@ const cache = new Map<string, { keys: string[]; at: number }>();
 let downUntil = 0;
 export function clearSemanticCache(): void {
   cache.clear();
+  recordCache.clear();
   downUntil = 0;
 }
 
@@ -52,6 +54,52 @@ export async function semanticSearch(
     downUntil = Date.now() + RETRY_AFTER_MS;
     console.warn("monitor search by meaning:", err instanceof Error ? err.message : err);
     return { keys: [], ok: false };
+  }
+}
+
+export type RecordKindParam = "rollCalls" | "bills";
+export type RecordHit = { id: string; score: number };
+export type RecordSearchResult = { hits: RecordHit[]; ok: boolean };
+/** Meaning hits asked for per text box: a deputy's own votes or bills, of which only the closest are kept (search.ts). */
+export const RECORD_MEANING_K = 50;
+const recordReply = z.object({ hits: z.array(z.object({ id: z.string(), score: z.number() })) });
+const recordCache = new Map<string, { hits: RecordHit[]; at: number }>();
+
+/**
+ * A deputy's own roll calls or bills (`ids`, already filtered) ranked by meaning by the worker (`POST /monitor/search`
+ * with `kind`), best first, with the cosine score. Same contract as `semanticSearch`: 3 s, cached an hour per kind,
+ * query and id list, `ok: false` on any failure (never a throw); only a worker that didn't answer is left alone for 30 s
+ * (shared with the speech search).
+ */
+export async function recordSearch(
+  kind: RecordKindParam, q: string, ids: string[], o: { url?: string; fetch?: typeof fetch; timeoutMs?: number } = {},
+): Promise<RecordSearchResult> {
+  const norm = normName(q);
+  if (!norm || ids.length === 0) return { hits: [], ok: true };
+  const key = `${kind}|${norm}|${createHash("sha1").update(ids.join(",")).digest("hex")}`;
+  const hit = recordCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return { hits: hit.hits, ok: true };
+  if (Date.now() < downUntil) return { hits: [], ok: false };
+  const base = (o.url ?? process.env.WORKER_URL ?? DEFAULT_WORKER_URL).replace(/\/+$/, "");
+  try {
+    const res = await (o.fetch ?? fetch)(`${base}/monitor/search`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ q, kind, ids, k: RECORD_MEANING_K }),
+      signal: AbortSignal.timeout(o.timeoutMs ?? 3000),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new WorkerAnswered(res.status);
+    const hits = recordReply.parse(await res.json()).hits;
+    if (recordCache.size >= CACHE_SIZE) recordCache.delete(recordCache.keys().next().value!);
+    recordCache.set(key, { hits, at: Date.now() });
+    return { hits, ok: true };
+  } catch (err) {
+    // A worker that answered (a 503: this kind's index not built yet, e.g. right after an update) fails this search
+    // only; a worker that didn't (refused, timed out) is left alone for 30 s, the speech search too.
+    if (!(err instanceof WorkerAnswered) && !(err instanceof z.ZodError)) downUntil = Date.now() + RETRY_AFTER_MS;
+    console.warn(`monitor ${kind} search by meaning:`, err instanceof Error ? err.message : err);
+    return { hits: [], ok: false };
   }
 }
 

@@ -103,6 +103,9 @@ export const monitorEn = {
     types: "Filter by type",
     count: "{n} of {total} bills and requests",
     none: "No bills or requests match these filters.",
+    meaningUsed: "Also searched by meaning: bills marked “related by meaning” are about the topic without using these words. Closest matches first.",
+    meaningUnavailable: "Search by meaning isn't available right now; showing bills with your words, closest matches first.",
+    bestFirst: "Closest matches first.",
   },
   billFilters: {
     label: "Search these bills and requests",
@@ -255,6 +258,9 @@ export const monitorEn = {
     noneDiffer: "None of the {n} votes with a published guidance differ from it.",
     noneDifferOne: "The one vote with a published guidance doesn't differ from it.",
     noneGuided: "None of the votes matching the other filters has a published party guidance.",
+    meaningUsed: "Also searched by meaning: votes marked “related by meaning” are about the topic without using these words. Closest matches first.",
+    meaningUnavailable: "Search by meaning isn't available right now; showing votes with your words, closest matches first.",
+    bestFirst: "Closest matches first.",
     pageTitle: "{bill} roll call",
     pageTitleNoBill: "Roll call",
   },
@@ -269,7 +275,7 @@ export const monitorEn = {
     noGuidance: "No party guidance is published under this party's name for these votes, so this filter can't be used here.",
     guidedCount: "{n} of {total} votes have a published party guidance",
     differsNote:
-      "Compared with the guidance the party (or its bloc) gave for that vote. A free vote (‘Liberado’) or no guidance never counts. A bloc's guidance is used only for the parties its published name shows.",
+      "Compared with the guidance the party (or its bloc) gave for that vote. A free vote (‘Liberado’) or no guidance never counts. A bloc's guidance is used for the parties the Câmara lists in that bloc.",
     apply: "Show",
   },
   paging: {
@@ -391,6 +397,9 @@ export const monitorPtBR: MonitorMessages = {
     types: "Filtrar por tipo",
     count: "{n} de {total} proposições e requerimentos",
     none: "Nenhuma proposição ou requerimento corresponde a estes filtros.",
+    meaningUsed: "Também buscamos pelo sentido: proposições marcadas “relacionado pelo sentido” tratam do tema sem usar estas palavras. Primeiro as mais próximas.",
+    meaningUnavailable: "A busca pelo sentido não está disponível agora; mostramos as proposições com as suas palavras, primeiro as mais próximas.",
+    bestFirst: "Primeiro as mais próximas.",
   },
   billFilters: {
     label: "Buscar nestas proposições e requerimentos",
@@ -543,6 +552,9 @@ export const monitorPtBR: MonitorMessages = {
     noneDiffer: "Nenhum dos {n} votos com orientação publicada difere dela.",
     noneDifferOne: "O único voto com orientação publicada não difere dela.",
     noneGuided: "Nenhum dos votos que atendem aos outros filtros tem orientação de partido publicada.",
+    meaningUsed: "Também buscamos pelo sentido: votações marcadas “relacionado pelo sentido” tratam do tema sem usar estas palavras. Primeiro as mais próximas.",
+    meaningUnavailable: "A busca pelo sentido não está disponível agora; mostramos as votações com as suas palavras, primeiro as mais próximas.",
+    bestFirst: "Primeiro as mais próximas.",
     pageTitle: "Votação {bill}",
     pageTitleNoBill: "Votação nominal",
   },
@@ -557,7 +569,7 @@ export const monitorPtBR: MonitorMessages = {
     noGuidance: "Nenhuma orientação de partido é publicada com o nome deste partido para estes votos, por isso este filtro não pode ser usado aqui.",
     guidedCount: "{n} de {total} votos têm orientação de partido publicada",
     differsNote:
-      "Comparado com a orientação que o partido (ou seu bloco) deu para aquela votação. Votação liberada (‘Liberado’) ou sem orientação nunca conta. A orientação de um bloco só vale para os partidos que aparecem no nome publicado.",
+      "Comparado com a orientação que o partido (ou seu bloco) deu para aquela votação. Votação liberada (‘Liberado’) ou sem orientação nunca conta. A orientação de um bloco vale para os partidos que a Câmara lista nesse bloco.",
     apply: "Mostrar",
   },
   paging: {

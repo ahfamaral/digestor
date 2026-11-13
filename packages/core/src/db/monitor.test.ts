@@ -3,9 +3,9 @@ import pg from "pg";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "./client.ts";
 import { parlMembers, parlSpeeches, parlVotes } from "./schema.ts";
-import { fillSpeechParties, replaceHistory, replaceOrientations } from "./monitorRecord.ts";
+import { fillSpeechParties, replaceBlocs, replaceHistory, replaceOrientations } from "./monitorRecord.ts";
 import {
-  countSpeechesInWindow, speechFacets, getMember, listMembers, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
+  countSpeechesInWindow, speechFacets, getMember, listMembers, listMemberSpeeches, listMemberVotes, memberVoteIds, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
   searchMembers, searchRollCalls, searchSpeeches, setInOffice, speechesByKeys, speechKeysByWords, filterSpeechKeys, upsertMembers, upsertRollCalls, type MemberInput, type RollCallInput,
   type SpeechInput,
 } from "./monitor.ts";
@@ -19,7 +19,7 @@ beforeAll(() => {
 afterAll(() => close());
 beforeEach(async () => {
   const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
-  await pool.query("TRUNCATE parl_presence, parl_sessions, parl_bill_authors, parl_bills, parl_orientations, parl_member_history, parl_votes, parl_roll_calls, parl_speeches, parl_members RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE parl_bloc_parties, parl_blocs, parl_presence, parl_sessions, parl_bill_authors, parl_bills, parl_orientations, parl_member_history, parl_votes, parl_roll_calls, parl_speeches, parl_members RESTART IDENTITY CASCADE");
   await pool.end();
 });
 
@@ -343,6 +343,70 @@ describe("a deputy's vote filters", () => {
     const c = (await upsertMembers(db, [{ ...member(3, "Deputado MDB"), party: "MDB" }])).get(3)!;
     await replaceVotes(db, "1-6", [{ memberId: a, vote: "Abstenção", party: "PSD" }, { memberId: c, vote: "Não", party: "MDB" }]);
     expect(await listMemberVotes(db, c, { differsFromGuidance: true })).toMatchObject({ total: 0, all: 1, guided: 0, guidedAll: 0 });
+  });
+
+  it("memberVoteIds: the filtered roll calls, word matches best first; `ids` keeps only those that pass, in their order", async () => {
+    const { a } = await setup();
+    // no words: newest first, every filter applied
+    expect(await memberVoteIds(db, a, {})).toEqual(["1-8", "1-7", "1-6", "1-5", "1-4", "1-3", "1-2", "1-1"]);
+    expect(await memberVoteIds(db, a, { kind: "request" })).toEqual(["1-3", "1-2"]);
+    expect(await memberVoteIds(db, a, { differsFromGuidance: true })).toEqual(["1-8", "1-6", "1-1"]);
+    // words: the best match first (the summary weighs more than what was voted), not the newest
+    expect(await memberVoteIds(db, a, { q: ["urgência", "reforma tributária"] })).toEqual(["1-3", "1-2"]);
+    expect(await memberVoteIds(db, a, { q: ["o"] })).toEqual([]);
+    // ids (meaning hits): only those that pass the other filters, in the given order; unknown and others' ids dropped
+    expect(await memberVoteIds(db, a, { ids: ["1-1", "9-9", "1-3", "1-6"], from: "2026-03" })).toEqual(["1-3", "1-6"]);
+    expect(await memberVoteIds(db, a, { ids: [] })).toEqual([]);
+  });
+
+  it("listMemberVotes with `ids`: those votes in that order, counted and paged (the text box's fused list)", async () => {
+    const { a } = await setup();
+    const r = await listMemberVotes(db, a, { ids: ["1-4", "1-1", "1-8", "1-6"], limit: 2, offset: 1 });
+    expect(r).toMatchObject({ total: 4, all: 8, guided: 3, guidedAll: 4 });
+    expect(ids(r)).toEqual(["1-1", "1-8"]);
+    expect(ids(await listMemberVotes(db, a, { ids: ["1-4", "1-1", "1-8", "1-6"], differsFromGuidance: true }))).toEqual(["1-1", "1-8", "1-6"]);
+  });
+
+  it("a bloc's published members (Câmara API) give its guidance to parties its cut-short label never shows", async () => {
+    const { a } = await setup();
+    const c = (await upsertMembers(db, [{ ...member(3, "Deputado MDB"), party: "MDB" }])).get(3)!;
+    await replaceVotes(db, "1-6", [{ memberId: a, vote: "Abstenção", party: "PSD" }, { memberId: c, vote: "Não", party: "MDB" }]);
+    await replaceVotes(db, "1-7", [{ memberId: a, vote: "Artigo 17", party: "PSD" }, { memberId: c, vote: "Não", party: "MDB" }]);
+    // before the fetch: the label "Bl UniPpPsd..." shows no MDB
+    expect(await listMemberVotes(db, c, {})).toMatchObject({ guidedAll: 0 });
+    const full = "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE";
+    await replaceBlocs(db, [
+      { id: 589, legislature: 57, name: full, federation: false, parties: ["PSDB", "CIDADANIA", "UNIÃO", "PP", "REPUBLICANOS", "PSD", "MDB", "PODE"] },
+      { id: 585, legislature: 57, name: "Federação PSDB CIDADANIA", federation: true, parties: ["PSDB", "CIDADANIA"] },
+    ]);
+    const r = await listMemberVotes(db, c, {});
+    expect(r).toMatchObject({ total: 2, guided: 2, guidedAll: 2 });
+    expect(r.rows.map((x) => [x.rollCallId, x.vote, x.guidance, x.guidanceFrom])).toEqual([
+      ["1-7", "Não", "Não", full],
+      ["1-6", "Não", "Sim", full],
+    ]);
+    expect(ids(await listMemberVotes(db, c, { differsFromGuidance: true }))).toEqual(["1-6"]);
+    // the party's own label still wins over its bloc; the source of a bloc guidance is the bloc's full name
+    const own = await listMemberVotes(db, a, {});
+    expect(own.rows.filter((x) => ["1-8", "1-6"].includes(x.rollCallId)).map((x) => [x.rollCallId, x.guidance, x.guidanceFrom])).toEqual([
+      ["1-8", "Sim", null],
+      ["1-6", "Sim", full],
+    ]);
+  });
+
+  it("stored members decide: a party the API doesn't list in the bloc gets no guidance from it, even when the label's letters fit", async () => {
+    const { a } = await setup();
+    await replaceBlocs(db, [{ id: 589, legislature: 57, name: "UNIÃO, PP, PSD, MDB", federation: false, parties: ["UNIÃO", "PP", "MDB"] }]);
+    const r = await listMemberVotes(db, a, { from: "2026-07" });
+    expect(r.rows.map((x) => [x.rollCallId, x.guidance, x.guidanceFrom])).toEqual([["1-8", "Sim", null], ["1-7", null, null], ["1-6", null, null]]);
+  });
+
+  it("a bloc listed without members (dissolved), or a label no stored bloc fits: the name rule is kept as the fallback", async () => {
+    const { a } = await setup();
+    await replaceBlocs(db, [{ id: 589, legislature: 57, name: "UNIÃO, PP, PSD, MDB", federation: false, parties: [] }]);
+    expect((await listMemberVotes(db, a, { from: "2026-07" })).rows.map((x) => [x.rollCallId, x.guidanceFrom])).toEqual([
+      ["1-8", null], ["1-7", "Bl UniPpPsd..."], ["1-6", "Bl UniPpPsd..."],
+    ]);
   });
 
   it("the request rule in SQL is the one the page marks with", async () => {

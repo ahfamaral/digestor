@@ -24,3 +24,31 @@ export function rrf(lists: string[][], k = 60): { key: string; score: number; in
     .sort((a, b) => b.score - a.score || a.first - b.first)
     .map(({ key, score, inLists }) => ({ key, score, inLists: inLists.sort((a, b) => a - b) }));
 }
+
+/**
+ * Meaning hits a deputy's vote or bill text box keeps: the deputy's own records are ranked whole (every vote gets a
+ * score, and e5's cosine scores bunch between about 0.75 and 0.9 whatever the query), so only the closest few join the
+ * word matches: at most `top`, each within `within` of the best hit and at least `min`. Calibrated on the golden
+ * queries (`apps/worker/eval/monitor-records.golden.json`, `--sweep`; docs/capstone/evaluation.md): within 0.03 kept the
+ * recall of a 0.8 floor (0.74) at a higher precision@10 (0.71 against 0.59) and follows English queries, which score lower.
+ */
+export const RECORD_MEANING = { top: 10, within: 0.03, min: 0.75, fuse: 100 };
+
+/**
+ * A vote or bill text box's list: the meaning hits that pass (`top` best, within `within` of the best, at least `min`)
+ * fused by RRF with the top `fuse` word matches, then the remaining word matches in word order. `meaningOnly`: the ids
+ * only the meaning search found (marked "related by meaning").
+ */
+export function fuseRecords(
+  words: string[], meaning: { id: string; score: number }[],
+  o: { top: number; min: number; within?: number; fuse?: number } = RECORD_MEANING,
+): { list: string[]; meaningOnly: string[] } {
+  const best = meaning.reduce((m, h) => Math.max(m, h.score), Number.NEGATIVE_INFINITY);
+  const floor = Math.max(o.min, o.within === undefined ? Number.NEGATIVE_INFINITY : best - o.within);
+  const kept = meaning.filter((m) => m.score >= floor).slice(0, o.top).map((m) => m.id);
+  const fuse = o.fuse ?? RECORD_MEANING.fuse;
+  const fused = rrf([words.slice(0, fuse), kept]).map((r) => r.key);
+  const inFused = new Set(fused);
+  const wordSet = new Set(words);
+  return { list: [...fused, ...words.slice(fuse).filter((w) => !inFused.has(w))], meaningOnly: kept.filter((id) => !wordSet.has(id)) };
+}

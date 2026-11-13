@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb, replaceSpeechWindow, upsertMembers, type Db } from "@digestor/core/server";
+import {
+  createDb, replaceBillAuthors, replaceSpeechWindow, replaceVotes, upsertBills, upsertMembers, upsertRollCalls, type Db,
+} from "@digestor/core/server";
 import { parseLanding, type LandingParams } from "./params";
-import { runSearch, type TranslateResult } from "./search";
+import { billMeaning, hybridBills, hybridVotes, runSearch, voteMeaning, type RecordSemantic, type TranslateResult } from "./search";
 
 /** Landing parameters with a raw query (runSearch cleans it). */
 const L = (q: string, rest: Partial<LandingParams> = {}): LandingParams => ({ ...parseLanding({}), ...rest, q });
@@ -184,5 +186,78 @@ describe("runSearch with search by meaning (hybrid)", () => {
     expect((await runSearch(db, L("preço da comida", { show: { speeches: false, rollCalls: true } }), translate, semantic)).meaning).toBe("off");
     expect((await runSearch(db, L("preço da comida"), translate)).meaning).toBe("off");
     expect(semantic).not.toHaveBeenCalled();
+  });
+});
+
+describe("a deputy's vote and bill text boxes with search by meaning", () => {
+  beforeEach(async () => {
+    await db.execute("TRUNCATE parl_bill_authors, parl_bills RESTART IDENTITY CASCADE");
+  });
+  async function setup() {
+    const ids = await upsertMembers(db, [{ house: "camara", externalId: 1, name: "A", party: "PT", uf: "SP", photoUrl: null }]);
+    const a = ids.get(1)!;
+    const rc = (id: string, date: string, billSummary: string, description = "Aprovado o projeto.") => ({
+      id, date, registeredAt: null, description, yes: 1, no: 1, other: 0, billId: null, billLabel: "PL 1/2026", billSummary,
+    });
+    await upsertRollCalls(db, [
+      rc("1-1", "2026-03-01", "Dispõe sobre a aposentadoria rural"),
+      rc("2-1", "2026-03-02", "Altera o regime de previdência dos servidores"),
+      rc("3-1", "2026-03-03", "Cria a universidade do esporte"),
+      rc("4-1", "2026-04-01", "Benefício previdenciário para pescadores"),
+    ]);
+    for (const [id, vote] of [["1-1", "Sim"], ["2-1", "Não"], ["3-1", "Sim"], ["4-1", "Sim"]] as const) {
+      await replaceVotes(db, id, [{ memberId: a, vote, party: "PT" }]);
+    }
+    await upsertBills(db, [
+      { id: 10, type: "PL", number: 10, year: 2026, summary: "Dispõe sobre a aposentadoria especial", presentedAt: "2026-03-01T10:00" },
+      { id: 11, type: "REQ", number: 11, year: 2026, summary: "Requer informações sobre a previdência", presentedAt: "2026-03-02T10:00" },
+      { id: 12, type: "PL", number: 12, year: 2026, summary: "Institui o dia do esporte", presentedAt: "2026-03-03T10:00" },
+    ]);
+    await replaceBillAuthors(db, [10, 11, 12], [10, 11, 12].map((billId) => ({ billId, memberId: a, firstAuthor: true })));
+    return a;
+  }
+  const page = { limit: 20, offset: 0 };
+
+  it("votes: the words first-fused with the closest meaning hits (the deputy's filtered votes only), marked by meaning", async () => {
+    const a = await setup();
+    const semantic = vi.fn<RecordSemantic>(async (_kind, _q, ids) => ({
+      ok: true, hits: [{ id: "2-1", score: 0.9 }, { id: "4-1", score: 0.89 }, { id: "1-1", score: 0.88 }, { id: "3-1", score: 0.7 }].filter((h) => ids.includes(h.id)),
+    }));
+    const meaning = await voteMeaning(db, a, {}, "pensions", semantic);
+    expect(semantic).toHaveBeenCalledWith("rollCalls", "pensions", ["4-1", "3-1", "2-1", "1-1"]);
+    const r = await hybridVotes(db, a, { terms: ["aposentadoria"], phrase: "aposentadoria", filters: {}, meaning, ...page });
+    expect(r.meaning).toBe("used");
+    expect(r.total).toBe(3); // 3-1 is too far from the best hit
+    expect(r.rows.map((v) => [v.rollCallId, v.byMeaning])).toEqual([["1-1", false], ["2-1", true], ["4-1", true]]);
+
+    // the other filters narrow the ranked votes too
+    const april = await voteMeaning(db, a, { from: "2026-04" }, "pensions", semantic);
+    expect(semantic).toHaveBeenLastCalledWith("rollCalls", "pensions", ["4-1"]);
+    const r2 = await hybridVotes(db, a, { terms: ["aposentadoria"], filters: { from: "2026-04" }, meaning: april, ...page });
+    expect(r2.rows.map((v) => v.rollCallId)).toEqual(["4-1"]);
+    // a meaning hit that doesn't pass the filters never shows
+    const r3 = await hybridVotes(db, a, { terms: ["aposentadoria"], filters: { vote: "Sim" }, meaning, ...page });
+    expect(r3.rows.map((v) => v.rollCallId)).toEqual(["1-1", "4-1"]);
+  });
+
+  it("votes: a worker that didn't answer leaves the word matches, best first, and says so", async () => {
+    const a = await setup();
+    const r = await hybridVotes(db, a, { terms: ["aposentadoria", "previdência"], filters: {}, meaning: { ok: false, hits: [] }, ...page });
+    expect(r.meaning).toBe("unavailable");
+    expect(r.rows.every((v) => !v.byMeaning)).toBe(true);
+    expect(r.rows.map((v) => v.rollCallId).sort()).toEqual(["1-1", "2-1"]);
+  });
+
+  it("bills: fused the same way; the type filter and the counts by type follow the fused list", async () => {
+    const a = await setup();
+    const semantic = vi.fn<RecordSemantic>(async () => ({ ok: true, hits: [{ id: "11", score: 0.88 }, { id: "12", score: 0.6 }] }));
+    const meaning = await billMeaning(db, a, {}, "pensions", semantic);
+    expect(semantic).toHaveBeenCalledWith("bills", "pensions", ["12", "11", "10"]);
+    const r = await hybridBills(db, a, { terms: ["aposentadoria"], meaning, ...page });
+    expect(r).toMatchObject({ meaning: "used", total: 2, all: 3, byType: [{ type: "PL", n: 1 }, { type: "REQ", n: 1 }] });
+    expect(r.rows.map((b) => [b.id, b.byMeaning])).toEqual([[10, false], [11, true]]);
+    expect((await hybridBills(db, a, { terms: ["aposentadoria"], type: "REQ", meaning, ...page })).rows.map((b) => b.id)).toEqual([11]);
+    const down = await hybridBills(db, a, { terms: ["aposentadoria"], meaning: { ok: false, hits: [] }, ...page });
+    expect(down).toMatchObject({ meaning: "unavailable", total: 1 });
   });
 });

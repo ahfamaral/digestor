@@ -3,13 +3,14 @@ import type { MemberBill } from "@digestor/core/server";
 import { formatCount, formatDay, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, keptBy, MAX_QUERY, type DeputyParams } from "@/lib/monitor/params";
 import { billTypeName } from "@/lib/monitor/billTypes";
-import { billUrl, type Searched } from "@/lib/monitor/search";
+import { billUrl, type RecordMeaning, type Searched } from "@/lib/monitor/search";
 import { cn } from "@/lib/utils";
 import { ExactBox } from "./ExactBox";
 import { ExternalLink } from "./ExternalLink";
 import { FormSelect } from "./FormSelect";
 import { GetForm } from "./GetForm";
 import { KeptFields } from "./KeptFields";
+import { ByMeaning, MeaningNote } from "./MeaningNote";
 import { SearchedFor } from "./SearchedFor";
 import { Pager } from "./Pager";
 import { Section } from "./Section";
@@ -36,7 +37,10 @@ export function AuthoredBills({
   locale, externalId, params, bills,
 }: {
   locale: MonitorLocale; externalId: number; params: DeputyParams;
-  bills: { total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: MemberBill[]; searched?: Searched | null };
+  bills: {
+    total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: (MemberBill & { byMeaning?: boolean })[];
+    searched?: Searched | null; meaning?: RecordMeaning;
+  };
 }) {
   const all = bills.byType.reduce((s, r) => s + r.n, 0);
   const signed = bills.all ?? all;
@@ -75,6 +79,7 @@ export function AuthoredBills({
         <KeptFields params={keptBy("bills", params)} />
       </GetForm>
       {bills.searched && <SearchedFor locale={locale} searched={bills.searched} />}
+      <MeaningNote locale={locale} section="bills" meaning={bills.meaning} marked={bills.rows.some((b) => b.byMeaning)} />
       {filtered && (
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1 text-sm">
           <p className="text-muted-foreground">{tm(locale, "bills.count", { n: formatCount(bills.total, locale), total: formatCount(signed, locale) })}</p>
@@ -141,6 +146,7 @@ export function AuthoredBills({
                 <ExternalLink href={billUrl(b.id)} className="font-semibold">{label(b)}</ExternalLink>
                 <time dateTime={b.presentedAt} className="font-mono text-xs text-muted-foreground">{formatDay(b.presentedAt.slice(0, 10), locale)}</time>
                 {!b.firstAuthor && <span className="text-xs text-muted-foreground">{tm(locale, "bills.coAuthor")}</span>}
+                {b.byMeaning && <ByMeaning locale={locale} />}
               </div>
               {b.summary && <p lang="pt-BR" className="break-words">{b.summary}</p>}
             </li>

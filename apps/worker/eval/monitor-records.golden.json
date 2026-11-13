@@ -1,0 +1,173 @@
+{
+  "labelledBy": "Labelled on 2026-11-13 by the coding agent (Claude) reading the official texts, not an automated LLM judge (no labelling calls); owner review pending. Each query is scoped to one deputy, as the deputy page runs it: votes to Sargento Fahur (204387, 125 of the 126 roll calls of 2026), bills to Laura Carneiro (74856, 1,118 bills), Sargento Portugal (220618, 2,080) and Pedro Uczai (160604, 644). Votes: every one of the deputy's roll calls was read (the whole set, not a pool). Bills: the pooled top 10 of words / meaning / hybrid plus every bill of the deputy whose summary holds one of the topic's stems (câncer, oncol, mama…; animal, cães, maus-tratos…; arma, 10.826, porte…; trabalhador, trabalhista, jornada…) were read. Relevant = the record is about the topic itself: a ceremonial session or an honour motion is not (an awareness session on cancer is not cancer treatment), a request for urgency or for information on a relevant bill is. `terms`: the query translator's answer on 2026-11-13 (OpenRouter), frozen so the evaluation needs no paid call. Ids are the Câmara's roll-call and bill ids (stable).",
+  "queries": [
+    {
+      "id": "v1",
+      "kind": "rollCalls",
+      "q": "violência contra a mulher",
+      "lang": "pt",
+      "externalId": 204387,
+      "terms": [
+        "violência contra a mulher",
+        "violência de gênero contra mulheres",
+        "agressão contra a mulher",
+        "feminicídio"
+      ],
+      "relevant": [
+        "2606313-36",
+        "2462009-79",
+        "2462009-60",
+        "2462009-57",
+        "2449741-72",
+        "2610645-5",
+        "2604314-28"
+      ]
+    },
+    {
+      "id": "v2",
+      "kind": "rollCalls",
+      "q": "working hours",
+      "lang": "en",
+      "externalId": 204387,
+      "terms": [
+        "jornada de trabalho",
+        "carga horária",
+        "horas de trabalho",
+        "duração do trabalho"
+      ],
+      "relevant": [
+        "2233802-416",
+        "2233802-424",
+        "2233802-438"
+      ]
+    },
+    {
+      "id": "v3",
+      "kind": "rollCalls",
+      "q": "isenção de impostos",
+      "lang": "pt",
+      "externalId": 204387,
+      "terms": [
+        "isenção de impostos",
+        "isenção tributária",
+        "desoneração fiscal",
+        "renúncia fiscal"
+      ],
+      "relevant": [
+        "2608575-64",
+        "2351506-95",
+        "2351506-102",
+        "2351506-104",
+        "2351506-108",
+        "2351506-112",
+        "2351506-115",
+        "2351506-122",
+        "2611992-24",
+        "2618177-71",
+        "2618177-73",
+        "2618177-82"
+      ]
+    },
+    {
+      "id": "v4",
+      "kind": "rollCalls",
+      "q": "harsher punishment for criminals",
+      "lang": "en",
+      "externalId": 204387,
+      "terms": [
+        "punição mais severa para criminosos",
+        "endurecimento das penas para criminosos",
+        "aumento das penas criminais",
+        "rigor penal contra criminosos"
+      ],
+      "relevant": [
+        "2376169-101",
+        "2191208-67",
+        "589982-103",
+        "589982-124",
+        "589982-126",
+        "589982-129"
+      ]
+    },
+    {
+      "id": "b1",
+      "kind": "bills",
+      "q": "cancer treatment",
+      "lang": "en",
+      "externalId": 74856,
+      "terms": [
+        "tratamento do câncer",
+        "tratamento oncológico",
+        "combate ao câncer",
+        "terapia contra o câncer"
+      ],
+      "relevant": [
+        "2628553",
+        "2647477",
+        "2647478",
+        "2641677",
+        "2607113"
+      ]
+    },
+    {
+      "id": "b2",
+      "kind": "bills",
+      "q": "proteção dos animais",
+      "lang": "pt",
+      "externalId": 74856,
+      "terms": [
+        "proteção dos animais",
+        "bem-estar animal",
+        "maus-tratos contra animais",
+        "direitos dos animais"
+      ],
+      "relevant": [
+        "2641589",
+        "2646376",
+        "2623175",
+        "2623176",
+        "2641678",
+        "2644293",
+        "2611770",
+        "2617166"
+      ]
+    },
+    {
+      "id": "b3",
+      "kind": "bills",
+      "q": "posse e porte de armas",
+      "lang": "pt",
+      "externalId": 220618,
+      "terms": [
+        "posse e porte de armas",
+        "porte de armas",
+        "posse de armas",
+        "registro de armas de fogo"
+      ],
+      "relevant": [
+        "2609186",
+        "2600156"
+      ]
+    },
+    {
+      "id": "b4",
+      "kind": "bills",
+      "q": "workers' rights",
+      "lang": "en",
+      "externalId": 160604,
+      "terms": [
+        "direitos dos trabalhadores",
+        "direitos trabalhistas",
+        "direitos laborais",
+        "legislação trabalhista"
+      ],
+      "relevant": [
+        "2617694",
+        "2621529",
+        "2623161",
+        "2600260",
+        "2649499"
+      ]
+    }
+  ]
+}

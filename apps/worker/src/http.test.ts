@@ -14,6 +14,7 @@ async function start(over: Partial<HttpDeps> = {}) {
   const deps: HttpDeps = {
     search: vi.fn(async () => [{ speechKey: "1:2026-03-01T10:00:abc", score: 0.9 }]),
     passages: vi.fn(async () => [{ speechKey: "1:2026-03-01T10:00:abc", sentences: ["Uma frase."], score: 0.8 }]),
+    searchRecords: vi.fn(async () => [{ id: "2643915-8", score: 0.85 }]),
     ...over,
   };
   server = startHttpServer(deps, 0, "127.0.0.1");
@@ -82,6 +83,38 @@ describe("worker HTTP", () => {
     expect(deps.passages).toHaveBeenLastCalledWith("saúde", ["a", "b"], 3);
     await post("/monitor/passages", { q: "saúde", speechKeys: ["a"], perSpeech: 99 });
     expect(deps.passages).toHaveBeenLastCalledWith("saúde", ["a"], 10);
+  });
+
+  it("POST /monitor/search with kind rollCalls / bills: scores the given ids only", async () => {
+    const { deps, post } = await start();
+    const res = await post("/monitor/search", { q: " aposentadoria ", kind: "rollCalls", ids: ["2643915-8", "2600708-7"] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ hits: [{ id: "2643915-8", score: 0.85 }] });
+    expect(deps.searchRecords).toHaveBeenLastCalledWith("roll_call", "aposentadoria", ["2643915-8", "2600708-7"], 100);
+    await post("/monitor/search", { q: "x", kind: "bills", ids: ["2512345"], k: 999 });
+    expect(deps.searchRecords).toHaveBeenLastCalledWith("bill", "x", ["2512345"], 200);
+    expect(deps.search).not.toHaveBeenCalled();
+    // speeches stay the default, and may be named
+    await post("/monitor/search", { q: "x", kind: "speeches" });
+    expect(deps.search).toHaveBeenLastCalledWith("x", 100);
+  });
+
+  it("400 on an unknown kind, or ids that are missing, too many or not that kind's ids", async () => {
+    const { deps, post } = await start();
+    for (const body of [
+      { q: "x", kind: "deputies", ids: ["1"] },
+      { q: "x", kind: "bills" },
+      { q: "x", kind: "bills", ids: "1" },
+      { q: "x", kind: "bills", ids: ["PL 1/2026"] },
+      { q: "x", kind: "rollCalls", ids: ["2512345"] },
+      { q: "x", kind: "bills", ids: Array.from({ length: 5001 }, (_, i) => String(i + 1)) },
+      { q: "", kind: "bills", ids: ["1"] },
+    ]) {
+      const res = await post("/monitor/search", body);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toHaveProperty("error");
+    }
+    expect(deps.searchRecords).not.toHaveBeenCalled();
   });
 
   it("413 on a body over 64 KB", async () => {
