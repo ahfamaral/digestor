@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
-import { addLibraryAskMessage, deleteLibraryAskMessages, existingSessionIds, listLibraryAskMessages } from "@digestor/core/server";
+import { addLibraryQuestion, deleteLibraryAskMessages, existingSessionIds, listLibraryAskMessages } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { QUEUE_FAILED } from "@/lib/personal";
 import { getServer } from "@/lib/server";
@@ -20,7 +20,8 @@ export async function GET(): Promise<Response> {
 }
 
 /**
- * POST /api/library-ask — `{ question }` (1–500 chars). Stores the question, then a `pending` answer, and queues
+ * POST /api/library-ask — `{ question }` (1–500 chars). Stores the question and its `pending` answer (which points at
+ * it, so two questions sent at once never swap answers), and queues
  * `ask.library`. Read-only, so nothing else is checked here: the worker answers when no video can be searched. A
  * failed enqueue removes both rows.
  */
@@ -35,8 +36,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return errorResponse(400, "Ask a question of 1 to 500 characters.");
 
   const { db, boss } = getServer();
-  const question = await addLibraryAskMessage(db, { ownerId: OWNER_ID, role: "user", text: parsed.data.question, status: "done" });
-  const pending = await addLibraryAskMessage(db, { ownerId: OWNER_ID, role: "assistant", text: "", status: "pending" });
+  const { question, answer: pending } = await addLibraryQuestion(db, OWNER_ID, parsed.data.question);
   try {
     await boss.send(QUEUES.askLibrary, { messageId: pending.id }, { ...JOB_OPTIONS, singletonKey: pending.id });
   } catch (err) {

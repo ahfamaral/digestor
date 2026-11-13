@@ -4,7 +4,7 @@ import { createDb, type Db } from "./client.ts";
 import { completeAnalysisVersion, startAnalysisVersion } from "./analysis.ts";
 import { createSession, saveContextCard, updateSession } from "./repo.ts";
 import {
-  addLibraryAskMessage, claimLibraryAskMessage, deleteLibraryAskMessages, finishLibraryAskMessage, getLibraryAskMessage, listLibraryAskMessages,
+  addLibraryAskMessage, addLibraryQuestion, claimLibraryAskMessage, deleteLibraryAskMessages, finishLibraryAskMessage, getLibraryAskMessage, listLibraryAskMessages,
   listLibraryCandidates, releaseLibraryAskMessage,
 } from "./libraryAsk.ts";
 import type { ContextCard } from "../schemas.ts";
@@ -58,6 +58,15 @@ describe("library ask messages", () => {
     expect(done).toMatchObject({ status: "done", text: "They said [S1 00:01:00].", sources });
     // Finished: a late claim does nothing.
     expect(await claimLibraryAskMessage(db, a.id)).toBe(false);
+  });
+
+  it("stores a question with its pending answer, which points at it; deleting the question removes the answer", async () => {
+    const [one, two] = await Promise.all([addLibraryQuestion(db, "owner", "First?"), addLibraryQuestion(db, "owner", "Second?")]);
+    expect(one.question).toMatchObject({ role: "user", status: "done", text: "First?", questionId: null });
+    expect(one.answer).toMatchObject({ role: "assistant", status: "pending", text: "", questionId: one.question.id });
+    expect(two.answer.questionId).toBe(two.question.id);
+    await deleteLibraryAskMessages(db, [one.question.id]);
+    expect(await getLibraryAskMessage(db, one.answer.id)).toBeNull();
   });
 
   it("deletes messages by id", async () => {

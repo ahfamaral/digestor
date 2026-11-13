@@ -208,8 +208,9 @@ export function HomeTable({ rows, clips, now, initial, limit }: {
         </div>
       ) : (
         <>
-          {/* Wide screens: a table. */}
-          <table className="hidden w-full overflow-hidden rounded-xl border border-border bg-white text-sm md:table">
+          {/* Wide screens: a table. It scrolls sideways inside its own box when the page narrows (the Ask across videos panel). */}
+          <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-border bg-white md:block">
+          <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="w-8 px-2 py-2"><span className="sr-only">{t("home.colToggle")}</span></th>
@@ -250,6 +251,7 @@ export function HomeTable({ rows, clips, now, initial, limit }: {
               ))}
             </tbody>
           </table>
+          </div>
 
           {/* Narrow screens: stacked rows. */}
           <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-white md:hidden">

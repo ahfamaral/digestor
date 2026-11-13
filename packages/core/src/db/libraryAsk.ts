@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { AskRole, LibraryAskMessage, LibraryAskSource, LibraryAskStatus } from "../personalTypes.ts";
 import type { ContextCard } from "../schemas.ts";
 import type { Db } from "./client.ts";
@@ -9,10 +9,27 @@ import { analysisVersions, contextCards, libraryAskMessages, sessions } from "./
 
 export async function addLibraryAskMessage(
   db: Db,
-  a: { ownerId: string; role: AskRole; text: string; status?: LibraryAskStatus },
+  a: { ownerId: string; role: AskRole; text: string; status?: LibraryAskStatus; questionId?: string },
 ): Promise<LibraryAskMessage> {
   const [row] = await db.insert(libraryAskMessages).values(a).returning();
   return row!;
+}
+
+/**
+ * A new question (`done`) and its `pending` answer pointing at it (`question_id`), in one transaction: the worker
+ * answers exactly that question, even when two are sent at the same moment.
+ */
+export async function addLibraryQuestion(db: Db, ownerId: string, text: string): Promise<{ question: LibraryAskMessage; answer: LibraryAskMessage }> {
+  return db.transaction(async (tx) => {
+    // clock_timestamp(), not now(): now() is the transaction's start, so both rows would share it and list in any order.
+    const at = sql`clock_timestamp()`;
+    const [question] = await tx.insert(libraryAskMessages).values({ ownerId, role: "user", text, status: "done", createdAt: at, updatedAt: at }).returning();
+    const [answer] = await tx
+      .insert(libraryAskMessages)
+      .values({ ownerId, role: "assistant", text: "", status: "pending", questionId: question!.id, createdAt: at, updatedAt: at })
+      .returning();
+    return { question: question!, answer: answer! };
+  });
 }
 
 export async function getLibraryAskMessage(db: Db, id: string): Promise<LibraryAskMessage | null> {
