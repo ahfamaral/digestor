@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  asToolCalls, awaitsApproval, formatToolCall, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult,
+  asToolCalls, awaitsApproval, formatToolCall, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
 } from "@/lib/askText";
 import { ApprovalCard } from "./ApprovalCard";
 import { errorMessage } from "@/lib/http";
@@ -55,6 +55,14 @@ export interface AskDrawerProps {
  * drawer is inert, so it can't offer one). Tool calls show as chips; changes can be undone and bulk ones wait for a click.
  * Before Ask changes a clip or selection, its answer pauses on an approval card (Approve / Edit / Reject).
  */
+/** The verify chip's state in words. */
+function verifyLine(v: VerifyState): string {
+  if (v.kind === "ok") return t("ask.verify.ok");
+  if (v.kind === "failed") return t("ask.verify.failed");
+  if (v.kind === "unconfirmed") return v.n === 1 ? t("ask.verify.unconfirmedOne") : t("ask.verify.unconfirmed", { n: v.n });
+  return v.n === 1 ? t("ask.verify.uncheckedOne") : t("ask.verify.unchecked", { n: v.n });
+}
+
 export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDrawerProps) {
   const router = useRouter();
   const lang = language ?? undefined;
@@ -424,7 +432,7 @@ function MessageItem({
           )}
         </p>
       )}
-      {verified && <p className="text-xs text-muted-foreground">{t("ask.verified", { result: verified })}</p>}
+      {verified && <p className="text-xs text-muted-foreground">{verifyLine(verified)}</p>}
       {changes.length > 0 && (
         <ul className="grid gap-1.5" aria-label={t("ask.toolCall")}>
           {changes.map(({ call, key }) => {

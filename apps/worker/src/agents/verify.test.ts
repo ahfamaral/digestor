@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Word } from "@digestor/core";
 import { FakeLLM } from "../llm/structured.js";
-import { citedSentences, extractQuotes, findQuote, judgeClaims, verifyAnswer } from "./verify.js";
+import { COULDNT_CONFIRM, JUDGE_SYSTEM, citedSentences, extractQuotes, findQuote, judgeClaims, verifyAnswer, withCouldntConfirm } from "./verify.js";
 
 /** Words from a sentence, one per second from `startMs`. */
 const wordsOf = (text: string, startMs = 0, speaker = "A"): Word[] =>
@@ -115,7 +115,7 @@ describe("verifyAnswer", () => {
 
   it("a quote found word for word passes without a judge call when no sentence cites a time", async () => {
     const llm = new FakeLLM([]);
-    expect(await verifyAnswer({ judge: llm }, "Sie sagte „Die Mieten sind viel zu hoch“.", { words })).toEqual({ unsupported: [], unchecked: [], checked: 1 });
+    expect(await verifyAnswer({ judge: llm }, "Sie sagte „Die Mieten sind viel zu hoch“.", { words })).toEqual({ unsupported: [], unchecked: [], checked: 1, judgeFailed: false });
     expect(llm.calls).toHaveLength(0);
   });
 
@@ -129,7 +129,7 @@ describe("verifyAnswer", () => {
   it("a quote in another language (an English rendering of German speech) is judged as a claim, not failed as a quote", async () => {
     const llm = new FakeLLM([verdicts("supported", "supported")]);
     const r = await verifyAnswer({ judge: llm }, `She said [00:00:10]:\n"The rents are far too high."`, { words });
-    expect(r).toEqual({ unsupported: [], unchecked: [], checked: 2 });
+    expect(r).toEqual({ unsupported: [], unchecked: [], checked: 2, judgeFailed: false });
     // The quote's own line cites nothing: it is judged against the window of the citing line before it.
     expect(llm.calls[0]!.user).toContain("Claim 2: She said [00:00:10]:");
     expect(llm.calls[0]!.user).toContain("Claim 1: Quoted, perhaps in translation: “The rents are far too high.”");
@@ -163,10 +163,28 @@ describe("verifyAnswer", () => {
     ]);
     const r = await verifyAnswer({ judge: failing }, "„Wir bauen mehr Wohnungen in Berlin“ [00:00:20].", { words });
     err.mockRestore();
-    expect(r).toEqual({ unsupported: [], unchecked: ["„Wir bauen mehr Wohnungen in Berlin“ [00:00:20]."], checked: 1 });
+    expect(r).toEqual({ unsupported: [], unchecked: ["„Wir bauen mehr Wohnungen in Berlin“ [00:00:20]."], checked: 1, judgeFailed: true });
   });
 
   it("an answer without a transcript checks nothing", async () => {
-    expect(await verifyAnswer({ judge: new FakeLLM([]) }, "x [00:00:01].", null)).toEqual({ unsupported: [], unchecked: [], checked: 0 });
+    expect(await verifyAnswer({ judge: new FakeLLM([]) }, "x [00:00:01].", null)).toEqual({ unsupported: [], unchecked: [], checked: 0, judgeFailed: false });
+  });
+});
+
+describe("withCouldntConfirm", () => {
+  it("adds one last line, merged with a line the model wrote itself", () => {
+    expect(withCouldntConfirm("A [00:00:01].", [])).toBe("A [00:00:01].");
+    expect(withCouldntConfirm("A [00:00:01].", ["“x y z w”", "B."])).toBe(`A [00:00:01].\n\n${COULDNT_CONFIRM}“x y z w”; B.`);
+    const own = `A.\n\n${COULDNT_CONFIRM}the date\nMore.`;
+    expect(withCouldntConfirm(own, ["“x y z w”"])).toBe(`A.\n\nMore.\n\n${COULDNT_CONFIRM}the date; “x y z w”`);
+    expect(withCouldntConfirm(`A.\n${COULDNT_CONFIRM}the date`, ["the date"]).split(COULDNT_CONFIRM)).toHaveLength(2);
+  });
+});
+
+describe("JUDGE_SYSTEM", () => {
+  it("asks for 'unclear' (not checked) on claims that something isn't said: a ±45 s window can't show that", () => {
+    expect(JUDGE_SYSTEM).toMatch(/not mentioned is always "unclear"/);
+    expect(JUDGE_SYSTEM.indexOf('- "supported"')).toBeLessThan(JUDGE_SYSTEM.indexOf('- "unsupported"'));
+    expect(JUDGE_SYSTEM.indexOf('- "unsupported"')).toBeLessThan(JUDGE_SYSTEM.indexOf('- "unclear"'));
   });
 });

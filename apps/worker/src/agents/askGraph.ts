@@ -8,7 +8,7 @@ import {
   AskRunError, DECLINED, EDITED, readResolution, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
   type AskDeps, type AskRun, type ToolResult,
 } from "./ask.js";
-import { VERIFY_RETRIES, verificationFeedback, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
+import { VERIFY_RETRIES, splitCouldntConfirm, verificationFeedback, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
 
 /** The decision the approve node passes on to `tools`, with the calls it covers (the ones on the card). */
 export type Approval = ToolApprovalResolution & { ids: string[] };
@@ -88,7 +88,8 @@ const threadOf = (config: LangGraphRunnableConfig): string => {
 /** The verify chip, stored with the tool chips (none when the answer had nothing to check). */
 function verifyRecord(r: VerifyResult, rounds: number): AskToolCallRecord[] {
   if (r.checked + r.unsupported.length + r.unchecked.length === 0) return [];
-  return [{ name: "verify_answer", args: { rounds }, result: verifySummary(r), ok: r.unsupported.length === 0 }];
+  const args = { rounds, checked: r.checked, unsupported: r.unsupported.length, unchecked: r.unchecked.length, judgeFailed: r.judgeFailed };
+  return [{ name: "verify_answer", args, result: verifySummary(r), ok: r.unsupported.length === 0 }];
 }
 
 /** Answers that are never verified: the fixed refusal and the step-limit line. */
@@ -152,7 +153,8 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
     const answer = state.final ?? "";
     try {
       const { ctx } = await load(config);
-      const result = await verifyAnswer({ judge }, answer, ctx.transcript);
+      // A "couldn't confirm" line the model wrote itself is not checked; it is merged into ours at the end.
+      const result = await verifyAnswer({ judge }, splitCouldntConfirm(answer).body, ctx.transcript);
       if (result.unsupported.length > 0 && state.verifyRounds < VERIFY_RETRIES && state.steps < MAX_ASK_STEPS) {
         return {
           final: null,

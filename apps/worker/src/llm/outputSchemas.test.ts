@@ -7,6 +7,7 @@ import { ContextCardOutput } from "../agents/context.js";
 import { MomentsOutput, PunchlinesOutput } from "../agents/moments.js";
 import { TopicsOutput } from "../agents/topics.js";
 import { TranslationOutput } from "../agents/translate.js";
+import { JudgeOutputSchema } from "../agents/verify.js";
 import { llmJsonSchema } from "./structured.js";
 
 // Every schema the agents send must be accepted by Claude structured outputs: refs only under `$defs`, and at most
@@ -22,6 +23,7 @@ const OUTPUTS: [string, z.ZodType<unknown>][] = [
   ["briefing", BriefingOutput],
   ["checks", ChecksOutput],
   ["translation", TranslationOutput],
+  ["verify_claims", JudgeOutputSchema],
 ];
 
 describe("agent output schemas as sent to the model", () => {

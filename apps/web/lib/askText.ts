@@ -103,10 +103,23 @@ const SPAN = /^\[(\d{1,3}:\d{2}(?::\d{2})?)(?:–(\d{1,3}:\d{2}(?::\d{2})?))?\]/
 /** The worker's record of the check before an answer was final (apps/worker/src/agents/verify.ts). */
 const VERIFY_CALL = "verify_answer";
 
-/** What the check of quotes and cited times found ("All checked", "1 part couldn't be confirmed"…), or null. */
-export function verifyResult(calls: AskToolCallRecord[]): string | null {
+/**
+ * What the check of quotes and cited times found: everything matched, n parts unconfirmed, n parts the judge couldn't
+ * tell, or the check couldn't run (its call failed). Read from the chip's counts; null without a verify chip.
+ */
+export type VerifyState = { kind: "ok" } | { kind: "unconfirmed"; n: number } | { kind: "unchecked"; n: number } | { kind: "failed" };
+
+export function verifyResult(calls: AskToolCallRecord[]): VerifyState | null {
   const call = calls.find((c) => c.name === VERIFY_CALL);
-  return call?.result ? call.result : null;
+  if (!call) return null;
+  const args = typeof call.args === "object" && call.args !== null ? (call.args as Record<string, unknown>) : {};
+  const count = (k: string) => (typeof args[k] === "number" && Number.isFinite(args[k]) ? Math.max(0, Math.round(args[k] as number)) : 0);
+  // A record without its counts says nothing for sure: no line rather than a wrong "match".
+  if (!["checked", "unsupported", "unchecked"].every((k) => typeof args[k] === "number")) return null;
+  if (count("unsupported") > 0) return { kind: "unconfirmed", n: count("unsupported") };
+  if (args.judgeFailed === true) return { kind: "failed" };
+  if (count("unchecked") > 0) return { kind: "unchecked", n: count("unchecked") };
+  return { kind: "ok" };
 }
 
 /** One source line: `text` is a time range (transcript, speech) or text from the recording (moment, topic, note). */

@@ -133,12 +133,21 @@ describe("isAnswering (T14)", () => {
 });
 
 describe("verifyResult", () => {
-  it("reads the verify chip's line, and it is never listed as a source", () => {
-    const verify = { name: "verify_answer", args: { rounds: 1 }, result: "1 part couldn't be confirmed", ok: false };
-    const search = { name: "search_transcript", args: {}, result: "<transcript>\n[00:01:00–00:01:10] A: Hi.\n</transcript>", ok: true };
-    expect(verifyResult([search, verify])).toBe("1 part couldn't be confirmed");
+  const verify = (args: object) => ({ name: "verify_answer", args: { rounds: 0, checked: 0, unsupported: 0, unchecked: 0, judgeFailed: false, ...args }, result: "worker line", ok: true });
+  const search = { name: "search_transcript", args: {}, result: "<transcript>\n[00:01:00–00:01:10] A: Hi.\n</transcript>", ok: true };
+
+  it("reads the chip's counts into one state, never the worker's English line", () => {
+    expect(verifyResult([search, verify({ checked: 3 })])).toEqual({ kind: "ok" });
+    expect(verifyResult([verify({ checked: 1, unsupported: 2, judgeFailed: true })])).toEqual({ kind: "unconfirmed", n: 2 });
+    expect(verifyResult([verify({ checked: 1, unchecked: 2, judgeFailed: true })])).toEqual({ kind: "failed" });
+    expect(verifyResult([verify({ checked: 1, unchecked: 1 })])).toEqual({ kind: "unchecked", n: 1 });
+    expect(verifyResult([{ ...verify({}), args: "garbled" }])).toBeNull();
+    expect(verifyResult([{ ...verify({}), args: { rounds: 0 } }])).toBeNull();
     expect(verifyResult([search])).toBeNull();
-    expect(sourceLines(verify)).toEqual([]);
+  });
+
+  it("is never listed as a source", () => {
+    expect(sourceLines(verify({ unsupported: 1 }))).toEqual([]);
   });
 });
 

@@ -158,7 +158,7 @@ describe("runAsk tools", () => {
     const done = (await getAskMessage(db, msg.id))!;
     expect(done.toolCalls).toEqual([
       expect.objectContaining({ name: "propose_clip", ok: true, args: expect.objectContaining({ start: "00:01:01" }) }),
-      { name: "verify_answer", args: { rounds: 0 }, result: "All checked", ok: true }, // the answer's cited sentence was checked (verify.ts)
+      { name: "verify_answer", args: { rounds: 0, checked: 1, unsupported: 0, unchecked: 0, judgeFailed: false }, result: "All checked", ok: true }, // the answer's cited sentence was checked (verify.ts)
     ]);
     expect((done.toolCalls as AskToolCallRecord[])[0]!.clipId).toBe(clip!.id); // Undo (Task 21) deletes this clip
   });

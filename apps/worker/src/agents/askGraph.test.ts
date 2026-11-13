@@ -134,7 +134,7 @@ describe("Ask graph", () => {
     expect(done).toMatchObject({ status: "done", text: "Rents rose [00:01:00]." });
     expect(done.toolCalls).toEqual([
       { name: "search_transcript", args: { query: "rents" }, result: expect.stringContaining("Rents rose."), ok: true },
-      { name: "verify_answer", args: { rounds: 0 }, result: "All checked", ok: true },
+      { name: "verify_answer", args: { rounds: 0, checked: 1, unsupported: 0, unchecked: 0, judgeFailed: false }, result: "All checked", ok: true },
     ]);
     expect(await approvals(s.id, msg.id)).toEqual([]);
     expect(await threadOf(deps.checkpointer, msg.id)).toBeUndefined(); // done: thread deleted
@@ -448,6 +448,39 @@ describe("Verify before answering", () => {
     const done = (await getAskMessage(db, msg.id))!;
     expect(done).toMatchObject({ status: "done", text: `${WRONG}\n\n${COULDNT_CONFIRM}“word10 word11 word99 word13”` });
     expect(verifyChip(done.toolCalls)).toMatchObject({ result: "1 part couldn't be confirmed", ok: false });
+  });
+
+  it("a retry that pauses for approval and resumes keeps its count: still exactly 2 retries", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did A say? Clip it.");
+    const llm = new FakeToolLLM([
+      answer(WRONG),
+      toolStep(call("propose_clip", { start: "00:01:01", end: "00:01:31", title: "x" })),
+      answer(WRONG),
+      answer(WRONG),
+      answer(RIGHT),
+    ]);
+    const deps = depsFor(llm);
+    await runAsk(deps, msg.id);
+    expect((await getAskMessage(db, msg.id))!.status).toBe("waiting"); // paused inside the first retry
+    expect((llm.calls[1]!.messages.at(-1) as { text: string }).text).toContain("Don't repeat changes already made.");
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(llm.calls).toHaveLength(4); // the 2nd retry was the last: RIGHT is never asked for
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done.text).toBe(`${WRONG}\n\n${COULDNT_CONFIRM}“word10 word11 word99 word13”`);
+    expect(verifyChip(done.toolCalls)).toMatchObject({ args: { rounds: 2 }, ok: false });
+    expect(await listClips(db, OWNER_ID, s.id)).toHaveLength(1);
+  });
+
+  it("the couldn't-confirm line never appears twice, even when the model writes one itself", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did A say?");
+    const own = `${WRONG}\n\n${COULDNT_CONFIRM}the exact wording`;
+    const llm = new FakeToolLLM([answer(own), answer(own), answer(own)]);
+    await runAsk(depsFor(llm), msg.id);
+    const { text } = (await getAskMessage(db, msg.id))!;
+    expect(text.split(COULDNT_CONFIRM)).toHaveLength(2);
+    expect(text).toBe(`${WRONG}\n\n${COULDNT_CONFIRM}the exact wording; “word10 word11 word99 word13”`);
   });
 
   it("an answer paused for approval is verified only once it is final", async () => {
