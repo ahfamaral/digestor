@@ -100,6 +100,15 @@ export function cutAtWord(text: string, max: number): string {
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const SPAN = /^\[(\d{1,3}:\d{2}(?::\d{2})?)(?:–(\d{1,3}:\d{2}(?::\d{2})?))?\]/;
 
+/** The worker's record of the check before an answer was final (apps/worker/src/agents/verify.ts). */
+const VERIFY_CALL = "verify_answer";
+
+/** What the check of quotes and cited times found ("All checked", "1 part couldn't be confirmed"…), or null. */
+export function verifyResult(calls: AskToolCallRecord[]): string | null {
+  const call = calls.find((c) => c.name === VERIFY_CALL);
+  return call?.result ? call.result : null;
+}
+
 /** One source line: `text` is a time range (transcript, speech) or text from the recording (moment, topic, note). */
 export interface SourceLine {
   kind: "transcript" | "speech" | "moment" | "topic" | "note";
@@ -112,6 +121,7 @@ export interface SourceLine {
  * survives, and no title is cut mid-word.
  */
 export function sourceLines(call: AskToolCallRecord): SourceLine[] {
+  if (call.name === VERIFY_CALL) return []; // shown by `verifyResult`, not a source
   if (call.ok && (call.clipId !== undefined || call.undo !== undefined)) return [];
   const stored = call.result.length >= STORED_RESULT_CHARS;
   const raw = call.result.replace(/<\/?transcript>/gi, "").replace(UUID, "").replace(/[<>]/g, "");

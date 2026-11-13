@@ -357,6 +357,7 @@ export const en = {
     sources: "Sources ({n})",
     source: { transcript: "Transcript {text}", speech: "Speech {text}", moment: "Moment: {text}", topic: "Topic: {text}", note: "{text}" },
     sourcesLabel: "What this answer looked at",
+    verified: "Quotes and cited times checked against the transcript: {result}",
     undo: "Undo",
     undoing: "Undoing…",
     undone: "Undone",

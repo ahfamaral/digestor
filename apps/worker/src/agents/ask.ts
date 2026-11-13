@@ -11,13 +11,14 @@ import {
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
   setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
+import type { StructuredLLM } from "../llm/structured.js";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
 import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
 import { buildAskGraph, interruptedBy, threadConfig, type AskGraph, type AskGraphInput } from "./askGraph.js";
 
-export const ASK_PROMPT_VERSION = "ask@5";
+export const ASK_PROMPT_VERSION = "ask@6";
 export const MAX_ASK_STEPS = 6;
 export const MAX_TOOL_OUTPUT = 4000;
 export const HISTORY_LIMIT = 10;
@@ -57,6 +58,8 @@ const TRUNCATED = "\n[…truncated: ask for a shorter range or fewer results]";
 export type AskDeps = {
   db: Db;
   llm: ToolLLM;
+  /** The structured LLM (fast model) that judges cited sentences before an answer is final (verify.ts). */
+  judge: StructuredLLM;
   /** `searchTranscript` bound to Chroma + the embedder; throws when the session has no index. */
   search: (sessionId: string, query: string, k: number) => Promise<SearchHit[]>;
   /**
@@ -759,7 +762,10 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
   const checkpointer = deps.checkpointer ?? localSaver;
   await checkpointer.deleteThread(msg.id); // a retry after a failed attempt starts from the question again
   const graph = buildAskGraph(deps, checkpointer);
-  await advance(deps, graph, checkpointer, msg.id, { messages: history, records: [], final: null, steps: 0, directChanges: 0, wrote: false, approval: null });
+  await advance(deps, graph, checkpointer, msg.id, {
+    messages: history, records: [], final: null, steps: 0, directChanges: 0, wrote: false, approval: null,
+    finalRaw: undefined, verifyRounds: 0, lastCheck: null, settled: false,
+  });
 }
 
 /** A stored resolution, or the decision its status implies (a row written without one). */

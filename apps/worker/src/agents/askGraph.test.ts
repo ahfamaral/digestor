@@ -7,9 +7,11 @@ import {
   listSelections, resolveToolApproval, saveMoments, saveTopics, saveTranscript, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
 import { handleAskResume } from "../jobs.js";
+import { FakeLLM, type GenerateArgs, type StructuredLLM } from "../llm/structured.js";
 import { FakeToolLLM, type ToolCallRequest, type ToolMessage, type ToolStepCall } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
-import { ASK_CANT_CONTINUE, ASK_FAILED, DECLINED, MUTATING_TOOLS, resumeAsk, runAsk, type AskDeps } from "./ask.js";
+import { ASK_CANT_CONTINUE, ASK_FAILED, DECLINED, MAX_ASK_STEPS, MUTATING_TOOLS, NOT_IN_DATA, resumeAsk, runAsk, type AskDeps } from "./ask.js";
+import { COULDNT_CONFIRM, VERIFY_RETRIES } from "./verify.js";
 
 /** 20 minutes of speech: 500 ms per word, sentences of 5 words (2.5 s), speaker A then B every other minute. */
 const DURATION_MS = 20 * 60_000;
@@ -89,7 +91,18 @@ class FlakySaver extends MemorySaver {
 }
 
 const noSearch = async (): Promise<SearchHit[]> => [];
-const depsFor = (llm: FakeToolLLM, checkpointer = new MemorySaver(), search: AskDeps["search"] = noSearch) => ({ db, llm, search, checkpointer });
+/** A judge that gives every claim of the call the same verdict. */
+const judgeSaying = (verdict: string): StructuredLLM => ({
+  generate: async <T>(a: GenerateArgs<T>) =>
+    a.schema.parse({ verdicts: [...a.user.matchAll(/^Claim (\d+):/gm)].map((m) => ({ claim: Number(m[1]), reason: "r", verdict })) }),
+});
+const depsFor = (llm: FakeToolLLM, checkpointer = new MemorySaver(), search: AskDeps["search"] = noSearch, judge: StructuredLLM = judgeSaying("supported")) => ({
+  db,
+  llm,
+  search,
+  checkpointer,
+  judge,
+});
 const threadOf = (saver: MemorySaver, messageId: string) => saver.getTuple({ configurable: { thread_id: messageId } });
 
 async function approvals(sessionId: string, messageId: string) {
@@ -110,7 +123,7 @@ describe("Ask graph", () => {
     expect([...MUTATING_TOOLS].sort()).toEqual(["propose_clip", "set_selection", "trim_clip"]);
   });
 
-  it("a read-only turn answers without a pause, with the same records as before", async () => {
+  it("a read-only turn answers without a pause, with the same tool records as before plus the verify chip", async () => {
     const { s } = await seed();
     const msg = await ask(s.id, "What about rents?");
     const hit: SearchHit = { startMs: 60_000, endMs: 70_000, speakers: ["A"], text: "Rents rose.", score: 0.9 };
@@ -121,6 +134,7 @@ describe("Ask graph", () => {
     expect(done).toMatchObject({ status: "done", text: "Rents rose [00:01:00]." });
     expect(done.toolCalls).toEqual([
       { name: "search_transcript", args: { query: "rents" }, result: expect.stringContaining("Rents rose."), ok: true },
+      { name: "verify_answer", args: { rounds: 0 }, result: "All checked", ok: true },
     ]);
     expect(await approvals(s.id, msg.id)).toEqual([]);
     expect(await threadOf(deps.checkpointer, msg.id)).toBeUndefined(); // done: thread deleted
@@ -170,6 +184,7 @@ describe("Ask graph", () => {
     expect((done.toolCalls as AskToolCallRecord[]).map((r) => [r.name, r.ok, r.clipId])).toEqual([
       ["propose_clip", true, clip!.id],
       ["list_topics", true, undefined],
+      ["verify_answer", true, undefined],
     ]);
     expect((await approvals(s.id, msg.id))[0]).toMatchObject({ id: action.id, status: "confirmed", resolution: { decision: "approve" } });
     expect(await threadOf(deps.checkpointer, msg.id)).toBeUndefined();
@@ -320,6 +335,132 @@ describe("Ask graph", () => {
     expect(llm.calls).toHaveLength(2);
     await decide(deps, s.id, msg.id, { decision: "approve" });
     expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "done", text: "Both done." });
+  });
+});
+
+describe("Verify before answering", () => {
+  // In the seeded transcript "word10 word11 word12 word13" is said at 00:00:05; "word99" exists, elsewhere.
+  const RIGHT = 'Speaker A said "word10 word11 word12 word13" [00:00:05].';
+  const WRONG = 'Speaker A said "word10 word11 word99 word13" [00:00:05].';
+  const verifyChip = (calls: unknown) => (calls as AskToolCallRecord[]).find((r) => r.name === "verify_answer");
+
+  it("a correct quote passes with one agent turn; the chip says All checked", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did A say?");
+    const llm = new FakeToolLLM([answer(RIGHT)]);
+    await runAsk(depsFor(llm), msg.id);
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done).toMatchObject({ status: "done", text: RIGHT });
+    expect(llm.calls).toHaveLength(1);
+    expect(verifyChip(done.toolCalls)).toMatchObject({ result: "All checked", ok: true });
+  });
+
+  it("a wrong quote triggers one retry with what wasn't supported, and the corrected answer passes", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did A say?");
+    const llm = new FakeToolLLM([answer(WRONG), answer(RIGHT)]);
+    await runAsk(depsFor(llm), msg.id);
+    expect(llm.calls).toHaveLength(2);
+    const retry = llm.calls[1]!.messages;
+    expect(retry.at(-2)).toMatchObject({ role: "assistant", text: WRONG });
+    expect(retry.at(-1)).toMatchObject({ role: "user", text: expect.stringContaining("Verification: these parts weren't supported by the transcript:") });
+    expect((retry.at(-1) as { text: string }).text).toContain("“word10 word11 word99 word13”");
+    expect((retry.at(-1) as { text: string }).text).toContain("Look again with the tools and correct or drop them.");
+    expect((retry.at(-1) as { text: string }).text).toContain("without mentioning this check or a previous answer");
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done).toMatchObject({ status: "done", text: RIGHT });
+    expect(verifyChip(done.toolCalls)).toMatchObject({ result: "All checked", ok: true });
+  });
+
+  it("three wrong answers end with \"I couldn't confirm:\" after exactly 2 retries, never looping", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did A say?");
+    const llm = new FakeToolLLM([answer(WRONG), answer(WRONG), answer(WRONG), answer(RIGHT)]);
+    await runAsk(depsFor(llm), msg.id);
+    expect(VERIFY_RETRIES).toBe(2);
+    expect(llm.calls).toHaveLength(1 + VERIFY_RETRIES);
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done).toMatchObject({ status: "done", text: `${WRONG}\n\n${COULDNT_CONFIRM}“word10 word11 word99 word13”` });
+    expect(verifyChip(done.toolCalls)).toMatchObject({ result: "1 part couldn't be confirmed", ok: false });
+  });
+
+  it("a cited sentence the judge finds unsupported is sent back like a wrong quote", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Rents?");
+    const verdicts = (v: string) => ({ verdicts: [{ claim: 1, reason: "r", verdict: v }] });
+    const judge = new FakeLLM([verdicts("unsupported"), verdicts("supported")]);
+    const llm = new FakeToolLLM([answer("Rents rose [00:01:00]."), answer("Rents were discussed [00:01:00].")]);
+    await runAsk(depsFor(llm, new MemorySaver(), noSearch, judge), msg.id);
+    expect(judge.calls).toHaveLength(2);
+    expect(judge.calls[0]!.user).toContain("Claim 1: Rents rose [00:01:00].");
+    expect(judge.calls[0]!.user).toContain("[00:00:15] A: word30"); // 00:01:00 − 45 s
+    expect((await getAskMessage(db, msg.id))!.text).toBe("Rents were discussed [00:01:00].");
+  });
+
+  it("the judge failing leaves the answer unchanged, with a chip saying it couldn't be checked", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Rents?");
+    const judge = new FakeLLM([
+      () => {
+        throw new Error("529 overloaded");
+      },
+    ]);
+    const llm = new FakeToolLLM([answer("Rents rose [00:01:00].")]);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runAsk(depsFor(llm, new MemorySaver(), noSearch, judge), msg.id);
+    err.mockRestore();
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done).toMatchObject({ status: "done", text: "Rents rose [00:01:00]." });
+    expect(llm.calls).toHaveLength(1);
+    expect(verifyChip(done.toolCalls)).toMatchObject({ result: "Couldn't be checked", ok: true });
+  });
+
+  it("a translated quote is judged as a claim, not failed as a wrong quote", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did A promise?");
+    const judge = new FakeLLM([(c: { user: string }) => ({ verdicts: [...c.user.matchAll(/^Claim (\d+):/gm)].map((m) => ({ claim: Number(m[1]), reason: "r", verdict: "supported" })) })]);
+    const text = 'Speaker A promised "we will build cheaper homes for everyone" [00:01:00].';
+    const llm = new FakeToolLLM([answer(text)]);
+    await runAsk(depsFor(llm, new MemorySaver(), noSearch, judge), msg.id);
+    expect(llm.calls).toHaveLength(1);
+    expect(judge.calls[0]!.user).toContain("we will build cheaper homes for everyone");
+    expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "done", text });
+  });
+
+  it("NOT_IN_DATA is never verified and gets no chip", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Weather?");
+    const judge = new FakeLLM([]);
+    await runAsk(depsFor(new FakeToolLLM([answer(NOT_IN_DATA)]), new MemorySaver(), noSearch, judge), msg.id);
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done).toMatchObject({ status: "done", text: NOT_IN_DATA });
+    expect(verifyChip(done.toolCalls)).toBeUndefined();
+    expect(judge.calls).toHaveLength(0);
+  });
+
+  it("a retry that runs out of steps keeps the earlier answer with the couldn't-confirm line", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did A say?");
+    const lookup = () => toolStep(call("list_topics", {}));
+    const llm = new FakeToolLLM([answer(WRONG), ...Array.from({ length: MAX_ASK_STEPS - 1 }, lookup)]);
+    await runAsk(depsFor(llm), msg.id);
+    expect(llm.calls).toHaveLength(MAX_ASK_STEPS);
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done).toMatchObject({ status: "done", text: `${WRONG}\n\n${COULDNT_CONFIRM}“word10 word11 word99 word13”` });
+    expect(verifyChip(done.toolCalls)).toMatchObject({ result: "1 part couldn't be confirmed", ok: false });
+  });
+
+  it("an answer paused for approval is verified only once it is final", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Clip it.");
+    const judge = new FakeLLM([{ verdicts: [{ claim: 1, reason: "r", verdict: "supported" }] }]);
+    const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:01:01", end: "00:01:31", title: "x" })), answer("Made it [00:01:00].")]);
+    const deps = depsFor(llm, new MemorySaver(), noSearch, judge);
+    await runAsk(deps, msg.id);
+    expect(judge.calls).toHaveLength(0);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(judge.calls).toHaveLength(1);
+    expect(verifyChip((await getAskMessage(db, msg.id))!.toolCalls)).toMatchObject({ result: "All checked" });
   });
 });
 

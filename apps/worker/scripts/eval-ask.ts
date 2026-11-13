@@ -5,18 +5,20 @@
  *
  * Retrieval mode asks the transcript index (Chroma + the real multilingual-e5 embedder) each question and prints recall@k
  * and MRR. `--answers` also runs `runAsk` for every question as owner `eval` (one question at a time, no history), parses
- * the `[hh:mm:ss]` citations and the quoted text, checks every quote against the transcript, prints the scores and the LLM
- * cost from the usage meter, and deletes its `eval` rows. The golden path is relative to `apps/worker`.
+ * the `[hh:mm:ss]` citations and the quoted text, checks every quote against the transcript, prints the scores, what the
+ * verify step did (from its `verify_answer` chip) and the LLM cost from the usage meter, and deletes its `eval` rows. The golden path is relative to `apps/worker`.
  */
 import { readFileSync } from "node:fs";
 import { ChromaClient } from "chromadb";
 import { sql } from "drizzle-orm";
 import { createDb, addAskMessage, deleteAskMessages, getAskMessage, getTranscript } from "@digestor/core/server";
-import { runAsk } from "../src/agents/ask.js";
+import { OUT_OF_STEPS, runAsk } from "../src/agents/ask.js";
+import { COULDNT_CONFIRM } from "../src/agents/verify.js";
 import { answerScores, parseCitations, retrievalScores, type AskGolden } from "../src/eval/askMetrics.js";
 import { usageRows } from "../src/eval/metrics.js";
 import { llmConfigFromEnv } from "../src/llm/provider.js";
-import { createOpenRouterToolLLM } from "../src/llm/openrouter.js";
+import { createOpenRouterLLM, createOpenRouterToolLLM } from "../src/llm/openrouter.js";
+import { createAnthropicLLM } from "../src/llm/structured.js";
 import { createAnthropicToolLLM } from "../src/llm/tools.js";
 import { UsageMeter, withUsageMeter } from "../src/llm/usage.js";
 import { createE5Embedder } from "../src/search/embed.js";
@@ -100,8 +102,10 @@ try {
     const key = process.env[config.keyVar];
     if (!key) throw new Error(`${config.keyVar} is not set.`);
     const llm = config.provider === "openrouter" ? createOpenRouterToolLLM(key, config.models) : createAnthropicToolLLM(key);
+    const judge = config.provider === "openrouter" ? createOpenRouterLLM(key, config.models) : createAnthropicLLM(key);
     const meter = new UsageMeter();
     const rows: Parameters<typeof answerScores>[0] = [];
+    const verify = { sentBack: 0, couldntConfirm: 0, unchecked: 0, outOfSteps: 0 };
     const detail: string[] = [];
     const started = Date.now();
     await withUsageMeter(meter, async () => {
@@ -109,12 +113,18 @@ try {
         const user = await addAskMessage(db, { sessionId, ownerId: EVAL_OWNER, role: "user", text: q.question, status: "done" });
         const pending = await addAskMessage(db, { sessionId, ownerId: EVAL_OWNER, role: "assistant", text: "", status: "pending" });
         try {
-          await runAsk({ db, llm, search }, pending.id);
+          await runAsk({ db, llm, judge, search }, pending.id);
           const done = await getAskMessage(db, pending.id);
           const answer = done?.text ?? "";
           const { citedMs, quotes } = parseCitations(answer);
+          const chip = (Array.isArray(done?.toolCalls) ? (done.toolCalls as { name: string; args: unknown; result: string }[]) : []).find((c) => c.name === "verify_answer");
+          const rounds = Number((chip?.args as { rounds?: unknown } | undefined)?.rounds ?? 0);
+          verify.sentBack += rounds > 0 ? 1 : 0;
+          verify.couldntConfirm += answer.includes(COULDNT_CONFIRM) ? 1 : 0;
+          verify.unchecked += chip?.result.includes("couldn't be checked") || chip?.result === "Couldn't be checked" ? 1 : 0;
+          verify.outOfSteps += answer === OUT_OF_STEPS ? 1 : 0;
           rows.push({ q, answer, citedMs, quotesFound: quotes.map((x) => text.includes(norm(x))) });
-          detail.push(`${q.id} [${done?.status}] cited ${citedMs.map(clock).join(", ") || "none"}; quotes ${quotes.length ? quotes.map((x) => `${text.includes(norm(x)) ? "ok" : "NOT FOUND"}: "${x}"`).join(" | ") : "none"}\n    ${answer.replace(/\s+/g, " ").slice(0, 1500)}`);
+          detail.push(`${q.id} [${done?.status}] verify ${chip ? `${chip.result}, sent back ${rounds}×` : "none"}; cited ${citedMs.map(clock).join(", ") || "none"}; quotes ${quotes.length ? quotes.map((x) => `${text.includes(norm(x)) ? "ok" : "NOT FOUND"}: "${x}"`).join(" | ") : "none"}\n    ${answer.replace(/\s+/g, " ").slice(0, 1500)}`);
           console.error(`answered ${rows.length}/${golden.questions.length}: ${q.id}`);
         } finally {
           await deleteAskMessages(db, [user.id, pending.id]);
@@ -125,6 +135,7 @@ try {
     console.log(`\nAsk answers, model ${config.models.reasoning} via ${config.provider}, ${s.n} questions, ${Math.round((Date.now() - started) / 1000)} s`);
     console.log("| Metric | Result |\n| --- | --- |");
     console.log(`| Citation hit (answerable) | ${pct(s.citationHit)} |\n| Quote exact | ${pct(s.quoteExact)} |\n| Refusal correct (unanswerable) | ${pct(s.refusalCorrect)} |`);
+    console.log(`| Answers sent back by verify | ${verify.sentBack} of ${s.n} |\n| Answers ending "I couldn't confirm" | ${verify.couldntConfirm} of ${s.n} |\n| Answers with parts not checked | ${verify.unchecked} of ${s.n} |\n| Gave up on the step limit | ${verify.outOfSteps} of ${s.n} |`);
     for (const [kk, v] of usageRows("Ask run", meter.report(), null)) console.log(`| ${kk} | ${v} |`);
     console.log("\nPer question:");
     for (const d of detail) console.log(d);

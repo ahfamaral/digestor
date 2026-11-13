@@ -11,6 +11,7 @@ import {
 import { eq } from "drizzle-orm";
 import { MissingApiKeyError } from "../errors.js";
 import { handleAsk, handleAskResume } from "../jobs.js";
+import type { GenerateArgs, StructuredLLM } from "../llm/structured.js";
 import { FakeToolLLM, type ToolCallRequest, type ToolMessage, type ToolStepCall } from "../llm/tools.js";
 import { FakeEmbedder } from "../search/embed.js";
 import { searchTranscript, type SearchHit } from "../search/index.js";
@@ -89,7 +90,12 @@ const toolResults = (c: ToolStepCall): string[] => {
 };
 
 const noSearch = async (): Promise<SearchHit[]> => [];
-const depsFor = (llm: FakeToolLLM, search: AskDeps["search"] = noSearch) => ({ db, llm, search, checkpointer: new MemorySaver() });
+/** A judge that finds every cited sentence supported (verify.ts). */
+const supportAll: StructuredLLM = {
+  generate: async <T>(a: GenerateArgs<T>) =>
+    a.schema.parse({ verdicts: [...a.user.matchAll(/^Claim (\d+):/gm)].map((m) => ({ claim: Number(m[1]), reason: "r", verdict: "supported" })) }),
+};
+const depsFor = (llm: FakeToolLLM, search: AskDeps["search"] = noSearch) => ({ db, llm, search, judge: supportAll, checkpointer: new MemorySaver() });
 
 /** The answer's pending approval of changes (Task C1: every change is approved first), resolved as the journalist would. */
 async function approvePending(messageId: string): Promise<string | null> {
@@ -150,7 +156,10 @@ describe("runAsk tools", () => {
     expect(events.map((e) => [e.actor, e.kind])).toEqual([["ask", "create"]]);
     expect(toolResults(llm.calls[1]!)[0]).toContain(clip!.id);
     const done = (await getAskMessage(db, msg.id))!;
-    expect(done.toolCalls).toEqual([expect.objectContaining({ name: "propose_clip", ok: true, args: expect.objectContaining({ start: "00:01:01" }) })]);
+    expect(done.toolCalls).toEqual([
+      expect.objectContaining({ name: "propose_clip", ok: true, args: expect.objectContaining({ start: "00:01:01" }) }),
+      { name: "verify_answer", args: { rounds: 0 }, result: "All checked", ok: true }, // the answer's cited sentence was checked (verify.ts)
+    ]);
     expect((done.toolCalls as AskToolCallRecord[])[0]!.clipId).toBe(clip!.id); // Undo (Task 21) deletes this clip
   });
 
@@ -383,6 +392,7 @@ describe("runAsk tools", () => {
       ["trim_clip", false, undefined],
       ["propose_clip", false, undefined],
       ["set_selection", true, undefined],
+      ["verify_answer", true, undefined],
     ]);
   });
 

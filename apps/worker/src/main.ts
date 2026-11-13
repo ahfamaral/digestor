@@ -147,7 +147,7 @@ async function main() {
   await register(QUEUES.prepareTrack, PrepareTrackJobSchema, (j, attempt) => handlePrepareTrack(ctx, j, attempt));
   await register(QUEUES.burnTrack, BurnTrackJobSchema, (j, attempt) => handleBurnTrack({ db, storage }, j, attempt));
   await register(QUEUES.renderClip, RenderClipJobSchema, (j, attempt) => handleRenderClip({ db, storage }, j, attempt));
-  const askDeps = { db, llm: toolLlm, search: (id: string, q: string, k: number) => searchTranscript(deps.search, id, q, k), checkpointer: askCheckpointer };
+  const askDeps = { db, llm: toolLlm, judge: llm, search: (id: string, q: string, k: number) => searchTranscript(deps.search, id, q, k), checkpointer: askCheckpointer };
   await register(QUEUES.ask, AskJobSchema, (j, attempt) => handleAsk(askDeps, j, attempt));
   await register(QUEUES.askResume, AskResumeJobSchema, (j, attempt) => handleAskResume(askDeps, j, attempt));
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, (j, attempt) => handleTranslateBriefing({ db, llm }, j, attempt));

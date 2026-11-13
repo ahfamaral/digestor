@@ -8,6 +8,7 @@ import {
   AskRunError, DECLINED, EDITED, readResolution, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
   type AskDeps, type AskRun, type ToolResult,
 } from "./ask.js";
+import { VERIFY_RETRIES, verificationFeedback, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
 
 /** The decision the approve node passes on to `tools`, with the calls it covers (the ones on the card). */
 export type Approval = ToolApprovalResolution & { ids: string[] };
@@ -32,10 +33,18 @@ export const AskState = Annotation.Root({
   wrote: Annotation<boolean>({ reducer: keep, default: () => false }),
   /** The journalist's decision on the current turn's changes, from `approve` to `tools` (null: nothing was asked). */
   approval: Annotation<Approval | null>({ reducer: keep, default: () => null }),
+  /** The model's reply content for `final` (thinking blocks), replayed if verification sends the answer back. */
+  finalRaw: Annotation<unknown>({ reducer: keep, default: () => undefined }),
+  /** Times verification sent the answer back to the model (at most VERIFY_RETRIES). */
+  verifyRounds: Annotation<number>({ reducer: keep, default: () => 0 }),
+  /** The last answer verification sent back, and what it found: kept if the retry runs out of steps. */
+  lastCheck: Annotation<{ text: string; result: VerifyResult } | null>({ reducer: keep, default: () => null }),
+  /** `final` is settled (verified, or never to be verified): the graph ends. */
+  settled: Annotation<boolean>({ reducer: keep, default: () => false }),
 });
 export type AskStateValue = typeof AskState.State;
 
-export const threadConfig = (messageId: string) => ({ configurable: { thread_id: messageId }, recursionLimit: 4 * MAX_ASK_STEPS + 4 });
+export const threadConfig = (messageId: string) => ({ configurable: { thread_id: messageId }, recursionLimit: 4 * MAX_ASK_STEPS + VERIFY_RETRIES + 6 });
 
 /** The action id an answer is paused on (a graph result or a state snapshot), or null when it isn't paused. */
 export function interruptedBy(x: unknown): string | null {
@@ -76,15 +85,27 @@ const threadOf = (config: LangGraphRunnableConfig): string => {
   return id;
 };
 
+/** The verify chip, stored with the tool chips (none when the answer had nothing to check). */
+function verifyRecord(r: VerifyResult, rounds: number): AskToolCallRecord[] {
+  if (r.checked + r.unsupported.length + r.unchecked.length === 0) return [];
+  return [{ name: "verify_answer", args: { rounds }, result: verifySummary(r), ok: r.unsupported.length === 0 }];
+}
+
+/** Answers that are never verified: the fixed refusal and the step-limit line. */
+const unverifiable = (text: string) => text === NOT_IN_DATA || text === OUT_OF_STEPS;
+
 /**
- * The Ask agent as a LangGraph graph: `START → agent → route`. `route` ends on a final answer, sends a turn with any
- * call in MUTATING_TOOLS to `approve`, and any other turn to `tools`. `approve` validates the changes without
+ * The Ask agent as a LangGraph graph: `START → agent → route`. `route` sends a final answer to `verify` (or ends on
+ * one that is never verified), sends a turn with any call in MUTATING_TOOLS to `approve`, and any other turn to
+ * `tools`. `verify` checks quotes and cited sentences against the transcript (verify.ts): with unsupported parts and
+ * retries left it returns the answer to `agent` with a "Verification: …" user turn; otherwise the answer ends, with
+ * an "I couldn't confirm: …" line for what is still unsupported. `approve` validates the changes without
  * writing (plan mode), stores one `tool_approval` action per answer and turn, sets the answer `waiting` and pauses
  * with `interrupt({ actionId })`; resumed with the journalist's decision it goes on to `tools`. `tools` runs every
  * call through `runTool` (validation, `evidence()`, the R31 cap) and returns to `agent`.
  */
 export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) {
-  const { db, llm } = deps;
+  const { db, llm, judge } = deps;
   // One load per answer and graph run: the nodes share it, and a resumed run reads the session as it is now.
   const runs = new Map<string, Promise<AskRun>>();
   const load = (config: LangGraphRunnableConfig): Promise<AskRun> => {
@@ -107,18 +128,51 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
     try {
       const { system } = await load(config);
       const res = await llm.step({ system, messages: state.messages, tools: TOOL_SPECS });
-      if (res.toolCalls.length === 0) return { steps, final: res.text.trim() || NOT_IN_DATA };
-      if (steps >= MAX_ASK_STEPS) return { steps, final: OUT_OF_STEPS }; // the model could never read these results
+      if (res.toolCalls.length === 0) return { steps, final: res.text.trim() || NOT_IN_DATA, finalRaw: res.raw };
+      if (steps >= MAX_ASK_STEPS) {
+        // The model could never read these results. A retry after verification keeps the answer it corrects.
+        const last = state.lastCheck;
+        if (last) {
+          return { steps, final: withCouldntConfirm(last.text, last.result.unsupported), records: [...state.records, ...verifyRecord(last.result, state.verifyRounds)], settled: true };
+        }
+        return { steps, final: OUT_OF_STEPS, settled: true };
+      }
       return { steps, messages: [...state.messages, { role: "assistant", text: res.text, toolCalls: res.toolCalls, raw: res.raw }] };
     } catch (err) {
       throw new AskRunError(err, state.records, state.wrote);
     }
   }
 
-  function route(state: AskStateValue): typeof END | "approve" | "tools" {
-    if (state.final !== null) return END;
+  function route(state: AskStateValue): typeof END | "verify" | "approve" | "tools" {
+    if (state.final !== null) return state.settled || unverifiable(state.final) ? END : "verify";
     return mutatingCalls(lastTurn(state)).length > 0 ? "approve" : "tools";
   }
+
+  async function verify(state: AskStateValue, config: LangGraphRunnableConfig): Promise<typeof AskState.Update> {
+    const answer = state.final ?? "";
+    try {
+      const { ctx } = await load(config);
+      const result = await verifyAnswer({ judge }, answer, ctx.transcript);
+      if (result.unsupported.length > 0 && state.verifyRounds < VERIFY_RETRIES && state.steps < MAX_ASK_STEPS) {
+        return {
+          final: null,
+          finalRaw: undefined,
+          verifyRounds: state.verifyRounds + 1,
+          lastCheck: { text: answer, result },
+          messages: [
+            ...state.messages,
+            { role: "assistant", text: answer, ...(state.finalRaw !== undefined ? { raw: state.finalRaw } : {}) },
+            { role: "user", text: verificationFeedback(result.unsupported) },
+          ],
+        };
+      }
+      return { final: withCouldntConfirm(answer, result.unsupported), records: [...state.records, ...verifyRecord(result, state.verifyRounds)], settled: true };
+    } catch (err) {
+      throw new AskRunError(err, state.records, state.wrote);
+    }
+  }
+
+  const afterVerify = (state: AskStateValue): typeof END | "agent" => (state.final === null ? "agent" : END);
 
   async function approve(state: AskStateValue, config: LangGraphRunnableConfig): Promise<typeof AskState.Update> {
     const messageId = threadOf(config);
@@ -198,8 +252,10 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
     .addNode("agent", agent)
     .addNode("approve", approve)
     .addNode("tools", tools)
+    .addNode("verify", verify)
     .addEdge(START, "agent")
-    .addConditionalEdges("agent", route, { approve: "approve", tools: "tools", [END]: END })
+    .addConditionalEdges("agent", route, { verify: "verify", approve: "approve", tools: "tools", [END]: END })
+    .addConditionalEdges("verify", afterVerify, { agent: "agent", [END]: END })
     .addEdge("approve", "tools")
     .addEdge("tools", "agent")
     .compile({ checkpointer });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, sourceLines, isAnswering, isStalePending,
-  isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo,
+  isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, verifyResult,
 } from "./askText";
 
 describe("linkifyTimestamps", () => {
@@ -129,6 +129,16 @@ describe("isAnswering (T14)", () => {
     expect(isAnswering("running")).toBe(true);
     expect(isAnswering("done")).toBe(false);
     expect(isAnswering("failed")).toBe(false);
+  });
+});
+
+describe("verifyResult", () => {
+  it("reads the verify chip's line, and it is never listed as a source", () => {
+    const verify = { name: "verify_answer", args: { rounds: 1 }, result: "1 part couldn't be confirmed", ok: false };
+    const search = { name: "search_transcript", args: {}, result: "<transcript>\n[00:01:00–00:01:10] A: Hi.\n</transcript>", ok: true };
+    expect(verifyResult([search, verify])).toBe("1 part couldn't be confirmed");
+    expect(verifyResult([search])).toBeNull();
+    expect(sourceLines(verify)).toEqual([]);
   });
 });
 

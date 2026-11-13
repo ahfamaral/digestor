@@ -38,21 +38,30 @@ Reading the table: topics land within about half a minute of the hand-drawn boun
 - **Golden files:** drafted by Claude from the transcripts, the owner has not reviewed them yet. The expected spans are approximate (30 to 240 s of the video).
 - **Cost:** answers $0.034 (Globo, 43 calls) and $0.022 (Osang, 32 calls) for the table below; retrieval is free. Earlier trial runs of the same script, while its citation parser was being fixed, cost $0.075 more.
 
-| Metric | Globo debate | Osang × Merkel |
-| --- | --- | --- |
-| Retrieval recall@6 (10 answerable) | 0.80 | 0.70 |
-| Retrieval MRR | 0.75 | 0.70 |
-| Citation hit | 80% | 100% |
-| Quote exact | 100% | 71% |
-| Refusal correct (2 unanswerable) | 50% | 100% |
-| Answers that gave up on the step limit | 3 of 12 | 0 of 12 |
+| Metric | Globo debate, before | Globo debate, after C1+C2 | Osang × Merkel, before | Osang × Merkel, after C1+C2 |
+| --- | --- | --- | --- | --- |
+| Retrieval recall@6 (10 answerable) | 0.80 | 0.80 | 0.70 | 0.70 |
+| Retrieval MRR | 0.75 | 0.75 | 0.70 | 0.70 |
+| Citation hit | 80% | 90% | 100% | 80% |
+| Quote exact | 100% | 100% | 71% | 100% |
+| Refusal correct (2 unanswerable) | 50% | 100% | 100% | 50% |
+| Answers that gave up on the step limit | 3 of 12 | 1 of 12 | 0 of 12 | 1 of 12 |
+| Answers sent back by verify | – | 1 of 12 | – | 1 of 12 |
+| Answers ending "I couldn't confirm" | – | 0 of 12 | – | 0 of 12 |
+| Answers with parts the judge couldn't check | – | 0 of 12 | – | 2 of 12 |
 
-q08 was reworded after this baseline run (it named the wrong speaker); the 'after' run uses the new wording. Retrieval was re-run with the new wording (Globo MRR 0.70 became 0.75, recall unchanged); the answer rows are from the baseline run.
+q08 was reworded after this baseline run (it named the wrong speaker); the 'after' run uses the new wording. Retrieval was re-run with the new wording (Globo MRR 0.70 became 0.75, recall unchanged); the 'before' answer rows are from the baseline run.
+
+**After C1+C2** (13 November 2026, same model and goldens): Ask runs as the LangGraph graph with approval before changes (C1) and the verify step (C2: quotes checked word for word against the whole transcript, cited sentences judged by one fast-model call on the transcript ±45 s around each cited time, at most 2 retries, then an "I couldn't confirm: …" line). Cost of the two 'after' runs: $0.038 (Globo, 54 calls) and $0.035 (Osang, 50 calls), judge calls included; a first 'after' run ($0.082) found that corrected answers talked about the check ("I've corrected my earlier quote"), so the retry message now says the user never saw the earlier answer, and the judge prompt now counts "X isn't mentioned here" as supported when the passage doesn't mention X. The numbers above are from the second run.
+
+- Quote exact rose to 100% on both videos, but the metric checks quotes literally: verify treats a quote whose words mostly aren't in the transcript (an English or Portuguese rendering of German speech) as a translation and judges it as a claim, so it no longer sends those back; in this run the model simply quoted the original words. In the first 'after' run, translated quotes stayed and verify passed them as supported claims (the literal metric still counted them as not found).
+- Verify sent back 1 answer per video, and each corrected answer passed; no answer ended with "I couldn't confirm". In the first 'after' run 3 Globo answers ended with it, two of them because the answer had already used its 6 steps (verify then keeps the answer with the line instead of asking again).
+- The changes in citation hit, refusal and step-limit rows (Globo better; Osang worse: q02 answered that the video doesn't say why she chose the Baltic and cited the passage around 00:14:25 instead of the reasons at 00:17:20, q06 quoted a later "7 Jahre" passage at 00:55:46 that the golden doesn't list, and q12 gave up on the step limit instead of refusing; none of these answers was sent back by verify) are within the run-to-run variation described below; with 12 questions per video one question moves a rate by 8 to 10 points. Verify doesn't touch refusals or the step limit: it skips "That isn't in this video's data." and the step-limit line.
 
 Reading the table:
 
 - Retrieval misses 5 of the 20 answerable questions: the whisky price and the childcare question in the debate, the Minsk "seven years", the defence budget "32 to 50 billion" and the book question in the interview. All have the right words in a chunk the question's own words don't resemble (a figure, a name), so the embedding ranks other chunks first. The answers still found most of them, because the agent also reads transcript ranges and searches again; that is why citation hit is higher than recall@6.
 - The two unanswerable questions ask for things the video never says. Retrieval returns a chunk anyway (top cosine 0.81 to 0.87), so a score threshold would not separate them from real hits; refusal rests on the model. It refused correctly on the interview; on the debate it refused the Mercosul question and gave up on the step limit on the UN question, which is not a wrong claim but not a refusal either.
 - The three step-limit failures in the debate (saidinhas, sewage figures, UN) are the loop running out of its 6 steps on a long, repetitive video, where the same topic returns in several blocks. The saidinhas question gave up in both runs; the sewage and UN questions were answered in the earlier trial run, so part of it is sampling noise; 3 of 12 is the number to beat.
-- Quote exact: the failures are quotes the model wrote in English or Portuguese about a German transcript (`"order my life again"`, `"se dispersa"`), i.e. a translation presented in quotation marks. The verify step planned in a later task checks those as claims instead.
+- Quote exact (before): the failures are quotes the model wrote in English or Portuguese about a German transcript (`"order my life again"`, `"se dispersa"`), i.e. a translation presented in quotation marks. The verify step (C2) checks those as claims instead.
 - 12 questions per video is a small sample: one question moves a percentage by 8 to 10 points, and the model's answers vary from run to run (the interview's citation hit was 20% in a first trial before the parser read time ranges, then 80%, then 100%).
