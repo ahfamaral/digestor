@@ -30,6 +30,29 @@ describe("linkifyTimestamps", () => {
   it("finds adjacent timestamps", () => {
     expect(linkifyTimestamps("[00:01][00:02]").map((p) => p.kind)).toEqual(["time", "time"]);
   });
+
+  it("a cited range plays from its start, one button for the whole range", () => {
+    expect(linkifyTimestamps("five weeks there [00:04:09–00:05:06].")).toEqual([
+      { kind: "text", value: "five weeks there " },
+      { kind: "time", ms: 249_000, label: "[00:04:09–00:05:06]" },
+      { kind: "text", value: "." },
+    ]);
+    expect(linkifyTimestamps("[4:09 - 5:06]")).toEqual([{ kind: "time", ms: 249_000, label: "[4:09 - 5:06]" }]);
+  });
+
+  it("a cited list gets a button per time", () => {
+    expect(linkifyTimestamps("[00:01:00; 00:02:00]")).toEqual([
+      { kind: "text", value: "[" },
+      { kind: "time", ms: 60_000, label: "00:01:00" },
+      { kind: "text", value: "; " },
+      { kind: "time", ms: 120_000, label: "00:02:00" },
+      { kind: "text", value: "]" },
+    ]);
+  });
+
+  it("a range or list with an invalid time stays plain text", () => {
+    expect(linkifyTimestamps("[00:04:09–00:75:00] [1:00; x]")).toEqual([{ kind: "text", value: "[00:04:09–00:75:00] [1:00; x]" }]);
+  });
 });
 
 describe("asToolCalls", () => {

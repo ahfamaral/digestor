@@ -276,8 +276,8 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
           className="top-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-md lg:border-l lg:border-border lg:shadow-xl"
         >
           <div className="border-b border-border px-4 py-3 pr-12">
-            <DialogTitle>{t("ask.title")}</DialogTitle>
-            <DialogDescription id="ask-description" className="mt-1 text-xs text-muted-foreground">{t("ask.hint")}</DialogDescription>
+            <DialogTitle>{t(hasVideo ? "ask.title" : "ask.titleAudio")}</DialogTitle>
+            <DialogDescription id="ask-description" className="mt-1 text-xs text-muted-foreground">{t(hasVideo ? "ask.hint" : "ask.hintAudio")}</DialogDescription>
           </div>
 
           {preview && (

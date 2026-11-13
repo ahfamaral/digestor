@@ -56,7 +56,7 @@ export function buildSteps(stage: StageName, source: "upload" | "youtube", hasVi
   const at = current === null ? -1 : keys.indexOf(current);
   return keys.map((key, i) => ({
     key,
-    label: t(key === "intake" && source === "youtube" ? "processing.downloading" : LABEL[key]),
+    label: t(key === "intake" && source === "youtube" ? "processing.downloading" : key === "preparing_preview" && !hasVideo ? "processing.preparing_preview_audio" : LABEL[key]),
     state: at === -1 ? "waiting" : stage === "ready" || i < at ? "done" : i === at ? "running" : "waiting",
   }));
 }

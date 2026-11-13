@@ -5,25 +5,57 @@ import {
 
 export type AskTextPart = { kind: "text"; value: string } | { kind: "time"; ms: number; label: string };
 
-// [hh:mm:ss] or [mm:ss]; the groups are checked for range below, so "[75:00]" stays plain text.
-const TIMESTAMP = /\[(?:(\d{1,3}):)?(\d{1,2}):(\d{2})\]/g;
+// One time inside a citation: hh:mm:ss or mm:ss (minutes and seconds under 60, checked in `citedMs`).
+const TIME = /(?:(\d{1,3}):)?(\d{1,2}):(\d{2})/g;
+const CITATION = /\[([^\]\[]*)\]/g;
+// A citation is one time, a range "a–b" (en dash or hyphen) or a list "a; b" / "a, b".
+const ONE = /^\s*\d{1,3}(?::\d{1,2}){1,2}\s*$/;
+const RANGE = /^\s*(\d{1,3}(?::\d{1,2}){1,2})\s*[–-]\s*(\d{1,3}(?::\d{1,2}){1,2})\s*$/;
+const LIST = /^\s*\d{1,3}(?::\d{1,2}){1,2}(?:\s*[;,]\s*\d{1,3}(?::\d{1,2}){1,2})+\s*$/;
 
-/** Splits an answer into plain text and `[hh:mm:ss]` / `[mm:ss]` timestamps (minutes and seconds under 60). */
+function citedMs(time: string): number | null {
+  const m = new RegExp(`^${TIME.source}$`).exec(time.trim());
+  if (!m) return null;
+  const hours = m[1] === undefined ? 0 : Number(m[1]);
+  const minutes = Number(m[2]);
+  const seconds = Number(m[3]);
+  if (minutes >= 60 || seconds >= 60) return null;
+  return ((hours * 60 + minutes) * 60 + seconds) * 1000;
+}
+
+/**
+ * Splits an answer into plain text and cited times (minutes and seconds under 60): `[hh:mm:ss]` / `[mm:ss]` and a range
+ * `[a–b]` are one button each (a range plays from its start); a list `[a; b]` gets a button per time. A citation with
+ * any invalid time stays plain text.
+ */
 export function linkifyTimestamps(text: string): AskTextPart[] {
   const parts: AskTextPart[] = [];
   let last = 0;
   const pushText = (end: number) => {
     if (end > last) parts.push({ kind: "text", value: text.slice(last, end) });
   };
-  for (const match of text.matchAll(TIMESTAMP)) {
-    const hours = match[1] === undefined ? 0 : Number(match[1]);
-    const minutes = Number(match[2]);
-    const seconds = Number(match[3]);
-    if (minutes >= 60 || seconds >= 60) continue;
+  for (const match of text.matchAll(CITATION)) {
+    const inner = match[1]!;
     const at = match.index;
-    pushText(at);
-    parts.push({ kind: "time", ms: ((hours * 60 + minutes) * 60 + seconds) * 1000, label: match[0] });
-    last = at + match[0].length;
+    if (ONE.test(inner) || RANGE.test(inner)) {
+      const ms = citedMs(RANGE.exec(inner)?.[1] ?? inner);
+      const end = RANGE.exec(inner)?.[2];
+      if (ms === null || (end !== undefined && citedMs(end) === null)) continue;
+      pushText(at);
+      parts.push({ kind: "time", ms, label: match[0] });
+      last = at + match[0].length;
+    } else if (LIST.test(inner)) {
+      const times = [...inner.matchAll(TIME)];
+      const ms = times.map((t) => citedMs(t[0]));
+      if (ms.some((v) => v === null)) continue;
+      pushText(at + 1); // the "[" stays text
+      last = at + 1;
+      times.forEach((t, i) => {
+        pushText(at + 1 + t.index);
+        parts.push({ kind: "time", ms: ms[i]!, label: t[0] });
+        last = at + 1 + t.index + t[0].length;
+      });
+    }
   }
   pushText(text.length);
   return parts;

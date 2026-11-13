@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { factBadge, profileBadge } from "./contextBadge";
+import { factBadge, profileBadge, shownBadge } from "./contextBadge";
 
 describe("context badges", () => {
   it("profile is suggested by AI until edited, then from you", () => {
@@ -12,5 +12,10 @@ describe("context badges", () => {
     expect(factBadge(fact, "y", "x")).toBe("human");
     expect(factBadge(fact, "", "x")).toBe("missing");
     expect(factBadge({ value: null, source: null, evidence: null }, "", "")).toBe("missing");
+  });
+  it("a fact from the recording reads from audio for an audio-only file; other sources keep theirs", () => {
+    expect(shownBadge("video", true)).toBe("audio");
+    expect(shownBadge("video", false)).toBe("video");
+    for (const k of ["metadata", "human", "missing", "ai"] as const) expect(shownBadge(k, true)).toBe(k);
   });
 });

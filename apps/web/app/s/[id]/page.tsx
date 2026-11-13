@@ -38,7 +38,7 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
     const { db } = getServer();
     const [found, names, transcript] = await Promise.all([getContextCard(db, id), loadNames(db, id), getTranscript(db, id)]);
     body = found ? (
-      <ContextCheck sessionId={session.id} card={found.card} names={names} rows={whosWhoRows(names, transcript?.words ?? [])} proxyReady={isProxyReady(session)} />
+      <ContextCheck sessionId={session.id} card={found.card} names={names} rows={whosWhoRows(names, transcript?.words ?? [])} proxyReady={isProxyReady(session)} hasVideo={session.hasVideo && !session.audioOnlyAck} />
     ) : (
       <div role="alert" className="rounded-xl border border-border bg-white p-5 text-sm text-red-700">
         {t("session.contextMissing")}

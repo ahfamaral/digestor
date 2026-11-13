@@ -57,6 +57,12 @@ describe("audio-only sessions", () => {
     expect(steps.find((s) => s.label === "Indexing")?.state).toBe("running");
     expect(buildSteps("ready", "upload", false).every((s) => s.state === "done")).toBe(true);
   });
+  it("prepare the audio, not the video, for playback", () => {
+    const labels = buildSteps("preparing_preview", "upload", false).map((s) => s.label);
+    expect(labels).toContain("Preparing the audio for playback");
+    expect(labels).not.toContain("Preparing the video for playback");
+    expect(buildSteps("preparing_preview", "upload", true).map((s) => s.label)).toContain("Preparing the video for playback");
+  });
   it("keep the step for video sessions, and by default", () => {
     expect(buildSteps("indexing", "upload", true).map((s) => s.label)).toContain("Naming speakers");
     expect(buildSteps("indexing", "upload").map((s) => s.label)).toContain("Naming speakers");

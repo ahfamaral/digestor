@@ -29,6 +29,14 @@ Evaluation results for the capstone; each section says what was measured, on wha
 
 Reading the table: topics land within about half a minute of the hand-drawn boundaries on average; the checks caught every trap (reported speech and cut-off arguments); the two speakers were named correctly. Passage recall is 0/3 because the analysis cuts this interview into many short passages (93) while the golden passages are whole answers of 90 to 200 seconds, so none is covered by half; this is a granularity mismatch of the labels as much as a miss, and is a point for the owner's review.
 
+## Audio-only run
+
+- **What was checked:** an audio file (no picture) through the whole journalist flow, end to end in the real app; no golden file, a pass/fail walk with Playwright at 1280 and 390 px.
+- **On what:** a 10-minute MP3 cut from the Osang × Merkel interview above (10:00 to 20:00, `-vn`, libmp3lame `-q:a 4`, 8 MB), uploaded with `audioOnlyAck=1` and language `de`.
+- **When / model / cost:** 13 November 2026; `openrouter:anthropic/claude-haiku-5.5`. Analysis $0.021 (17 calls); context check, 1 Ask question and the moment checks about $0.01 more; transcription about $0.04 (10 min at $0.23/h). Upload to `ready` took about 4 minutes.
+- **Result:** works end to end. Upload refuses an MP3 without the acknowledgement (400 with the waveform warning); the session has `has_video = false`, the preview copy is AAC only, and `audio.mp3` is released at `ready`. Processing shows no Naming speakers step; voice samples play on the context check and in Who's who; Briefing rows and the Ask drawer play an audio player (no thumbnail slots on the top highlights); Prepare plays audio, explains 9:16 ("the export shows a waveform in this shape"), and the subtitle editor follows the audio; renders are a white waveform on a dark background, 1280×720 or 720×1280, with the credit line and burned-in subtitles; "Download all" zips the plain MP4s, SRT and VTT. No console errors.
+- **Fixed during the run:** Processing said "Preparing the video for playback" (now "the audio" for an audio file); context-card facts said "from video" (now "from audio"); the Ask drawer said "Ask about this video" (now "this recording"); and, for every session, an Ask answer citing a range `[00:04:09–00:05:06]` had no play button (ranges now play from their start, and lists `[a; b]` get a button per time).
+
 ## Ask (RAG)
 
 - **What was measured:** the Ask copilot on two videos, with 12 hand-written questions each (`apps/worker/eval/ask/*.ask.json`; 10 answerable with the transcript spans that answer them, 2 unanswerable; 7 per video asked in a different language than the video). Two parts: **retrieval** (does the transcript search put a chunk that overlaps the answer span in the top k; recall@k and mean reciprocal rank, free) and **answers** (the full `runAsk` loop with its tools; `scripts/eval-ask.ts <golden> --answers`).
