@@ -22,7 +22,7 @@ import {
   StartJobSchema,
   TranslateBriefingJobSchema,
 } from "@digestor/core";
-import { LocalStorage, createDb } from "@digestor/core/server";
+import { LocalStorage, createDb, createPool } from "@digestor/core/server";
 import { CLEANUP_CRON, CLEANUP_QUEUE, runDailyCleanup, videoRetentionDays } from "./cleanup.js";
 import {
   handleAsk,
@@ -117,7 +117,8 @@ async function main() {
   const ctx: JobContext = { db, deps };
 
   // Ask's LangGraph checkpoints (one thread per answer, so a paused answer survives restarts): schema ask_graph.
-  const askCheckpointer = PostgresSaver.fromConnString(databaseUrl, { schema: ASK_GRAPH_SCHEMA });
+  // Its own pool (createPool: an idle client's error after a Postgres restart is logged, not a crash).
+  const askCheckpointer = new PostgresSaver(createPool(databaseUrl), undefined, { schema: ASK_GRAPH_SCHEMA });
   await askCheckpointer.setup();
 
   const boss = new PgBoss(databaseUrl);
