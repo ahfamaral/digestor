@@ -5,6 +5,7 @@ export * from "./db/client.ts";
 export * from "./db/repo.ts";
 export * from "./db/analysis.ts";
 export * from "./db/personal.ts";
+export * from "./db/libraryAsk.ts";
 export * from "./db/names.ts";
 export * from "./db/records.ts";
 export * from "./db/preview.ts";
@@ -16,7 +17,7 @@ export * from "./db/monitorWords.ts";
 export { runMigrations } from "./db/migrate.ts";
 export {
   sessions, transcripts, contextCards, analysisVersions, topics, moments, momentHighlights, briefings, translations,
-  selections, clips, clipEvents, subtitleTracks, askMessages, askActions, problemReports, persons, attributions, sessionRecords, pipelineRuns,
+  selections, clips, clipEvents, subtitleTracks, askMessages, askActions, libraryAskMessages, problemReports, persons, attributions, sessionRecords, pipelineRuns,
   parlMembers, parlSpeeches, parlRollCalls, parlVotes,
   type Stage,
 } from "./db/schema.ts";

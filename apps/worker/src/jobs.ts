@@ -1,4 +1,4 @@
-import { PROFILES, ProfileIdSchema, type AskJob, type AskResumeJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ProxyJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { PROFILES, ProfileIdSchema, type AskJob, type AskResumeJob, type LibraryAskJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ProxyJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   claimFindMore,
   failAnalysisVersion,
@@ -29,6 +29,9 @@ import {
   failClipRender,
   failTrackBurn,
   finishAskMessage,
+  finishLibraryAskMessage,
+  getLibraryAskMessage,
+  releaseLibraryAskMessage,
   getAskAction,
   getAskMessage,
   hasPendingToolApproval,
@@ -40,6 +43,7 @@ import {
 } from "@digestor/core/server";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { ASK_FAILED, AskRunError, deleteThread, resumeAsk, runAsk, type AskDeps } from "./agents/ask.js";
+import { LIBRARY_ASK_FAILED, runLibraryAsk, type LibraryAskDeps } from "./agents/askLibrary.js";
 import { findMoreMoments, personConfirmed, personTurnRanges } from "./agents/findMore.js";
 import { translateBriefing } from "./agents/translateBriefing.js";
 import type { StructuredLLM } from "./llm/structured.js";
@@ -309,6 +313,31 @@ async function runAskJob(deps: AskDeps, messageId: string, attempt: Attempt, rel
       console.error(`[jobs] ask ${messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, cause);
     }
     if (!deterministic) throw cause;
+  }
+}
+
+/**
+ * Answers one question across videos (`ask.library`). Read-only, so simpler than `handleAsk`: a retry may always run
+ * it again (one left `running` by a dead attempt included). A missing key fails it at once with that key's message;
+ * any other error puts it back to `pending` and is rethrown for pg-boss, and only the final attempt fails it.
+ */
+export async function handleLibraryAsk(deps: LibraryAskDeps, job: LibraryAskJob, attempt: Attempt): Promise<void> {
+  try {
+    await runLibraryAsk(deps, job.messageId, { takeOver: attempt.retryCount > 0 });
+  } catch (err) {
+    const deterministic = err instanceof MissingApiKeyError;
+    if (deterministic || attempt.retryCount >= attempt.retryLimit) {
+      console.error(`[jobs] ask-library ${job.messageId} failed:`, err);
+      const msg = await getLibraryAskMessage(deps.db, job.messageId);
+      if (msg?.status === "pending" || msg?.status === "running") {
+        await finishLibraryAskMessage(deps.db, job.messageId, { text: deterministic ? err.message : LIBRARY_ASK_FAILED, status: "failed" });
+      }
+      if (deterministic) return;
+    } else {
+      await releaseLibraryAskMessage(deps.db, job.messageId);
+      console.error(`[jobs] ask-library ${job.messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
+    }
+    throw err;
   }
 }
 

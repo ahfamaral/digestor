@@ -11,6 +11,7 @@ import {
   CheckMomentJobSchema,
   FindMoreJobSchema,
   JOB_OPTIONS,
+  LibraryAskJobSchema,
   NamesJobSchema,
   PrepareTrackJobSchema,
   ProxyJobSchema,
@@ -28,6 +29,7 @@ import {
   handleAskResume,
   handleCheckMoment,
   handleFindMore,
+  handleLibraryAsk,
   handleNames,
   handleProxy,
   handlePrepareTrack,
@@ -50,7 +52,7 @@ import { createAnthropicToolLLM, type ToolLLM } from "./llm/tools.js";
 import { createOpenRouterLLM, createOpenRouterToolLLM } from "./llm/openrouter.js";
 import { llmConfigFromEnv } from "./llm/provider.js";
 import { createE5Embedder } from "./search/embed.js";
-import { searchTranscript } from "./search/index.js";
+import { indexedSessions, searchTranscript } from "./search/index.js";
 import { RECORDS_RETRY_CRON, RECORDS_RETRY_QUEUE, namesJob, runRecordRetries } from "./records/retry.js";
 import { MONITOR_REFRESH_CRON, MONITOR_REFRESH_QUEUE, nightlyWindow, refreshMonitor } from "./monitor/refresh.js";
 import { MONITOR_VIDEO_CRON, MONITOR_VIDEO_QUEUE, runSessionVideos, videoJobEnabled } from "./monitor/video.js";
@@ -156,6 +158,11 @@ async function main() {
   };
   await register(QUEUES.ask, AskJobSchema, (j, attempt) => handleAsk(askDeps, j, attempt));
   await register(QUEUES.askResume, AskResumeJobSchema, (j, attempt) => handleAskResume(askDeps, j, attempt));
+  // Ask across videos: read-only (no checkpointer, no sends); the fast model routes and judges.
+  const libraryDeps = {
+    db, llm: toolLlm, judge: llm, search: askDeps.search, indexed: (ids: string[]) => indexedSessions(chroma, ids), retentionDays: videoRetentionDays(),
+  };
+  await register(QUEUES.askLibrary, LibraryAskJobSchema, (j, attempt) => handleLibraryAsk(libraryDeps, j, attempt));
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, (j, attempt) => handleTranslateBriefing({ db, llm }, j, attempt));
   await register(QUEUES.findMore, FindMoreJobSchema, (j, attempt) => handleFindMore({ db, llm }, j, attempt));
   await register(QUEUES.names, NamesJobSchema, (j, attempt) => handleNames(ctx, j, attempt));

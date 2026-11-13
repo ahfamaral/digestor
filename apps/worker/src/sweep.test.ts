@@ -4,7 +4,7 @@ import { PgBoss } from "pg-boss";
 import { QUEUES } from "@digestor/core";
 import {
   claimClipRender, createClip, createDb, createSession, createTrack, getAnalysisVersion, getClip, getSession, getTrack,
-  claimFindMore, claimProxy, claimRecordFetch, requestProxy, getSessionRecord, linkRecord, createCustomPerson, getFindMore, getTranslation, requestFindMore, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
+  addLibraryAskMessage, claimLibraryAskMessage, getLibraryAskMessage, claimFindMore, claimProxy, claimRecordFetch, requestProxy, getSessionRecord, linkRecord, createCustomPerson, getFindMore, getTranslation, requestFindMore, requestTranslation, setTrackBurnStatus, startAnalysisVersion, updateSession, type Db, type Stage,
 } from "@digestor/core/server";
 import { STUCK_MESSAGE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 
@@ -21,7 +21,7 @@ d("sweepStaleSessions", () => {
     const boss = new PgBoss(url!);
     boss.on("error", () => {});
     await boss.start();
-    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore, QUEUES.names, QUEUES.proxy]) {
+    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore, QUEUES.names, QUEUES.proxy, QUEUES.askLibrary]) {
       await boss.createQueue(q);
     }
     await boss.stop({ graceful: false });
@@ -198,6 +198,25 @@ d("sweepStaleJobRows (R32)", () => {
     expect((await get(3))?.status).toBe("pending");
     // asking again works after the sweep
     expect((await requestFindMore(db, { ownerId: "owner", analysisId: v.id, personId: a!.id }))?.status).toBe("pending");
+  });
+
+  it("sweep fails a stuck answer across videos (pending or running, 30 min, no live job)", async () => {
+    await db.execute(sql`delete from library_ask_messages`);
+    const rows = [];
+    for (let i = 0; i < 4; i++) rows.push(await addLibraryAskMessage(db, { ownerId: "owner", role: "assistant", text: "", status: "pending" }));
+    await claimLibraryAskMessage(db, rows[1]!.id); // running
+    const done = await addLibraryAskMessage(db, { ownerId: "owner", role: "assistant", text: "Old answer." });
+    const old = [rows[0]!.id, rows[1]!.id, rows[2]!.id, done.id];
+    await db.execute(sql`update library_ask_messages set updated_at = ${ago(45)}::timestamptz where id in (${sql.join(old.map((id) => sql`${id}`), sql`, `)})`);
+    await jobWith(QUEUES.askLibrary, { messageId: rows[2]!.id }, "retry"); // alive; rows[3] is recent
+
+    expect(await sweepStaleJobRows(db)).toMatchObject({ libraryAsk: 2 });
+    const status = async (id: string) => (await getLibraryAskMessage(db, id))?.status;
+    expect(await getLibraryAskMessage(db, rows[0]!.id)).toMatchObject({ status: "failed", text: STUCK_MESSAGE });
+    expect(await status(rows[1]!.id)).toBe("failed");
+    expect(await status(rows[2]!.id)).toBe("pending");
+    expect(await status(rows[3]!.id)).toBe("pending");
+    expect(await getLibraryAskMessage(db, done.id)).toMatchObject({ status: "done", text: "Old answer." });
   });
 
   it("sweep fails a stuck record fetch (pending or running, 30 min, no live names/start job); a re-link counts as fresh", async () => {

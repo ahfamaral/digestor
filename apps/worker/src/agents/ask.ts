@@ -141,7 +141,7 @@ type Tool = { spec: ToolSpec; run(ctx: AskContext, args: never): Promise<ToolRes
 
 /** One stretch of consecutive words that all resolve to the same person, whichever voice carries them. */
 type NamedRun = { personId: string; confirmed: boolean; startMs: number; endMs: number };
-type NameIndex = {
+export type NameIndex = {
   persons: Map<string, Person>;
   runs: NamedRun[];
   /** Every (voice, person) pair the words resolve to, and whether every such word was confirmed. */
@@ -275,7 +275,7 @@ function cap(text: string, max = MAX_TOOL_OUTPUT): string {
 }
 
 /** Retrieved transcript text: delimited as evidence, and unable to close its own block. */
-function evidence(body: string): string {
+export function evidence(body: string): string {
   const open = "<transcript>\n";
   const close = "\n</transcript>";
   const safe = body.replace(/<\/?transcript/gi, (m) => m.replace("<", "‹"));
@@ -815,10 +815,11 @@ export async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<T
 
 // ---------------------------------------------------------------- prompt
 
-function buildSystem(session: Session, transcript: Transcript | null, analysis: AnalysisBundle | null, card: ContextCard | null, names: NameIndex): string {
-  const speakers = [...new Set((transcript?.words ?? []).map((w) => w.speaker))];
-  const profile = ProfileIdSchema.safeParse(analysis?.version.profile ?? card?.profile.value);
-  // `card` carries the names projected from the current attributions (`promptCard`): confirmed or probable.
+/**
+ * The "Known participants" of a prompt: each named voice of `card` (names projected from the current attributions by
+ * `promptCard`: confirmed or probable, confirmed only in a sensitive profile), then people named on only part of a voice.
+ */
+export function participantLines(card: ContextCard | null, names: NameIndex): string[] {
   const known = (card?.participants ?? [])
     .filter((p) => p.name.value)
     .map((p) => {
@@ -828,6 +829,35 @@ function buildSystem(session: Session, transcript: Transcript | null, analysis: 
         : `${p.speakerId} = probably ${p.name.value}${role}, not confirmed`;
     });
   known.push(...sharedVoiceNames(names, card?.participants ?? []));
+  return known;
+}
+
+/**
+ * Who may be named in a session's prompts: the context card with names projected from the current attributions
+ * (`promptCard`, under the analysis's profile) and who speaks when. Sensitive profiles (a trial) name only confirmed
+ * people, in the card's names, its free text and the name index.
+ */
+export async function loadSessionNames(
+  db: Db,
+  sessionId: string,
+  transcript: Transcript | null,
+  analysis: AnalysisBundle | null,
+): Promise<{ card: ContextCard | null; names: NameIndex; sensitive: boolean }> {
+  const stored = await getContextCard(db, sessionId);
+  const profiled = stored && analysis ? withProfile(stored.card, ProfileIdSchema.catch(stored.card.profile.value).parse(analysis.version.profile)) : stored?.card;
+  const card = profiled ? await promptCard(db, sessionId, profiled) : null;
+  const profileId = ProfileIdSchema.safeParse(analysis?.version.profile ?? stored?.card.profile.value);
+  const sensitive = profileId.success && PROFILES[profileId.data].sensitive;
+  const atts = transcript && transcript.words.length > 0 ? await listAttributions(db, sessionId) : [];
+  if (atts.length === 0) return { card, names: EMPTY_NAMES, sensitive };
+  const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
+  return { card, names: indexNames(transcript!.words, atts, persons, sensitive), sensitive };
+}
+
+function buildSystem(session: Session, transcript: Transcript | null, analysis: AnalysisBundle | null, card: ContextCard | null, names: NameIndex): string {
+  const speakers = [...new Set((transcript?.words ?? []).map((w) => w.speaker))];
+  const profile = ProfileIdSchema.safeParse(analysis?.version.profile ?? card?.profile.value);
+  const known = participantLines(card, names);
   const facts = [
     `Title: ${JSON.stringify(session.title)}`,
     `Duration: ${ts(transcript?.durationMs ?? session.durationMs ?? 0)}`,
@@ -901,11 +931,7 @@ export async function loadAskRun(deps: Pick<AskDeps, "db" | "search" | "send">, 
   const { db } = deps;
   const session = await getSession(db, msg.sessionId);
   if (!session) throw new Error(`Session not found: ${msg.sessionId}`);
-  const [analysis, transcript, stored] = await Promise.all([
-    getCurrentAnalysis(db, session.id),
-    getTranscript(db, session.id),
-    getContextCard(db, session.id),
-  ]);
+  const [analysis, transcript] = await Promise.all([getCurrentAnalysis(db, session.id), getTranscript(db, session.id)]);
   const ctx: AskContext = {
     db,
     search: deps.search,
@@ -925,15 +951,9 @@ export async function loadAskRun(deps: Pick<AskDeps, "db" | "search" | "send">, 
     approved: new Set(),
     callId: "",
   };
-  const profiled = stored && analysis ? withProfile(stored.card, ProfileIdSchema.catch(stored.card.profile.value).parse(analysis.version.profile)) : stored?.card;
-  const card = profiled ? await promptCard(db, session.id, profiled) : null;
   // Sensitive profiles (a trial) name only confirmed people, in the prompt and in list_speeches.
-  const profileId = ProfileIdSchema.safeParse(analysis?.version.profile ?? stored?.card.profile.value);
-  const atts = transcript && transcript.words.length > 0 ? await listAttributions(db, session.id) : [];
-  if (atts.length > 0) {
-    const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
-    ctx.names = indexNames(transcript!.words, atts, persons, profileId.success && PROFILES[profileId.data].sensitive);
-  }
+  const { card, names } = await loadSessionNames(db, session.id, transcript, analysis);
+  ctx.names = names;
   return { ctx, system: buildSystem(session, transcript, analysis, card, ctx.names) };
 }
 

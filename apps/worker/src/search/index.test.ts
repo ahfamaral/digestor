@@ -3,7 +3,7 @@ import { ChromaClient } from "chromadb";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Word } from "@digestor/core";
 import { FakeEmbedder } from "./embed.js";
-import { chunkTranscript, collectionName, deleteSessionIndex, indexSession, searchTranscript } from "./index.js";
+import { chunkTranscript, collectionName, deleteSessionIndex, indexSession, indexedSessions, searchTranscript } from "./index.js";
 
 /** ~3 s sentences, 300 ms per word, so a 3-minute talk is about 60 sentences. */
 function talk(sentences: number, speakerOf: (i: number) => string = () => "A"): Word[] {
@@ -72,6 +72,15 @@ describe("indexSession / searchTranscript (real Chroma, FakeEmbedder)", () => {
     expect(hits[0]).toMatchObject({ text: target.text, startMs: target.startMs, endMs: target.endMs, speakers: ["A"] });
     expect(hits[0]!.score).toBeCloseTo(1, 3);
     expect(hits[0]!.score).toBeGreaterThan(hits[1]!.score);
+  });
+
+  it("indexedSessions keeps only the sessions that have a collection", async () => {
+    const id = newSession();
+    await indexSession(deps, id, talk(20));
+    const missing = randomUUID();
+    expect(await indexedSessions(chroma, [missing, id])).toEqual(new Set([id]));
+    await deleteSessionIndex(chroma, id);
+    expect(await indexedSessions(chroma, [id])).toEqual(new Set());
   });
 
   it("deleteSessionIndex tolerates a missing collection", async () => {

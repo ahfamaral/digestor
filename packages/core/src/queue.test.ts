@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AskJobSchema, AskResumeJobSchema, BurnTrackJobSchema, CheckMomentJobSchema, JOB_OPTIONS, PrepareTrackJobSchema, ProxyJobSchema, QUEUES, ReanalyzeJobSchema,
+  AskJobSchema, AskResumeJobSchema, BurnTrackJobSchema, CheckMomentJobSchema, JOB_OPTIONS, LibraryAskJobSchema, PrepareTrackJobSchema, ProxyJobSchema, QUEUES, ReanalyzeJobSchema,
   RenderClipJobSchema, ResumeJobSchema, TranslateBriefingJobSchema,
 } from "./queue.ts";
 
@@ -42,6 +42,7 @@ describe("QUEUES", () => {
       translateBriefing: "briefing.translate",
       ask: "ask.run",
       askResume: "ask.resume",
+      askLibrary: "ask.library",
       findMore: "moment.find_more",
       names: "session.names",
       proxy: "session.proxy",
@@ -51,6 +52,11 @@ describe("QUEUES", () => {
   it("the Ask resume job takes the decided action's id", () => {
     expect(AskResumeJobSchema.parse({ actionId: ID })).toEqual({ actionId: ID });
     expect(AskResumeJobSchema.safeParse({ actionId: "x" }).success).toBe(false);
+  });
+
+  it("the Ask-across-videos job takes the pending answer's id", () => {
+    expect(LibraryAskJobSchema.parse({ messageId: ID })).toEqual({ messageId: ID });
+    expect(LibraryAskJobSchema.safeParse({ messageId: "x" }).success).toBe(false);
   });
 
   it("the preview copy job takes a session id", () => {

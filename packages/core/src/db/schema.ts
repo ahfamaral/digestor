@@ -6,7 +6,7 @@ import type { AttributionEvidence, AttributionSource, AttributionStatus } from "
 import type { AnalysisStatus, BriefingContent, LLMUsage, MomentChecks, MomentOrigin, HighlightMethod } from "../analysisTypes.ts";
 import type {
   AskActionKind, AskActionStatus, AskMessageStatus, AskRole, ClipActor, ClipEventKind, ClipFormat, ProblemTargetKind,
-  FindMoreStatus, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
+  FindMoreStatus, LibraryAskSource, LibraryAskStatus, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { ExternalMandate, Position } from "../monitorTimeline.ts";
@@ -287,6 +287,27 @@ export const askActions = pgTable(
   },
   // One approval per answer and model turn: the graph's approve node re-runs on resume and finds it.
   (t) => [uniqueIndex("ask_actions_tool_approval_step").on(t.messageId, sql`(${t.payload}->>'step')`).where(sql`${t.kind} = 'tool_approval'`)],
+);
+
+/**
+ * Ask across videos: one conversation per owner over every searchable video. Read-only (no actions, no pause); the
+ * sources a reply searched are stored with it, so a source whose session was deleted later still renders as text.
+ */
+export const libraryAskMessages = pgTable(
+  "library_ask_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id").notNull(),
+    role: text("role").$type<AskRole>().notNull(),
+    text: text("text").notNull().default(""),
+    sources: jsonb("sources").$type<LibraryAskSource[]>(),
+    toolCalls: jsonb("tool_calls").$type<unknown>(),
+    status: text("status").$type<LibraryAskStatus>().notNull().default("done"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Last status change: the sweep ages `pending`/`running` rows by it (R32). */
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [index("library_ask_messages_owner_idx").on(t.ownerId, t.createdAt)],
 );
 
 export const problemReports = pgTable("problem_reports", {

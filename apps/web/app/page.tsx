@@ -5,6 +5,7 @@ import { OWNER_ID } from "@digestor/core";
 import { listClipPreviews, listSessionSummaries } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { HomeTable, type ClipPreviewView } from "@/components/Home/HomeTable";
+import { LibraryAsk } from "@/components/Home/LibraryAsk";
 import { filtersToQuery, parseFilters, type HomeRow } from "@/lib/home";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
@@ -17,14 +18,17 @@ export default function SessionsPage({ searchParams }: PageProps<"/">) {
     <>
       <AppBar />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold tracking-tight">{t("home.title")}</h1>
-          <Link
-            href="/new"
-            className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {t("home.newVideo")}
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <LibraryAsk />
+            <Link
+              href="/new"
+              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {t("home.newVideo")}
+            </Link>
+          </div>
         </div>
         <Suspense fallback={null}>
           <Sessions searchParams={searchParams} />

@@ -88,12 +88,33 @@ export async function searchTranscript(deps: SearchDeps, sessionId: string, quer
   return hits;
 }
 
+const isNotFound = (err: unknown) => err instanceof Error && /not.?found|does not exist/i.test(`${err.name} ${err.message}`);
+
+/**
+ * Which of these sessions have a collection (Ask across videos searches only those). One lookup per session, in
+ * parallel: listing every collection would page through all of them (test runs leave thousands in a dev Chroma).
+ */
+export async function indexedSessions(chroma: ChromaClient, sessionIds: string[]): Promise<Set<string>> {
+  const found = await Promise.all(
+    sessionIds.map(async (id) => {
+      try {
+        await chroma.getCollection({ name: collectionName(id) });
+        return id;
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    }),
+  );
+  return new Set(found.filter((id): id is string => id !== null));
+}
+
 /** Drops the session's collection; a missing collection is not an error. */
 export async function deleteSessionIndex(chroma: ChromaClient, sessionId: string): Promise<void> {
   try {
     await chroma.deleteCollection({ name: collectionName(sessionId) });
   } catch (err) {
-    if (err instanceof Error && /not.?found|does not exist/i.test(`${err.name} ${err.message}`)) return;
+    if (isNotFound(err)) return;
     throw err;
   }
 }

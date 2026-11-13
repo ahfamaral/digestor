@@ -89,6 +89,8 @@ export async function sweepStaleSessions(db: Db, now: Date = new Date(), staleMi
  * - a linked record's fetch `pending`/`running` → `failed` with STUCK_MESSAGE (linking again resets it); `waiting`
  *   (the house hasn't published yet; `records.retry` wakes it) and `suggested` (a suggestion awaiting the journalist)
  *   are not job-owned and are never swept;
+ * - an answer across videos (`library_ask_messages`) `pending`/`running` → `failed` with STUCK_MESSAGE as its text
+ *   (asking again sends a new question);
  * - a session's preview copy `pending`/`running` → `failed`, then the join runs: a session waiting in `preparing_preview`
  *   fails with its friendly line (one still analysing fails when its analysis ends).
  * Returns how many rows of each kind were failed.
@@ -97,7 +99,7 @@ export async function sweepStaleJobRows(
   db: Db,
   now: Date = new Date(),
   staleMinutes = 30,
-): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number; records: number; proxies: number }> {
+): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number; records: number; libraryAsk: number; proxies: number }> {
   const cutoff = sql`${new Date(now.getTime() - staleMinutes * 60_000).toISOString()}::timestamptz`;
 
   const translations = await db.execute(sql`
@@ -134,6 +136,11 @@ export async function sweepStaleJobRows(
       and not ${hasLiveJobFor(QUEUES.start, { sessionId: "r.session_id" })}
       and not ${hasLiveJobFor(QUEUES.resume, { sessionId: "r.session_id" })}
   `);
+  const libraryAsk = await db.execute(sql`
+    update library_ask_messages m set status = 'failed', text = ${STUCK_MESSAGE}, updated_at = now()
+    where m.role = 'assistant' and m.status in ('pending', 'running') and m.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.askLibrary, { messageId: "m.id" })}
+  `);
   // No `updated_at` bump: that clock is the session's own 120-minute rule, which this must not restart.
   const stuckProxies = await db.execute<{ id: string }>(sql`
     update sessions s set proxy_status = 'failed'
@@ -149,6 +156,7 @@ export async function sweepStaleJobRows(
     burns: burns.rowCount ?? 0,
     findMore: findMore.rowCount ?? 0,
     records: records.rowCount ?? 0,
+    libraryAsk: libraryAsk.rowCount ?? 0,
     proxies: stuckProxies.rows.length,
   };
 }

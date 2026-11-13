@@ -14,6 +14,8 @@ export const QUEUES = {
   ask: "ask.run",
   /** Continues an Ask answer paused for approval, once the journalist decided (`ask_actions` `tool_approval`). */
   askResume: "ask.resume",
+  /** Ask across videos: answers a pending `library_ask_messages` row (read-only, no pause). */
+  askLibrary: "ask.library",
   findMore: "moment.find_more",
   names: "session.names",
   proxy: "session.proxy",
@@ -64,6 +66,10 @@ export type AskJob = z.infer<typeof AskJobSchema>;
 /** The resolved `tool_approval` action whose answer continues. */
 export const AskResumeJobSchema = z.object({ actionId: z.string().uuid() });
 export type AskResumeJob = z.infer<typeof AskResumeJobSchema>;
+
+/** The pending answer (a `library_ask_messages` row) of a question across videos. */
+export const LibraryAskJobSchema = z.object({ messageId: z.string().uuid() });
+export type LibraryAskJob = z.infer<typeof LibraryAskJobSchema>;
 
 export const FindMoreJobSchema = z.object({ requestId: z.string().uuid() });
 export type FindMoreJob = z.infer<typeof FindMoreJobSchema>;

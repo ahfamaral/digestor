@@ -158,6 +158,30 @@ export interface AskToolCallRecord {
 
 export type AskMessageWithActions = AskMessage & { actions: AskAction[] };
 
+/** Ask across videos (`library_ask_messages`): no approval pause, so never `waiting`. */
+export type LibraryAskStatus = Exclude<AskMessageStatus, "waiting">;
+
+/** A video an answer across videos searched, by the label its citations use (`[S2 00:12:03]`). */
+export interface LibraryAskSource {
+  label: string;
+  sessionId: string;
+  title: string;
+}
+
+export interface LibraryAskMessage {
+  id: string;
+  ownerId: string;
+  role: AskRole;
+  text: string;
+  /** Assistant answers: the videos searched (null on questions and failures). */
+  sources: LibraryAskSource[] | null;
+  /** The verify chip (`verify_answer`), as on a one-video answer. */
+  toolCalls: unknown;
+  status: LibraryAskStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface ProblemReport {
   id: string;
   ownerId: string;
