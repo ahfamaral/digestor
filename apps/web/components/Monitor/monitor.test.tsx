@@ -341,23 +341,47 @@ describe("monitor components", () => {
     expect(same).not.toContain("now ");
   });
 
-  it("search by meaning: rows found only by meaning are marked, with a quiet line saying why; a worker down says so", () => {
+  it("search by meaning: rows found only by meaning are marked and counted apart, and may not be about the topic; a worker down says so", () => {
     const params = landing({ q: "preço da comida" });
     const used = renderToStaticMarkup(
       <LandingView locale="en" params={params} facets={facets}
-        result={{ ...searched, meaning: "used", rollCalls: null, speeches: { total: 2, rows: [{ ...hit, byMeaning: false }, { ...hit, id: 8, byMeaning: true }] } }} />,
+        result={{ ...searched, meaning: "used", rollCalls: null, speeches: { total: 2, meaningOnly: 1, rows: [{ ...hit, byMeaning: false }, { ...hit, id: 8, byMeaning: true }] } }} />,
     );
-    expect(used.match(/Related by meaning</g)).toHaveLength(1);
-    expect(used).toContain("Also searched by meaning");
+    expect(used.match(/Close in meaning</g)).toHaveLength(1);
+    expect(used).toContain("may not be about your topic; check the text.");
+    // one label everywhere, and never a claim that they are about the topic
+    expect(used).not.toContain("Related by meaning");
+    expect(used).not.toContain("are about the topic");
+    // the counts line and the section count: the word matches, plus the rows close in meaning
+    expect(used).toContain("1 speech · plus 1 close in meaning");
+    expect(used).toContain("(1 · plus 1 close in meaning)");
     const noneMarked = renderToStaticMarkup(
-      <LandingView locale="en" params={params} facets={facets} result={{ ...searched, meaning: "used", rollCalls: null, speeches: { total: 1, rows: [{ ...hit, byMeaning: false }] } }} />,
+      <LandingView locale="en" params={params} facets={facets} result={{ ...searched, meaning: "used", rollCalls: null, speeches: { total: 1, meaningOnly: 0, rows: [{ ...hit, byMeaning: false }] } }} />,
     );
     expect(noneMarked).not.toContain("Also searched by meaning");
+    expect(noneMarked).not.toContain("close in meaning");
     const down = renderToStaticMarkup(
       <LandingView locale="pt-BR" params={params} facets={facets} result={{ ...searched, meaning: "unavailable", rollCalls: null, speeches: { total: 1, rows: [hit] } }} />,
     );
     expect(down).toContain("A busca pelo sentido não está disponível agora");
-    expect(down).not.toContain("Relacionado pelo sentido");
+    expect(down).not.toContain("Próximo pelo sentido");
+  });
+
+  it("no speech uses the words: the closest by meaning are shown as maybe unrelated, never as matches", () => {
+    const params = landing({ q: "xkcd qwerty zzz" });
+    const rows = [{ ...hit, byMeaning: true }, { ...hit, id: 8, byMeaning: true }];
+    const en = renderToStaticMarkup(
+      <LandingView locale="en" params={params} facets={facets} result={{ ...searched, q: "xkcd qwerty zzz", meaning: "used", rollCalls: null, speeches: { total: 2, meaningOnly: 2, rows } }} />,
+    );
+    expect(en).toContain("No speech uses these words. Closest by meaning (may be unrelated):");
+    expect(en).toContain("0 speeches · plus 2 close in meaning");
+    expect(en).not.toContain("Also searched by meaning");
+    const pt = renderToStaticMarkup(
+      <LandingView locale="pt-BR" params={params} facets={facets} result={{ ...searched, q: "xkcd qwerty zzz", meaning: "used", rollCalls: null, speeches: { total: 2, meaningOnly: 2, rows } }} />,
+    );
+    expect(pt).toContain("Nenhum discurso usa estas palavras. Os mais próximos pelo sentido (podem não ter relação):");
+    expect(pt).toContain("e mais 2 próximos pelo sentido");
+    expect(pt.match(/Próximo pelo sentido</g)).toHaveLength(2);
   });
 
   it("a roll call opens the roll-call page; the official bill link stays", () => {

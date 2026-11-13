@@ -36,12 +36,19 @@ export function LandingView({
   deputies?: number;
 }) {
   const speechOnlyFilters = !!(params.party || params.uf || params.phase || params.inOffice);
+  // rows only the search by meaning found are listed among the speeches but never counted as matches
+  const meaningOnly = result?.speeches?.meaningOnly ?? 0;
+  const speechWords = (result?.speeches?.total ?? 0) - meaningOnly;
+  const speechNote = result?.meaning === "used" && meaningOnly > 0
+    ? tm(locale, speechWords === 0 ? "search.meaningNoWords" : "search.meaningUsed")
+    : undefined;
   const counts = result?.q
     ? [
-        result.speeches && { id: "speeches", n: result.speeches.total, one: "landing.speechesOne", many: "landing.speeches" },
-        result.rollCalls && { id: "rollcalls", n: result.rollCalls.total, one: "landing.rollCallsOne", many: "landing.rollCalls" },
+        result.speeches && { id: "speeches", n: speechWords, one: "landing.speechesOne", many: "landing.speeches", meaningOnly },
+        result.rollCalls && { id: "rollcalls", n: result.rollCalls.total, one: "landing.rollCallsOne", many: "landing.rollCalls", meaningOnly: 0 },
       ].filter((c) => !!c)
     : [];
+  const plusMeaning = meaningOnly > 0 ? ` · ${tm(locale, "search.meaningCount", { n: formatCount(meaningOnly, locale) })}` : "";
   const yearHrefs = Object.fromEntries(MONITOR_YEARS.map((y) => [y, landingHref({ ...params, year: y, p: 0, rp: 0 })]));
   return (
     <div lang={locale} className="grid gap-6">
@@ -116,16 +123,13 @@ export function LandingView({
           {searching && <SearchingStatus locale={locale} />}
           {result && <SearchedFor locale={locale} searched={result} />}
           {result?.meaning === "unavailable" && <p className="text-sm text-muted-foreground">{tm(locale, "search.meaningUnavailable")}</p>}
-          {result?.meaning === "used" && result.speeches?.rows.some((s) => s.byMeaning) && (
-            <p className="text-sm text-muted-foreground">{tm(locale, "search.meaningUsed")}</p>
-          )}
           {counts.length > 0 && (
             <nav aria-label={tm(locale, "landing.resultsLabel")} className="flex flex-wrap items-center gap-x-2 text-sm">
               {counts.map((c, i) => (
                 <span key={c.id} className="flex items-center gap-2">
                   {i > 0 && <span aria-hidden className="text-muted-foreground">·</span>}
                   <JumpLink id={c.id} className="rounded font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-stone-500">
-                    {c.n === 1 ? tm(locale, c.one as "landing.speechesOne") : tm(locale, c.many as "landing.speeches", { n: formatCount(c.n, locale) })}
+                    {`${c.n === 1 ? tm(locale, c.one as "landing.speechesOne") : tm(locale, c.many as "landing.speeches", { n: formatCount(c.n, locale) })}${c.meaningOnly > 0 ? plusMeaning : ""}`}
                   </JumpLink>
                 </span>
               ))}
@@ -140,7 +144,8 @@ export function LandingView({
           <Section
             id="speeches"
             title={tm(locale, "sections.speeches")}
-            count={result.speeches.total ? formatCount(result.speeches.total, locale) : undefined}
+            count={result.speeches.total ? `${formatCount(speechWords, locale)}${plusMeaning}` : undefined}
+            note={speechNote}
             empty={result.speeches.total ? null : tm(locale, "empty.speeches")}
           >
             {result.speeches.rows.map((s) => (

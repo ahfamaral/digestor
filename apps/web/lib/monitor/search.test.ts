@@ -133,6 +133,8 @@ describe("runSearch with search by meaning (hybrid)", () => {
     expect(new Set(words(r))).toEqual(new Set([k.both, k.words, k.rice, k.basket]));
     const marked = Object.fromEntries(r.speeches!.rows.map((s) => [s.speechKey, s.byMeaning]));
     expect(marked).toEqual({ [k.both]: false, [k.words]: false, [k.rice]: true, [k.basket]: true });
+    // counted apart: they may not be about the topic, so they never count as matches
+    expect(r.speeches!.meaningOnly).toBe(2);
     // word matches are highlighted; a meaning-only row shows its opening words
     expect(r.speeches!.rows.find((s) => s.speechKey === k.words)!.snippet).toContain("\u0001");
     expect(r.speeches!.rows.find((s) => s.speechKey === k.rice)!.snippet).toBe("O arroz e o feijão estão caros no mercado.");
@@ -144,6 +146,7 @@ describe("runSearch with search by meaning (hybrid)", () => {
     const r = await runSearch(db, L("preço da comida", { from: "2026-03-02", to: "2026-03-03" }), translate, semantic);
     expect(new Set(words(r))).toEqual(new Set([k.words, k.rice]));
     expect(r.speeches!.total).toBe(2);
+    expect(r.speeches!.meaningOnly).toBe(1);
   });
 
   it("pages over the fused list without repeats or gaps", async () => {
@@ -176,6 +179,16 @@ describe("runSearch with search by meaning (hybrid)", () => {
     expect(r.meaning).toBe("unavailable");
     expect(new Set(words(r))).toEqual(new Set([k.both, k.words]));
     expect(r.speeches!.rows.every((s) => !s.byMeaning)).toBe(true);
+    expect(r.speeches!.meaningOnly ?? 0).toBe(0);
+  });
+
+  it("no word match: every row is close in meaning, none counted as a match", async () => {
+    const k = await seed();
+    const none = async (): Promise<TranslateResult> => ({ terms: ["xkcd qwerty zzz"], translated: false, failed: false });
+    const r = await runSearch(db, L("xkcd qwerty zzz"), none, async () => ({ keys: [k.rice, k.basket], ok: true }));
+    expect(r.speeches!.total).toBe(2);
+    expect(r.speeches!.meaningOnly).toBe(2);
+    expect(r.speeches!.rows.every((s) => s.byMeaning)).toBe(true);
   });
 
   it("exact, newest first and roll-call-only searches stay word-only", async () => {

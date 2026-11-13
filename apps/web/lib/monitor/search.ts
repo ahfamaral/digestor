@@ -22,7 +22,10 @@ export type Translate = (q: string) => Promise<TranslateResult>;
 export type Searched = { q: string; terms: string[]; translatedFrom: string | null; notice: "translationFailed" | null; exact: boolean };
 /** The worker's search by meaning (`semanticSearch`); `ok: false` when it can't answer. */
 export type Semantic = (q: string) => Promise<SemanticResult>;
-/** `byMeaning`: found by the search by meaning only (none of the searched words), marked "related by meaning". */
+/**
+ * `byMeaning`: found by the search by meaning only (none of the searched words), marked "Close in meaning": it may not
+ * be about the topic, so it is never counted as a match.
+ */
 export type LandingSpeech = SpeechHit & { byMeaning?: boolean };
 /**
  * A group the person chose not to show is null. `meaning`: "used" (speeches fused with the search by meaning),
@@ -30,7 +33,8 @@ export type LandingSpeech = SpeechHit & { byMeaning?: boolean };
  * or no speeches shown).
  */
 export type LandingResult = Searched & {
-  speeches: { total: number; rows: LandingSpeech[] } | null; rollCalls: { total: number; rows: RollCallHit[] } | null;
+  /** `total`: every row listed (paging); `meaningOnly`: those only the search by meaning found (part of `total`, never matches). */
+  speeches: { total: number; rows: LandingSpeech[]; meaningOnly?: number } | null; rollCalls: { total: number; rows: RollCallHit[] } | null;
   meaning: "used" | "unavailable" | "off";
 };
 
@@ -91,11 +95,12 @@ export async function runSearch(db: Db, p: LandingParams, translate?: Translate,
 /**
  * Word and meaning results as one list: the top `FUSE_TOP` of each (meaning hits through the same filters) fused by
  * Reciprocal Rank Fusion, then the remaining word matches in word order; paged over that list, so a page never
- * repeats or skips a speech. Rows only the meaning search found are marked `byMeaning`.
+ * repeats or skips a speech. Rows only the meaning search found are marked `byMeaning` and counted apart
+ * (`meaningOnly`): interleaved by RRF (measured better than after the word matches), but never counted as matches.
  */
 export async function hybridSpeeches(
   db: Db, a: { terms: string[]; phrase?: string; filters: SpeechFilters; meaningKeys: string[]; limit: number; offset: number },
-): Promise<{ total: number; rows: LandingSpeech[] }> {
+): Promise<{ total: number; rows: LandingSpeech[]; meaningOnly: number }> {
   const [words, meaning] = await Promise.all([
     speechKeysByWords(db, { terms: a.terms, phrase: a.phrase, filters: a.filters, limit: ALL_WORD_KEYS }),
     filterSpeechKeys(db, a.meaningKeys.slice(0, FUSE_TOP), a.filters),
@@ -106,7 +111,9 @@ export async function hybridSpeeches(
   const pageKeys = list.slice(a.offset, a.offset + a.limit);
   const wordKeys = new Set(words.keys);
   const rows = await speechesByKeys(db, pageKeys, {}, { terms: a.terms });
-  return { total: list.length, rows: rows.map((r) => ({ ...r, byMeaning: !wordKeys.has(r.speechKey ?? "") })) };
+  return {
+    total: list.length, rows: rows.map((r) => ({ ...r, byMeaning: !wordKeys.has(r.speechKey ?? "") })), meaningOnly: list.length - words.keys.length,
+  };
 }
 
 

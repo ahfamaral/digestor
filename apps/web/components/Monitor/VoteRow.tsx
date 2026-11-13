@@ -12,7 +12,7 @@ import { ByMeaning } from "./MeaningNote";
  * the roll-call page; the bill on the Câmara's site) and its summary, and the vote exactly as published. A vote on a
  * request is marked, since a "Não" on it is not a vote against the bill. The guidance that applied to the party at the
  * vote sits under the vote, as published, with the federation or bloc it came from. `from`: the deputy whose page lists
- * it, so the roll-call page leads back to them. A vote only the search by meaning found is marked "Related by meaning".
+ * it, so the roll-call page leads back to them. A vote only the search by meaning found is marked "Close in meaning".
  */
 export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote: Vote & { byMeaning?: boolean }; from?: number }) {
   return (
