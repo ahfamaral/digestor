@@ -108,6 +108,45 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 Migrations run automatically through the `migrate` service before `web` and `worker` restart. A job interrupted by the restart is retried automatically; one that was mid-run can take up to its 4-hour expiry before it is picked up again, so prefer updating when nothing is processing. Old images can be removed with `docker image prune`.
 
+### Rollout of the capstone-push branch (migrations 0026–0032), in this order
+
+One update brings Ask on LangGraph with approval (0026), word counts (0027), Ask across videos (0028, 0029), the monitor's search by meaning for speeches (0030) and for votes and bills plus party blocs (0031), and "Clip this speech" (0032). Do it the evening before a demo, never on demo day, when nothing is processing, and away from the worker's 09:00 and 10:00 UTC jobs (`monitor.refresh`, `monitor.embed`). First set `C="docker compose -f docker-compose.yml -f docker-compose.prod.yml"` in the shell; the commands below use `$C`.
+
+1. **Pre-deploy checks.**
+   - Disk: `df -h /` shows at least 15 GB free before the build.
+   - Export gate: from this update a made video (plain or burned-in) is offered on Export and in "Download all" only while its clip passes the export checklist *now*, for every clip, not only Ask's clip packages. A clip rendered earlier whose checklist fails today (an outdated subtitle track, a new warning not acknowledged, a protected person) disappears from Export and the zip until it is fixed. List the rendered clips per session now, to compare after the update (step 7):
+
+     ```bash
+     $C exec -T postgres psql -U digestor -d digestor -c "select s.id, s.title, count(*) as rendered from clips c join sessions s on s.id = c.session_id where c.render_status = 'done' and c.deleted_at is null group by s.id, s.title order by s.title"
+     ```
+
+2. **Back up the database** (see Backups below): `$C exec -T postgres pg_dump -U digestor -d digestor -Fc > digestor-$(date +%F)-before-capstone-push.dump`, and copy it off the server.
+3. **Update:** merge the branch into `main` on GitHub (or pull the branch), then on the server `git pull` and `$C up -d --build`. The `migrate` service applies 0026–0032.
+4. **Check the start:** `$C logs migrate` ends without an error, and `$C logs worker | grep "worker ready"` shows `worker ready (… monitor.embed; http :8790)`. At start the worker runs the Ask checkpointer's `setup()`, which creates its tables in the `ask_graph` schema; if that fails the worker stops (and restarts in a loop), so read `$C logs worker` before going on.
+5. **Word counts** ("Words used more than the chamber", 0027): rebuild them once from the stored speeches (no Câmara calls, about 15 s); without it the deputy page says "There isn't enough speech text yet to show which words stand out." until the next 09:00 UTC refresh:
+
+   ```bash
+   $C exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-backfill.ts --words
+   ```
+
+6. **Meaning index, one run for 0030 and 0031 together** (speeches, then roll calls and signed bills; local e5 model, no paid calls; safe to stop and rerun, it continues where it stopped). Memory is the constraint on the CX23 (2 vCPU, 4 GB + 4 GB swap): steady state is about 3 GB (the worker about 950 MB with the e5 model resident, Chroma about 1 GB, Postgres about 430 MB), and `exec`-ing the script inside the running worker would load a second model (the worker reached about 2.5 GB in dev). So stop the worker and run the script in a one-off container instead, then start the worker again:
+
+   ```bash
+   $C stop worker
+   $C run --rm --no-deps worker pnpm --filter @digestor/worker exec tsx scripts/monitor-embed.ts
+   $C up -d worker
+   ```
+
+   Expect about 2 hours or more of CPU on 2 vCPU (dev, 4 CPUs: 38 min for 7,899 speeches, 27 min for 39,646 bills). Watch `free -m` and `docker stats` in a second shell; if swap fills, stop it (Ctrl-C) and rerun later, it continues. While the worker is stopped the topic search shows word results with "Search by meaning isn't available right now", and nothing is processed (no analysis, render or Ask), so start no upload meanwhile. After `up -d worker`, check `docker stats` for Chroma's memory with the three collections loaded (the worker warms the vote and bill collections at startup).
+7. **Export gate check:** for each session listed in step 1, open its Export page (or `curl` `/api/sessions/<id>/download?choice=files&check=1` with the password cookie) and compare with the rendered count. A clip whose video no longer shows has a failing checklist on Prepare: fix it there (rebuild an outdated track, acknowledge or fix the warning) before the demo.
+8. **Next morning:** `$C logs worker | grep monitor.refresh` (the first refresh after the update reads the party blocs) and `$C logs worker | grep monitor.embed` (the daily catch-up at 10:00 UTC, now small).
+9. **Leave `MONITOR_CLIP_ENABLED` unset** on this server (YouTube blocks its IP; see migration 0032 below). 0028 and 0029 (Ask across videos) need nothing.
+10. **User test:** `docs/capstone/user-test.md` needs this branch deployed *and* the Osang × Merkel interview run on production (upload it there and let it reach `ready` before the test).
+
+**Rollback.** 0026–0032 only add schemas, tables and columns (each new column nullable or with a default), so the previous code runs on the new schema: `git checkout <previous commit>` and `$C up -d --build` (no restore needed). An Ask answer waiting for approval (`waiting`) stays unanswered under the old code. Restore the step-2 dump only if the data itself went wrong.
+
+The sections for 0030, 0031 and 0032 below explain each change; on production follow the order above (step 6 replaces their `exec` commands).
+
 ### Once, when updating to the step runner (migration 0019)
 
 The pipeline no longer uses LangGraph; its position is the `pipeline_runs` table and migration 0019 drops the `checkpoint*` tables.
