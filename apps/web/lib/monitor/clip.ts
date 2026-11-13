@@ -6,7 +6,7 @@ import type { VideoMoment } from "./video";
 export const CLIP_PAD_S = 20;
 
 /** Off unless `MONITOR_CLIP_ENABLED=true`: the download runs yt-dlp, which a server IP YouTube blocks can't do. */
-export function monitorClipEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function monitorClipEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.MONITOR_CLIP_ENABLED === "true";
 }
 
