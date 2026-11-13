@@ -18,6 +18,8 @@ export async function createSession(
     hint?: string | null;
     audioOnlyAck?: boolean;
     languageOverride?: string | null;
+    /** Download only this part of the source (ms from its start); both or neither. */
+    sourceRange?: { startMs: number; endMs: number } | null;
   },
 ): Promise<Session> {
   const [row] = await db
@@ -31,6 +33,8 @@ export async function createSession(
       hint: input.hint ?? null,
       audioOnlyAck: input.audioOnlyAck ?? false,
       languageOverride: input.languageOverride ?? null,
+      sourceStartMs: input.sourceRange?.startMs ?? null,
+      sourceEndMs: input.sourceRange?.endMs ?? null,
     })
     .returning();
   return row!;

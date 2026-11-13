@@ -225,6 +225,13 @@
       "when": 1794601091364,
       "tag": "0031_monitor_records_blocs",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794604758488,
+      "tag": "0032_session_source_range",
+      "breakpoints": true
     }
   ]
 }

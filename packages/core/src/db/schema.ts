@@ -21,6 +21,13 @@ export const sessions = pgTable("sessions", {
   title: text("title").notNull(),
   source: text("source", { enum: ["upload", "youtube"] }).notNull(),
   sourceUrl: text("source_url"),
+  /**
+   * Only this part of the source video was downloaded (a speech clipped from the monitor), in ms from the source's
+   * start; null = the whole video. Times inside the session are relative to the part; a link back to the source adds
+   * `sourceStartMs`.
+   */
+  sourceStartMs: integer("source_start_ms"),
+  sourceEndMs: integer("source_end_ms"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   originalKey: text("original_key"),
   audioKey: text("audio_key"),
