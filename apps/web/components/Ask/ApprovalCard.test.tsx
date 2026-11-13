@@ -71,3 +71,22 @@ describe("ApprovalCard: clip package (C3)", () => {
     expect(html).not.toContain("role=\"checkbox\"");
   });
 });
+
+describe("ApprovalCard: clip package, fix round (C3)", () => {
+  const pkg = {
+    id: "pkg", name: "make_clip_package", args: {}, summary: "Make 2 clips (9:16): …",
+    package: { clips: [{ startMs: 60_000, endMs: 90_000, title: "One" }, { startMs: 180_000, endMs: 220_000, title: "Two" }], format: "9:16", subtitles: null },
+  };
+  const decided = (outcome: { ok: boolean; made: number } | null) =>
+    renderToStaticMarkup(
+      <ApprovalCard action={{ ...card([pkg]), status: "confirmed", resolution: { decision: "approve" } }} outcome={outcome} sessionId="s1" lang="pt" busy={false} error={undefined} videoRemoved={false} onDecide={() => {}} />,
+    );
+
+  it("the decided line follows the tool's record: made, failed, or failed partway", () => {
+    expect(decided({ ok: true, made: 2 })).toContain("2 clips are being made (9:16).");
+    expect(decided({ ok: false, made: 0 })).toContain("No clips were made.");
+    expect(decided({ ok: false, made: 0 })).not.toContain("being made");
+    expect(decided({ ok: false, made: 1 })).toContain("Only 1 of the clips was made before something went wrong.");
+    expect(decided(null)).toContain("2 clips are being made (9:16).");
+  });
+});

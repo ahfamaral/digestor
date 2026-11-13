@@ -3,7 +3,7 @@ import type { ChecklistId } from "@digestor/core";
 import { exportStatus, exportableIds, isExportReady, exportRows, inFlight, renderedFirst, sortByOrder, statusLabel, toMake, type ExportRow } from "./exportRows";
 
 const clip = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => ({
-  id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", ...over,
+  id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", cleared: true, ...over,
 });
 const track = (over: Partial<Parameters<typeof exportRows>[1][number]> = {}) => ({
   clipId: "c1", language: "pt", status: "ready" as const, cues: [{ startMs: 0, endMs: 1000, original: "Hello", text: "Olá", missing: false }],
@@ -140,9 +140,19 @@ describe("exportStatus", () => {
   const row = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => exportRows([clip(over)], [])[0]!;
   const c = (over: { dismissed?: boolean; failing?: ChecklistId[] } = {}, r = row()) => ({ dismissed: false, failing: [] as ChecklistId[], row: r, ...over });
 
+  it("a made video is offered only while the export checklist passes; subtitle files stay downloadable", () => {
+    const tracks = [track({ burnStatus: "done", burnKey: "s1/clips/c1.pt.burned.mp4", approvedAt: new Date() })];
+    const [open] = exportRows([clip()], tracks);
+    expect(open!.mp4).not.toBeNull();
+    expect(open!.languages[0]!.burn.url).not.toBeNull();
+    const [held] = exportRows([clip({ cleared: false })], tracks);
+    expect(held).toMatchObject({ mp4: null, watch: { mp4: null, burned: [] } });
+    expect(held!.languages[0]).toMatchObject({ srt: "/api/files/s1/clips/c1.pt.srt?download=1", burn: { url: null } });
+    expect(exportStatus(c({ failing: ["credit"] }, held))).toEqual({ kind: "needs", actions: ["credit"] });
+  });
+
   it("one status per clip, rendering and rendered before anything else", () => {
     expect(exportStatus(c())).toEqual({ kind: "rendered" });
-    expect(exportStatus(c({ failing: ["credit"] }))).toEqual({ kind: "rendered" });
     expect(exportStatus(c({}, row({ renderStatus: "queued" })))).toEqual({ kind: "rendering" });
     expect(exportStatus(c({}, row({ renderStatus: "rendering" })))).toEqual({ kind: "rendering" });
   });

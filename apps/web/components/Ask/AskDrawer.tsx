@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  asToolCalls, awaitsApproval, formatToolCall, isChange, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
+  asToolCalls, awaitsApproval, formatToolCall, isChange, packageOutcome, parseApprovalPayload, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
 } from "@/lib/askText";
 import { ApprovalCard } from "./ApprovalCard";
 import { errorMessage } from "@/lib/http";
@@ -402,6 +402,8 @@ function MessageItem({
   // Calls that changed something keep their Undo; everything else a call looked at goes under "Sources".
   const changes = calls.flatMap((call, i) => (isChange(call) ? [{ call, key: `${message.id}:${i}` }] : []));
   const sources = calls.flatMap(sourceLines);
+  // The n-th package card of the answer goes with its n-th make_clip_package record.
+  const packageCards = message.actions.filter((a) => a.kind === "tool_approval" && parseApprovalPayload(a.payload)?.calls.some((c) => c.package));
   const verified = message.status === "done" ? verifyResult(calls) : null;
   return (
     <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
@@ -487,6 +489,7 @@ function MessageItem({
           <ApprovalCard
             key={action.id}
             action={action}
+            outcome={packageCards.includes(action) ? packageOutcome(calls, packageCards.indexOf(action)) : null}
             sessionId={sessionId}
             lang={lang}
             busy={busy.has(`action:${action.id}`)}

@@ -1,5 +1,5 @@
 import {
-  formatTimestamp, parseTimestamp, type AskToolCallRecord, type ClipFormat, type ClipPackagePlan, type SelectionStatus, type ToolApprovalCall, type ToolApprovalPayload,
+  GRANULARITY, formatTimestamp, parseTimestamp, type AskToolCallRecord, type ClipFormat, type ClipPackagePlan, type SelectionStatus, type ToolApprovalCall, type ToolApprovalPayload,
   type ToolApprovalResolution,
 } from "@digestor/core";
 
@@ -129,9 +129,13 @@ export function verifyResult(calls: AskToolCallRecord[]): VerifyState | null {
   return { kind: "ok" };
 }
 
-/** A call that changed something (a clip, a package of clips, selections): it has Undo and is never a source. */
+/**
+ * A call that changed something (a clip, a package of clips, selections): it has Undo and is never a source. A package
+ * that failed partway keeps the clips it made, so it counts too.
+ */
 export function isChange(call: AskToolCallRecord): boolean {
-  return call.ok && (call.clipId !== undefined || call.clipIds !== undefined || call.undo !== undefined);
+  if ((call.clipIds?.length ?? 0) > 0) return true;
+  return call.ok && (call.clipId !== undefined || call.undo !== undefined);
 }
 
 /** One source line: `text` is a time range (transcript, speech) or text from the recording (moment, topic, note). */
@@ -292,6 +296,13 @@ export function editHasClip(calls: { name: string }[]): boolean {
   return calls.some((c) => c.name === "propose_clip" || c.name === "trim_clip");
 }
 
+/** A clip spans the punchline minimum to the exchange maximum, as the worker checks after snapping. */
+export const CLIP_MIN_MS = GRANULARITY.punchline.acceptMs[0];
+export const CLIP_MAX_MS = GRANULARITY.exchange.acceptMs[1];
+
+/** What keeps "Make N clips" from sending: nothing ticked, a bad time, the end first, no title, a length out of range. */
+export type PackageProblem = "none" | "time" | "order" | "title" | "length";
+
 /** The package card's fields: each offered clip ticked or not, with its times and title, one format and a subtitle language. */
 export type PackageDraft = {
   clips: { on: boolean; start: string; end: string; title: string }[];
@@ -310,18 +321,21 @@ export function initialPackageDraft(plan: ClipPackagePlan): PackageDraft {
 
 /**
  * What "Make N clips" sends: Approve when the journalist changed nothing (every clip ticked, same fields), otherwise
- * an edit with the ticked clips only; or which problem to show (`none`: nothing ticked).
+ * an edit with the ticked clips only; or which problem to show (`none`: nothing ticked) and on which clip (`index`).
  */
 export function packageDecision(
   callId: string,
   draft: PackageDraft,
   initial: PackageDraft,
-): ToolApprovalResolution | { error: "none" | "time" | "order" | "title" } {
+): ToolApprovalResolution | { error: PackageProblem; index?: number } {
   const picked = draft.clips.filter((c) => c.on);
   if (picked.length === 0) return { error: "none" };
-  for (const c of picked) {
+  for (const [index, c] of draft.clips.entries()) {
+    if (!c.on) continue;
     const problem = checkClipEdit(c, true);
-    if (problem) return { error: problem };
+    if (problem) return { error: problem, index };
+    const len = msOf(c.end)! - msOf(c.start)!;
+    if (len < CLIP_MIN_MS || len > CLIP_MAX_MS) return { error: "length", index };
   }
   const clips = picked.map((c) => ({ start: c.start.trim(), end: c.end.trim(), title: c.title.trim() }));
   const same =
@@ -331,4 +345,20 @@ export function packageDecision(
     clips.every((c, i) => c.start === initial.clips[i]!.start && c.end === initial.clips[i]!.end && c.title === initial.clips[i]!.title.trim());
   if (same) return { decision: "approve" };
   return { decision: "edit", edits: [{ id: callId, args: { clips, format: draft.format, subtitles: draft.subtitles } }] };
+}
+
+/** The range a package row shows: the edited times when they read as a range, else the offered one. */
+export function draftRange(c: { start: string; end: string }, offered: { startMs: number; endMs: number }): { startMs: number; endMs: number } {
+  const start = msOf(c.start);
+  const end = msOf(c.end);
+  return start !== null && end !== null && end > start ? { startMs: start, endMs: end } : offered;
+}
+
+/**
+ * What the `index`-th clip package of an answer did, from its tool record: whether it went through and how many clips
+ * it made (a package that failed partway counts the clips it left). Null while there is no record yet.
+ */
+export function packageOutcome(calls: AskToolCallRecord[], index: number): { ok: boolean; made: number } | null {
+  const rec = calls.filter((c) => c.name === "make_clip_package")[index];
+  return rec ? { ok: rec.ok, made: rec.clipIds?.length ?? 0 } : null;
 }

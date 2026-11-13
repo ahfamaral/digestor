@@ -3,8 +3,10 @@ import path from "node:path";
 import { unzipSync, strFromU8 } from "fflate";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  burnSignature, createClip, createSession, createTrack, finishClipRender, finishTrackBurn, getClip, listTracks, setTrackCues, updateSession, type Db,
+  approveTrack, burnSignature, createClip, createSession, createTrack, finishClipRender, finishTrackBurn, getClip, listTracks, setHumanAttribution, setTrackCues,
+  updateClip, updateSession, type Db,
 } from "@digestor/core/server";
+import { OWNER_ID } from "@digestor/core";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
 import { GET } from "./route";
@@ -21,6 +23,12 @@ async function markRendered(db: Db, sessionId: string, clipId: string, burnedLan
   for (const tr of await listTracks(db, clipId))
     if (burnedLanguages.includes(tr.language))
       expect(await finishTrackBurn(db, tr.id, burnSignature(tr, clip), `${sessionId}/clips/${clipId}.${tr.language}.burned.mp4`)).toBe("done");
+}
+
+/** What lets a clip through the export checklist: warnings read, a credit line, its one voice marked "No name". */
+async function clear(db: Db, sessionId: string, clipId: string) {
+  await updateClip(db, clipId, { warningsAck: true, credit: "Parliament TV" }, "user");
+  await setHumanAttribution(db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: null, ownerId: OWNER_ID });
 }
 
 const call = (id: string, choice?: string) =>
@@ -42,7 +50,9 @@ beforeAll(async () => {
   for (const lang of ["pt", "en"]) {
     const tr = (await createTrack(h.db, c1, lang))!;
     await setTrackCues(h.db, tr.id, [{ startMs: 0, endMs: 1500, original: "Hello", text: `Olá ${lang}`, missing: false }], "ready");
+    expect(await approveTrack(h.db, tr.id)).toBe("ok");
   }
+  await clear(h.db, sessionId, c1); // before the render: a credit change afterwards would make it stale
   await markRendered(h.db, sessionId, c1, ["pt", "en"]);
   // c2: nothing rendered
   const tr2 = (await createTrack(h.db, c2, "pt"))!;
@@ -76,6 +86,25 @@ describe("GET /api/sessions/[id]/download", () => {
     const files = await unzip(await call(sessionId, "burned"));
     expect(Object.keys(files).sort()).toEqual(["01 Strasse uber Kase.en.mp4", "01 Strasse uber Kase.pt.mp4"]);
     expect(strFromU8(files["01 Strasse uber Kase.pt.mp4"]!)).toBe("burned-1-pt");
+  });
+
+  it("a rendered clip that fails the export checklist (a clip package's render) is held back until it passes", async () => {
+    const seeded = await seedReadySession(h.db, [[10_000, 30_000, "Package"]]);
+    const sid = seeded.sessionId;
+    const clip = await createClip(h.db, { sessionId: sid, ownerId: "owner", momentId: seeded.moments[0]!.id, startMs: 10_000, endMs: 30_000, actor: "ask" });
+    await updateClip(h.db, clip.id, { credit: "Parliament TV" }, "ask"); // as the package sets it, before the render
+    mkdirSync(path.join(h.root, sid, "clips"), { recursive: true });
+    writeFileSync(path.join(h.root, sid, "clips", `${clip.id}.mp4`), "package-plain");
+    await markRendered(h.db, sid, clip.id);
+    const check = (choice: string) =>
+      GET(new Request(`http://localhost/api/sessions/${sid}/download?choice=${choice}&check=1`), { params: Promise.resolve({ id: sid }) });
+    // Checks never ran and the voice isn't confirmed: nothing to download.
+    expect((await call(sid, "plain")).status).toBe(409);
+    expect((await check("plain")).status).toBe(409);
+    expect((await check("files")).status).toBe(409);
+    await clear(h.db, sid, clip.id);
+    expect(await (await check("plain")).json()).toEqual({ files: 1 });
+    expect(Object.keys(await unzip(await call(sid, "plain")))).toEqual(["01 Package.mp4"]);
   });
 
   it("a clip whose only file is missing on disk gives 409, not a broken zip", async () => {
@@ -119,6 +148,7 @@ describe("GET /api/sessions/[id]/download", () => {
     const clip = await createClip(h.db, { sessionId: s.id, ownerId: "owner", startMs: 0, endMs: 5000, actor: "user" });
     mkdirSync(path.join(h.root, s.id, "clips"), { recursive: true });
     writeFileSync(path.join(h.root, s.id, "clips", `${clip.id}.mp4`), "kept");
+    await clear(h.db, s.id, clip.id);
     await markRendered(h.db, s.id, clip.id);
     const files = await unzip(await call(s.id, "plain"));
     expect(strFromU8(Object.values(files)[0]!)).toBe("kept");
@@ -132,6 +162,8 @@ describe("GET /api/sessions/[id]/download", () => {
     writeFileSync(path.join(h.root, s.id, "clips", `${clip.id}.mp4`), "plain");
     const tr = (await createTrack(h.db, clip.id, "../x"))!;
     await setTrackCues(h.db, tr.id, [{ startMs: 0, endMs: 1000, original: "a", text: "b", missing: false }], "ready");
+    expect(await approveTrack(h.db, tr.id)).toBe("ok");
+    await clear(h.db, s.id, clip.id);
     await markRendered(h.db, s.id, clip.id, ["../x"]);
     const res = await call(s.id, "burned");
     expect(res.status).toBe(409);

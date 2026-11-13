@@ -92,10 +92,14 @@ function verifyRecord(r: VerifyResult, rounds: number): AskToolCallRecord[] {
   return [{ name: "verify_answer", args, result: verifySummary(r), ok: r.unsupported.length === 0 }];
 }
 
-/** Titles the answer may quote that aren't the recording's words: topics, moments, and the clips this answer made. */
+/**
+ * Titles the answer may quote that aren't the recording's words: topics, moments, and the clips this answer made
+ * (only calls that succeeded and made a clip: a rejected or failed title is still checked like any quote).
+ */
 function knownTitles(ctx: AskRun["ctx"], records: AskToolCallRecord[]): string[] {
   const titles = [...(ctx.analysis?.topics ?? []).map((t) => t.title), ...(ctx.analysis?.moments ?? []).map((m) => m.title)];
   for (const r of records) {
+    if (!r.ok || (r.clipId === undefined && r.clipIds === undefined)) continue;
     const args = (typeof r.args === "object" && r.args !== null ? r.args : {}) as { title?: unknown; clips?: unknown };
     if (typeof args.title === "string") titles.push(args.title);
     if (Array.isArray(args.clips)) for (const c of args.clips as { title?: unknown }[]) if (typeof c?.title === "string") titles.push(c.title);
@@ -194,7 +198,7 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
       // Validate each change as the tools would, in order and without writing, so the card shows what will happen
       // (snapped times) and asks nothing for a call that will only return an error (or wait for the bulk confirmation).
       const { ctx } = await load(config);
-      const plan = { ...ctx, mode: "plan" as const, directChanges: state.directChanges, wrote: false, callWrote: false, approved: new Set<string>() };
+      const plan = { ...ctx, mode: "plan" as const, directChanges: state.directChanges, wrote: false, callWrote: false, madeClipIds: [], approved: new Set<string>() };
       const calls: ToolApprovalCall[] = [];
       for (const call of mutatingCalls(lastTurn(state))) {
         plan.callId = call.id;
@@ -237,6 +241,7 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
       for (const [i, asSent] of (lastTurn(state).toolCalls ?? []).entries()) {
         const call = withEdits(asSent, edits);
         ctx.callWrote = false;
+        ctx.madeClipIds = [];
         ctx.callId = call.id;
         let out: ToolResult & { ok: boolean };
         try {
@@ -248,7 +253,10 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
           }
         } catch (err) {
           // It may have changed something before failing: keep a chip so the user can check.
-          if (ctx.callWrote) records.push(record(call, { text: "Failed partway; check your clips and selections.", ok: false }));
+          if (ctx.callWrote) {
+            const clipIds = ctx.madeClipIds.length > 0 ? { clipIds: [...ctx.madeClipIds] } : {};
+            records.push(record(call, { text: "Failed partway; check your clips and selections.", ok: false, ...clipIds }));
+          }
           throw err;
         } finally {
           wrote = ctx.wrote;

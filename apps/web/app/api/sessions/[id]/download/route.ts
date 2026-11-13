@@ -1,11 +1,12 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Zip, ZipPassThrough } from "fflate";
-import { OWNER_ID } from "@digestor/core";
-import { getMoment, getSession, listClips, listTracks } from "@digestor/core/server";
+import { OWNER_ID, exportChecklist, speakersInRange } from "@digestor/core";
+import { getMoment, getSession, getTranscript, listAttributions, listClips, listTracks } from "@digestor/core/server";
 import { exportRows } from "@/lib/exportRows";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
+import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
 import { contentDisposition, safeBaseName, subtitleText } from "@/lib/subtitleFiles";
 import { isZipChoice, zipClipOf, zipEntries, type ZipChoice } from "@/lib/zipNames";
@@ -85,10 +86,15 @@ async function plan(id: string, choice: ZipChoice): Promise<{ sources: Source[];
   const session = await getSession(db, id);
   if (!session) return errorResponse(404, "Session not found.");
 
+  // A video goes in only while its clip passes the export checklist, as on the Export page (`exportRows`).
+  const clips = await listClips(db, OWNER_ID, id);
+  const [transcript, atts] = clips.length > 0 ? await Promise.all([getTranscript(db, id), listAttributions(db, id)]) : [null, []];
+  const profile = asProfile(session.profile);
   const rows = await Promise.all(
-    (await listClips(db, OWNER_ID, id)).map(async (clip) => {
+    clips.map(async (clip) => {
       const [moment, tracks] = await Promise.all([clip.momentId ? getMoment(db, clip.momentId) : null, listTracks(db, clip.id)]);
-      return { clip, tracks, zip: zipClipOf({ id: clip.id, title: moment?.title ?? "", row: exportRows([clip], tracks)[0]! }) };
+      const cleared = exportChecklist({ clip, moment, tracks, profile, speakers: speakersInRange(transcript?.words ?? [], atts, clip) }).every((i) => i.ok);
+      return { clip, tracks, zip: zipClipOf({ id: clip.id, title: moment?.title ?? "", row: exportRows([{ ...clip, cleared }], tracks)[0]! }) };
     }),
   );
   const byId = new Map(rows.map((r) => [r.clip.id, r]));
@@ -118,7 +124,7 @@ async function plan(id: string, choice: ZipChoice): Promise<{ sources: Source[];
 /**
  * GET /api/sessions/[id]/download?choice=burned|files|plain — a zip of files that are already stored: `burned` the
  * subtitle videos (one per language), `files` the plain videos plus SRT/VTT rendered from the cues, `plain` the plain
- * videos. Nothing is rendered here. 409 "Nothing to download yet." when the zip would be empty. With `check=1` it runs
+ * videos. Nothing is rendered here, and a clip's videos go in only while it passes the export checklist. 409 "Nothing to download yet." when the zip would be empty. With `check=1` it runs
  * the same checks and answers `{ files }` as JSON without streaming, so the page can show a failure in its dialog
  * before starting a normal browser download. Kept clips of a session whose video was removed still download (R30).
  */

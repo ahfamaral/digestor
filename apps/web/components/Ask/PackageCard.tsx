@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Busy } from "@/components/ui/spinner";
-import { initialPackageDraft, packageDecision, type PackageDraft } from "@/lib/askText";
+import { draftRange, initialPackageDraft, packageDecision, type PackageDraft } from "@/lib/askText";
 import { subtitleLanguages } from "@/lib/prepareData";
 import { t } from "@/lib/i18n";
 
@@ -20,9 +20,11 @@ const SELECT =
  * "Make N clips" approves as is, or sends the picks as an edit; Reject makes nothing. Once decided, it says so.
  */
 export function PackageCard({
-  action, call, sessionId, lang, busy, error, videoRemoved, onDecide,
+  action, call, outcome, sessionId, lang, busy, error, videoRemoved, onDecide,
 }: {
   action: AskAction;
+  /** What the tool did, from its record on the answer (null until it ran): the decided line never claims more. */
+  outcome: { ok: boolean; made: number } | null;
   call: ToolApprovalCall & { package: NonNullable<ToolApprovalCall["package"]> };
   sessionId: string | undefined;
   /** The video's language: titles are in it, and it is the first subtitle language offered. */
@@ -38,28 +40,37 @@ export function PackageCard({
   const [draft, setDraft] = useState<PackageDraft>(initial);
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  /** The clip the error is about: only its fields are marked invalid. */
+  const [badIndex, setBadIndex] = useState<number | null>(null);
 
   const picked = draft.clips.filter((c) => c.on).length;
   const languages = subtitleLanguages(lang ?? null, []);
-  const setClip = (i: number, patch: Partial<PackageDraft["clips"][number]>) =>
+  const setClip = (i: number, patch: Partial<PackageDraft["clips"][number]>) => {
+    setEditError(null); // a change answers the error; "Make N clips" checks again
+    setBadIndex(null);
     setDraft((d) => ({ ...d, clips: d.clips.map((c, j) => (j === i ? { ...c, ...patch } : c)) }));
+  };
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const out = packageDecision(call.id, draft, initial);
     if ("error" in out) {
-      setEditError(out.error === "none" ? t("ask.package.errorNone") : t(`ask.approval.error.${out.error}`));
+      setEditError(
+        out.error === "none" ? t("ask.package.errorNone") : out.error === "length" ? t("ask.package.errorLength") : t(`ask.approval.error.${out.error}`),
+      );
+      setBadIndex(out.index ?? null);
       if (out.error !== "none") setEditing(true);
       return;
     }
     setEditError(null);
+    setBadIndex(null);
     onDecide(action, out);
   }
 
   // What is being made: the card's picks when the journalist edited it, else the package as offered.
   const resolution = action.resolution as { decision?: string; edits?: { args?: { clips?: unknown[]; format?: unknown; subtitles?: unknown } }[] } | null;
   const edited = resolution?.decision === "edit" ? resolution.edits?.[0]?.args : undefined;
-  const madeCount = Array.isArray(edited?.clips) ? edited.clips.length : call.package.clips.length;
+  const madeCount = outcome?.ok ? outcome.made : Array.isArray(edited?.clips) ? edited.clips.length : call.package.clips.length;
   const madeFormat = edited?.format === "16:9" || edited?.format === "9:16" ? edited.format : call.package.format;
   const madeLanguage = edited ? (typeof edited.subtitles === "string" ? edited.subtitles : null) : call.package.subtitles;
   const details = madeLanguage
@@ -80,6 +91,14 @@ export function PackageCard({
           </p>
           {action.status === "dismissed" ? (
             <p className="text-xs text-muted-foreground">{t("ask.approval.declined")}</p>
+          ) : outcome && !outcome.ok ? (
+            <p className="text-xs text-red-700">
+              {outcome.made === 0
+                ? t("ask.package.notMade")
+                : outcome.made === 1
+                  ? t("ask.package.partlyMade", { n: 1 })
+                  : t("ask.package.partlyMadeMany", { n: outcome.made })}
+            </p>
           ) : (
             <p className="text-xs text-muted-foreground">
               {madeCount === 1 ? t("ask.package.madeOne", { details }) : t("ask.package.made", { n: madeCount, details })}{" "}
@@ -98,14 +117,16 @@ export function PackageCard({
             <legend className="mb-1 text-xs font-medium">{t("ask.package.clips")}</legend>
             {draft.clips.map((c, i) => {
               const offered = call.package.clips[i]!;
-              const range = `${formatTimestamp(offered.startMs)}–${formatTimestamp(offered.endMs)}`;
+              // The row follows the edited times, so the journalist sees the range and length they will get.
+              const shown = draftRange(c, offered);
+              const range = `${formatTimestamp(shown.startMs)}–${formatTimestamp(shown.endMs)}`;
               return (
                 <div key={i} className="grid gap-1.5">
                   <label className="flex items-start gap-2 text-xs">
                     <Checkbox checked={c.on} disabled={disabled} onCheckedChange={(on) => setClip(i, { on: on === true })} className="mt-0.5" />
                     <span className="min-w-0 break-words">
                       <span dir="ltr" className="font-mono text-muted-foreground">
-                        {t("ask.package.clipLabel", { range, length: formatLength(offered.endMs - offered.startMs) })}
+                        {t("ask.package.clipLabel", { range, length: formatLength(shown.endMs - shown.startMs) })}
                       </span>{" "}
                       <span lang={lang} dir="auto">
                         {c.title.trim() || offered.title}
@@ -123,7 +144,7 @@ export function PackageCard({
                               disabled={disabled}
                               inputMode="numeric"
                               placeholder="hh:mm:ss"
-                              aria-invalid={editError !== null}
+                              aria-invalid={editError !== null && badIndex === i}
                               onChange={(e) => setClip(i, { [key]: e.target.value })}
                               className="h-8 bg-white font-mono text-xs"
                             />
@@ -200,8 +221,10 @@ export function PackageCard({
           )}
           <div className="flex flex-wrap gap-2">
             {!videoRemoved && (
-              <Button type="submit" size="sm" disabled={busy} className="bg-brand text-white hover:brightness-90">
-                <Busy busy={busy}>{busy ? t("ask.approval.sending") : picked === 1 ? t("ask.package.makeOne") : t("ask.package.make", { n: picked })}</Busy>
+              <Button type="submit" size="sm" disabled={busy || picked === 0} className="bg-brand text-white hover:brightness-90">
+                <Busy busy={busy}>
+                  {busy ? t("ask.approval.sending") : picked === 0 ? t("ask.package.tickOne") : picked === 1 ? t("ask.package.makeOne") : t("ask.package.make", { n: picked })}
+                </Busy>
               </Button>
             )}
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDecide(action, { decision: "reject" })}>

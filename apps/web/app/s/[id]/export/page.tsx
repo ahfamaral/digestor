@@ -47,7 +47,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         failing,
         dismissed: approvalDismissed(clip, selections),
         voices: rangeVoices(names, transcript?.words ?? [], clip, sensitive, moment?.speakers ?? []),
-        row: exportRows([clip], tracks)[0]!,
+        row: exportRows([{ ...clip, cleared: failing.length === 0 }], tracks)[0]!,
       };
     }),
   );

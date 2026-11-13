@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, initialPackageDraft, isChange, packageDecision,
+  ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, initialPackageDraft, isChange, packageDecision, packageOutcome,
   sourceLines, isAnswering, isStalePending, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, verifyResult,
 } from "./askText";
 
@@ -244,7 +244,7 @@ describe("clip packages (C3)", () => {
     expect(rec!.clipIds).toEqual(["a", "b"]);
     expect(isChange(rec!)).toBe(true);
     expect(sourceLines(rec!)).toEqual([]);
-    expect(isChange({ ...rec!, ok: false })).toBe(false);
+    expect(isChange({ ...rec!, ok: false, clipIds: undefined })).toBe(false);
   });
 
   it("the card approves as is when nothing changed, and sends the picks as an edit otherwise", () => {
@@ -266,11 +266,37 @@ describe("clip packages (C3)", () => {
   it("the card says what's wrong: nothing picked, a bad time, the end first, no title (only picked clips count)", () => {
     const draft = initialPackageDraft(plan);
     expect(packageDecision("pkg", { ...draft, clips: draft.clips.map((c) => ({ ...c, on: false })) }, draft)).toEqual({ error: "none" });
-    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, start: "soon" }, draft.clips[1]!] }, draft)).toEqual({ error: "time" });
-    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, end: "00:00:10" }, draft.clips[1]!] }, draft)).toEqual({ error: "order" });
-    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, title: " " }, draft.clips[1]!] }, draft)).toEqual({ error: "title" });
+    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, start: "soon" }, draft.clips[1]!] }, draft)).toEqual({ error: "time", index: 0 });
+    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, end: "00:00:10" }, draft.clips[1]!] }, draft)).toEqual({ error: "order", index: 0 });
+    expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, title: " " }, draft.clips[1]!] }, draft)).toEqual({ error: "title", index: 0 });
     expect(packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, title: " " , on: false }, draft.clips[1]!] }, draft)).toEqual(
       expect.objectContaining({ decision: "edit" }),
     );
+  });
+});
+
+describe("clip packages, fix round (C3)", () => {
+  const plan = { clips: [{ startMs: 60_000, endMs: 90_000, title: "One" }], format: "9:16" as const, subtitles: null };
+
+  it("a package that failed partway still offers Undo for the clips it made", () => {
+    const [rec] = asToolCalls([{ name: "make_clip_package", args: {}, result: "Failed partway", ok: false, clipIds: ["a"] }]);
+    expect(isChange(rec!)).toBe(true);
+    expect(isChange({ ...rec!, clipIds: undefined })).toBe(false);
+  });
+
+  it("an edited clip must be 6 s to 20 min long, as the worker requires", () => {
+    const draft = initialPackageDraft(plan);
+    const at = (start: string, end: string) => packageDecision("pkg", { ...draft, clips: [{ ...draft.clips[0]!, start, end }] }, draft);
+    expect(at("00:01:00", "00:01:05")).toEqual({ error: "length", index: 0 });
+    expect(at("00:01:00", "00:21:01")).toEqual({ error: "length", index: 0 });
+    expect(at("00:01:00", "00:01:06")).toEqual(expect.objectContaining({ decision: "edit" }));
+  });
+
+  it("packageOutcome reads the tool's record: how many clips were made, or that it failed", () => {
+    const rec = (over: object) => asToolCalls([{ name: "make_clip_package", args: {}, result: "", ok: true, ...over }])[0]!;
+    const calls = [rec({ clipIds: ["a", "b"] }), rec({ ok: false, result: "Error: x" })];
+    expect(packageOutcome(calls, 0)).toEqual({ ok: true, made: 2 });
+    expect(packageOutcome(calls, 1)).toEqual({ ok: false, made: 0 });
+    expect(packageOutcome(calls, 2)).toBeNull();
   });
 });

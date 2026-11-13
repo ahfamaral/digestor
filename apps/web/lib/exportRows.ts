@@ -6,6 +6,11 @@ export interface ExportClipInput {
   sessionId: string;
   renderStatus: RenderStatus;
   renderKey: string | null;
+  /**
+   * The export checklist passes now (`exportChecklist`, the rule Export applies before rendering). Only then are the
+   * clip's made videos (plain and with subtitles) offered: a clip package renders before the checklist is done.
+   */
+  cleared: boolean;
 }
 
 export interface ExportTrackInput {
@@ -70,16 +75,20 @@ function burnState(status: RenderStatus, key: string | null): BurnState {
   }
 }
 
-/** Groups each clip's download links by language. A `stale` render or burn is "out of date" and has no link. */
+/**
+ * Groups each clip's download links by language. A `stale` render or burn is "out of date" and has no link, and no
+ * video is offered while the clip's checklist fails (`cleared`); SRT/VTT stay downloadable, drafts too.
+ */
 export function exportRows(clips: ExportClipInput[], tracks: ExportTrackInput[]): ExportRow[] {
   return clips.map((clip) => {
     const own = tracks.filter((tr) => tr.clipId === clip.id).sort((a, b) => a.language.localeCompare(b.language));
     const hasText = (tr: ExportTrackInput) => tr.status !== "outdated" && tr.cues.some((c) => c.text.trim() !== "");
-    const renderDone = clip.renderStatus === "done" && !!clip.renderKey;
+    const renderDone = clip.cleared && clip.renderStatus === "done" && !!clip.renderKey;
+    const burnDone = (tr: ExportTrackInput) => clip.cleared && tr.burnStatus === "done" && !!tr.burnKey;
     return {
     clipId: clip.id,
     renderStatus: clip.renderStatus,
-    mp4: clip.renderStatus === "done" && clip.renderKey ? url(clip.sessionId, `${clip.id}.mp4`) : null,
+    mp4: renderDone ? url(clip.sessionId, `${clip.id}.mp4`) : null,
     renderOutOfDate: clip.renderStatus === "stale",
     watch: {
       mp4: renderDone ? inline(clip.sessionId, `${clip.id}.mp4`) : null,
@@ -87,7 +96,7 @@ export function exportRows(clips: ExportClipInput[], tracks: ExportTrackInput[])
         .filter(hasText)
         .map((tr) => ({ src: inline(clip.sessionId, `${clip.id}.${tr.language}.vtt`), srcLang: tr.language, label: languageLabel(tr.language) })),
       burned: own
-        .filter((tr) => tr.burnStatus === "done" && tr.burnKey)
+        .filter(burnDone)
         .map((tr) => ({ language: tr.language, src: inline(clip.sessionId, `${clip.id}.${tr.language}.burned.mp4`) })),
     },
     languages: own
@@ -103,7 +112,7 @@ export function exportRows(clips: ExportClipInput[], tracks: ExportTrackInput[])
           approved: tr.approvedAt !== null,
           burn: {
             status: tr.burnStatus,
-            url: tr.burnStatus === "done" && tr.burnKey ? url(clip.sessionId, `${base}.burned.mp4`) : null,
+            url: burnDone(tr) ? url(clip.sessionId, `${base}.burned.mp4`) : null,
             state: burnState(tr.burnStatus, tr.burnKey),
           },
         };
@@ -150,8 +159,8 @@ export type ExportStatus =
   | { kind: "dismissed" };
 
 /**
- * The one status of an Export row. What exists comes first (a made file is always downloadable, even when the
- * checklist changed since); then what is missing, as actions. A dismissed approval keeps its own label.
+ * The one status of an Export row. What exists comes first (a made file is downloadable while the checklist passes:
+ * `exportRows` drops it otherwise); then what is missing, as actions. A dismissed approval keeps its own label.
  */
 export function exportStatus(c: { dismissed: boolean; failing: ChecklistId[]; row: ExportRow }): ExportStatus {
   const { row } = c;

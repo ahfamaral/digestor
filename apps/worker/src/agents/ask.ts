@@ -119,6 +119,8 @@ export type AskContext = {
   wrote: boolean;
   /** The same, for the tool call that is running (its chip is kept if it fails partway). */
   callWrote: boolean;
+  /** Clips the running call has created so far: kept on its chip if it fails partway, so Undo can remove them. */
+  madeClipIds: string[];
   /** Changes applied without confirmation in this run (at most MAX_DIRECT_CHANGES, R31). */
   directChanges: number;
   /**
@@ -538,7 +540,7 @@ export const TOOLS: Tool[] = [
     spec: {
       name: "find_clip_candidates",
       description:
-        `Candidate clips on a topic, best first: moments of the analysis that match it, then passages the transcript search finds, all snapped to whole sentences. Returns up to count + ${EXTRA_CANDIDATES}, so the user can pick. Use it before make_clip_package.`,
+        `Candidate clips on a topic, best first: moments of the analysis that match it, then passages the transcript search finds, all snapped to whole sentences. Returns up to count + ${EXTRA_CANDIDATES} so you can choose the best; the user then picks among the clips you pass to make_clip_package.`,
       schema: z.object({
         topic: z.string().min(1).describe("What the clips are about, e.g. \"Ukraine\" (the video's language finds more)"),
         count: z.number().int().optional().describe(`How many clips the user wants (1–${MAX_PACKAGE}, default ${DEFAULT_PACKAGE})`),
@@ -727,6 +729,9 @@ export const TOOLS: Tool[] = [
       willWrite(ctx);
       ctx.directChanges += 1;
       const credit = defaultCredit(ctx.session);
+      // In a sensitive profile (a trial) nothing is rendered before the export checklist, protected persons included.
+      const profile = ProfileIdSchema.safeParse(analysis.version.profile);
+      const render = !(profile.success && PROFILES[profile.data].sensitive);
       const made: { id: string; range: Range; title: string }[] = [];
       for (const c of clips) {
         const range = { startMs: c.startMs, endMs: c.endMs };
@@ -736,6 +741,7 @@ export const TOOLS: Tool[] = [
         if (clip.credit === null && !clip.noCreditNeeded && credit) await updateClip(ctx.db, clip.id, { credit }, "ask");
         await setSelection(ctx.db, ctx.ownerId, moment.id, "approved"); // so Prepare never shows "Approval dismissed"
         made.push({ id: clip.id, range, title: c.title });
+        ctx.madeClipIds.push(clip.id);
       }
       // Each job-owned row is claimed in the database first, then its job sent; a send that fails gives the claim back.
       let draftsFailed = 0;
@@ -751,7 +757,7 @@ export const TOOLS: Tool[] = [
             await deleteTrack(ctx.db, track.id).catch((e: unknown) => console.error("[ask] removing the unqueued track failed", e));
           }
         }
-        if (await claimClipRender(ctx.db, clip.id)) {
+        if (render && (await claimClipRender(ctx.db, clip.id))) {
           try {
             await send(QUEUES.renderClip, { clipId: clip.id }, clip.id);
           } catch (err) {
@@ -762,7 +768,10 @@ export const TOOLS: Tool[] = [
         }
       }
       const list = made.map((c) => `${c.id} ${span(c.range)} "${c.title}"`).join("; ");
-      const started = subtitles ? `${languageLabel(subtitles)} subtitle drafts are being prepared and plain renders are running.` : "Plain renders are running.";
+      const drafts = subtitles ? `${languageLabel(subtitles)} subtitle drafts are being prepared.` : "";
+      const started = render
+        ? `${drafts} Plain renders are running.`.trim()
+        : `${drafts} No renders were started: in a trial the user renders from Export once the checklist, protected persons included, passes.`.trim();
       const failed = [
         draftsFailed > 0 ? `Couldn't start ${plural(draftsFailed, "subtitle draft")}: the user can add them on Prepare.` : "",
         rendersFailed > 0 ? `Couldn't start ${plural(rendersFailed, "render")}: the user can render them from Export.` : "",
@@ -910,6 +919,7 @@ export async function loadAskRun(deps: Pick<AskDeps, "db" | "search" | "send">, 
     boundaries: transcript && transcript.words.length > 0 ? findBoundaries(transcript.words, transcript.durationMs) : [],
     wrote: false,
     callWrote: false,
+    madeClipIds: [],
     directChanges: 0,
     mode: "apply",
     approved: new Set(),

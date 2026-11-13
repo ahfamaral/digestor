@@ -1,4 +1,5 @@
 import { INTERRUPT, MemorySaver } from "@langchain/langgraph";
+import { sql } from "drizzle-orm";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OWNER_ID, QUEUES, findBoundaries, snapRange, type AskToolCallRecord, type ToolApprovalPayload, type ToolApprovalResolution, type Word } from "@digestor/core";
@@ -739,6 +740,65 @@ describe("Clip packages (C3)", () => {
     const done = (await getAskMessage(db, msg.id))!;
     expect(done.text).toBe("I made „Rent caps in the whole city“ and one more.");
     expect((done.toolCalls as AskToolCallRecord[]).map((r) => r.name)).toEqual(["make_clip_package"]); // nothing left to check: no verify chip
+  });
+
+  it("in a trial (sensitive profile) the package makes clips and subtitle drafts but never renders", async () => {
+    const { s, analysisId } = await seed();
+    await db.execute(sql`update analysis_versions set profile = 'trial' where id = ${analysisId}`);
+    const msg = await ask(s.id, "2 clips");
+    const jobs = sender();
+    const llm = new FakeToolLLM([toolStep(call("make_clip_package", { clips: three.slice(0, 2), format: "16:9", subtitles: "en" })), answer("Done.")]);
+    const deps = { ...depsFor(llm), send: jobs.send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    const clips = await listClips(db, OWNER_ID, s.id);
+    expect(clips.map((c) => c.renderStatus)).toEqual(["none", "none"]);
+    expect(jobs.sent.map((j) => j.queue)).toEqual([QUEUES.prepareTrack, QUEUES.prepareTrack]);
+    expect(toolResults(llm.calls[1]!)[0]).toMatch(/No renders were started/);
+  });
+
+  it("a package that fails partway keeps the ids of the clips it made, so Undo can remove them", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "3 clips");
+    const llm = new FakeToolLLM([toolStep(call("make_clip_package", { clips: three, format: "9:16", subtitles: null })), answer("never")]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    // The first clip's transaction goes through, the second one fails.
+    let transactions = 0;
+    const flaky = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === "transaction") {
+          return (...args: unknown[]) => (++transactions >= 2 ? Promise.reject(new Error("connection reset")) : (target.transaction as (...a: unknown[]) => unknown)(...args));
+        }
+        const v = Reflect.get(target, prop, receiver);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+    const pending = (await approvals(s.id, msg.id)).find((a) => a.status === "pending")!;
+    await resolveToolApproval(db, pending.id, { decision: "approve" });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await handleAskResume({ ...deps, db: flaky }, { actionId: pending.id }, { retryCount: 0, retryLimit: 2 });
+    err.mockRestore();
+    const made = await listClips(db, OWNER_ID, s.id);
+    expect(made).toHaveLength(1);
+    const failed = (await getAskMessage(db, msg.id))!;
+    expect(failed.status).toBe("failed");
+    expect(failed.toolCalls).toEqual([expect.objectContaining({ name: "make_clip_package", ok: false, clipIds: [made[0]!.id] })]);
+  });
+
+  it("a rejected clip's title is no name: quoting it is still checked", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Clip it");
+    const quote = "word1 word2 word3 word9";
+    const llm = new FakeToolLLM([
+      toolStep(call("propose_clip", { start: "00:01:01", end: "00:01:31", title: quote })),
+      answer(`I did not make „${quote}“.`),
+      answer("I did not make that clip."),
+    ]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "reject" });
+    expect(llm.calls).toHaveLength(3); // sent back once as a misquote
   });
 
   it("a session whose video was removed refuses the package with the VIDEO_REMOVED sentence, without a card", async () => {

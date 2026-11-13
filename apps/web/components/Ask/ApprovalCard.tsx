@@ -39,9 +39,11 @@ function initialDraft(calls: ToolApprovalCall[]): Draft {
  * or the moments of a selection, then "Approve with changes". Once decided, it says so and the answer continues.
  */
 export function ApprovalCard({
-  action, sessionId, lang, busy, error, videoRemoved, onDecide,
+  action, outcome = null, sessionId, lang, busy, error, videoRemoved, onDecide,
 }: {
   action: AskAction;
+  /** A clip package's result from its tool record (`packageOutcome`), for the decided line. */
+  outcome?: { ok: boolean; made: number } | null;
   /** For the package card's link to Prepare. */
   sessionId?: string;
   lang: string | undefined;
@@ -62,7 +64,7 @@ export function ApprovalCard({
   const only = calls.length === 1 ? calls[0]! : null;
   if (only?.package) {
     return (
-      <PackageCard action={action} call={{ ...only, package: only.package }} sessionId={sessionId} lang={lang} busy={busy} error={error} videoRemoved={videoRemoved} onDecide={onDecide} />
+      <PackageCard action={action} call={{ ...only, package: only.package }} outcome={outcome} sessionId={sessionId} lang={lang} busy={busy} error={error} videoRemoved={videoRemoved} onDecide={onDecide} />
     );
   }
   const editable = calls.filter((c) => (isClip(c) && c.range) || (c.name === "set_selection" && c.moments?.length));
