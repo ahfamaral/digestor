@@ -6,13 +6,22 @@ import type { Db } from "./client.ts";
 // Parliament monitor: "Words used more than the chamber". Counting only (no model, no AI): the speeches' official text,
 // stemmed by Postgres (`pt_unaccent`), compared with the whole chamber by weighted log-odds (`fightinWords`).
 
-/** Fewer counted words than this and the section says there isn't enough text yet (a few speeches give noisy words). */
-export const WORDS_MIN_TOKENS = 3000;
+/**
+ * Fewer counted words than this and the section says there isn't enough text yet (a few speeches give noisy words).
+ * Counted words leave out stopwords and the stoplist: 1,500 is about 3,000 spoken words (179 of 448 deputies on the dev
+ * data, against 89 at 3,000; coordinator's ruling 2026-11-13, the owner can change it).
+ */
+export const WORDS_MIN_TOKENS = 1500;
 /** A month with fewer counted words than this has no heat (one word in a two-line speech would look "much more"). */
 export const WORDS_MIN_MONTH_TOKENS = 300;
 export const WORDS_LIMIT = 20;
-/** Only words the target uses clearly more than the rest of the chamber (z of the weighted log-odds, never shown). */
+/**
+ * A word is listed only when the target uses it clearly more than the rest of the chamber (z of the weighted log-odds
+ * ≥ 1.96, never shown) and said it at least `WORDS_MIN_COUNT` times: with 1,500 words the prior alone lets a word said
+ * twice reach the bar.
+ */
 export const WORDS_MIN_Z = 1.96;
+export const WORDS_MIN_COUNT = 5;
 
 export type WordsTarget = { memberId: number } | { party: string };
 export type DistinctiveWord = {
@@ -23,20 +32,47 @@ export type DistinctiveWord = {
   count: number;
   /**
    * One entry per month with speech text in the chamber (`YYYY-MM`): the word's share of the target's words that month
-   * divided by its share of the chamber's. Null when the target has under `minMonthTokens` words that month.
+   * divided by its share of the rest of the chamber's (everyone else; a big party is not compared with itself).
+   * `Infinity` when only the target said it that month; null when the target has under `minMonthTokens` words then.
    */
   months: { month: string; share: number | null }[];
 };
 
+/** A chair's turn inside another deputy's speech ("O SR. PRESIDENTE (Hugo Motta. Bloco/REPUBLICANOS - PB) - Conclua,
+ * Deputado."), up to the next speaker header or the end. Never the speech's own opening header (the chair's own speech):
+ * the turn must follow other text. Postgres gives a whole regex the greediness of its first quantified atom (and an
+ * alternation like `(O SR|A SRA)` counts as greedy), so it starts with the non-greedy `[OA]{1,1}?`: the match then stops
+ * at the first header that follows instead of running to the end of the speech. */
+const CHAIR_TURN = "(?<=\\S\\s)[OA]{1,1}? SRA?\\. PRESIDENT[EA] \\([^)]*\\).*?(?=(O SR|A SRA)\\. [^()[:lower:]]{1,80}\\(|$)";
+/** The chair's name in a chair header ("Hugo Motta", "Dr. Zacharias Calil", "Bacelar"). */
+const CHAIR_NAME = "(?:O SR|A SRA)\\. PRESIDENT[EA] \\(((?:(?:Dr|Dra|Prof|Profa|Pr)\\. )?[^().]+)[.)]";
+
 /**
- * The text without the speaker headers the Câmara prints before each turn ("O SR. FULANO (PL - SP. Sem revisão do
- * orador.) -", "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO FULANO (SEM REGISTRO TAQUIGRÁFICO).", "O Sr. FULANO
- * (PL-SP) pronuncia…"): they hold the speaker's own name and party, which would otherwise top every list. A name is
- * written in capitals, so the match never runs into the speech itself.
+ * Every chair's full name found in chair headers, as one regex alternation (longest first, metacharacters escaped), or a
+ * never-matching pattern when there is none. Data-driven: whoever presided is in the record.
  */
-const body = (text: SQL) => sql`regexp_replace(regexp_replace(${text},
+const chairAlternation = sql`(
+  select coalesce(string_agg(regexp_replace(name, '([][\\^$.|?*+(){}])', '\\\\\\1', 'g'), '|' order by length(name) desc, name), chr(1))
+  from (select distinct trim((regexp_matches(text, ${sql.raw(`'${CHAIR_NAME}'`)}, 'g'))[1]) as name from parl_speeches) c
+  where length(name) >= 4)`;
+
+/**
+ * The text as its speaker said it: without the speaker headers the Câmara prints before each turn ("O SR. FULANO (PL -
+ * SP. Sem revisão do orador.) -", "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO FULANO (SEM REGISTRO
+ * TAQUIGRÁFICO).", "O Sr. FULANO (PL-SP) pronuncia…"), which hold the speaker's own name and party; without the chair's
+ * turns inside the speech; and, when `chairs` (from `chairAlternation`) is given, without the vocative to the chair
+ * ("Sr. Presidente Hugo Motta,", "Presidente, Deputado Charles Fernandes"), full names only: a first name alone stays. A
+ * header name is written in capitals, so the matches never run into the speech itself.
+ */
+const body = (text: SQL, chairs?: SQL) => {
+  const turns = sql`regexp_replace(${text}, ${sql.raw(`'${CHAIR_TURN}'`)}, ' ', 'g')`;
+  const vocatives = chairs
+    ? sql`regexp_replace(${turns}, '(Sra?\\. )?President[ae],? (Deputad[oa] )?(' || ${chairs} || ')\\M', ' ', 'g')`
+    : turns;
+  return sql`regexp_replace(regexp_replace(${vocatives},
   'DISCURSO NA ÍNTEGRA[^()[:lower:]]{0,160}\\([^)]{0,80}\\)\\.?', ' ', 'g'),
   '(O|A) (SR|SRA|Sr|Sra)\\. [^()[:lower:]]{1,80}\\([^)]{0,200}\\)', ' ', 'g')`;
+};
 
 /** Stems kept: letters only (after `unaccent`), at least 3 of them, not in the stoplist. */
 const KEEP_STEM = "^[a-z]{3,}$";
@@ -53,9 +89,12 @@ export async function refreshWordCounts(db: Db): Promise<number> {
       insert into parl_word_counts (member_id, party, month, stem, n)
       with stop as (
         select l.lexeme from unnest(to_tsvector('pt_unaccent', ${MONITOR_STOPLIST.join(" ")})) l
+      ), chairs as (
+        select ${chairAlternation} as alt
       ), speech as (
-        select member_id, coalesce(party, '') as party, date_trunc('month', starts_at)::date as month, ${body(sql`text`)} as body
-        from parl_speeches where text <> '' and not text_file
+        select member_id, coalesce(party, '') as party, date_trunc('month', starts_at)::date as month,
+          ${body(sql`text`, sql`chairs.alt`)} as body
+        from parl_speeches cross join chairs where text <> '' and not text_file
       )
       select s.member_id, s.party, s.month, l.lexeme, sum(coalesce(array_length(l.positions, 1), 1))::int
       from speech s cross join lateral unnest(to_tsvector('pt_unaccent', s.body)) l
@@ -73,9 +112,13 @@ export async function refreshWordCounts(db: Db): Promise<number> {
 export async function distinctiveWords(
   db: Db,
   who: WordsTarget,
-  opts: { limit?: number; minTokens?: number; minMonthTokens?: number; year?: number; alpha0?: number; minZ?: number } = {},
+  opts: {
+    limit?: number; minTokens?: number; minMonthTokens?: number; year?: number; alpha0?: number; minZ?: number; minCount?: number;
+  } = {},
 ): Promise<{ enough: boolean; words: DistinctiveWord[] }> {
-  const { limit = WORDS_LIMIT, minTokens = WORDS_MIN_TOKENS, minMonthTokens = WORDS_MIN_MONTH_TOKENS, minZ = WORDS_MIN_Z } = opts;
+  const {
+    limit = WORDS_LIMIT, minTokens = WORDS_MIN_TOKENS, minMonthTokens = WORDS_MIN_MONTH_TOKENS, minZ = WORDS_MIN_Z, minCount = WORDS_MIN_COUNT,
+  } = opts;
   const isTarget = "memberId" in who ? sql`member_id = ${who.memberId}` : sql`party = ${who.party}`;
   const inYear = opts.year ? sql`month >= make_date(${opts.year}::int, 1, 1) and month < make_date(${opts.year}::int + 1, 1, 1)` : sql`true`;
 
@@ -100,7 +143,7 @@ export async function distinctiveWords(
     if (rc > 0) rest.set(stem, rc);
   }
   const top = fightinWords(target, rest, chamber, { alpha0: opts.alpha0 })
-    .filter((w) => w.nTarget > 0 && w.z >= minZ)
+    .filter((w) => w.nTarget >= Math.max(minCount, 1) && w.z >= minZ)
     .slice(0, limit);
   if (top.length === 0) return { enough: true, words: [] };
   const stems = top.map((w) => w.stem);
@@ -128,7 +171,10 @@ export async function distinctiveWords(
         const tot = monthTotals.get(month)!;
         if (tot.t < Math.max(minMonthTokens, 1)) return { month, share: null };
         const x = cell.get(`${month}|${w.stem}`);
-        return { month, share: x && x.t > 0 ? x.t / tot.t / (x.c / tot.c) : 0 };
+        if (!x || x.t === 0) return { month, share: 0 };
+        const restWords = tot.c - tot.t;
+        const restUses = x.c - x.t;
+        return { month, share: restUses > 0 && restWords > 0 ? x.t / tot.t / (restUses / restWords) : Infinity };
       }),
     })),
   };

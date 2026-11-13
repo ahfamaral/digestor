@@ -18,7 +18,8 @@ export const MONITOR_STOPLIST: readonly string[] = [
   // Stock phrases: "solicito a divulgação nos meios de comunicação da Casa e no programa A Voz do Brasil"
   "registrar", "registro", "solicito", "solicitar", "divulgação", "divulgado", "divulgar", "meios", "programa", "voz",
   "cumprimentar", "cumprimento", "parabenizar", "parabéns", "agradecer", "agradeço", "saudar", "saúdo", "pronuncia",
-  "seguinte", "íntegra", "encaminhado", "taquigráfico", "revisão",
+  "seguinte", "íntegra", "encaminhado", "taquigráfico", "revisão", "grato", "grata", "exmo", "exma", "excelentíssimo",
+  "excelentíssima", "digníssimo", "digníssima", "muitíssimo",
   // Stage directions
   "pausa", "palmas", "risos", "apupos", "manifestação", "manifestações", "tumulto",
   // Function words, filler and very common verbs

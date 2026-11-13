@@ -7,7 +7,8 @@ export const HEAT_LEVELS: readonly HeatLevel[] = ["none", "unused", "about", "mo
 
 /**
  * At or above: "more" (half again the chamber's rate), "much more" (six times it). On the dev data (60 deputies with
- * enough text, their top words) a month splits about 40% not used, 10% about, 15% more, 40% much more.
+ * enough text, their top words, compared with the rest of the chamber) a month splits about 33% not used, 2% about,
+ * 14% more, 51% much more.
  */
 export const HEAT_MORE = 1.5;
 export const HEAT_MUCH_MORE = 6;

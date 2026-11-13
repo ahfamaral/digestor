@@ -23,7 +23,7 @@ const member = (externalId: number, name: string, party: string): MemberInput =>
 const speech = (startsAt: string, text: string): SpeechInput => ({ startsAt, phase: "Breves Comunicações", kind: "Discurso", summary: "", text, keywords: "" });
 const header = (name: string, party: string) => `O SR. ${name} (${party} - SP. Sem revisão do orador.) - `;
 /** A ten-word corpus needs a light prior and no significance bar to show anything. */
-const SMALL = { alpha0: 5, minZ: 0.5 };
+const SMALL = { alpha0: 5, minZ: 0.5, minCount: 1 };
 const counts = async () =>
   (await pool.query<{ member: number; party: string; month: string; stem: string; n: number }>(
     "SELECT m.external_id AS member, w.party, to_char(w.month, 'YYYY-MM-DD') AS month, w.stem, w.n FROM parl_word_counts w JOIN parl_members m ON m.id = w.member_id ORDER BY 1, 3, 4",
@@ -73,7 +73,37 @@ describe("refreshWordCounts", () => {
   });
 });
 
+describe("chair turns and vocatives", () => {
+  it("the chair's turns inside a speech and the vocative to the chair's full name don't count for the speaker", async () => {
+    const ids = await upsertMembers(db, [member(1, "Ana Teste", "PSOL")]);
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-02-01", "2026-11-30", [
+      speech(
+        "2026-03-10T15:00",
+        `${header("ANA TESTE", "PSOL")}Sr. Presidente Charles Fernandes, a merenda escolar. ` +
+          "O SR. PRESIDENTE (Charles Fernandes. Bloco/PSD - BA) - Conclua, Deputada, o cronômetro terminou. " +
+          "A SRA. ANA TESTE (Bloco/PSOL - SP) - Concluo: merenda. Presidente Charles, obrigada.",
+      ),
+      // the chair's own speech keeps its opening turn
+      speech("2026-03-11T15:00", "O SR. PRESIDENTE (Charles Fernandes. Bloco/PSD - BA) - Está aberta a sessão. Cronômetro ligado."),
+    ]);
+    await refreshWordCounts(db);
+    const rows = await counts();
+    const first = rows.filter((r) => r.month === "2026-03-01").map((r) => [r.stem, r.n]);
+    // "cronômetro" twice: once from the chair's own speech, never from the turn inside Ana's; "fernandes" gone,
+    // a first name alone ("Presidente Charles") stays
+    expect(first).toEqual([["abert", 1], ["charl", 1], ["conclu", 1], ["cronometr", 1], ["escol", 1], ["lig", 1], ["merend", 2]]);
+  });
+});
+
 describe("distinctiveWords", () => {
+  it("lists only words said at least 5 times", async () => {
+    await seed();
+    await refreshWordCounts(db);
+    const ana = (await pool.query<{ id: number }>("SELECT id FROM parl_members WHERE external_id = 1")).rows[0]!.id;
+    const r = await distinctiveWords(db, { memberId: ana }, { minTokens: 5, minMonthTokens: 1, alpha0: 5, minZ: 0.5 });
+    expect(r.words.map((w) => [w.stem, w.count])).toEqual([["agrotox", 5]]);
+  });
+
   it("ranks the word only the deputy uses first, labelled with its most common written form", async () => {
     await seed();
     await refreshWordCounts(db);
@@ -83,9 +113,11 @@ describe("distinctiveWords", () => {
     expect(r.words[0]).toMatchObject({ stem: "agrotox", label: "agrotóxicos", count: 5 });
     // shared by both and said by Bruno too: not "more than the chamber"
     expect(r.words.map((w) => w.stem)).not.toContain("escol");
-    // the share is the deputy's rate that month over the chamber's: March, 4 of Ana's 7 words vs 4 of the chamber's 14
-    const march = r.words[0]!.months.find((m) => m.month === "2026-03")!;
-    expect(march.share).toBeCloseTo(4 / 7 / (4 / 14), 5);
+    // the share compares with the rest of the chamber: nobody else said it in March
+    expect(r.words[0]!.months.find((m) => m.month === "2026-03")!.share).toBe(Infinity);
+    // "escola" in March: 1 of Ana's 7 words, 1 of the rest's 7 (Bruno) → about as often
+    const all = await distinctiveWords(db, { memberId: ana }, { minTokens: 5, minMonthTokens: 1, ...SMALL, minZ: -100 });
+    expect(all.words.find((w) => w.stem === "escol")!.months.find((m) => m.month === "2026-03")!.share).toBeCloseTo(1, 5);
     // one entry per month with text in the chamber
     expect(r.words[0]!.months.map((m) => m.month)).toEqual(["2026-03", "2026-04"]);
   });
@@ -111,7 +143,7 @@ describe("distinctiveWords", () => {
   it("below the minimum, or with no text at all, says there isn't enough instead of showing words", async () => {
     const { ana } = await seed();
     await refreshWordCounts(db);
-    expect(await distinctiveWords(db, { memberId: ana })).toEqual({ enough: false, words: [] }); // 10 words < 3,000
+    expect(await distinctiveWords(db, { memberId: ana })).toEqual({ enough: false, words: [] }); // 10 words < 1,500
     expect(await distinctiveWords(db, { party: "NOVO" }, { minTokens: 1 })).toEqual({ enough: false, words: [] });
     expect(await distinctiveWords(db, { memberId: 999 }, { minTokens: 1 })).toEqual({ enough: false, words: [] });
   });

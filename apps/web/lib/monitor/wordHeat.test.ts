@@ -11,6 +11,7 @@ describe("word heat", () => {
     expect(heatLevel(5.99)).toBe("more");
     expect(heatLevel(6)).toBe("muchMore");
     expect(heatLevel(52)).toBe("muchMore");
+    expect(heatLevel(Infinity)).toBe("muchMore"); // only this deputy said it that month
   });
 
   it("one cell per month of the year; months without a share are 'none'", () => {

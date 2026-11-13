@@ -18,11 +18,6 @@ const CELL: Record<HeatLevel, string> = {
   muchMore: "bg-stone-900",
 };
 
-/**
- * "Words used more than the chamber": up to 20 words a deputy (or a party's speeches) uses more than the rest of the
- * chamber, each with a month-by-month heat row for `year`. Counting only, no AI; no numbers, scores or comparisons
- * between deputies. Below the minimum of text it says so instead of showing noisy words. `party`: the party view's note.
- */
 /** The party view's Suspense fallback: the heading and a quiet status while the words are counted. */
 export function WordHeatLoading({ locale }: { locale: MonitorLocale }) {
   return (
@@ -33,6 +28,11 @@ export function WordHeatLoading({ locale }: { locale: MonitorLocale }) {
   );
 }
 
+/**
+ * "Words used more than the chamber": up to 20 words a deputy (or a party's speeches) uses more than the rest of the
+ * chamber, each with a month-by-month heat row for `year`. Counting only, no AI; no numbers, scores or comparisons
+ * between deputies. Below the minimum of text it says so instead of showing noisy words. `party`: the party view's note.
+ */
 export function WordHeat({
   locale, result, year, party,
 }: { locale: MonitorLocale; result: { enough: boolean; words: DistinctiveWord[] }; year: number; party?: string }) {

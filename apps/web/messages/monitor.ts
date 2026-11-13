@@ -127,11 +127,11 @@ export const monitorEn = {
     },
     how: "How this is counted",
     howSplit:
-      "The official text of each speech is split into words and each word is reduced to its stem with Postgres's Portuguese dictionary, so “agrotóxico” and “agrotóxicos” count as one word. Speaker headers, procedure and courtesy words (“Presidente”, “Excelência”, “requerimento”…), common filler words, numbers and very short words are left out. Each word is shown as it was most often written.",
+      "The official text of each speech is split into words and each word is reduced to its stem with Postgres's Portuguese dictionary, so “agrotóxico” and “agrotóxicos” count as one word. Speaker headers, the chair's interruptions and the greeting to the chair, procedure and courtesy words (“Presidente”, “Excelência”, “requerimento”…), common filler words, numbers and very short words are left out. Each word is shown as it was most often written.",
     howRank:
-      "Words are ranked by weighted log-odds with an informative prior (Monroe, Colaresi & Quinn, 2008, “Fightin' Words”): how much more often these speeches use a word than the rest of the chamber, with rare words pulled toward the chamber's rate so that a word said once doesn't stand out. Only words clearly above the chamber are listed, at most 20.",
+      "Words are ranked by weighted log-odds with an informative prior (Monroe, Colaresi & Quinn, 2008, “Fightin' Words”): how much more often these speeches use a word than the rest of the chamber, with rare words pulled toward the chamber's rate so that a word said once doesn't stand out. Only words clearly above the chamber and said at least 5 times are listed, at most 20.",
     howHeat:
-      "Each square is a month: darker means the word took a larger share of these speeches' words that month than of the chamber's. A month with little or no speech text stays empty.",
+      "Each square is a month: darker means the word took a larger share of these speeches' words that month than of the rest of the chamber's. A month with little or no speech text stays empty.",
     howNot:
       "What it doesn't mean: these are words, not positions or votes. A word can stand out because it is criticised, quoted, or names a place. Nothing here is written or judged by AI, and deputies are not compared with each other.",
   },
@@ -363,11 +363,11 @@ export const monitorPtBR: MonitorMessages = {
     },
     how: "Como isto é contado",
     howSplit:
-      "O texto oficial de cada discurso é dividido em palavras, e cada palavra é reduzida ao seu radical pelo dicionário de português do Postgres, de modo que “agrotóxico” e “agrotóxicos” contam como uma palavra só. Ficam de fora os cabeçalhos com o nome de quem fala, as palavras de procedimento e cortesia (“Presidente”, “Excelência”, “requerimento”…), palavras de preenchimento comuns, números e palavras muito curtas. Cada palavra aparece na forma em que foi mais escrita.",
+      "O texto oficial de cada discurso é dividido em palavras, e cada palavra é reduzida ao seu radical pelo dicionário de português do Postgres, de modo que “agrotóxico” e “agrotóxicos” contam como uma palavra só. Ficam de fora os cabeçalhos com o nome de quem fala, as intervenções e o vocativo à Presidência, as palavras de procedimento e cortesia (“Presidente”, “Excelência”, “requerimento”…), palavras de preenchimento comuns, números e palavras muito curtas. Cada palavra aparece na forma em que foi mais escrita.",
     howRank:
-      "As palavras são ordenadas pelo log-odds ponderado com uma distribuição a priori informativa (Monroe, Colaresi & Quinn, 2008, “Fightin' Words”): quanto mais estes discursos usam uma palavra do que o restante da Câmara, com as palavras raras puxadas para a frequência da Câmara, para que uma palavra dita uma única vez não se destaque. Só entram palavras claramente acima da Câmara, no máximo 20.",
+      "As palavras são ordenadas pelo log-odds ponderado com uma distribuição a priori informativa (Monroe, Colaresi & Quinn, 2008, “Fightin' Words”): quanto mais estes discursos usam uma palavra do que o restante da Câmara, com as palavras raras puxadas para a frequência da Câmara, para que uma palavra dita uma única vez não se destaque. Só entram palavras claramente acima da Câmara e ditas pelo menos 5 vezes, no máximo 20.",
     howHeat:
-      "Cada quadrado é um mês: mais escuro significa que a palavra ocupou uma parte maior das palavras destes discursos naquele mês do que das palavras da Câmara. Um mês com pouco ou nenhum texto de discurso fica vazio.",
+      "Cada quadrado é um mês: mais escuro significa que a palavra ocupou uma parte maior das palavras destes discursos naquele mês do que das palavras do restante da Câmara. Um mês com pouco ou nenhum texto de discurso fica vazio.",
     howNot:
       "O que isto não significa: são palavras, não posições nem votos. Uma palavra pode se destacar porque é criticada, citada ou é o nome de um lugar. Nada aqui é escrito ou avaliado por IA, e os deputados não são comparados entre si.",
   },
