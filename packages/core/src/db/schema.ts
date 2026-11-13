@@ -1,5 +1,5 @@
 import {
-  boolean, check, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex, uuid,
+  type AnyPgColumn, boolean, check, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { AttributionEvidence, AttributionSource, AttributionStatus } from "../attribution.ts";
@@ -299,6 +299,8 @@ export const libraryAskMessages = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     ownerId: text("owner_id").notNull(),
     role: text("role").$type<AskRole>().notNull(),
+    /** An answer's question (set when both are stored together), so two questions sent at once never swap answers. */
+    questionId: uuid("question_id").references((): AnyPgColumn => libraryAskMessages.id, { onDelete: "cascade" }),
     text: text("text").notNull().default(""),
     sources: jsonb("sources").$type<LibraryAskSource[]>(),
     toolCalls: jsonb("tool_calls").$type<unknown>(),

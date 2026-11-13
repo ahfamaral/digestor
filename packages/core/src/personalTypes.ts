@@ -172,6 +172,8 @@ export interface LibraryAskMessage {
   id: string;
   ownerId: string;
   role: AskRole;
+  /** An answer's question (null on questions, and on answers stored without one). */
+  questionId: string | null;
   text: string;
   /** Assistant answers: the videos searched (null on questions and failures). */
   sources: LibraryAskSource[] | null;

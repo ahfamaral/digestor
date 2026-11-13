@@ -1,0 +1,2 @@
+ALTER TABLE "library_ask_messages" ADD COLUMN "question_id" uuid;--> statement-breakpoint
+ALTER TABLE "library_ask_messages" ADD CONSTRAINT "library_ask_messages_question_id_library_ask_messages_id_fk" FOREIGN KEY ("question_id") REFERENCES "public"."library_ask_messages"("id") ON DELETE cascade ON UPDATE no action;
