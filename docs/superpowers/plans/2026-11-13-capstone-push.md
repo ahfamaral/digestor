@@ -272,6 +272,24 @@
 
 ---
 
+### Task D6: Filters for a deputy's votes and bills (added by the owner 2026-11-13)
+
+**Files:**
+- Modify: `packages/core/src/db/monitor.ts` (`listMemberVotes` filters), `packages/core/src/db/monitorRecord.ts` (authored bills filters), `apps/web/lib/monitor/params.ts` (+ test), `apps/web/components/Monitor/DeputyView.tsx`, `apps/web/components/Monitor/AuthoredBills.tsx`, `apps/web/components/Monitor/VoteRow.tsx` (or the votes section component), `apps/web/messages/monitor.ts`, `CLAUDE.md`
+- Create (part 2, after D1): vote/bill entries in the worker's meaning index and its use in the two text boxes
+
+**Interfaces:**
+- Params (deputy page, parsed and built in `params.ts`, invalid values ignored): votes `vq` (text), `vv` (`sim|nao|abstencao|obstrucao`), `vk` (`bill|request`), `vfrom`, `vto` (YYYY-MM), `vdiff=1`, `vp` (page, resets when a filter changes); bills `bq` (text), `byear`, existing `btype`, `bp`.
+- `listMemberVotes(db, memberId, a: { limit?; offset?; q?: string[] (search terms); vote?: string; kind?: "bill" | "request"; from?: string; to?: string; differsFromGuidance?: boolean })`: text matches the roll call's description + bill label + bill summary with `pt_unaccent` full-text (same term handling as `searchSpeeches`, incl. the existing query translation and `exact`-style escape hatch); `kind` uses the same rule as the existing "Vote on a request" marker (`lib/monitor/votes.ts`); `differsFromGuidance` = the guidance that applies to the deputy's party at the vote (match party → bloc exactly as the roll-call page does) is one of Sim / Não / Obstrução / Abstenção and the deputy's vote differs; empty guidance or "Liberado" never counts. Returns the same row shape plus `guidance: string | null` for each row.
+- Bills: `bq` over the bill summary (full-text, same handling), `byear` = year presented.
+
+**UI:** Each section gets a compact filter row (GetForm, phone-first: text box + the selects; "Different from the party's guidance" as a checkbox), and a line "N of M recorded votes" / "N of M bills" under it (counts of this deputy's own records only — never compared with others). Each vote row shows the party guidance next to the vote when there is one ("Party guidance: Sim"). Label copy (en / pt-BR via `tm`): "Different from the party's guidance" / "Diferente da orientação do partido", with a short note: "Compared with the guidance the party (or its bloc) gave for that vote. A free vote ('Liberado') or no guidance never counts." No ranking, no %, no judgement words ("rebel", "disloyal").
+
+- [ ] **Step 1:** Failing tests: params parse/build round-trip (invalid values dropped, page reset); `listMemberVotes` on the test DB: each filter alone and combined, `differsFromGuidance` with party guidance, bloc guidance, "Liberado", empty guidance, no guidance row; bills `bq` + `byear`.
+- [ ] **Step 2:** Implement, pass; UI rows + counts (digestor-ui), copy in both languages.
+- [ ] **Step 3:** Playwright at 390 px and desktop on a deputy with many votes: each filter, the guidance checkbox, paging, Back. Commit `feat(monitor): filters for a deputy's votes and bills, incl. different from party guidance`.
+- [ ] **Step 4 (part 2, after D1):** embed roll-call descriptions + bill summaries in the worker's meaning index (own collection, same chunk-free short texts), fuse with the word results in `vq` / `bq` exactly as D1 does for speeches (worker down → words only + quiet note), 8 golden queries (4 votes, 4 bills) in the D1 golden file with recall@10/MRR. Commit `feat(monitor): search votes and bills by meaning`.
+
 ### Task A6: "Why not LangGraph" PDF
 
 **Files:**
