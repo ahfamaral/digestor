@@ -653,3 +653,27 @@ export const parlPresence = pgTable(
   },
   (t) => [primaryKey({ columns: [t.sessionId, t.memberId] }), index("parl_presence_member").on(t.memberId)],
 );
+
+/**
+ * Word counts of the speeches' official text for "Words used more than the chamber" (`refreshWordCounts`, rebuilt after
+ * each nightly speech refresh): per deputy, party on the day (`''` when unknown) and month, each stem of
+ * `to_tsvector('pt_unaccent', text)` (speaker headers and the stoplist left out) and how many times it was said.
+ */
+export const parlWordCounts = pgTable(
+  "parl_word_counts",
+  {
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => parlMembers.id, { onDelete: "cascade" }),
+    party: text("party").notNull().default(""),
+    /** First day of the month (the speech's Brasília date). */
+    month: date("month", { mode: "string" }).notNull(),
+    stem: text("stem").notNull(),
+    n: integer("n").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.memberId, t.party, t.month, t.stem] }),
+    index("parl_word_counts_party").on(t.party),
+    index("parl_word_counts_stem").on(t.stem),
+  ],
+);

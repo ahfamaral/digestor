@@ -108,6 +108,20 @@ describe("refreshMonitor", () => {
     expect(nightlyWindow(new Date("2026-11-11T09:00:00Z"))).toEqual({ speechesFrom: "2026-09-12", to: "2026-11-11", year: 2026, profiles: "missing" });
   });
 
+  it("rebuilds the word counts from the refreshed speeches, with the party on the day", async () => {
+    const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const her = (await getMember(db, "camara", 204407))!;
+    const rows = await db.execute<{ party: string; stem: string; n: number }>(
+      sql`select party, stem, n from parl_word_counts where member_id = ${her.id}`,
+    );
+    expect(counts.words).toBeGreaterThan(0);
+    expect(rows.rows.map((r) => r.stem)).toContain("separaca"); // "processo de separação"
+    expect(rows.rows.map((r) => r.stem)).not.toContain("melchionn"); // her own name is only in the speaker header
+    expect(rows.rows.every((r) => r.party === "PSOL")).toBe(true);
+    // even a year without roll calls (the run returns early) counts the words
+    expect((await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, { ...window, year: 2019 })).words).toBe(counts.words);
+  });
+
   it("a full run stores history, party on the day, profile, guidance, presence and authored bills", async () => {
     const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
     expect(counts).toMatchObject({ history: { ok: 3, failed: 0 }, orientations: 26, sessions: 3, presence: 2, authoredBills: 2 });

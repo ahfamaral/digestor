@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { partyTimeline, type TimelineBand } from "@digestor/core";
 import {
-  getHistory, getMember, getPresence, getProfile, listMemberBills, listMemberSpeeches, listMemberVotes, searchSpeeches, speechFacets, type MemberRow,
+  distinctiveWords, getHistory, getMember, getPresence, getProfile, listMemberBills, listMemberSpeeches, listMemberVotes, searchSpeeches, speechFacets, type MemberRow,
   type ProfileInput,
 } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
@@ -54,7 +54,7 @@ async function Deputy({ params, searchParams }: Pick<PageProps<"/monitor/deputad
   if (!p.q) return <DeputyData locale={locale} member={member} params={p} {...record} />;
   // A search is translated first (up to 10 s): the header and the search form show at once, with "Searching…" meanwhile.
   const empty = { total: 0, rows: [] };
-  const workspace = { ...record, presence: null, bills: { total: 0, byType: [], rows: [] }, phases: [], today: today() };
+  const workspace = { ...record, presence: null, bills: { total: 0, byType: [], rows: [] }, phases: [], today: today(), words: null };
   return (
     <Suspense
       key={deputyHref(member.externalId, p)}
@@ -82,17 +82,18 @@ async function DeputyData({
       : searched
         ? searchSpeeches(db, { terms, phrase, memberId: member.id, filters, sort: p.sort, ...paging })
         : listMemberSpeeches(db, member.id, { ...paging, ...filters });
-  const [speeches, votes, presence, bills, facets] = await Promise.all([
+  const [speeches, votes, presence, bills, facets, words] = await Promise.all([
     speechesOf(),
     listMemberVotes(db, member.id, { limit: VOTE_PAGE, offset: p.vp * VOTE_PAGE }),
     getPresence(db, member.id, p.year),
     listMemberBills(db, member.id, { type: p.btype ?? undefined, limit: BILL_PAGE, offset: p.bp * BILL_PAGE }),
     speechFacets(db),
+    distinctiveWords(db, { memberId: member.id }, { year: p.year }),
   ]);
   return (
     <DeputyView
       locale={locale} member={member} params={p} searched={searched} speeches={speeches} votes={votes} profile={profile}
-      bands={bands} presence={presence} bills={bills} phases={facets.phases} today={today()}
+      bands={bands} presence={presence} bills={bills} phases={facets.phases} today={today()} words={words}
     />
   );
 }

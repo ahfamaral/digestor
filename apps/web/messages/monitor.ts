@@ -107,6 +107,34 @@ export const monitorEn = {
     note: "The open data doesn't say why: justified absences, leave and missions look the same.",
     unavailable: "Presence not available for this deputy.",
   },
+  words: {
+    title: "Words used more than the chamber",
+    partyNote: "Speeches made while in {party} (the party on the day), by every deputy.",
+    notEnough: "There isn't enough speech text yet to show which words stand out.",
+    none: "No word stands out against the chamber yet.",
+    counted: "Counted from the official text",
+    counting: "Counting words…",
+    tableCaption: "Each word, month by month in {year}: how often it was used compared with the chamber",
+    word: "Word",
+    legend: "Key",
+    cell: "{month}: {level}",
+    level: {
+      none: "little or no speech text",
+      unused: "not used",
+      about: "used about as often as the chamber, or less",
+      more: "used more than the chamber",
+      muchMore: "used much more than the chamber",
+    },
+    how: "How this is counted",
+    howSplit:
+      "The official text of each speech is split into words and each word is reduced to its stem with Postgres's Portuguese dictionary, so “agrotóxico” and “agrotóxicos” count as one word. Speaker headers, procedure and courtesy words (“Presidente”, “Excelência”, “requerimento”…), common filler words, numbers and very short words are left out. Each word is shown as it was most often written.",
+    howRank:
+      "Words are ranked by weighted log-odds with an informative prior (Monroe, Colaresi & Quinn, 2008, “Fightin' Words”): how much more often these speeches use a word than the rest of the chamber, with rare words pulled toward the chamber's rate so that a word said once doesn't stand out. Only words clearly above the chamber are listed, at most 20.",
+    howHeat:
+      "Each square is a month: darker means the word took a larger share of these speeches' words that month than of the chamber's. A month with little or no speech text stays empty.",
+    howNot:
+      "What it doesn't mean: these are words, not positions or votes. A word can stand out because it is criticised, quoted, or names a place. Nothing here is written or judged by AI, and deputies are not compared with each other.",
+  },
   fronts: {
     title: "Parliamentary fronts",
     members: "Member of {n} parliamentary fronts",
@@ -127,6 +155,7 @@ export const monitorEn = {
   nav: {
     label: "On this page",
     speeches: "Speeches",
+    words: "Words",
     bills: "Bills",
     votes: "Votes",
     presence: "Presence",
@@ -314,6 +343,34 @@ export const monitorPtBR: MonitorMessages = {
     note: "Os dados abertos não dizem o motivo: faltas justificadas, licenças e missões aparecem da mesma forma.",
     unavailable: "Presença indisponível para este deputado.",
   },
+  words: {
+    title: "Palavras usadas mais que a média da Câmara",
+    partyNote: "Discursos feitos durante a filiação ao {party} (o partido no dia), por todos os deputados.",
+    notEnough: "Ainda não há texto de discursos suficiente para mostrar quais palavras se destacam.",
+    none: "Nenhuma palavra se destaca em relação à Câmara por enquanto.",
+    counted: "Contado a partir do texto oficial",
+    counting: "Contando palavras…",
+    tableCaption: "Cada palavra, mês a mês em {year}: com que frequência foi usada em comparação com a Câmara",
+    word: "Palavra",
+    legend: "Legenda",
+    cell: "{month}: {level}",
+    level: {
+      none: "pouco ou nenhum texto de discurso",
+      unused: "não usada",
+      about: "usada com a mesma frequência que a Câmara, ou menos",
+      more: "usada mais que a Câmara",
+      muchMore: "usada muito mais que a Câmara",
+    },
+    how: "Como isto é contado",
+    howSplit:
+      "O texto oficial de cada discurso é dividido em palavras, e cada palavra é reduzida ao seu radical pelo dicionário de português do Postgres, de modo que “agrotóxico” e “agrotóxicos” contam como uma palavra só. Ficam de fora os cabeçalhos com o nome de quem fala, as palavras de procedimento e cortesia (“Presidente”, “Excelência”, “requerimento”…), palavras de preenchimento comuns, números e palavras muito curtas. Cada palavra aparece na forma em que foi mais escrita.",
+    howRank:
+      "As palavras são ordenadas pelo log-odds ponderado com uma distribuição a priori informativa (Monroe, Colaresi & Quinn, 2008, “Fightin' Words”): quanto mais estes discursos usam uma palavra do que o restante da Câmara, com as palavras raras puxadas para a frequência da Câmara, para que uma palavra dita uma única vez não se destaque. Só entram palavras claramente acima da Câmara, no máximo 20.",
+    howHeat:
+      "Cada quadrado é um mês: mais escuro significa que a palavra ocupou uma parte maior das palavras destes discursos naquele mês do que das palavras da Câmara. Um mês com pouco ou nenhum texto de discurso fica vazio.",
+    howNot:
+      "O que isto não significa: são palavras, não posições nem votos. Uma palavra pode se destacar porque é criticada, citada ou é o nome de um lugar. Nada aqui é escrito ou avaliado por IA, e os deputados não são comparados entre si.",
+  },
   fronts: {
     title: "Frentes parlamentares",
     members: "Membro de {n} frentes parlamentares",
@@ -334,6 +391,7 @@ export const monitorPtBR: MonitorMessages = {
   nav: {
     label: "Nesta página",
     speeches: "Discursos",
+    words: "Palavras",
     bills: "Proposições",
     votes: "Votos",
     presence: "Presença",

@@ -16,6 +16,7 @@ import { RollCallView } from "./RollCallView";
 import { SearchedFor } from "./SearchedFor";
 import { SpeechItem } from "./SpeechItem";
 import { VoteRow } from "./VoteRow";
+import { WordHeat } from "./WordHeat";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
@@ -26,7 +27,7 @@ vi.mock("next/navigation", () => ({
 const member = { id: 1, externalId: 999, name: "Suplente Teste", party: "PT", uf: "SP", photoUrl: null, inOffice: false };
 const emptyWorkspace = {
   profile: { profession: null, externalMandates: [], fronts: [], positions: [] }, bands: [], presence: null,
-  bills: { total: 0, byType: [], rows: [] }, phases: [], today: "2026-11-11",
+  bills: { total: 0, byType: [], rows: [] }, phases: [], today: "2026-11-11", words: null,
 };
 
 describe("monitor components", () => {
@@ -47,6 +48,58 @@ describe("monitor components", () => {
     expect(html).toContain('href="https://www.camara.leg.br/propostas-legislativas/2449741"');
     // a vote row opens the roll-call page, which then offers the way back to this deputy
     expect(html).toContain('href="/monitor/votacoes/2449741-72?from=204407"');
+  });
+
+  it("WordHeat below the minimum says there isn't enough text instead of showing words", () => {
+    const html = renderToStaticMarkup(<WordHeat locale="en" year={2026} result={{ enough: false, words: [] }} />);
+    expect(html).toContain("Words used more than the chamber");
+    expect(html).toContain("There isn&#x27;t enough speech text yet to show which words stand out.");
+    expect(html).not.toContain("<table");
+    const pt = renderToStaticMarkup(<WordHeat locale="pt-BR" year={2026} result={{ enough: false, words: [] }} party="MISSÃO" />);
+    expect(pt).toContain("Palavras usadas mais que a média da Câmara");
+    expect(pt).toContain("Discursos feitos durante a filiação ao MISSÃO");
+  });
+
+  it("WordHeat shows each word with a month row of levels, never the numbers", () => {
+    const words = [
+      { stem: "agrotox", label: "agrotóxicos", count: 517, months: [{ month: "2026-02", share: null }, { month: "2026-03", share: 7.83 }, { month: "2026-04", share: 0 }, { month: "2026-05", share: 1.27 }, { month: "2026-06", share: 5.61 }] },
+      { stem: "merend", label: "merenda", count: 211, months: [{ month: "2026-03", share: 3.3 }] },
+    ];
+    const html = renderToStaticMarkup(<WordHeat locale="en" year={2026} result={{ enough: true, words }} />);
+    expect(html).toContain('id="words"');
+    expect(html).toMatch(/<th scope="row" lang="pt-BR"[^>]*>agrotóxicos<\/th>/);
+    expect(html.match(/<tr>/g)).toHaveLength(3); // the month header and two words
+    expect(html).toContain("March: used much more than the chamber");
+    expect(html).toContain("April: not used");
+    expect(html).toContain("May: used about as often as the chamber, or less");
+    expect(html).toContain("June: used more than the chamber");
+    expect(html).toContain("February: little or no speech text");
+    expect(html).toContain("December: little or no speech text");
+    for (const n of ["7.83", "1.27", "5.61", "517", "211"]) expect(html).not.toContain(n);
+    expect(html).toContain("Counted from the official text");
+    expect(html).toContain("How this is counted");
+    expect(html).toContain("Monroe, Colaresi &amp; Quinn, 2008");
+  });
+
+  it("the deputy page links to its words section once loaded", () => {
+    const words = { enough: false, words: [] };
+    const html = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={parseDeputy({})} speeches={{ total: 0, rows: [] }} searched={null} votes={{ total: 0, rows: [] }} {...emptyWorkspace} words={words} />,
+    );
+    expect(html).toContain('href="#words"');
+    expect(html).toContain("There isn&#x27;t enough speech text yet");
+    const without = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={parseDeputy({})} speeches={{ total: 0, rows: [] }} searched={null} votes={{ total: 0, rows: [] }} {...emptyWorkspace} />,
+    );
+    expect(without).not.toContain('href="#words"');
+  });
+
+  it("the directory shows a party's words only when a party is picked", () => {
+    const slot = <p>party words here</p>;
+    const withParty = renderToStaticMarkup(<DirectoryView locale="en" params={parseDirectory({ party: "PSOL" })} members={[]} words={slot} />);
+    expect(withParty).toContain("party words here");
+    const noParty = renderToStaticMarkup(<DirectoryView locale="en" params={parseDirectory({})} members={[]} words={slot} />);
+    expect(noParty).not.toContain("party words here");
   });
 
   it("a deputy with no speeches and no votes shows both empty states", () => {

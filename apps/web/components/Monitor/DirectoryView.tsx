@@ -13,9 +13,12 @@ const box = "size-4 rounded border-input accent-brand outline-none focus-visible
 /**
  * `/monitor/deputados`: every deputy without typing a name. In office by default (`former` adds the others), narrowed by
  * today's party and state, grouped by first letter with a sticky letter row. Alphabetical only: no counts of activity,
- * no ranking. Each row opens the deputy's page.
+ * no ranking. Each row opens the deputy's page. `words`: with a party picked, that party's "Words used more than the
+ * chamber" (streamed in by the page), above the list.
  */
-export function DirectoryView({ locale, params, members }: { locale: MonitorLocale; params: DirectoryParams; members: DirectoryMember[] }) {
+export function DirectoryView({
+  locale, params, members, words,
+}: { locale: MonitorLocale; params: DirectoryParams; members: DirectoryMember[]; words?: React.ReactNode }) {
   const shown = filterDirectory(members, params);
   const groups = byLetter(shown);
   const options = directoryOptions(members, params);
@@ -58,6 +61,8 @@ export function DirectoryView({ locale, params, members }: { locale: MonitorLoca
           </div>
         </div>
       </GetForm>
+
+      {params.party && words}
 
       <div className="grid gap-4">
         <p className="text-sm font-medium">

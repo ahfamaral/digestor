@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { TimelineBand } from "@digestor/core";
-import type { MemberBill, MemberRow, Presence as PresenceRecord, ProfileInput, SpeechHit, SpeechRow, VoteRow as Vote } from "@digestor/core/server";
+import type {
+  DistinctiveWord, MemberBill, MemberRow, Presence as PresenceRecord, ProfileInput, SpeechHit, SpeechRow, VoteRow as Vote,
+} from "@digestor/core/server";
 import { BackLink } from "@/components/BackLink";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, directoryHref, MONITOR_YEARS, type DeputyParams } from "@/lib/monitor/params";
@@ -24,26 +26,29 @@ import { SortSwitch } from "./SortSwitch";
 import { SpeechItem } from "./SpeechItem";
 import { TopicNote } from "./TopicNote";
 import { VoteRow } from "./VoteRow";
+import { WordHeat } from "./WordHeat";
 import { YearSelect } from "./YearSelect";
 
 /** The speech search, its sort and its pages land here instead of the top of the page. */
 const SPEECHES = "speeches";
-/** The section links at the top (Fronts only when the deputy joined any). */
-const NAV = ["speeches", "bills", "votes", "presence", "fronts"] as const;
+/** The section links at the top (Words only once loaded, Fronts only when the deputy joined any). */
+const NAV = ["speeches", "words", "bills", "votes", "presence", "fronts"] as const;
 
 export type DeputyWorkspace = {
   profile: ProfileInput; bands: TimelineBand[]; presence: PresenceRecord | null;
   bills: { total: number; byType: { type: string; n: number }[]; rows: MemberBill[] }; phases: string[]; today: string;
+  /** "Words used more than the chamber" (`distinctiveWords`); null while searching. */
+  words: { enough: boolean; words: DistinctiveWord[] } | null;
 };
 
 /**
  * A deputy's workspace, all official records: header and profile, party timeline, positions, the speech search (their
  * speeches, or others' mentioning them), authored bills, recorded votes, presence and fronts. Speeches and votes are
- * never paired. `searching`: the Suspense fallback while a query is translated and run (the records below the search hidden
+ * never paired; "Words used more than the chamber" sits after the speeches. `searching`: the Suspense fallback while a query is translated and run (the records below the search hidden
  * meanwhile; header, timeline and positions stay).
  */
 export function DeputyView({
-  locale, member, params, searched, speeches, votes, profile, bands, presence, bills, phases, today, searching = false,
+  locale, member, params, searched, speeches, votes, profile, bands, presence, bills, phases, today, words, searching = false,
 }: DeputyWorkspace & {
   locale: MonitorLocale; member: MemberRow; params: DeputyParams; searched: Searched | null; searching?: boolean;
   speeches: { total: number; rows: (SpeechRow | SpeechHit)[] }; votes: { total: number; rows: Vote[] };
@@ -97,7 +102,7 @@ export function DeputyView({
 
       <SectionNav
         label={tm(locale, "nav.label")}
-        links={NAV.filter((n) => n !== "fronts" || profile.fronts.length > 0).map((n) => ({ id: n, text: tm(locale, `nav.${n}`) }))}
+        links={NAV.filter((n) => (n !== "fronts" || profile.fronts.length > 0) && (n !== "words" || words !== null)).map((n) => ({ id: n, text: tm(locale, `nav.${n}`) }))}
       />
 
       {/* Shown while searching too: the page above the speech search keeps its height, so #speeches stays in view. */}
@@ -132,6 +137,7 @@ export function DeputyView({
 
       {!searching && (
         <>
+          {words && <WordHeat locale={locale} result={words} year={params.year} />}
           <AuthoredBills locale={locale} externalId={id} params={params} bills={bills} />
           <div className="grid">
             <Section
