@@ -198,6 +198,19 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs worker | gr
 
 Chunks of speeches sent in writing ("DISCURSO NA ÍNTEGRA ENCAMINHADO …") leave out that header since the review round of 2026-11-13; the dev index built before keeps it in their first chunk (it hardly moves a search). Production builds its index after the change, so nothing to do there.
 
+### Once, when updating to vote and bill search by meaning and party blocs (migration 0031)
+
+`up -d --build` runs migration 0031: `parl_record_embeddings` (which roll calls and bills are in the meaning index, with the md5 of the text embedded) and `parl_blocs` / `parl_bloc_parties` (the Câmara's party blocs with their member parties). Nothing to set in `.env`.
+
+- **Blocs:** the next nightly refresh (09:00 UTC) reads `/blocos` and each bloc's parties; from then on the guidance of "Bl UniPpPsd..." also reaches MDB, Republicanos, Podemos, PSDB and Cidadania deputies (in dev: votes with a comparable guidance went from 31,892 to 41,387 of 51,450). Until that run nothing changes. A failing bloc fetch keeps the stored blocs and never fails the refresh.
+- **Meaning index for votes and bills:** run the embed script once more; it skips the speeches already in the index and embeds the roll calls and the signed bills (one short text each; local e5 model, no paid calls; safe to stop and rerun):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-embed.ts
+```
+
+Dev on 2026-11-13 (Colima, 4 CPUs): 126 roll calls in 20 s and 39,646 signed bills in about 27 minutes (1,646 s in all; the worker test suite ran alongside for part of it). The worker loads both collections into Chroma at startup, so the first search after a restart is not slow. Until it has run, a deputy's vote and bill text boxes show word matches with "Search by meaning isn't available right now" (the speech search is not affected). Afterwards the daily `monitor.embed` job adds new or changed roll calls and bills after the day's speeches, within the same 2,000-item cap; skipping the script, the daily job would take about three weeks to embed the year's 41,000 bills.
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:

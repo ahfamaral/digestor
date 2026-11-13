@@ -94,3 +94,24 @@ Reading the table:
 - Meaning hurts on broad cost-of-living queries: for "food prices" and "aumento do preço da comida" it ranks fuel-price and economy speeches above food ones (meaning 0.25 and 0.13); fusion keeps most of the word results there.
 - Recall is low in absolute terms because the relevant sets are large (up to 27 speeches for the 6x1 work week) and only 10 results count. Four queries have 1 to 3 relevant speeches in the pool (q04, q08, q11, q13), so one speech moves their recall by 0.33 to 1.00. Pooling only finds what one of the three methods ranked in its top 10, so the relevant sets miss speeches none of them surfaced; that limits all three methods alike.
 - Rows only the meaning search found carry a quiet "Related by meaning" mark and show the official summary instead of highlighted words; when the worker doesn't answer within 3 s the page shows word results and "Search by meaning isn't available right now".
+
+### A deputy's vote and bill text boxes
+
+- **What was measured:** the deputy page's two other text boxes, searched three ways over *that deputy's own records only* (as the page runs them): **words** (full text on `pt_unaccent` with the translator's terms and the typed-phrase boost, best match first), **meaning** (each roll call's bill label + summary + what was voted, and each signed bill's label + summary, embedded with the same local e5 model in their own Chroma collections; the deputy's records scored against the query, unfiltered top 10) and **hybrid** (what the page shows: the closest meaning hits, at most 10 and within 0.03 of the best one, fused with the word matches by RRF, k = 60). Recall@10 and MRR@10 (`apps/worker/scripts/eval-monitor-records.ts`).
+- **On what:** 8 queries (`apps/worker/eval/monitor-records.golden.json`), 4 on votes (Sargento Fahur, 125 of the 126 roll calls of 2026) and 4 on bills (Laura Carneiro 1,118 bills, Sargento Portugal 2,080, Pedro Uczai 644); 4 in Portuguese, 4 in English.
+- **Golden file:** labelled by the coding agent (Claude) reading the official texts, not an automated LLM judge (no labelling calls); owner review pending. Votes: every one of the deputy's 125 roll calls was read, so the relevant sets are complete. Bills: the pooled top 10 of the three methods plus every bill of the deputy whose summary holds one of the topic's stems were read. Relevant = about the topic itself (a ceremonial session or an honour motion is not; a request for urgency or information on a relevant bill is). Translator terms frozen in the file, so the run is free.
+- **When / cost:** 13 November 2026; the 8 translations once (OpenRouter, well under $0.01).
+
+| Subset | Queries | Words recall@10 | Meaning recall@10 | Hybrid recall@10 | Words MRR | Meaning MRR | Hybrid MRR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| All | 8 | 0.31 | 0.80 | **0.74** | 0.75 | 1.00 | **0.94** |
+| Votes | 4 | 0.41 | 0.90 | **0.82** | 0.75 | 1.00 | **1.00** |
+| Bills | 4 | 0.21 | 0.70 | **0.65** | 0.75 | 1.00 | **0.88** |
+
+Reading the table:
+
+- The words miss most of these: official summaries rarely use a reader's words ("harsher punishment for criminals": words 0.00, the bills say "aumentar as penas" and "crime hediondo"; "cancer treatment": words 0.00, the bills say "inibidores de CDK 4/6" and "câncer de mama"). Hybrid more than doubles recall@10 (0.31 to 0.74).
+- Meaning alone scores higher than hybrid here, but it is a ranking of *all* the deputy's records: it always fills ten rows, relevant or not. e5's cosine scores bunch between about 0.75 and 0.9 whatever the query ("receita de bolo de chocolate" scores 0.855 against a vote on cocoa products), so no fixed floor separates related from unrelated. The cut was chosen with `--sweep` on the same 8 queries (so it is tuned, not tested, on them): "within 0.03 of the best hit" kept the recall of a 0.8 floor (0.74) at a higher precision@10 (0.71 against 0.59), and follows English queries, which score lower than Portuguese ones.
+- Where nothing matches, the meaning rows are still the deputy's nearest records: "aposentadoria" on Sargento Fahur's votes (no 2026 roll call is about pensions) shows 10 rows marked "related by meaning" (social-assistance funding, unemployment insurance, tax-benefit rules). They are marked as such and come after any word match; "Exact words only" turns meaning off.
+- Small set, one labeller, and the cut tuned on it: read the numbers as "meaning finds what the words miss in official summaries", not as a precise estimate.
+
