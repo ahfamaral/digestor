@@ -3,12 +3,15 @@
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus } from "@digestor/core";
+import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus, type ToolApprovalResolution } from "@digestor/core";
 import { ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { asToolCalls, formatToolCall, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines } from "@/lib/askText";
+import {
+  asToolCalls, awaitsApproval, formatToolCall, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines,
+} from "@/lib/askText";
+import { ApprovalCard } from "./ApprovalCard";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { isTyping, opensAsk } from "@/lib/review";
@@ -34,7 +37,9 @@ function useDesktop(): boolean {
   );
 }
 
-type Message = Omit<AskMessageWithActions, "createdAt"> & { createdAt: string };
+type Message = Omit<AskMessageWithActions, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt?: string };
+/** A decision on a card: confirm/dismiss a bulk selection, or approve/edit/reject an Ask change. */
+type Decision = { decision: "confirm" | "dismiss" } | ToolApprovalResolution;
 
 export interface AskDrawerProps {
   sessionId: string;
@@ -48,6 +53,7 @@ export interface AskDrawerProps {
  * The Ask drawer: `/` (or the Ask button) opens a side panel where the journalist questions this video. Answers come
  * from stored data, with `[hh:mm:ss]` links that play in the drawer's own preview player (the page behind a modal
  * drawer is inert, so it can't offer one). Tool calls show as chips; changes can be undone and bulk ones wait for a click.
+ * Before Ask changes a clip or selection, its answer pauses on an approval card (Approve / Edit / Reject).
  */
 export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDrawerProps) {
   const router = useRouter();
@@ -67,6 +73,8 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Answers being worked on at the last load: one that finished since may have changed clips, so the page refreshes. */
+  const working = useRef<Set<string>>(new Set());
 
   // Beside the page, not over it: the page makes room for the 28 rem panel (`sm:max-w-md`) so nothing hides under it.
   useEffect(() => {
@@ -83,13 +91,16 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
       const res = await fetch(`/api/sessions/${sessionId}/ask`);
       if (!res.ok) throw new Error("load");
       const body = (await res.json()) as { messages: Message[] };
+      const finished = body.messages.some((m) => working.current.has(m.id) && m.status === "done");
+      working.current = new Set(body.messages.filter(isWorkingOn).map((m) => m.id));
+      if (finished) router.refresh();
       setMessages(body.messages);
       setNow(Date.now());
       setLoadError(false);
     } catch {
       if (!quiet) setLoadError(true);
     }
-  }, [sessionId]);
+  }, [sessionId, router]);
 
   /** Opens the drawer and loads the conversation (an event, not an effect: the fetch belongs to the action). */
   function openAsk() {
@@ -112,7 +123,8 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const isWaiting = (m: Message) => m.role === "assistant" && isAnswering(m.status) && !isStalePending(m.createdAt, now);
+  // "Taking too long" counts from the last status change: an answer resumed after an approval is fresh again.
+  const isWaiting = (m: Message) => m.role === "assistant" && isWorkingOn(m) && !isStalePending(m.updatedAt ?? m.createdAt, now);
   const hasPending = messages.some(isWaiting);
   useEffect(() => {
     if (!open || !hasPending) return;
@@ -204,25 +216,26 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
     }
   }
 
-  async function decide(action: AskAction, decision: "confirm" | "dismiss") {
+  async function decide(action: AskAction, body: Decision) {
     const key = `action:${action.id}`;
+    const fallback = action.kind === "tool_approval" ? t("ask.approval.failed") : t("ask.bulkFailed");
     setBusyKey(key, true);
     setError(key, null);
     try {
       const res = await fetch(`/api/ask-actions/${action.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const message = await errorMessage(res, t("ask.bulkFailed"));
+        const message = await errorMessage(res, fallback);
         if (res.status === 409) await load(true);
         throw new Error(message);
       }
       await load(true);
-      if (decision === "confirm") router.refresh();
+      if (body.decision === "confirm") router.refresh();
     } catch (err) {
-      setError(key, err instanceof Error && err.message ? err.message : t("ask.bulkFailed"));
+      setError(key, err instanceof Error && err.message ? err.message : fallback);
     } finally {
       setBusyKey(key, false);
     }
@@ -289,7 +302,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
                   message={m}
                   lang={lang}
                   videoRemoved={videoRemoved}
-                  stale={isAnswering(m.status) && !isWaiting(m)}
+                  stale={isWorkingOn(m) && !isWaiting(m)}
                   undone={undone}
                   busy={busy}
                   errors={errors}
@@ -357,7 +370,7 @@ function MessageItem({
   errors: Record<string, string>;
   onTime: (ms: number) => void;
   onUndo: (key: string, call: AskToolCallRecord) => void;
-  onDecide: (action: AskAction, decision: "confirm" | "dismiss") => void;
+  onDecide: (action: AskAction, body: Decision) => void;
 }) {
   if (message.role === "user") {
     return (
@@ -376,8 +389,9 @@ function MessageItem({
   return (
     <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
       <span className="sr-only">{t("ask.answer")}: </span>
-      {isAnswering(message.status) && !stale && <p className="inline-flex items-center gap-1.5 text-muted-foreground"><Spinner />{t("ask.thinking")}</p>}
-      {isAnswering(message.status) && stale && (
+      {isWorkingOn(message) && !stale && <p className="inline-flex items-center gap-1.5 text-muted-foreground"><Spinner />{t("ask.thinking")}</p>}
+      {awaitsApproval(message) && <p className="text-muted-foreground">{t("ask.approval.waiting")}</p>}
+      {isWorkingOn(message) && stale && (
         <p role="alert" className="text-red-700">
           {t("ask.tooSlow")}
         </p>
@@ -450,9 +464,13 @@ function MessageItem({
           </ul>
         </details>
       )}
-      {message.actions.map((action) => (
-        <ActionItem key={action.id} action={action} busy={busy.has(`action:${action.id}`)} error={errors[`action:${action.id}`]} onDecide={onDecide} />
-      ))}
+      {message.actions.map((action) =>
+        action.kind === "tool_approval" ? (
+          <ApprovalCard key={action.id} action={action} lang={lang} busy={busy.has(`action:${action.id}`)} error={errors[`action:${action.id}`]} onDecide={onDecide} />
+        ) : (
+          <ActionItem key={action.id} action={action} busy={busy.has(`action:${action.id}`)} error={errors[`action:${action.id}`]} onDecide={onDecide} />
+        ),
+      )}
     </li>
   );
 }
@@ -463,7 +481,7 @@ function ActionItem({
   action: AskAction;
   busy: boolean;
   error: string | undefined;
-  onDecide: (action: AskAction, decision: "confirm" | "dismiss") => void;
+  onDecide: (action: AskAction, body: Decision) => void;
 }) {
   const payload = parseBulkPayload(action.payload);
   if (action.kind !== "bulk_selection" || !payload) return null;
@@ -480,10 +498,10 @@ function ActionItem({
       <p className="text-xs">{summary}</p>
       {action.status === "pending" ? (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, "confirm")}>
+          <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, { decision: "confirm" })}>
             <Busy busy={busy}>{busy ? t("ask.bulkApplying") : n === 1 ? t("ask.bulkApplyOne") : t("ask.bulkApply", { n })}</Busy>
           </Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDecide(action, "dismiss")}>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDecide(action, { decision: "dismiss" })}>
             {t("ask.bulkDismiss")}
           </Button>
         </div>

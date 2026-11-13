@@ -3,6 +3,7 @@ import type { ContextCard, Transcript } from "../schemas.ts";
 import type { Db } from "./client.ts";
 import { clips, contextCards, sessionRecords, sessions, transcripts, type Stage } from "./schema.ts";
 import type { ChamberId } from "../chambers.ts";
+import { deleteAskThreads } from "./personal.ts";
 
 export type Session = typeof sessions.$inferSelect;
 
@@ -51,7 +52,9 @@ export async function listSessionsWithAudioToRelease(db: Db): Promise<Session[]>
   return db.select().from(sessions).where(and(eq(sessions.stage, "ready"), isNotNull(sessions.audioKey)));
 }
 
+/** Deletes the session (its rows cascade) and its Ask threads in `ask_graph`, which no foreign key reaches. */
 export async function deleteSession(db: Db, id: string): Promise<void> {
+  await deleteAskThreads(db, id);
   await db.delete(sessions).where(eq(sessions.id, id));
 }
 

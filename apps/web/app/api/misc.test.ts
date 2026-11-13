@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
 import {
+  createToolApproval, getAskAction,
   completeAnalysisVersion, getRunningAnalysis, listAnalysisVersions, createAskAction, getAskMessage, listAskMessages, listProblemReports, listSelections, saveTranslation,
   startAnalysisVersion, createSession, updateSession, getTranslation, addAskMessage, getMoment, setMomentChecks,
 } from "@digestor/core/server";
@@ -128,6 +129,137 @@ describe("POST /api/ask-actions/[id]", () => {
     expect(h.send).not.toHaveBeenCalled();
     expect((await getMoment(h.db, ids[0]!))?.checks).not.toBeNull();
     expect((await getAskMessage(h.db, action.messageId))?.status).toBe("done");
+  });
+});
+
+describe("POST /api/ask-actions/[id] (tool_approval)", () => {
+  /** An answer paused on a card with a clip and a selection change, as the worker's approve node leaves it. */
+  async function approvalFor() {
+    const { sessionId, moments } = await seedReadySession(h.db, [[10_000, 30_000], [40_000, 60_000], [70_000, 90_000]]);
+    const msg = await addAskMessage(h.db, { sessionId, ownerId: OWNER_ID, role: "assistant", text: "", status: "running" });
+    const ids = moments.slice(0, 2).map((m) => m.id);
+    const action = await createToolApproval(h.db, msg.id, {
+      step: 1,
+      calls: [
+        { id: "c1", name: "propose_clip", args: { start: "00:00:10", end: "00:00:30", title: "Rent caps" }, summary: "Make a clip 00:00:10–00:00:30 'Rent caps'" },
+        { id: "c2", name: "set_selection", args: { momentIds: ids, status: "approved" }, summary: "Approve 2 moments", moments: [] },
+      ],
+    });
+    return { sessionId, ids, action, msg };
+  }
+  const resumeSends = () => h.send.mock.calls.filter((c) => c[0] === QUEUES.askResume);
+
+  it("approve resolves the card once, stores the decision and sends one ask.resume job", async () => {
+    const { action, msg } = await approvalFor();
+    expect((await getAskMessage(h.db, msg.id))?.status).toBe("waiting");
+    const res = await postAction(req({ decision: "approve" }), ctx(action.id));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "confirmed" });
+    expect(await getAskAction(h.db, action.id)).toMatchObject({ status: "confirmed", resolution: { decision: "approve" } });
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(h.send).toHaveBeenCalledWith(QUEUES.askResume, { actionId: action.id }, { ...JOB_OPTIONS, singletonKey: action.id });
+    // the worker continues the answer: the route never touches its status
+    expect((await getAskMessage(h.db, msg.id))?.status).toBe("waiting");
+  });
+
+  it("a double click or two tabs (approve and reject at once) resolve once: one job, the other gets 409", async () => {
+    for (const [a, b] of [["approve", "approve"], ["approve", "reject"]] as const) {
+      h.send.mockClear();
+      const { action } = await approvalFor();
+      const [r1, r2] = await Promise.all([postAction(req({ decision: a }), ctx(action.id)), postAction(req({ decision: b }), ctx(action.id))]);
+      expect([r1.status, r2.status].sort()).toEqual([200, 409]);
+      const loser = r1.status === 409 ? r1 : r2;
+      expect(await loser.json()).toEqual({ error: "This suggestion was already handled." });
+      expect(resumeSends()).toHaveLength(1);
+      const again = await postAction(req({ decision: "reject" }), ctx(action.id));
+      expect(again.status).toBe(409);
+      expect(resumeSends()).toHaveLength(1);
+    }
+  });
+
+  it("reject dismisses the card and still continues the answer", async () => {
+    const { action } = await approvalFor();
+    const res = await postAction(req({ decision: "reject" }), ctx(action.id));
+    expect(await res.json()).toEqual({ status: "dismissed" });
+    expect(await getAskAction(h.db, action.id)).toMatchObject({ status: "dismissed", resolution: { decision: "reject" } });
+    expect(resumeSends()).toEqual([[QUEUES.askResume, { actionId: action.id }, { ...JOB_OPTIONS, singletonKey: action.id }]]);
+  });
+
+  it("edit stores the edited arguments of the card's calls", async () => {
+    const { action, ids } = await approvalFor();
+    const edits = [
+      { id: "c1", args: { start: "00:00:12", end: "00:00:41", title: "  Rents, edited " } },
+      { id: "c2", args: { momentIds: [ids[1]] } },
+    ];
+    const res = await postAction(req({ decision: "edit", edits }), ctx(action.id));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "confirmed" });
+    expect((await getAskAction(h.db, action.id))?.resolution).toEqual({
+      decision: "edit",
+      edits: [{ id: "c1", args: { start: "00:00:12", end: "00:00:41", title: "Rents, edited" } }, { id: "c2", args: { momentIds: [ids[1]] } }],
+    });
+    expect(resumeSends()).toHaveLength(1);
+  });
+
+  it("edit with invalid arguments answers 400 and leaves the card pending", async () => {
+    const { action, ids } = await approvalFor();
+    const other = "00000000-0000-4000-8000-000000000000";
+    const bad = [
+      [{ id: "c1", args: { start: "abc", end: "00:00:30", title: "x" } }],
+      [{ id: "c1", args: { start: "00:00:30", end: "00:00:20", title: "x" } }],
+      [{ id: "c1", args: { start: "00:00:10", end: "00:00:30", title: "   " } }],
+      [{ id: "c1", args: { start: "00:00:10", end: "00:00:30", title: "x", clipId: other } }],
+      [{ id: "c2", args: { momentIds: [other] } }],
+      [{ id: "c2", args: { momentIds: [] } }],
+      [{ id: "c2", args: { momentIds: [ids[0]], status: "skipped" } }],
+      [{ id: "nope", args: {} }],
+      [],
+    ];
+    for (const edits of bad) {
+      const res = await postAction(req({ decision: "edit", edits }), ctx(action.id));
+      expect(res.status, JSON.stringify(edits)).toBe(400);
+    }
+    expect((await postAction(req({ decision: "edit" }), ctx(action.id))).status).toBe(400);
+    expect((await postAction(req({ decision: "approve", edits: [] }), ctx(action.id))).status).toBe(400);
+    expect((await postAction(req({ decision: "confirm" }), ctx(action.id))).status).toBe(400); // that's for bulk_selection
+    expect((await getAskAction(h.db, action.id))?.status).toBe("pending");
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("a bulk_selection card refuses the approval decisions", async () => {
+    const { sessionId, moments } = await seedReadySession(h.db);
+    const msg = await addAskMessage(h.db, { sessionId, ownerId: OWNER_ID, role: "assistant", text: "x", status: "done" });
+    const bulk = await createAskAction(h.db, { messageId: msg.id, kind: "bulk_selection", payload: { momentIds: [moments[0]!.id], status: "approved" } });
+    expect((await postAction(req({ decision: "approve" }), ctx(bulk.id))).status).toBe(400);
+  });
+
+  it("approve once the video was removed answers the friendly VIDEO_REMOVED line, not a 500; reject still ends the answer", async () => {
+    const { sessionId, action } = await approvalFor();
+    await updateSession(h.db, sessionId, { videoDeletedAt: new Date() });
+    for (const body of [{ decision: "approve" }, { decision: "edit", edits: [{ id: "c1", args: { start: "00:00:12", end: "00:00:41", title: "x" } }] }]) {
+      const res = await postAction(req(body), ctx(action.id));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: VIDEO_REMOVED });
+    }
+    expect((await getAskAction(h.db, action.id))?.status).toBe("pending");
+    expect(h.send).not.toHaveBeenCalled();
+    expect((await postAction(req({ decision: "reject" }), ctx(action.id))).status).toBe(200);
+    expect(resumeSends()).toHaveLength(1);
+  });
+
+  it("a card whose answer no longer waits answers 409; a failed enqueue reopens the card with 503", async () => {
+    const first = await approvalFor();
+    await updateSession(h.db, first.sessionId, { stage: "ready" });
+    const { finishAskMessage } = await import("@digestor/core/server");
+    await finishAskMessage(h.db, first.msg.id, { text: "gone", status: "failed" });
+    expect((await postAction(req({ decision: "approve" }), ctx(first.action.id))).status).toBe(409);
+
+    const { action } = await approvalFor();
+    h.send.mockRejectedValueOnce(new Error("boom"));
+    const res = await postAction(req({ decision: "approve" }), ctx(action.id));
+    expect(res.status).toBe(503);
+    expect(await getAskAction(h.db, action.id)).toMatchObject({ status: "pending", resolution: null });
+    expect((await postAction(req({ decision: "approve" }), ctx(action.id))).status).toBe(200);
   });
 });
 

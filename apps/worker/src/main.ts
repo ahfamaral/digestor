@@ -1,10 +1,12 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ChromaClient } from "chromadb";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { PgBoss } from "pg-boss";
 import type { z } from "zod";
 import {
   AskJobSchema,
+  AskResumeJobSchema,
   BurnTrackJobSchema,
   CheckMomentJobSchema,
   FindMoreJobSchema,
@@ -23,6 +25,7 @@ import { LocalStorage, createDb } from "@digestor/core/server";
 import { CLEANUP_CRON, CLEANUP_QUEUE, runDailyCleanup, videoRetentionDays } from "./cleanup.js";
 import {
   handleAsk,
+  handleAskResume,
   handleCheckMoment,
   handleFindMore,
   handleNames,
@@ -54,6 +57,9 @@ import { MONITOR_VIDEO_CRON, MONITOR_VIDEO_QUEUE, runSessionVideos, videoJobEnab
 import { fetchCaptions } from "./youtube/captions.js";
 import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 import { downloadYouTube } from "./youtube/ytdlp.js";
+
+/** Postgres schema of Ask's LangGraph checkpointer (created by migration 0026; `setup()` adds its tables). */
+const ASK_GRAPH_SCHEMA = "ask_graph";
 
 const envFile = fileURLToPath(new URL("../../../.env", import.meta.url));
 if (existsSync(envFile)) process.loadEnvFile(envFile); // host runs; compose already sets process.env
@@ -103,6 +109,10 @@ async function main() {
   // `enqueueNames` and `enqueueProxy` are wired once the queue exists (below).
   const ctx: JobContext = { db, deps };
 
+  // Ask's LangGraph checkpoints (one thread per answer, so a paused answer survives restarts): schema ask_graph.
+  const askCheckpointer = PostgresSaver.fromConnString(databaseUrl, { schema: ASK_GRAPH_SCHEMA });
+  await askCheckpointer.setup();
+
   const boss = new PgBoss(databaseUrl);
   boss.on("error", console.error);
   await boss.start();
@@ -137,8 +147,9 @@ async function main() {
   await register(QUEUES.prepareTrack, PrepareTrackJobSchema, (j, attempt) => handlePrepareTrack(ctx, j, attempt));
   await register(QUEUES.burnTrack, BurnTrackJobSchema, (j, attempt) => handleBurnTrack({ db, storage }, j, attempt));
   await register(QUEUES.renderClip, RenderClipJobSchema, (j, attempt) => handleRenderClip({ db, storage }, j, attempt));
-  const askDeps = { db, llm: toolLlm, search: (id: string, q: string, k: number) => searchTranscript(deps.search, id, q, k) };
+  const askDeps = { db, llm: toolLlm, search: (id: string, q: string, k: number) => searchTranscript(deps.search, id, q, k), checkpointer: askCheckpointer };
   await register(QUEUES.ask, AskJobSchema, (j, attempt) => handleAsk(askDeps, j, attempt));
+  await register(QUEUES.askResume, AskResumeJobSchema, (j, attempt) => handleAskResume(askDeps, j, attempt));
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, (j, attempt) => handleTranslateBriefing({ db, llm }, j, attempt));
   await register(QUEUES.findMore, FindMoreJobSchema, (j, attempt) => handleFindMore({ db, llm }, j, attempt));
   await register(QUEUES.names, NamesJobSchema, (j, attempt) => handleNames(ctx, j, attempt));
@@ -178,6 +189,7 @@ async function main() {
     stopping = true;
     try {
       await boss.stop({ graceful: true, timeout: 8000 });
+      await askCheckpointer.end();
       await close();
     } catch (err) {
       console.error(err);

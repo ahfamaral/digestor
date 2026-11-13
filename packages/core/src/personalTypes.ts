@@ -9,9 +9,12 @@ export type ClipEventKind = "create" | "bounds" | "format" | "style" | "delete" 
 /** `outdated`: built for clip bounds that have since changed (Rebuild replaces it). */
 export type TrackStatus = "preparing" | "ready" | "failed" | "outdated";
 export type AskRole = "user" | "assistant";
-/** `running`: a worker claimed it (claimAskMessage); the UI treats it like `pending`. */
-export type AskMessageStatus = "pending" | "running" | "done" | "failed";
-export type AskActionKind = "bulk_selection";
+/**
+ * `running`: a worker claimed it (claimAskMessage); the UI treats it like `pending`. `waiting`: paused until the
+ * journalist approves, edits or rejects a change (a `tool_approval` action); no job owns it, the sweep leaves it.
+ */
+export type AskMessageStatus = "pending" | "running" | "waiting" | "done" | "failed";
+export type AskActionKind = "bulk_selection" | "tool_approval";
 export type AskActionStatus = "pending" | "confirmed" | "dismissed";
 export type ProblemTargetKind = "moment" | "topic" | "briefing" | "quote" | "clip" | "track" | "attribution";
 
@@ -85,6 +88,35 @@ export interface AskAction {
   kind: AskActionKind;
   payload: unknown;
   status: AskActionStatus;
+  /** `tool_approval` only, once decided: a `ToolApprovalResolution`. */
+  resolution: unknown;
+}
+
+/**
+ * One change Ask wants to make, waiting for approval. For the card's Edit: `range` is a clip call's range after
+ * snapping (what `summary` shows), `moments` a `set_selection` call's moments.
+ */
+export interface ToolApprovalCall {
+  id: string;
+  name: string;
+  args: unknown;
+  summary: string;
+  range?: { startMs: number; endMs: number };
+  moments?: { id: string; title: string; startMs: number; endMs: number }[];
+}
+
+/** Payload of a `tool_approval` action: the changes of one model turn (`step`). */
+export interface ToolApprovalPayload {
+  step: number;
+  calls: ToolApprovalCall[];
+}
+
+export type ToolApprovalDecision = "approve" | "reject" | "edit";
+
+/** What the journalist decided; `edits` replaces the arguments of the listed calls (only with "edit"). */
+export interface ToolApprovalResolution {
+  decision: ToolApprovalDecision;
+  edits?: { id: string; args: unknown }[];
 }
 
 export interface AskMessage {
@@ -96,6 +128,7 @@ export interface AskMessage {
   toolCalls: unknown;
   status: AskMessageStatus;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 /** One tool call of an Ask answer, as stored in `ask_messages.tool_calls` (the UI's chips). */

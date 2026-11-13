@@ -234,6 +234,19 @@ d("sweepStaleJobRows (R32)", () => {
     expect([(await getSessionRecord(db, ids[0]!))?.status, (await getSessionRecord(db, ids[1]!))?.status]).toEqual(["waiting", "suggested"]);
   });
 
+  it("an Ask answer waiting for approval is not job-owned: the sweep leaves it and its action alone however old", async () => {
+    const { addAskMessage, createToolApproval, getAskMessage, getAskAction } = await import("@digestor/core/server");
+    const s = await createSession(db, { source: "upload", title: "ask waiting" });
+    await updateSession(db, s.id, { stage: "ready" });
+    const msg = await addAskMessage(db, { sessionId: s.id, ownerId: "owner", role: "assistant", text: "", status: "running" });
+    const action = await createToolApproval(db, msg.id, { step: 1, calls: [{ id: "c1", name: "propose_clip", args: {}, summary: "Make a clip" }] });
+    await db.execute(sql`update ask_messages set created_at = ${ago(600)}::timestamptz, updated_at = ${ago(600)}::timestamptz where id = ${msg.id}`);
+    expect(await sweepStaleSessions(db)).not.toContain(s.id);
+    await sweepStaleJobRows(db);
+    expect((await getAskMessage(db, msg.id))?.status).toBe("waiting");
+    expect((await getAskAction(db, action.id))?.status).toBe("pending");
+  });
+
   it("an accepted suggestion waiting at the context check stays pending; the same row on a ready session with no job fails", async () => {
     const ref = { chamber: "senado" as const, date: "2026-09-02", sessionCode: null, url: "https://x" };
     const mk = async (stage: "awaiting_context" | "ready") => {

@@ -4,7 +4,7 @@ import type { MomentWithHighlights } from "../analysisTypes.ts";
 import { saveMoments, type NewMoment } from "./analysis.ts";
 import type {
   AskActionKind, AskAction, AskMessage, AskMessageStatus, AskMessageWithActions, AskRole, Clip, ClipActor, ClipFormat,
-  ClipEvent, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
+  ClipEvent, ToolApprovalPayload, ToolApprovalResolution, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import { GRANULARITY, ProfileIdSchema, type Granularity } from "../profiles.ts";
 import { defaultSubtitlePosition, type SubtitlePosition, type SubtitleStyle } from "../subtitleStyle.ts";
@@ -884,7 +884,7 @@ export async function addAskMessage(
 export async function finishAskMessage(
   db: Db,
   id: string,
-  a: { text: string; toolCalls?: unknown; status: Exclude<AskMessageStatus, "pending" | "running"> },
+  a: { text: string; toolCalls?: unknown; status: Exclude<AskMessageStatus, "pending" | "running" | "waiting"> },
 ): Promise<AskMessage> {
   const [row] = await db
     .update(askMessages)
@@ -908,12 +908,115 @@ export async function claimAskMessage(db: Db, id: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** `running` → `pending`: the run failed before changing anything, so pg-boss's retry may answer it again. */
-export async function releaseAskMessage(db: Db, id: string): Promise<void> {
+/**
+ * `running` → `pending` (or back to `waiting` for a resumed answer): the run failed before changing anything, so
+ * pg-boss's retry may run it again.
+ */
+export async function releaseAskMessage(db: Db, id: string, to: "pending" | "waiting" = "pending"): Promise<void> {
   await db
     .update(askMessages)
-    .set({ status: "pending" })
+    .set({ status: to })
     .where(and(eq(askMessages.id, id), eq(askMessages.status, "running")));
+}
+
+/** Compare-and-set `waiting` → `running` before `ask.resume` continues an answer: true only for the caller that claimed it. */
+export async function claimWaitingAskMessage(db: Db, id: string): Promise<boolean> {
+  const rows = await db
+    .update(askMessages)
+    .set({ status: "running" })
+    .where(and(eq(askMessages.id, id), eq(askMessages.status, "waiting")))
+    .returning({ id: askMessages.id });
+  return rows.length > 0;
+}
+
+/**
+ * The `tool_approval` action of one answer's model turn (`payload.step`): created once (a unique index on message +
+ * step), and only the call that created it moves the message `running` → `waiting`, in the same transaction, so the
+ * card and the paused answer appear together. A second call (the graph re-running its approve node on resume) returns
+ * the stored action untouched.
+ */
+export async function createToolApproval(db: Db, messageId: string, payload: ToolApprovalPayload): Promise<AskAction> {
+  return db.transaction(async (tx) => {
+    const inserted = await tx.insert(askActions).values({ messageId, kind: "tool_approval", payload }).onConflictDoNothing().returning();
+    if (inserted[0]) {
+      await tx
+        .update(askMessages)
+        .set({ status: "waiting" })
+        .where(and(eq(askMessages.id, messageId), eq(askMessages.status, "running")));
+      return inserted[0];
+    }
+    const [row] = await tx
+      .select()
+      .from(askActions)
+      .where(and(eq(askActions.messageId, messageId), eq(askActions.kind, "tool_approval"), sql`${askActions.payload}->>'step' = ${String(payload.step)}`));
+    if (!row) throw new Error(`Tool approval of message ${messageId} step ${payload.step} not found`);
+    return row;
+  });
+}
+
+/** The `tool_approval` action of one answer's model turn, if it was created. */
+export async function getToolApproval(db: Db, messageId: string, step: number): Promise<AskAction | null> {
+  const [row] = await db
+    .select()
+    .from(askActions)
+    .where(and(eq(askActions.messageId, messageId), eq(askActions.kind, "tool_approval"), sql`${askActions.payload}->>'step' = ${String(step)}`));
+  return row ?? null;
+}
+
+/**
+ * Records the journalist's decision on a `tool_approval` action: compare-and-set from `pending` (true only for the
+ * caller that resolved it), with the resolution, and marks the waiting answer as touched now (the drawer measures
+ * "taking too long" from there).
+ */
+export async function resolveToolApproval(db: Db, id: string, resolution: ToolApprovalResolution): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const status = resolution.decision === "reject" ? "dismissed" : "confirmed";
+    const [row] = await tx
+      .update(askActions)
+      .set({ status, resolution })
+      .where(and(eq(askActions.id, id), eq(askActions.status, "pending"), eq(askActions.kind, "tool_approval")))
+      .returning({ messageId: askActions.messageId });
+    if (!row) return false;
+    await tx
+      .update(askMessages)
+      .set({ updatedAt: new Date() })
+      .where(and(eq(askMessages.id, row.messageId), eq(askMessages.status, "waiting")));
+    return true;
+  });
+}
+
+/** Undoes `resolveToolApproval` when its `ask.resume` job could not be queued, so the card can be clicked again. */
+export async function reopenToolApproval(db: Db, id: string): Promise<void> {
+  await db
+    .update(askActions)
+    .set({ status: "pending", resolution: null })
+    .where(and(eq(askActions.id, id), eq(askActions.kind, "tool_approval")));
+}
+
+/** Whether the LangGraph checkpointer's tables exist here (the worker's `PostgresSaver.setup()` creates them). */
+async function hasAskGraphTables(db: Conn): Promise<boolean> {
+  const r = await db.execute<{ t: string | null }>(sql`select to_regclass('ask_graph.checkpoints')::text as t`);
+  return r.rows[0]?.t != null;
+}
+
+const ASK_GRAPH_TABLES = ["checkpoint_writes", "checkpoint_blobs", "checkpoints"] as const;
+
+/** Deletes one Ask answer's LangGraph thread (thread id = the assistant message id) from schema `ask_graph`. */
+export async function deleteAskThread(db: Db, messageId: string): Promise<void> {
+  if (!(await hasAskGraphTables(db))) return;
+  for (const table of ASK_GRAPH_TABLES) {
+    await db.execute(sql`delete from ${sql.identifier("ask_graph")}.${sql.identifier(table)} where thread_id = ${messageId}`);
+  }
+}
+
+/** Deletes every Ask thread of a session (retention, session deletion). Run it before the messages go: it finds threads by them. */
+export async function deleteAskThreads(db: Db, sessionId: string): Promise<void> {
+  if (!(await hasAskGraphTables(db))) return;
+  for (const table of ASK_GRAPH_TABLES) {
+    await db.execute(
+      sql`delete from ${sql.identifier("ask_graph")}.${sql.identifier(table)} where thread_id in (select id::text from ask_messages where session_id = ${sessionId})`,
+    );
+  }
 }
 
 export async function getAskMessage(db: Db, id: string): Promise<AskMessage | null> {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, cutAtWord, formatToolCall, sourceLines, isAnswering, isStalePending, linkifyTimestamps, parseBulkPayload, planSelectionUndo } from "./askText";
+import {
+  ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, sourceLines, isAnswering, isStalePending,
+  isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo,
+} from "./askText";
 
 describe("linkifyTimestamps", () => {
   it("splits text and times", () => {
@@ -171,5 +174,37 @@ describe("sourceLines", () => {
 
   it("falls back to plain text for an error result", () => {
     expect(sourceLines({ name: "get_transcript", args: {}, result: "Error: Ask for at most 10 minutes at a time.", ok: false })).toEqual([{ kind: "note", text: "Ask for at most 10 minutes at a time." }]);
+  });
+});
+
+describe("tool approvals (C1)", () => {
+  const card = (status: string) => ({ kind: "tool_approval" as const, status });
+  it("a waiting answer with a pending card awaits approval; once decided it is being worked on again", () => {
+    expect(awaitsApproval({ status: "waiting", actions: [card("pending")] })).toBe(true);
+    expect(isWorkingOn({ status: "waiting", actions: [card("pending")] })).toBe(false);
+    expect(awaitsApproval({ status: "waiting", actions: [card("confirmed")] })).toBe(false);
+    expect(isWorkingOn({ status: "waiting", actions: [card("confirmed")] })).toBe(true);
+    expect(isWorkingOn({ status: "waiting", actions: [card("dismissed"), { kind: "bulk_selection", status: "pending" }] })).toBe(true);
+    expect(isWorkingOn({ status: "running", actions: [] })).toBe(true);
+    expect(isWorkingOn({ status: "done", actions: [card("confirmed")] })).toBe(false);
+    expect(awaitsApproval({ status: "done", actions: [card("pending")] })).toBe(false);
+  });
+
+  it("parseApprovalPayload keeps well-formed calls only", () => {
+    const call = { id: "c1", name: "propose_clip", args: { title: "x" }, summary: "Make a clip", range: { startMs: 1000, endMs: 31_000 } };
+    expect(parseApprovalPayload({ step: 2, calls: [call, { id: 5 }, { id: "c2", name: "set_selection", summary: "Approve 1 moment", moments: [{ id: "m", title: "T", startMs: 0, endMs: 1 }] }] })).toEqual({
+      step: 2,
+      calls: [call, { id: "c2", name: "set_selection", args: undefined, summary: "Approve 1 moment", moments: [{ id: "m", title: "T", startMs: 0, endMs: 1 }] }],
+    });
+    expect(parseApprovalPayload({ calls: "x" })).toBeNull();
+    expect(parseApprovalPayload(null)).toBeNull();
+  });
+
+  it("checkClipEdit wants times as hh:mm:ss, the end after the start, and a title when asked", () => {
+    expect(checkClipEdit({ start: "00:01:00", end: "00:01:30", title: "x" }, true)).toBeNull();
+    expect(checkClipEdit({ start: "1:00", end: "1:30" }, false)).toBeNull();
+    expect(checkClipEdit({ start: "abc", end: "00:01:30" }, false)).toBe("time");
+    expect(checkClipEdit({ start: "00:01:30", end: "00:01:30" }, false)).toBe("order");
+    expect(checkClipEdit({ start: "00:01:00", end: "00:01:30", title: "  " }, true)).toBe("title");
   });
 });

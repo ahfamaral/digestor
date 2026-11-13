@@ -1,7 +1,7 @@
 import type { ChromaClient } from "chromadb";
 import { deleteSessionIndex } from "./search/index.js";
 import { releaseReadyAudio, type AudioDeps } from "./pipeline/audio.js";
-import { deletePipelineRun, getRunningAnalysis, listSessionsWithExpiredVideo, updateSession, type Db, type LocalStorage, type Stage } from "@digestor/core/server";
+import { deleteAskThreads, deletePipelineRun, getRunningAnalysis, listSessionsWithExpiredVideo, updateSession, type Db, type LocalStorage, type Stage } from "@digestor/core/server";
 
 /** pg-boss queue for the daily video retention clean-up (scheduled 03:00 UTC in main.ts). */
 export const CLEANUP_QUEUE = "maintenance.cleanup";
@@ -30,7 +30,8 @@ export type CleanupDeps = {
 
 /**
  * Removes the source video (`original.*`, `audio.mp3`, `proxy.mp4`) of sessions older than `days`, then their pipeline
- * run row (it holds the journalist's context answers) and search index (best effort), then sets `videoDeletedAt`. Rows, thumbnails and rendered `clips/` stay. `videoDeletedAt` goes last, so a
+ * run row (it holds the journalist's context answers), their Ask threads (schema `ask_graph`) and search index (best
+ * effort), then sets `videoDeletedAt`. Rows, thumbnails and rendered `clips/` stay. `videoDeletedAt` goes last, so a
  * failed step leaves the session a candidate for the next run.
  */
 export async function runVideoRetention(deps: CleanupDeps, days: number): Promise<{ removed: number }> {
@@ -42,6 +43,8 @@ export async function runVideoRetention(deps: CleanupDeps, days: number): Promis
       if (await getRunningAnalysis(deps.db, session.id)) continue; // a re-analysis is mid-run
       await deps.storage.removeVideoFiles(session.id);
       await deletePipelineRun(deps.db, session.id);
+      // Ask's paused answers keep transcript text in their LangGraph checkpoints: they go with the index.
+      await deleteAskThreads(deps.db, session.id);
       if (deps.chroma) {
         try {
           await deleteSessionIndex(deps.chroma, session.id);

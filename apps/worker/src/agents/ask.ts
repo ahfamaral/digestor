@@ -1,11 +1,13 @@
 import { z } from "zod";
+import { Command, MemorySaver, type BaseCheckpointSaver } from "@langchain/langgraph";
 import {
   GRANULARITY, HIGHLIGHT_TYPES, type HighlightTypeId, HighlightTypeIdSchema, PROFILES, ProfileIdSchema, findBoundaries, formatTimestamp,
   normaliseName, parseTimestamp, personAt, renderTranscript, sliceWords, snapRange, toSentences, VIDEO_REMOVED,
-  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ContextCard, type Person, type SelectionStatus, type Transcript, type Word,
+  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ContextCard, type Person, type SelectionStatus, type ToolApprovalCall,
+  type ToolApprovalResolution, type Transcript, type Word,
 } from "@digestor/core";
 import {
-  claimAskMessage, createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskMessage, getClip, getContextCard,
+  claimAskMessage, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
   setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
@@ -13,12 +15,13 @@ import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/too
 import type { SearchHit } from "../search/index.js";
 import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
+import { buildAskGraph, interruptedBy, threadConfig, type AskGraph, type AskGraphInput } from "./askGraph.js";
 
-export const ASK_PROMPT_VERSION = "ask@4";
+export const ASK_PROMPT_VERSION = "ask@5";
 export const MAX_ASK_STEPS = 6;
 export const MAX_TOOL_OUTPUT = 4000;
 export const HISTORY_LIMIT = 10;
-const MAX_CALLS_PER_STEP = 10;
+export const MAX_CALLS_PER_STEP = 10;
 const MAX_TRANSCRIPT_RANGE_MS = 10 * 60_000;
 const MAX_MOMENTS_LISTED = 30;
 const MAX_SPEECHES_LISTED = 30;
@@ -40,6 +43,13 @@ export const NOT_IN_DATA = "That isn't in this video's data.";
 export const SEARCH_UNAVAILABLE = "Search isn't available for this video.";
 export const OUT_OF_STEPS = "I couldn't finish looking this up within my step limit. Please ask a narrower question.";
 export const ASK_FAILED = "Couldn't answer this question. Please try again.";
+/** A paused answer whose checkpoint is gone (retention, or it was never written): it can't continue. */
+export const ASK_CANT_CONTINUE = "This answer can't continue any more. Please ask again.";
+/** What the model reads for a change the journalist rejected. */
+export const DECLINED = "The user declined this change.";
+export const EDITED = " The user edited this change before approving it.";
+/** A direct change by a call the journalist didn't approve (never expected: the graph asks first). */
+const NOT_APPROVED = "the user hasn't approved this change. Nothing was changed.";
 const CONFIRM_FIRST = `this question already made ${MAX_DIRECT_CHANGES} changes, the most allowed at once. Nothing was changed: tell the user what you would do and ask them to confirm it in a new message.`;
 const NO_ANALYSIS = "This video has no analysis yet.";
 const TRUNCATED = "\n[…truncated: ask for a shorter range or fewer results]";
@@ -49,7 +59,16 @@ export type AskDeps = {
   llm: ToolLLM;
   /** `searchTranscript` bound to Chroma + the embedder; throws when the session has no index. */
   search: (sessionId: string, query: string, k: number) => Promise<SearchHit[]>;
+  /**
+   * Where the graph keeps each answer's thread (the worker: PostgresSaver in schema `ask_graph`). Without one, a
+   * process-local MemorySaver: fine for read-only runs (scripts/eval-ask.ts), but an answer paused there can only be
+   * resumed by this process.
+   */
+  checkpointer?: BaseCheckpointSaver;
 };
+
+/** The tools that change the journalist's clips or selections: the graph asks for approval before they run. */
+export const MUTATING_TOOLS: ReadonlySet<string> = new Set(["propose_clip", "trim_clip", "set_selection"]);
 
 export type { AskToolCallRecord };
 
@@ -68,7 +87,7 @@ export class AskRunError extends Error {
 /** A readable problem with the model's arguments: returned to the model as "Error: …", never thrown to the job. */
 class ToolInputError extends Error {}
 
-type AskContext = {
+export type AskContext = {
   db: Db;
   search: AskDeps["search"];
   messageId: string;
@@ -85,9 +104,18 @@ type AskContext = {
   callWrote: boolean;
   /** Changes applied without confirmation in this run (at most MAX_DIRECT_CHANGES, R31). */
   directChanges: number;
+  /**
+   * "plan": a mutating tool validates its arguments and describes the change (`summary`) without writing, for the
+   * approval card; "apply": it runs, and a direct change applies only for a call in `approved`.
+   */
+  mode: "plan" | "apply";
+  approved: ReadonlySet<string>;
+  /** The id of the tool call that is running. */
+  callId: string;
 };
 
-type ToolResult = { text: string } & Pick<AskToolCallRecord, "undo" | "clipId">;
+/** Plan mode only: `summary` means the change needs approval; `range` and `moments` are for the card's Edit. */
+export type ToolResult = { text: string } & Partial<Pick<ToolApprovalCall, "summary" | "range" | "moments">> & Pick<AskToolCallRecord, "undo" | "clipId">;
 type Tool = { spec: ToolSpec; run(ctx: AskContext, args: never): Promise<ToolResult> };
 
 // ---------------------------------------------------------------- names
@@ -290,6 +318,13 @@ function requireDirectChange(ctx: AskContext): void {
   if (ctx.directChanges + 1 > MAX_DIRECT_CHANGES) throw new ToolInputError(CONFIRM_FIRST);
 }
 
+/** Only a change the journalist approved is applied. */
+function requireApproved(ctx: AskContext): void {
+  if (!ctx.approved.has(ctx.callId)) throw new ToolInputError(NOT_APPROVED);
+}
+
+const quoted = (title: string) => `'${title.length > 60 ? `${title.slice(0, 59)}…` : title}'`;
+
 function willWrite(ctx: AskContext): void {
   ctx.wrote = true;
   ctx.callWrote = true;
@@ -299,7 +334,7 @@ const normSpeaker = (s: string) => s.trim().replace(/^speaker\s+/i, "").toLowerC
 
 // ---------------------------------------------------------------- tools
 
-const tools: Tool[] = [
+export const TOOLS: Tool[] = [
   {
     spec: {
       name: "search_transcript",
@@ -441,6 +476,11 @@ const tools: Tool[] = [
       if (!title) throw new ToolInputError("title is empty.");
       const range = snapClip(ctx, a);
       requireDirectChange(ctx);
+      if (ctx.mode === "plan") {
+        ctx.directChanges += 1;
+        return { text: "", summary: `Make a clip ${ts(range.startMs)}–${ts(range.endMs)} ${quoted(title)}`, range };
+      }
+      requireApproved(ctx);
       willWrite(ctx);
       ctx.directChanges += 1;
       const moment = await createPersonalMoment(ctx.db, { analysisId: analysis.version.id, ownerId: ctx.ownerId, ...range, title, origin: "ask" });
@@ -466,6 +506,11 @@ const tools: Tool[] = [
       requireVideo(ctx);
       const range = snapClip(ctx, a);
       requireDirectChange(ctx);
+      if (ctx.mode === "plan") {
+        ctx.directChanges += 1;
+        return { text: "", summary: `Change the clip ${ts(clip.startMs)}–${ts(clip.endMs)} to ${ts(range.startMs)}–${ts(range.endMs)}`, range };
+      }
+      requireApproved(ctx);
       willWrite(ctx);
       ctx.directChanges += 1;
       await updateClip(ctx.db, clip.id, range, "ask");
@@ -492,10 +537,19 @@ const tools: Tool[] = [
       if (unknown.length > 0) throw new ToolInputError(`unknown moment ids: ${unknown.slice(0, 5).join(", ")}. Nothing was changed.`);
       const status: SelectionStatus | null = a.status === "proposed" ? null : a.status === "skipped" ? "rejected" : "approved";
       if (ctx.directChanges + ids.length > MAX_DIRECT_CHANGES) {
+        if (ctx.mode === "plan") return { text: "" }; // the bulk confirmation is the approval
         willWrite(ctx);
         await createAskAction(ctx.db, { messageId: ctx.messageId, kind: "bulk_selection", payload: { momentIds: ids, status } });
         return { text: `Waiting for the user to confirm ${ids.length} changes.` };
       }
+      if (ctx.mode === "plan") {
+        ctx.directChanges += ids.length;
+        const moments = ids.map((id, i) => ({ id, title: found[i]!.title, startMs: found[i]!.startMs, endMs: found[i]!.endMs }));
+        const n = ids.length === 1 ? "1 moment" : `${ids.length} moments`;
+        const what = { approved: `Approve ${n}`, skipped: `Skip ${n}`, proposed: `Set ${n} back to undecided` }[a.status];
+        return { text: "", summary: `${what}: ${moments.map((m) => quoted(m.title)).join(", ")}`, moments };
+      }
+      requireApproved(ctx);
       const before = await listSelections(ctx.db, ctx.ownerId, ctx.session.id);
       const undo = Object.fromEntries(ids.map((id) => [id, before[id] ?? null]));
       willWrite(ctx);
@@ -506,10 +560,11 @@ const tools: Tool[] = [
   },
 ];
 
-const byName = new Map(tools.map((t) => [t.spec.name, t]));
+const byName = new Map(TOOLS.map((t) => [t.spec.name, t]));
+export const TOOL_SPECS: ToolSpec[] = TOOLS.map((t) => t.spec);
 
 /** Validates the model's arguments and runs the tool; any input problem comes back as a readable "Error: …" string. */
-async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<ToolResult & { ok: boolean }> {
+export async function runTool(ctx: AskContext, call: ToolCallRequest): Promise<ToolResult & { ok: boolean }> {
   const tool = byName.get(call.name);
   if (!tool) return { text: `Error: unknown tool "${call.name}". Available: ${[...byName.keys()].join(", ")}.`, ok: false };
   const parsed = tool.spec.schema.safeParse(call.args);
@@ -563,6 +618,7 @@ Rules:
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
 - propose_clip, trim_clip and set_selection change the user's own clips and selections. Use them only when the user asks for that change. You can't render, export or change the official analysis.
+- The user approves each change before it is made, and may edit it first. When a result says "${DECLINED}", nothing was changed: say so plainly and don't try it again unless they ask.
 - Write plain text only: no Markdown (no **, #, backticks or asterisk bullets; use "-" for a list). Timestamps stay as [hh:mm:ss].
 - Keep answers short.
 
@@ -591,7 +647,7 @@ async function loadHistory(db: Db, pending: AskMessage): Promise<ToolMessage[]> 
   return usable.map((m) => (m.role === "user" ? { role: "user", text: m.text } : { role: "assistant", text: m.text }));
 }
 
-const record = (call: ToolCallRequest, out: ToolResult & { ok: boolean }): AskToolCallRecord => {
+export const record = (call: ToolCallRequest, out: ToolResult & { ok: boolean }): AskToolCallRecord => {
   const json = JSON.stringify(call.args ?? null) ?? "null";
   return {
     name: call.name,
@@ -603,10 +659,80 @@ const record = (call: ToolCallRequest, out: ToolResult & { ok: boolean }): AskTo
   };
 };
 
+/** What every node of one answer needs: the tools' context (reloaded per graph run) and the system prompt. */
+export type AskRun = { ctx: AskContext; system: string };
+
+/** Loads the session, analysis, transcript and names for answer `msg`, and builds the system prompt. */
+export async function loadAskRun(deps: Pick<AskDeps, "db" | "search">, msg: AskMessage): Promise<AskRun> {
+  const { db } = deps;
+  const session = await getSession(db, msg.sessionId);
+  if (!session) throw new Error(`Session not found: ${msg.sessionId}`);
+  const [analysis, transcript, stored] = await Promise.all([
+    getCurrentAnalysis(db, session.id),
+    getTranscript(db, session.id),
+    getContextCard(db, session.id),
+  ]);
+  const ctx: AskContext = {
+    db,
+    search: deps.search,
+    messageId: msg.id,
+    ownerId: msg.ownerId,
+    session,
+    analysis,
+    transcript,
+    names: EMPTY_NAMES,
+    boundaries: transcript && transcript.words.length > 0 ? findBoundaries(transcript.words, transcript.durationMs) : [],
+    wrote: false,
+    callWrote: false,
+    directChanges: 0,
+    mode: "apply",
+    approved: new Set(),
+    callId: "",
+  };
+  const profiled = stored && analysis ? withProfile(stored.card, ProfileIdSchema.catch(stored.card.profile.value).parse(analysis.version.profile)) : stored?.card;
+  const card = profiled ? await promptCard(db, session.id, profiled) : null;
+  // Sensitive profiles (a trial) name only confirmed people, in the prompt and in list_speeches.
+  const profileId = ProfileIdSchema.safeParse(analysis?.version.profile ?? stored?.card.profile.value);
+  const atts = transcript && transcript.words.length > 0 ? await listAttributions(db, session.id) : [];
+  if (atts.length > 0) {
+    const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
+    ctx.names = indexNames(transcript!.words, atts, persons, profileId.success && PROFILES[profileId.data].sensitive);
+  }
+  return { ctx, system: buildSystem(session, transcript, analysis, card, ctx.names) };
+}
+
+/** Used when the caller passes no checkpointer (scripts, tests): process-local. */
+const localSaver = new MemorySaver();
+
+async function dropThread(checkpointer: BaseCheckpointSaver, messageId: string): Promise<void> {
+  try {
+    await checkpointer.deleteThread(messageId);
+  } catch (err) {
+    console.error(`[ask] could not delete the thread of message ${messageId}:`, err); // retention removes it later
+  }
+}
+
+/** Deletes an answer's thread once it ended `done` or `failed` (the job handlers call it on failure). */
+export function deleteThread(deps: AskDeps, messageId: string): Promise<void> {
+  return dropThread(deps.checkpointer ?? localSaver, messageId);
+}
+
 /**
- * Answers the pending assistant message `messageId`: claims it (`pending` → `running`), then runs up to MAX_ASK_STEPS
- * model turns with the tools it calls. A message already claimed or finished (a duplicate job) is left alone; one left
- * `running` by a crashed attempt is failed. Errors are thrown as AskRunError.
+ * Runs the graph until it ends or pauses. Ended: the answer is stored `done` and its thread deleted. Paused: the
+ * approve node already set the message `waiting` with its `tool_approval` action; nothing else happens.
+ */
+async function advance(deps: AskDeps, graph: AskGraph, checkpointer: BaseCheckpointSaver, messageId: string, input: AskGraphInput): Promise<void> {
+  const out = await graph.invoke(input, threadConfig(messageId));
+  if (interruptedBy(out) !== null) return;
+  await finishAskMessage(deps.db, messageId, { text: out.final ?? OUT_OF_STEPS, toolCalls: out.records, status: "done" });
+  await dropThread(checkpointer, messageId);
+}
+
+/**
+ * Answers the pending assistant message `messageId`: claims it (`pending` → `running`), then runs the Ask graph
+ * (askGraph.ts) from the conversation so far. A message already claimed or finished (a duplicate job) is left alone;
+ * one left `running` by a crashed attempt is failed. A turn that would change clips or selections pauses the answer
+ * for approval (`waiting`); `resumeAsk` continues it. Errors are thrown as AskRunError.
  */
 export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
   const { db } = deps;
@@ -629,67 +755,53 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     console.error(`[ask] message ${messageId} has no session or question`);
     return;
   }
-  const [analysis, transcript, stored] = await Promise.all([
-    getCurrentAnalysis(db, session.id),
-    getTranscript(db, session.id),
-    getContextCard(db, session.id),
-  ]);
-  const ctx: AskContext = {
-    db,
-    search: deps.search,
-    messageId: msg.id,
-    ownerId: msg.ownerId,
-    session,
-    analysis,
-    transcript,
-    names: EMPTY_NAMES,
-    boundaries: transcript && transcript.words.length > 0 ? findBoundaries(transcript.words, transcript.durationMs) : [],
-    wrote: false,
-    callWrote: false,
-    directChanges: 0,
-  };
-  const profiled = stored && analysis ? withProfile(stored.card, ProfileIdSchema.catch(stored.card.profile.value).parse(analysis.version.profile)) : stored?.card;
-  const card = profiled ? await promptCard(db, session.id, profiled) : null;
-  // Sensitive profiles (a trial) name only confirmed people, in the prompt and in list_speeches.
-  const profileId = ProfileIdSchema.safeParse(analysis?.version.profile ?? stored?.card.profile.value);
-  const atts = transcript && transcript.words.length > 0 ? await listAttributions(db, session.id) : [];
-  if (atts.length > 0) {
-    const persons = await getPersons(db, [...new Set(atts.flatMap((a) => (a.personId ? [a.personId] : [])))]);
-    ctx.names = indexNames(transcript!.words, atts, persons, profileId.success && PROFILES[profileId.data].sensitive);
+  const checkpointer = deps.checkpointer ?? localSaver;
+  await checkpointer.deleteThread(msg.id); // a retry after a failed attempt starts from the question again
+  const graph = buildAskGraph(deps, checkpointer);
+  await advance(deps, graph, checkpointer, msg.id, { messages: history, records: [], final: null, steps: 0, directChanges: 0, wrote: false, approval: null });
+}
+
+/** A stored resolution, or the decision its status implies (a row written without one). */
+function readResolution(raw: unknown, status: string): ToolApprovalResolution {
+  const r = raw as Partial<ToolApprovalResolution> | null;
+  if (r && (r.decision === "approve" || r.decision === "reject" || r.decision === "edit")) {
+    return { decision: r.decision, ...(Array.isArray(r.edits) ? { edits: r.edits } : {}) };
   }
-  const system = buildSystem(session, transcript, analysis, card, ctx.names);
-  const specs = tools.map((t) => t.spec);
-  const messages: ToolMessage[] = [...history];
-  const records: AskToolCallRecord[] = [];
-  let final: string | null = null;
-  try {
-    for (let step = 0; step < MAX_ASK_STEPS && final === null; step++) {
-      const res = await deps.llm.step({ system, messages, tools: specs });
-      if (res.toolCalls.length === 0) {
-        final = res.text.trim() || NOT_IN_DATA;
-        break;
-      }
-      if (step === MAX_ASK_STEPS - 1) break; // out of steps: the model could never read these results
-      messages.push({ role: "assistant", text: res.text, toolCalls: res.toolCalls, raw: res.raw });
-      for (const [i, call] of res.toolCalls.entries()) {
-        ctx.callWrote = false;
-        let out: ToolResult & { ok: boolean };
-        try {
-          out =
-            i < MAX_CALLS_PER_STEP
-              ? await runTool(ctx, call)
-              : { text: `Error: at most ${MAX_CALLS_PER_STEP} tool calls per turn.`, ok: false };
-        } catch (err) {
-          // It may have changed something before failing: keep a chip so the user can check.
-          if (ctx.callWrote) records.push(record(call, { text: "Failed partway; check your clips and selections.", ok: false }));
-          throw err;
-        }
-        records.push(record(call, out));
-        messages.push({ role: "tool", toolCallId: call.id, content: out.text });
-      }
-    }
-  } catch (err) {
-    throw new AskRunError(err, records, ctx.wrote);
+  return { decision: status === "dismissed" ? "reject" : "approve" };
+}
+
+/**
+ * Continues the answer paused on `tool_approval` action `actionId` once the journalist decided (`ask.resume`). Only
+ * a `waiting` answer is claimed (`waiting` → `running`, compare-and-set), so a second job for the same decision does
+ * nothing. The thread must be paused on this very action, or stopped by a failed attempt of this resume (it then
+ * continues from its last checkpoint); a stale job for an earlier approval is ignored. A paused answer without a
+ * thread (removed by retention) ends `failed` with ASK_CANT_CONTINUE. Errors are thrown as AskRunError.
+ */
+export async function resumeAsk(deps: AskDeps & { checkpointer: BaseCheckpointSaver }, actionId: string): Promise<void> {
+  const { db, checkpointer } = deps;
+  const action = await getAskAction(db, actionId);
+  if (!action || action.kind !== "tool_approval" || action.status === "pending") {
+    console.log(`[ask] ignoring resume of action ${actionId}: ${action ? `${action.kind} ${action.status}` : "not found"}`);
+    return;
   }
-  await finishAskMessage(db, msg.id, { text: final ?? OUT_OF_STEPS, toolCalls: records, status: "done" });
+  const msg = await getAskMessage(db, action.messageId);
+  if (!msg || msg.role !== "assistant" || msg.status !== "waiting") {
+    console.log(`[ask] ignoring resume of action ${actionId}: message ${msg ? msg.status : "not found"}`);
+    return;
+  }
+  const graph = buildAskGraph(deps, checkpointer);
+  const state = await graph.getState(threadConfig(msg.id));
+  const pausedOn = interruptedBy(state);
+  if (pausedOn !== null && pausedOn !== actionId) {
+    console.log(`[ask] ignoring resume of action ${actionId}: the answer waits on ${pausedOn}`);
+    return;
+  }
+  if (!(await claimWaitingAskMessage(db, msg.id))) return;
+  if (state.next.length === 0) {
+    console.error(`[ask] message ${msg.id} has no thread to resume; failing it`);
+    await finishAskMessage(db, msg.id, { text: ASK_CANT_CONTINUE, toolCalls: msg.toolCalls ?? [], status: "failed" });
+    return;
+  }
+  const input = pausedOn === actionId ? (new Command({ resume: readResolution(action.resolution, action.status) }) as AskGraphInput) : null;
+  await advance(deps, graph, checkpointer, msg.id, input);
 }

@@ -1,4 +1,4 @@
-import type { AskToolCallRecord, SelectionStatus } from "@digestor/core";
+import { parseTimestamp, type AskToolCallRecord, type SelectionStatus, type ToolApprovalCall, type ToolApprovalPayload } from "@digestor/core";
 
 export type AskTextPart = { kind: "text"; value: string } | { kind: "time"; ms: number; label: string };
 
@@ -188,4 +188,57 @@ export const ASK_PENDING_LIMIT_MS = 3 * 60 * 1000;
 export function isStalePending(createdAt: string | Date, now: number): boolean {
   const created = new Date(createdAt).getTime();
   return Number.isFinite(created) && now - created > ASK_PENDING_LIMIT_MS;
+}
+
+type WithActions = { status: string; actions: { kind: string; status: string }[] };
+
+/** A paused answer whose change card is still undecided: the drawer shows the card, not a spinner. */
+export function awaitsApproval(m: WithActions): boolean {
+  return m.status === "waiting" && m.actions.some((a) => a.kind === "tool_approval" && a.status === "pending");
+}
+
+/** Still being worked on: queued or running, or paused and already decided (the worker is about to continue it). */
+export function isWorkingOn(m: WithActions): boolean {
+  return isAnswering(m.status) || (m.status === "waiting" && !awaitsApproval(m));
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isRange = (v: unknown): v is { startMs: number; endMs: number } => isRecord(v) && typeof v.startMs === "number" && typeof v.endMs === "number";
+
+/** A `tool_approval` action's payload, keeping only well-formed calls (the column is untyped JSON). */
+export function parseApprovalPayload(raw: unknown): ToolApprovalPayload | null {
+  if (!isRecord(raw) || !Array.isArray(raw.calls)) return null;
+  const calls: ToolApprovalCall[] = [];
+  for (const c of raw.calls as unknown[]) {
+    if (!isRecord(c) || typeof c.id !== "string" || typeof c.name !== "string" || typeof c.summary !== "string") continue;
+    const call: ToolApprovalCall = { id: c.id, name: c.name, args: c.args, summary: c.summary };
+    if (isRange(c.range)) call.range = { startMs: c.range.startMs, endMs: c.range.endMs };
+    if (Array.isArray(c.moments)) {
+      call.moments = (c.moments as unknown[]).flatMap((m) =>
+        isRecord(m) && isRange(m) && typeof (m as Record<string, unknown>).id === "string" && typeof (m as Record<string, unknown>).title === "string"
+          ? [{ id: (m as Record<string, unknown>).id as string, title: (m as Record<string, unknown>).title as string, startMs: m.startMs, endMs: m.endMs }]
+          : [],
+      );
+    }
+    calls.push(call);
+  }
+  return { step: typeof raw.step === "number" ? raw.step : 0, calls };
+}
+
+function msOf(v: string): number | null {
+  try {
+    return parseTimestamp(v);
+  } catch {
+    return null;
+  }
+}
+
+/** What's wrong with a clip edit on the approval card: a time that isn't hh:mm:ss, the end not after the start, or no title. */
+export function checkClipEdit(e: { start: string; end: string; title?: string }, needsTitle: boolean): "time" | "order" | "title" | null {
+  const start = msOf(e.start);
+  const end = msOf(e.end);
+  if (start === null || end === null) return "time";
+  if (end <= start) return "order";
+  if (needsTitle && !(e.title ?? "").trim()) return "title";
+  return null;
 }

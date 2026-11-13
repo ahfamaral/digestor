@@ -1,20 +1,21 @@
 import { ChatAnthropic } from "@langchain/anthropic";
+import { MemorySaver } from "@langchain/langgraph";
 import { ChromaClient } from "chromadb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OWNER_ID, findBoundaries, snapRange, type AskToolCallRecord, type Word } from "@digestor/core";
 import {
   addAskMessage, claimAskMessage, completeAnalysisVersion, createClip, createDb, createPersonalMoment, createSession, getAskMessage, getClip, listAskMessages,
   listClipEvents, listClips, listPersonalMoments, listSelections, saveMoments, saveTopics, saveTranscript,
-  askMessages, createCustomPerson, upsertOfficialPerson, replaceAiAttributions, saveContextCard, setHumanAttribution, setSelection, startAnalysisVersion, updateSession, type Db,
+  askMessages, createCustomPerson, resolveToolApproval, upsertOfficialPerson, replaceAiAttributions, saveContextCard, setHumanAttribution, setSelection, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
 import { eq } from "drizzle-orm";
 import { MissingApiKeyError } from "../errors.js";
-import { handleAsk } from "../jobs.js";
+import { handleAsk, handleAskResume } from "../jobs.js";
 import { FakeToolLLM, type ToolCallRequest, type ToolMessage, type ToolStepCall } from "../llm/tools.js";
 import { FakeEmbedder } from "../search/embed.js";
 import { searchTranscript, type SearchHit } from "../search/index.js";
 import {
-  ASK_FAILED, MAX_ASK_STEPS, MAX_TOOL_OUTPUT, NOT_IN_DATA, OUT_OF_STEPS, SEARCH_UNAVAILABLE, runAsk, type AskDeps,
+  ASK_FAILED, MAX_ASK_STEPS, MAX_TOOL_OUTPUT, NOT_IN_DATA, OUT_OF_STEPS, SEARCH_UNAVAILABLE, resumeAsk, runAsk, type AskDeps,
 } from "./ask.js";
 
 /** 20 minutes of speech: 500 ms per word, sentences of 5 words (2.5 s), speaker A then B every other minute. */
@@ -88,7 +89,23 @@ const toolResults = (c: ToolStepCall): string[] => {
 };
 
 const noSearch = async (): Promise<SearchHit[]> => [];
-const depsFor = (llm: FakeToolLLM, search: AskDeps["search"] = noSearch): AskDeps => ({ db, llm, search });
+const depsFor = (llm: FakeToolLLM, search: AskDeps["search"] = noSearch) => ({ db, llm, search, checkpointer: new MemorySaver() });
+
+/** The answer's pending approval of changes (Task C1: every change is approved first), resolved as the journalist would. */
+async function approvePending(messageId: string): Promise<string | null> {
+  const msg = (await getAskMessage(db, messageId))!;
+  if (msg.status !== "waiting") return null;
+  const action = (await listAskMessages(db, msg.ownerId, msg.sessionId)).find((m) => m.id === messageId)!.actions.find((a) => a.kind === "tool_approval" && a.status === "pending");
+  if (!action) return null;
+  expect(await resolveToolApproval(db, action.id, { decision: "approve" })).toBe(true);
+  return action.id;
+}
+
+/** runAsk, approving every change it asks for (as the drawer's Approve and the `ask.resume` job do). */
+async function runApproving(deps: ReturnType<typeof depsFor>, messageId: string): Promise<void> {
+  await runAsk(deps, messageId);
+  for (let actionId = await approvePending(messageId); actionId; actionId = await approvePending(messageId)) await resumeAsk(deps, actionId);
+}
 
 describe("runAsk tools", () => {
   it("bad tool args return an error string to the model", async () => {
@@ -119,7 +136,7 @@ describe("runAsk tools", () => {
     const { s, analysisId } = await seed();
     const msg = await ask(s.id, "Make a clip from one minute in.");
     const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:01:01", end: "1:31.2", title: "  Rent caps  " })), answer("Done [00:01:00].")]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
 
     const expected = snapRange(findBoundaries(words, DURATION_MS), { startMs: 61_000, endMs: 91_200 });
     expect(expected.startMs).not.toBe(61_000);
@@ -147,7 +164,7 @@ describe("runAsk tools", () => {
       toolStep(call("trim_clip", { clipId: mine.id, start: "00:01:06", end: "00:01:31" }), call("trim_clip", { clipId: theirs.id, start: "00:00:01", end: "00:00:20" })),
       answer("Trimmed [00:01:05]."),
     ]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
     const expected = snapRange(findBoundaries(words, DURATION_MS), { startMs: 66_000, endMs: 91_000 });
     expect(await getClip(db, mine.id)).toMatchObject(expected);
     expect((await listClipEvents(db, mine.id)).at(-1)).toMatchObject({ actor: "ask", kind: "bounds" });
@@ -177,7 +194,7 @@ describe("runAsk tools", () => {
       ),
       answer("Done [00:00:00]."),
     ]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
     expect(await listSelections(db, OWNER_ID, s.id)).toEqual({ [momentIds[0]!]: "rejected", [momentIds[1]!]: "rejected" });
     expect(toolResults(llm.calls[1]!)[1]).toMatch(/^Error: /);
   });
@@ -190,12 +207,14 @@ describe("runAsk tools", () => {
       toolStep(call("set_selection", { momentIds: [momentIds[3], momentIds[4], momentIds[0]], status: "skipped" })),
       answer("Done [00:00:00]."),
     ]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
     const sel = Object.fromEntries(momentIds.slice(0, 3).map((id) => [id, "approved"]));
     expect(await listSelections(db, OWNER_ID, s.id)).toEqual(sel);
     expect(toolResults(llm.calls[2]!)[0]).toBe("Waiting for the user to confirm 3 changes.");
     const stored = (await listAskMessages(db, OWNER_ID, s.id)).find((m) => m.id === msg.id)!;
-    expect(stored.actions).toEqual([expect.objectContaining({ kind: "bulk_selection", status: "pending" })]);
+    // the direct changes were approved on a tool_approval card first; the rest waits on the bulk confirmation
+    expect(stored.actions.filter((a) => a.kind === "tool_approval").map((a) => a.status)).toEqual(["confirmed"]);
+    expect(stored.actions.filter((a) => a.kind !== "tool_approval")).toEqual([expect.objectContaining({ kind: "bulk_selection", status: "pending" })]);
     const calls = stored.toolCalls as AskToolCallRecord[];
     expect(calls[1]!.undo).toBeUndefined(); // nothing changed directly
   });
@@ -205,7 +224,7 @@ describe("runAsk tools", () => {
     await setSelection(db, OWNER_ID, momentIds[0]!, "rejected");
     const msg = await ask(s.id, "Approve the first two.");
     const llm = new FakeToolLLM([toolStep(call("set_selection", { momentIds: momentIds.slice(0, 2), status: "approved" })), answer("Done [00:00:00].")]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
     const [rec] = (await getAskMessage(db, msg.id))!.toolCalls as AskToolCallRecord[];
     expect(rec!.undo).toEqual({ [momentIds[0]!]: "rejected", [momentIds[1]!]: null });
   });
@@ -220,7 +239,7 @@ describe("runAsk tools", () => {
       ),
       answer("Done [00:00:00]."),
     ]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
     expect((await listSelections(db, OWNER_ID, s.id))[momentIds[0]!]).toBe("rejected");
     expect((await listSelections(db, OWNER_ID, s.id))[momentIds[1]!]).toBeUndefined();
     expect(toolResults(llm.calls[1]!)[1]).toMatch(/^Error: invalid arguments for set_selection/);
@@ -318,7 +337,7 @@ describe("runAsk tools", () => {
     const mine = await createClip(db, { sessionId: s.id, ownerId: OWNER_ID, startMs: 60_000, endMs: 90_000, actor: "user" });
     const msg = await ask(s.id, "Start it later.");
     const llm = new FakeToolLLM([toolStep(call("trim_clip", { clipId: mine.id, start: "00:01:06", end: "00:01:31" })), answer("Done [00:01:05].")]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
     const [rec] = (await getAskMessage(db, msg.id))!.toolCalls as AskToolCallRecord[];
     expect(rec).toMatchObject({ name: "trim_clip", ok: true, clipId: mine.id });
   });
@@ -340,7 +359,7 @@ describe("runAsk tools", () => {
       ),
       answer("Two clips made; the rest needs your confirmation [00:01:00]."),
     ]);
-    await runAsk(depsFor(llm), msg.id);
+    await runApproving(depsFor(llm), msg.id);
     const [trim, third, sel] = toolResults(llm.calls[2]!);
     expect(trim).toMatch(/^Error: .*confirm/i);
     expect(third).toMatch(/^Error: .*confirm/i);
@@ -354,7 +373,11 @@ describe("runAsk tools", () => {
     expect(selections[momentIds[1]!]).toBeUndefined();
     expect(Object.values(selections).every((v) => v === "approved")).toBe(true);
     const stored = (await listAskMessages(db, OWNER_ID, s.id)).find((m) => m.id === msg.id)!;
-    expect(stored.actions).toEqual([expect.objectContaining({ kind: "bulk_selection", payload: { momentIds: [momentIds[1]], status: "approved" } })]);
+    // the first turn's three changes were approved on one card; the second turn asked nothing (the trim and clip can only fail)
+    expect(stored.actions.filter((a) => a.kind === "tool_approval").map((a) => a.status)).toEqual(["confirmed"]);
+    expect(stored.actions.filter((a) => a.kind !== "tool_approval")).toEqual([
+      expect.objectContaining({ kind: "bulk_selection", payload: { momentIds: [momentIds[1]], status: "approved" } }),
+    ]);
     const recs = stored.toolCalls as AskToolCallRecord[];
     expect(recs.slice(3).map((r) => [r.name, r.ok, r.clipId])).toEqual([
       ["trim_clip", false, undefined],
@@ -736,8 +759,11 @@ describe("handleAsk", () => {
       },
     });
     const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:00:10", end: "00:00:40", title: "x" })), answer("never")]);
+    const deps = depsFor(llm);
+    await handleAsk(deps, { messageId: msg.id }, FIRST); // pauses for approval; the change runs on resume
+    const actionId = (await approvePending(msg.id))!;
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    await handleAsk({ db: flaky, llm, search: noSearch }, { messageId: msg.id }, FIRST);
+    await handleAskResume({ ...deps, db: flaky }, { actionId }, FIRST);
     err.mockRestore();
     const failed = (await getAskMessage(db, msg.id))!;
     expect(failed).toMatchObject({ status: "failed", text: ASK_FAILED });
@@ -751,8 +777,11 @@ describe("handleAsk", () => {
       toolStep(call("propose_clip", { start: "00:00:10", end: "00:00:40", title: "x" })),
       () => { throw new Error("socket hang up"); },
     ]);
+    const deps = depsFor(llm);
+    await handleAsk(deps, { messageId: msg.id }, FIRST); // pauses for approval; the change runs on resume
+    const actionId = (await approvePending(msg.id))!;
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    await handleAsk(depsFor(llm), { messageId: msg.id }, FIRST);
+    await handleAskResume(deps, { actionId }, FIRST);
     err.mockRestore();
     const failed = (await getAskMessage(db, msg.id))!;
     expect(failed).toMatchObject({ status: "failed", text: ASK_FAILED });

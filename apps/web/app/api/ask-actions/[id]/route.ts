@@ -1,15 +1,19 @@
 import { z } from "zod";
-import { OWNER_ID } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, parseTimestamp, type AskAction, type ToolApprovalPayload, type ToolApprovalResolution } from "@digestor/core";
 import {
-  confirmBulkSelection, getAskAction, getAskMessage, getMoment, resolveAskAction,
+  confirmBulkSelection, getAskAction, getAskMessage, getMoment, getSession, reopenToolApproval, resolveAskAction, resolveToolApproval,
 } from "@digestor/core/server";
 import { asSelectionStatus } from "@/lib/askText";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { readySession, sendMomentCheckQuietly, sessionIdOfMoment } from "@/lib/personal";
+import { QUEUE_FAILED, VIDEO_REMOVED, readySession, sendMomentCheckQuietly, sessionIdOfMoment } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
-const BodySchema = z.object({ decision: z.enum(["confirm", "dismiss"]) }).strict();
+const BulkBodySchema = z.object({ decision: z.enum(["confirm", "dismiss"]) }).strict();
+const ApprovalBodySchema = z.union([
+  z.object({ decision: z.enum(["approve", "reject"]) }).strict(),
+  z.object({ decision: z.literal("edit"), edits: z.array(z.object({ id: z.string().min(1).max(200), args: z.unknown().refine((v) => v !== undefined) }).strict()).min(1).max(20) }).strict(),
+]);
 const PayloadSchema = z.object({
   momentIds: z.array(z.string().uuid()).max(500),
   // Stored payloads may still say "neutral" (read as skipped).
@@ -17,8 +21,51 @@ const PayloadSchema = z.object({
 });
 
 const NOT_PENDING = "This suggestion was already handled.";
+const BAD_EDIT = "Check the changes: times as hh:mm:ss with the end after the start, a title, and at least one moment.";
 
-/** POST /api/ask-actions/[id] — `{ decision: "confirm" | "dismiss" }`. Confirming applies every selection at once. */
+function toMs(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  try {
+    return parseTimestamp(v);
+  } catch {
+    return null;
+  }
+}
+const Time = z.string().refine((v) => toMs(v) !== null);
+const ClipTimes = z.object({ start: z.unknown(), end: z.unknown() }).refine((a) => {
+  const start = toMs(a.start);
+  const end = toMs(a.end);
+  return start !== null && end !== null && end > start;
+});
+/** What the card may edit, per tool: times and title of a clip, which moments of a selection. Ids and status stay. */
+const EDIT_SCHEMAS: Record<string, (original: unknown) => z.ZodType<unknown>> = {
+  propose_clip: () => z.object({ start: Time, end: Time, title: z.string().trim().min(1).max(120) }).strict().and(ClipTimes),
+  trim_clip: () => z.object({ start: Time, end: Time }).strict().and(ClipTimes),
+  set_selection: (original) => {
+    const allowed = new Set(((original as { momentIds?: unknown } | null)?.momentIds as string[] | undefined) ?? []);
+    return z.object({ momentIds: z.array(z.string()).min(1).max(200).refine((ids) => ids.every((id) => allowed.has(id))) }).strict();
+  },
+};
+
+/** The edits checked against the card's calls (the stored payload): each edits one call on it, with the arguments its tool allows. */
+function readEdits(payload: ToolApprovalPayload, edits: { id: string; args: unknown }[]): { id: string; args: unknown }[] | null {
+  const out: { id: string; args: unknown }[] = [];
+  for (const edit of edits) {
+    const call = payload.calls.find((c) => c.id === edit.id);
+    const schema = call ? EDIT_SCHEMAS[call.name]?.(call.args) : undefined;
+    const parsed = schema?.safeParse(edit.args);
+    if (!parsed?.success || out.some((e) => e.id === edit.id)) return null;
+    out.push({ id: edit.id, args: parsed.data });
+  }
+  return out;
+}
+
+/**
+ * POST /api/ask-actions/[id]. A `bulk_selection` card takes `{ decision: "confirm" | "dismiss" }`; confirming applies
+ * every selection at once. A `tool_approval` card (an Ask answer paused before a change) takes `{ decision: "approve"
+ * | "reject" }` or `{ decision: "edit", edits: [{ id, args }] }`: the decision is stored with a compare-and-set from
+ * `pending` (a second click or tab gets 409), then one `ask.resume` job continues the answer in the worker.
+ */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   if (!isUuid(id)) return errorResponse(404, "Suggestion not found.");
@@ -28,21 +75,57 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   } catch {
     return errorResponse(400, "Send the decision as JSON.");
   }
-  const parsed = BodySchema.safeParse(raw);
-  if (!parsed.success) return errorResponse(400, "Choose confirm or dismiss.");
 
-  const { db, boss } = getServer();
+  const { db } = getServer();
   const action = await getAskAction(db, id);
   const message = action ? await getAskMessage(db, action.messageId) : null;
   if (!action || !message || message.ownerId !== OWNER_ID) return errorResponse(404, "Suggestion not found.");
-  if (action.status !== "pending") return errorResponse(409, NOT_PENDING);
+  if (action.kind === "tool_approval") return decideApproval(raw, action, message.status, message.sessionId);
 
-  if (parsed.data.decision === "dismiss") {
-    if (!(await resolveAskAction(db, id, "dismissed"))) return errorResponse(409, NOT_PENDING);
+  const parsed = BulkBodySchema.safeParse(raw);
+  if (!parsed.success) return errorResponse(400, "Choose confirm or dismiss.");
+  if (action.status !== "pending") return errorResponse(409, NOT_PENDING);
+  return decideBulk(parsed.data.decision, action, message.sessionId);
+}
+
+async function decideApproval(raw: unknown, action: AskAction, messageStatus: string, sessionId: string): Promise<Response> {
+  const { db, boss } = getServer();
+  const parsed = ApprovalBodySchema.safeParse(raw);
+  if (!parsed.success) return errorResponse(400, "Choose approve, edit or reject.");
+  if (action.status !== "pending" || messageStatus !== "waiting") return errorResponse(409, NOT_PENDING);
+
+  let resolution: ToolApprovalResolution = { decision: parsed.data.decision };
+  if (parsed.data.decision === "edit") {
+    const edits = readEdits(action.payload as ToolApprovalPayload, parsed.data.edits as { id: string; args: unknown }[]);
+    if (!edits) return errorResponse(400, BAD_EDIT);
+    resolution = { decision: "edit", edits };
+  }
+  if (resolution.decision !== "reject") {
+    // A change can't be made once the video is gone (R30); rejecting still lets the answer finish.
+    const session = await getSession(db, sessionId);
+    if (!session) return errorResponse(404, "Suggestion not found.");
+    if (session.videoDeletedAt) return errorResponse(409, VIDEO_REMOVED);
+  }
+
+  if (!(await resolveToolApproval(db, action.id, resolution))) return errorResponse(409, NOT_PENDING);
+  try {
+    await boss.send(QUEUES.askResume, { actionId: action.id }, { ...JOB_OPTIONS, singletonKey: action.id });
+  } catch (err) {
+    console.error("ask-actions: enqueue failed", err);
+    await reopenToolApproval(db, action.id).catch((e: unknown) => console.error("ask-actions: reopening the card failed", e));
+    return errorResponse(503, QUEUE_FAILED);
+  }
+  return Response.json({ status: resolution.decision === "reject" ? "dismissed" : "confirmed" });
+}
+
+async function decideBulk(decision: "confirm" | "dismiss", action: AskAction, sessionId: string): Promise<Response> {
+  const { db, boss } = getServer();
+  if (decision === "dismiss") {
+    if (!(await resolveAskAction(db, action.id, "dismissed"))) return errorResponse(409, NOT_PENDING);
     return Response.json({ status: "dismissed" });
   }
 
-  const ready = await readySession(db, message.sessionId);
+  const ready = await readySession(db, sessionId);
   if ("error" in ready) return ready.error;
   const payload = PayloadSchema.safeParse(action.payload);
   if (!payload.success) return errorResponse(409, "This suggestion can't be applied.");
@@ -52,11 +135,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   for (const momentId of new Set(payload.data.momentIds)) {
     const moment = await getMoment(db, momentId);
     if (!moment || (moment.ownerId !== null && moment.ownerId !== OWNER_ID)) continue;
-    if ((await sessionIdOfMoment(db, momentId)) !== message.sessionId) continue;
+    if ((await sessionIdOfMoment(db, momentId)) !== sessionId) continue;
     moments.push(moment);
   }
   const { status } = payload.data;
-  if (!(await confirmBulkSelection(db, OWNER_ID, id, moments.map((m) => m.id), status))) return errorResponse(409, NOT_PENDING);
+  if (!(await confirmBulkSelection(db, OWNER_ID, action.id, moments.map((m) => m.id), status))) return errorResponse(409, NOT_PENDING);
   if (status === "approved") for (const m of moments) if (m.checks === null) await sendMomentCheckQuietly(db, boss, m.id);
   return Response.json({ status: "confirmed", applied: moments.length });
 }

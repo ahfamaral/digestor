@@ -12,6 +12,8 @@ export const QUEUES = {
   renderClip: "clip.render",
   translateBriefing: "briefing.translate",
   ask: "ask.run",
+  /** Continues an Ask answer paused for approval, once the journalist decided (`ask_actions` `tool_approval`). */
+  askResume: "ask.resume",
   findMore: "moment.find_more",
   names: "session.names",
   proxy: "session.proxy",
@@ -58,6 +60,10 @@ export type TranslateBriefingJob = z.infer<typeof TranslateBriefingJobSchema>;
 
 export const AskJobSchema = z.object({ messageId: z.string().uuid() });
 export type AskJob = z.infer<typeof AskJobSchema>;
+
+/** The resolved `tool_approval` action whose answer continues. */
+export const AskResumeJobSchema = z.object({ actionId: z.string().uuid() });
+export type AskResumeJob = z.infer<typeof AskResumeJobSchema>;
 
 export const FindMoreJobSchema = z.object({ requestId: z.string().uuid() });
 export type FindMoreJob = z.infer<typeof FindMoreJobSchema>;

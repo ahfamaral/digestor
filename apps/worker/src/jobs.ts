@@ -1,4 +1,4 @@
-import { PROFILES, ProfileIdSchema, type AskJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ProxyJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
+import { PROFILES, ProfileIdSchema, type AskJob, type AskResumeJob, type FindMoreJob, type NamesJob, type CheckMomentJob, type PrepareTrackJob, type ReanalyzeJob, type ProxyJob, type TranslateBriefingJob, type ResumeJob, type StartJob } from "@digestor/core";
 import {
   claimFindMore,
   failAnalysisVersion,
@@ -29,6 +29,7 @@ import {
   failClipRender,
   failTrackBurn,
   finishAskMessage,
+  getAskAction,
   getAskMessage,
   releaseAskMessage,
   setMomentChecks,
@@ -36,7 +37,8 @@ import {
   type Db,
   type LocalStorage,
 } from "@digestor/core/server";
-import { ASK_FAILED, AskRunError, runAsk, type AskDeps } from "./agents/ask.js";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
+import { ASK_FAILED, AskRunError, deleteThread, resumeAsk, runAsk, type AskDeps } from "./agents/ask.js";
 import { findMoreMoments, personConfirmed, personTurnRanges } from "./agents/findMore.js";
 import { translateBriefing } from "./agents/translateBriefing.js";
 import type { StructuredLLM } from "./llm/structured.js";
@@ -252,29 +254,54 @@ export const handleBurnTrack = (deps: RenderDeps, job: BurnTrackJob, attempt: At
   runRender("track burn", job.trackId, attempt, () => burnTrack(deps, job.trackId), () => failTrackBurn(deps.db, job.trackId));
 
 /**
- * Answers one Ask question (the pending assistant message). The message goes `pending` → `running` → `done`, or
- * `failed` with a friendly line. A missing key, or an error after a tool already changed something (a retry would
- * repeat the change), fails at once without a retry; any other error puts the message back to `pending` and is
- * rethrown for pg-boss, and only the final attempt marks it failed. A crash leaves it `running`: the retry fails it.
+ * Answers one Ask question (the pending assistant message). The message goes `pending` → `running` → `done` (or
+ * `waiting` when a change needs approval), or `failed` with a friendly line. A missing key, or an error after a tool
+ * already changed something (a retry would repeat the change), fails at once without a retry; any other error puts
+ * the message back to `pending` and is rethrown for pg-boss, and only the final attempt marks it failed. A crash
+ * leaves it `running`: the retry fails it.
  */
 export async function handleAsk(deps: AskDeps, job: AskJob, attempt: Attempt): Promise<void> {
+  await runAskJob(deps, job.messageId, attempt, "pending", () => runAsk(deps, job.messageId));
+}
+
+/**
+ * Continues an Ask answer once the journalist decided on its `tool_approval` action (`ask.resume`), with the same
+ * failure rules as `handleAsk`; a retryable error puts the answer back to `waiting`, and the retry continues from
+ * the graph's last checkpoint. A retry that finds the answer still `running` (an attempt died partway, perhaps after
+ * applying the change) fails it instead of running anything again.
+ */
+export async function handleAskResume(deps: AskDeps & { checkpointer: BaseCheckpointSaver }, job: AskResumeJob, attempt: Attempt): Promise<void> {
+  const action = await getAskAction(deps.db, job.actionId);
+  if (!action) return;
+  const msg = attempt.retryCount > 0 ? await getAskMessage(deps.db, action.messageId) : null;
+  if (msg?.status === "running") {
+    console.error(`[jobs] ask ${msg.id} was left running by an earlier resume attempt; failing it`);
+    await finishAskMessage(deps.db, msg.id, { text: ASK_FAILED, toolCalls: msg.toolCalls ?? [], status: "failed" });
+    await deleteThread(deps, msg.id);
+    return;
+  }
+  await runAskJob(deps, action.messageId, attempt, "waiting", () => resumeAsk(deps, job.actionId));
+}
+
+async function runAskJob(deps: AskDeps, messageId: string, attempt: Attempt, releaseTo: "pending" | "waiting", run: () => Promise<void>): Promise<void> {
   try {
-    await runAsk(deps, job.messageId);
+    await run();
   } catch (err) {
-    const run = err instanceof AskRunError ? err : null;
-    const cause = run ? run.cause : err;
-    const deterministic = cause instanceof MissingApiKeyError || (run?.sideEffect ?? false);
+    const failed = err instanceof AskRunError ? err : null;
+    const cause = failed ? failed.cause : err;
+    const deterministic = cause instanceof MissingApiKeyError || (failed?.sideEffect ?? false);
     if (deterministic || attempt.retryCount >= attempt.retryLimit) {
-      console.error(`[jobs] ask ${job.messageId} failed:`, cause);
-      const msg = await getAskMessage(deps.db, job.messageId);
+      console.error(`[jobs] ask ${messageId} failed:`, cause);
+      const msg = await getAskMessage(deps.db, messageId);
       if (msg?.status === "pending" || msg?.status === "running") {
         // A missing key says which one (as sessions do); anything else gets the generic line.
         const text = cause instanceof MissingApiKeyError ? cause.message : ASK_FAILED;
-        await finishAskMessage(deps.db, job.messageId, { text, toolCalls: run?.toolCalls ?? [], status: "failed" });
+        await finishAskMessage(deps.db, messageId, { text, toolCalls: failed?.toolCalls ?? [], status: "failed" });
+        await deleteThread(deps, messageId);
       }
     } else {
-      await releaseAskMessage(deps.db, job.messageId); // nothing changed: the retry may run it again
-      console.error(`[jobs] ask ${job.messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, cause);
+      await releaseAskMessage(deps.db, messageId, releaseTo); // nothing changed: the retry may run it again
+      console.error(`[jobs] ask ${messageId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, cause);
     }
     if (!deterministic) throw cause;
   }

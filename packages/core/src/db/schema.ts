@@ -266,19 +266,28 @@ export const askMessages = pgTable(
     toolCalls: jsonb("tool_calls").$type<unknown>(),
     status: text("status").$type<AskMessageStatus>().notNull().default("done"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Last status change: the drawer gives up on an answer that has been `pending`/`running` this long (a resumed answer is fresh). */
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [index("ask_messages_owner_session_idx").on(t.ownerId, t.sessionId)],
 );
 
-export const askActions = pgTable("ask_actions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  messageId: uuid("message_id")
-    .notNull()
-    .references(() => askMessages.id, { onDelete: "cascade" }),
-  kind: text("kind").$type<AskActionKind>().notNull(),
-  payload: jsonb("payload").$type<unknown>().notNull(),
-  status: text("status").$type<AskActionStatus>().notNull().default("pending"),
-});
+export const askActions = pgTable(
+  "ask_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => askMessages.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<AskActionKind>().notNull(),
+    payload: jsonb("payload").$type<unknown>().notNull(),
+    status: text("status").$type<AskActionStatus>().notNull().default("pending"),
+    /** `tool_approval`: the journalist's decision (`ToolApprovalResolution`), stored with the status change. */
+    resolution: jsonb("resolution").$type<unknown>(),
+  },
+  // One approval per answer and model turn: the graph's approve node re-runs on resume and finds it.
+  (t) => [uniqueIndex("ask_actions_tool_approval_step").on(t.messageId, sql`(${t.payload}->>'step')`).where(sql`${t.kind} = 'tool_approval'`)],
+);
 
 export const problemReports = pgTable("problem_reports", {
   id: uuid("id").primaryKey().defaultRandom(),

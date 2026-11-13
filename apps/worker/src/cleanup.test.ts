@@ -3,7 +3,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { LocalStorage, createDb, createSession, ensurePipelineRun, getPipelineRun, getSession, pipelineRuns, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { emptyCheckpoint } from "@langchain/langgraph";
+import { sql } from "drizzle-orm";
+import { OWNER_ID } from "@digestor/core";
+import { LocalStorage, addAskMessage, createDb, createSession, deleteAskThread, deleteSession, ensurePipelineRun, getPipelineRun, getSession, pipelineRuns, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
 import type { ChromaClient } from "chromadb";
 import { collectionName } from "./search/index.js";
 import { runDailyCleanup, runVideoRetention, videoRetentionDays, type DailyCleanupDeps } from "./cleanup.js";
@@ -142,6 +146,39 @@ d("runVideoRetention", () => {
       expect(log).toHaveBeenCalled();
     } finally {
       log.mockRestore();
+    }
+  });
+
+  it("deletes the session's Ask threads (schema ask_graph) with its index; other sessions' threads stay; deleting a session does too", async () => {
+    const saver = PostgresSaver.fromConnString(url!, { schema: "ask_graph" });
+    await saver.setup();
+    try {
+      /** A paused answer of `sessionId` with a checkpoint and a pending write, as the Ask graph leaves it. */
+      const thread = async (sessionId: string) => {
+        const msg = await addAskMessage(db, { sessionId, ownerId: OWNER_ID, role: "assistant", text: "", status: "waiting" });
+        const config = await saver.put({ configurable: { thread_id: msg.id, checkpoint_ns: "" } }, emptyCheckpoint(), { source: "loop", step: 1, parents: {} }, {});
+        await saver.putWrites(config, [["approval", null]], "task-1");
+        return msg.id;
+      };
+      const rows = async (threadId: string) =>
+        (await db.execute<{ n: number }>(sql`select (select count(*) from ask_graph.checkpoints where thread_id = ${threadId})
+          + (select count(*) from ask_graph.checkpoint_writes where thread_id = ${threadId}) as n`)).rows[0]!.n;
+      const old = await seed(15, "ready");
+      const recent = await seed(1, "ready");
+      const oldThread = await thread(old.id);
+      const recentThread = await thread(recent.id);
+      expect(Number(await rows(oldThread))).toBe(2);
+      expect((await runVideoRetention(deps(), 14)).removed).toBe(1);
+      expect(Number(await rows(oldThread))).toBe(0);
+      expect(Number(await rows(recentThread))).toBe(2);
+      const another = await thread(recent.id);
+      await deleteAskThread(db, another); // one answer's thread, when it ends
+      expect(Number(await rows(another))).toBe(0);
+      expect(Number(await rows(recentThread))).toBe(2);
+      await deleteSession(db, recent.id);
+      expect(Number(await rows(recentThread))).toBe(0);
+    } finally {
+      await saver.end();
     }
   });
 
