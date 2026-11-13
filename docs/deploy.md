@@ -190,11 +190,13 @@ The same update makes the nightly refresh remove speeches the Câmara files unde
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-embed.ts
 ```
 
-Dev on 2026-11-13 (the Mac's Colima VM, 4 CPUs): 7,899 speeches in 23,460 chunks in 2,284 s (about 38 minutes; the worker test suite ran alongside for part of it); the worker container used about 2.5 GB of memory while the script ran inside it (`docker stats`), so on a 4 GB server run it when nothing else is processing. Until it has run, the topic search shows word results with the note "Search by meaning isn't available right now" (the same happens whenever the worker is restarting). Afterwards the worker adds each day's new and revised speeches at 10:00 UTC (`monitor.embed`, an hour after the refresh); check the next morning:
+Dev on 2026-11-13 (the Mac's Colima VM, 4 CPUs): 7,899 speeches in 23,460 chunks in 2,284 s (about 38 minutes; the worker test suite ran alongside for part of it); the worker container used about 2.5 GB of memory while the script ran inside it (`docker stats`). The worker also keeps the e5 model loaded from startup now (it serves every search): about 1 GB idle in dev (940 MB to 1 GB), where it was loaded only for Ask before. On the 4 GB CX23 that leaves little room, so run the script when nothing else is processing (no analysis, render or Ask running). Until it has run, the topic search shows word results with the note "Search by meaning isn't available right now" (the same happens whenever the worker is restarting). Afterwards the worker adds each day's new and revised speeches at 10:00 UTC (`monitor.embed`, an hour after the refresh), at most 2,000 speeches a run: skipping the script, the daily job would build the index in steps over about four days instead (the note shows until the first run). Check the next morning:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs worker | grep monitor.embed
 ```
+
+Chunks of speeches sent in writing ("DISCURSO NA ÍNTEGRA ENCAMINHADO …") leave out that header since the review round of 2026-11-13; the dev index built before keeps it in their first chunk (it hardly moves a search). Production builds its index after the change, so nothing to do there.
 
 ### Once, after updating to speaker names (Plan 3)
 
