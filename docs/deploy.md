@@ -211,6 +211,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm
 
 Dev on 2026-11-13 (Colima, 4 CPUs): 126 roll calls in 20 s and 39,646 signed bills in about 27 minutes (1,646 s in all; the worker test suite ran alongside for part of it). The worker loads both collections into Chroma at startup, so the first search after a restart is not slow. Until it has run, a deputy's vote and bill text boxes show word matches with "Search by meaning isn't available right now" (the speech search is not affected). Afterwards the daily `monitor.embed` job adds new or changed roll calls and bills after the day's speeches, within the same 2,000-item cap; skipping the script, the daily job would take about three weeks to embed the year's 41,000 bills.
 
+### Once, when updating to "Clip this speech" (migration 0032)
+
+`up -d --build` runs migration 0032: `sessions.source_start_ms` / `source_end_ms` (the part of the source video a session holds; null = the whole video). Nothing else changes on this server: the monitor's "Clip this speech" (a speech's video moment ± 20 s opened as a Digestor session, `POST /api/monitor/clip`) is on only with `MONITOR_CLIP_ENABLED=true` in `.env` (read by the web container), and **stays unset here** unless the owner decides otherwise: the download is yt-dlp's, and YouTube blocks this server's IP (see video evidence above). Off, each speech with a video says "Clipping downloads the video from YouTube, which this server can't do. Open the monitor on your own computer to clip this speech." On a Mac with Colima, start the web app with the flag (`MONITOR_CLIP_ENABLED=true pnpm --filter @digestor/web dev`, or put it in `.env`).
+
+yt-dlp downloads only the part (`--download-sections "*<start>-<end>"`, keyframe-approximate, from the plain https formats: on an 8-hour plenary stream the HLS format never started). Dev on 2026-11-13: a 97 s speech (137 s part, 1080p AV1, 19 MB) downloaded in about 2 min 20 s (YouTube serves it at about playback speed) and reached the context check 7.5 min after the click, with the Câmara record matched.
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:
