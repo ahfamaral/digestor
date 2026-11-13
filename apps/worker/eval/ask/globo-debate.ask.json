@@ -1,0 +1,134 @@
+{
+  "sessionId": "7433d1c6-458e-42b8-898c-2d92583a9f03",
+  "labelledBy": "Drafted by Claude from the transcript on 2026-11-13 (expect spans are approximate, in seconds of the video); the owner has not reviewed it yet.",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "What did Flávio say one dose of the whisky is worth, and what did he compare it to?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 6040000,
+          "endMs": 6110000
+        }
+      ],
+      "quote": "cada dose custa R$50 mil"
+    },
+    {
+      "id": "q02",
+      "question": "O que Flávio propõe para quem abusa de crianças?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 5380000,
+          "endMs": 5425000
+        }
+      ],
+      "quote": "castração química"
+    },
+    {
+      "id": "q03",
+      "question": "Qual é a posição de Lula sobre as saidinhas dos presos?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 5173000,
+          "endMs": 5260000
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "question": "How many people did Lula say the two Desenrola rounds reached?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 4572000,
+          "endMs": 4640000
+        }
+      ],
+      "quote": "nós fizemos dois desenrola"
+    },
+    {
+      "id": "q05",
+      "question": "Por que Lula diz que o Banco Central foi tornado independente, segundo Flávio?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 3541000,
+          "endMs": 3600000
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "question": "Was sagt Lula zum Nulltarif im Nahverkehr am Wochenende (tarifa zero)?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 1081000,
+          "endMs": 1115000
+        }
+      ]
+    },
+    {
+      "id": "q07",
+      "question": "Which railway link does Flávio promise to build for exports from the Centre-West?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 595000,
+          "endMs": 650000
+        }
+      ],
+      "quote": "Eixo Sul da ferrovia"
+    },
+    {
+      "id": "q08",
+      "question": "Wie viele Brasilianer haben laut Lula keine Abwasserentsorgung, und wofür war das Sanitärgesetz gedacht?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 1992000,
+          "endMs": 2030000
+        }
+      ],
+      "quote": "90 milhões de brasileiros"
+    },
+    {
+      "id": "q09",
+      "question": "Qual é o valor que a tabela SUS paga a um médico por consulta, segundo Flávio?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 4195000,
+          "endMs": 4240000
+        }
+      ],
+      "quote": "paga R$10 para um médico por consulta"
+    },
+    {
+      "id": "q10",
+      "question": "What childcare support does Flávio promise to working parents?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 5044000,
+          "endMs": 5075000
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "question": "O que Lula disse sobre o acordo Mercosul-União Europeia?",
+      "answerable": false,
+      "expect": []
+    },
+    {
+      "id": "q12",
+      "question": "What did the candidates say about Brazil's seat on the UN Security Council?",
+      "answerable": false,
+      "expect": []
+    }
+  ]
+}

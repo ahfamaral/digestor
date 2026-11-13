@@ -1,0 +1,134 @@
+{
+  "sessionId": "2680cf15-24a9-4db0-801f-836d84e1977e",
+  "labelledBy": "Drafted by Claude from the transcript on 2026-11-13 (expect spans are approximate, in seconds of the video); the owner has not reviewed it yet.",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "How does Merkel say she is doing after leaving office, and why did she stop?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 650000,
+          "endMs": 780000
+        }
+      ],
+      "quote": "Ich habe freiwillig aufgehört als Bundeskanzlerin"
+    },
+    {
+      "id": "q02",
+      "question": "Por que Merkel escolheu o mar Báltico para descansar depois do mandato?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 1040000,
+          "endMs": 1130000
+        }
+      ]
+    },
+    {
+      "id": "q03",
+      "question": "Welches Shakespeare-Stück hat Merkel im Winter an der Ostsee gehört?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 840000,
+          "endMs": 880000
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "question": "Kann Merkel nach eigener Aussage Schlaf speichern?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 910000,
+          "endMs": 960000
+        }
+      ]
+    },
+    {
+      "id": "q05",
+      "question": "Why was Merkel against a NATO Membership Action Plan for Ukraine in 2008?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 2160000,
+          "endMs": 2400000
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "question": "Wie viel Zeit hat das Minsker Abkommen der Ukraine nach Merkels Worten verschafft?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 2660000,
+          "endMs": 2730000
+        }
+      ],
+      "quote": "7 Jahre nämlich, sich zu dem zu entwickeln, was sie heute ist"
+    },
+    {
+      "id": "q07",
+      "question": "By how much did the German defence budget rise under Merkel, according to her?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 3800000,
+          "endMs": 3870000
+        }
+      ],
+      "quote": "von 32 auf 50 Milliarden Euro erhöht"
+    },
+    {
+      "id": "q08",
+      "question": "Em que língua Merkel e Putin conversam?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 4660000,
+          "endMs": 4720000
+        }
+      ],
+      "quote": "Aber er redet Deutsch und ich nicht Russisch mit ihm"
+    },
+    {
+      "id": "q09",
+      "question": "Was sagt Merkel über die Permafrostböden und den Klimawandel?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 5083000,
+          "endMs": 5115000
+        }
+      ],
+      "quote": "Permafrostböden sind einer der größten CO2-Speicher"
+    },
+    {
+      "id": "q10",
+      "question": "What does Merkel say she plans to write?",
+      "answerable": true,
+      "expect": [
+        {
+          "startMs": 5620000,
+          "endMs": 5670000
+        }
+      ],
+      "quote": "ein Buch zu schreiben, um mein Leben noch mal zu ordnen"
+    },
+    {
+      "id": "q11",
+      "question": "What does Merkel say about her pension as a former chancellor?",
+      "answerable": false,
+      "expect": []
+    },
+    {
+      "id": "q12",
+      "question": "Was sagt Merkel zu einem Tempolimit auf deutschen Autobahnen?",
+      "answerable": false,
+      "expect": []
+    }
+  ]
+}

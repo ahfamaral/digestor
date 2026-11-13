@@ -85,7 +85,7 @@ export function createOpenRouterToolLLM(apiKey: string, models: Record<LLMModel,
     async step(a) {
       const chat = openRouterChat(apiKey, models.reasoning, 4096, opts);
       const model = a.tools.length > 0 ? chat.bindTools(a.tools) : chat;
-      const res = await model.invoke([new SystemMessage(a.system), ...toLangChainMessages(a.messages)]);
+      const res = await model.invoke([new SystemMessage(a.system), ...toLangChainMessages(a.messages)], { callbacks: usageCallbacks(models.reasoning) });
       return fromAIMessage(res);
     },
   };

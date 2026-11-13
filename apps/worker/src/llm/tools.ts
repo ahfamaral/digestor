@@ -5,6 +5,7 @@ import {
 } from "@langchain/core/messages";
 import type { z } from "zod";
 import { MODEL_IDS, type ClientOptions } from "./structured.js";
+import { usageCallbacks } from "./usage.js";
 
 /**
  * A tool the model may call. `schema` is sent to the model as the tool's JSON schema; the tool must still validate
@@ -68,7 +69,7 @@ export function createAnthropicToolLLM(apiKey: string, opts: ClientOptions = {})
   return {
     async step(a) {
       const model = a.tools.length > 0 ? chat.bindTools(a.tools) : chat;
-      const res = await model.invoke([new SystemMessage(a.system), ...toLangChainMessages(a.messages)]);
+      const res = await model.invoke([new SystemMessage(a.system), ...toLangChainMessages(a.messages)], { callbacks: usageCallbacks(MODEL_IDS.reasoning) });
       return fromAIMessage(res);
     },
   };
