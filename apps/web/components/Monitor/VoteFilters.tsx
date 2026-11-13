@@ -7,7 +7,7 @@ import { ExactBox } from "./ExactBox";
 import { FormSelect } from "./FormSelect";
 import { GetForm } from "./GetForm";
 import { KeptFields } from "./KeptFields";
-import { MeaningNote } from "./MeaningNote";
+import { MeaningCount, MeaningNote } from "./MeaningNote";
 import { SearchedFor } from "./SearchedFor";
 
 const VOTES = "votes";
@@ -45,13 +45,13 @@ export function votesEmpty(locale: MonitorLocale, p: DeputyParams, g: Guided): s
  * filter is set, "N of M recorded votes" (this deputy's own records only) and a way to clear them.
  */
 export function VoteFilters({
-  locale, externalId, params, today, total, all, searched, guidedAll, meaning, marked = false,
+  locale, externalId, params, today, total, all, searched, guidedAll, meaning, meaningOnly = 0,
 }: {
   locale: MonitorLocale; externalId: number; params: DeputyParams; today: string; total: number; all: number; searched: Searched | null;
   /** Votes a guidance can be compared with, overall; 0: the guidance checkbox is replaced by a line saying why. */
   guidedAll?: number;
-  /** The text box was also searched by meaning (`marked`: some rows only by meaning), or the worker didn't answer. */
-  meaning?: RecordMeaning; marked?: boolean;
+  /** How the text box was searched; `meaningOnly`: the rows only the search by meaning found (part of `total`, never counted as matches). */
+  meaning?: RecordMeaning; meaningOnly?: number;
 }) {
   const months = monthsOf(params.year, today).map((m) => ({ value: m, label: formatMonth(m, locale) }));
   const filtered = votesFiltered(params);
@@ -108,15 +108,18 @@ export function VoteFilters({
         <KeptFields params={keptBy("votes", params)} />
       </GetForm>
       {searched && <SearchedFor locale={locale} searched={searched} />}
-      <MeaningNote locale={locale} section="votes" meaning={meaning} marked={marked} />
       {filtered && (
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1 text-sm">
-          <p className="text-muted-foreground">{tm(locale, "votes.count", { n: formatCount(total, locale), total: formatCount(all, locale) })}</p>
+          <p className="text-muted-foreground">
+            {tm(locale, "votes.count", { n: formatCount(total - meaningOnly, locale), total: formatCount(all, locale) })}
+            <MeaningCount locale={locale} n={meaningOnly} />
+          </p>
           <Link href={`${deputyHref(externalId, keptBy("votes", params))}#${VOTES}`} className={link}>
             {tm(locale, "filters.clear")}
           </Link>
         </div>
       )}
+      <MeaningNote locale={locale} section="votes" meaning={meaning} words={total - meaningOnly} meaningOnly={meaningOnly} />
     </div>
   );
 }

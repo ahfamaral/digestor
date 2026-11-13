@@ -35,9 +35,10 @@ export function rrf(lists: string[][], k = 60): { key: string; score: number; in
 export const RECORD_MEANING = { top: 10, within: 0.03, min: 0.75, fuse: 100 };
 
 /**
- * A vote or bill text box's list: the meaning hits that pass (`top` best, within `within` of the best, at least `min`)
- * fused by RRF with the top `fuse` word matches, then the remaining word matches in word order. `meaningOnly`: the ids
- * only the meaning search found (marked "related by meaning").
+ * A vote or bill text box's list. Word matches always come first: the top `fuse` of them in RRF order with the meaning
+ * hits that pass the cut (`top` best, within `within` of the best, at least `min`), so a word match the meaning search
+ * also found rises, then the remaining word matches in word order. The hits only the meaning search found
+ * (`meaningOnly`, marked "close in meaning": they may not be about the topic) follow every word match, in meaning order.
  */
 export function fuseRecords(
   words: string[], meaning: { id: string; score: number }[],
@@ -47,8 +48,10 @@ export function fuseRecords(
   const floor = Math.max(o.min, o.within === undefined ? Number.NEGATIVE_INFINITY : best - o.within);
   const kept = meaning.filter((m) => m.score >= floor).slice(0, o.top).map((m) => m.id);
   const fuse = o.fuse ?? RECORD_MEANING.fuse;
-  const fused = rrf([words.slice(0, fuse), kept]).map((r) => r.key);
-  const inFused = new Set(fused);
+  const head = words.slice(0, fuse);
+  const inHead = new Set(head);
+  const fused = rrf([head, kept]).map((r) => r.key).filter((k) => inHead.has(k));
   const wordSet = new Set(words);
-  return { list: [...fused, ...words.slice(fuse).filter((w) => !inFused.has(w))], meaningOnly: kept.filter((id) => !wordSet.has(id)) };
+  const meaningOnly = kept.filter((id) => !wordSet.has(id));
+  return { list: [...fused, ...words.slice(fuse).filter((w) => !inHead.has(w)), ...meaningOnly], meaningOnly };
 }

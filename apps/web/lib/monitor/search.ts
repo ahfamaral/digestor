@@ -114,10 +114,16 @@ export async function hybridSpeeches(
 
 /** The worker's search by meaning over a deputy's own roll calls or bills (`recordSearch`); `ok: false` when it can't answer. */
 export type RecordSemantic = (kind: RecordKindParam, q: string, ids: string[]) => Promise<RecordSearchResult>;
-/** The deputy's records sent to be ranked by meaning at most (the worker's limit). */
-const MAX_RECORD_IDS = 5000;
-/** "used": fused with the search by meaning; "unavailable": the worker didn't answer (words only, quiet note); "off": exact words or no text. */
-export type RecordMeaning = "used" | "unavailable" | "off";
+/**
+ * The deputy's records sent to be ranked by meaning at most, per kind: the worker's limits (`http.ts`, sized for its
+ * 64 KB body: a roll-call id is longer than a bill id).
+ */
+const MAX_RECORD_IDS = { rollCalls: 3000, bills: 5000 } as const;
+/**
+ * "used": the word matches, then the rows only the search by meaning found; "unavailable": the worker didn't answer
+ * (word matches only, quiet note); "words": exact words (no meaning), best match first; "off": no text.
+ */
+export type RecordMeaning = "used" | "unavailable" | "words" | "off";
 export type DeputyVote = VoteRow & { byMeaning?: boolean };
 export type DeputyBill = MemberBill & { byMeaning?: boolean };
 
@@ -129,42 +135,53 @@ export async function voteMeaning(
   db: Db, memberId: number, filters: Omit<MemberVoteFilters, "q">, q: string, semantic: RecordSemantic,
 ): Promise<RecordSearchResult> {
   const ids = await memberVoteIds(db, memberId, filters);
-  return semantic("rollCalls", q, ids.slice(0, MAX_RECORD_IDS));
+  return semantic("rollCalls", q, ids.slice(0, MAX_RECORD_IDS.rollCalls));
 }
 
 /** The same for the bills text box: the deputy's bills of the year filter (every type: the counts by type cover them all). */
 export async function billMeaning(db: Db, memberId: number, a: { year?: number }, q: string, semantic: RecordSemantic): Promise<RecordSearchResult> {
   const ids = await memberBillIds(db, memberId, { year: a.year });
-  return semantic("bills", q, ids.slice(0, MAX_RECORD_IDS).map(String));
+  return semantic("bills", q, ids.slice(0, MAX_RECORD_IDS.bills).map(String));
 }
 
+const meaningState = (m: RecordSearchResult | null): RecordMeaning => (!m ? "words" : m.ok ? "used" : "unavailable");
+
 /**
- * The votes text box with the search by meaning: word matches best first fused with the closest meaning hits
- * (`fuseRecords`, Reciprocal Rank Fusion as the topic search), every other filter applied to both, paged over that list;
- * rows only the meaning search found are marked `byMeaning`. A worker that didn't answer leaves the word matches, best
- * first.
+ * The votes text box: the word matches, best first (RRF lifts the ones the search by meaning found too), then the
+ * closest votes only the meaning search found (`fuseRecords`), every other filter applied to both, paged over that list.
+ * Those rows are marked `byMeaning` and counted apart (`meaningOnly`): they may not be about the topic, so they never
+ * count as matches. `meaning` null (exact words) or a worker that didn't answer: the word matches only, best first.
  */
 export async function hybridVotes(
   db: Db, memberId: number,
-  a: { terms: string[]; phrase?: string; filters: Omit<MemberVoteFilters, "q">; meaning: RecordSearchResult; limit: number; offset: number },
-): Promise<Omit<Awaited<ReturnType<typeof listMemberVotes>>, "rows"> & { rows: DeputyVote[]; meaning: RecordMeaning }> {
+  a: { terms: string[]; phrase?: string; filters: Omit<MemberVoteFilters, "q">; meaning: RecordSearchResult | null; limit: number; offset: number },
+): Promise<Omit<Awaited<ReturnType<typeof listMemberVotes>>, "rows"> & { rows: DeputyVote[]; meaning: RecordMeaning; meaningOnly: number }> {
   const words = await memberVoteIds(db, memberId, { ...a.filters, q: a.terms, phrase: a.phrase });
-  const { list, meaningOnly } = a.meaning.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
+  const { list, meaningOnly } = a.meaning?.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
   const r = await listMemberVotes(db, memberId, { ...a.filters, ids: list, limit: a.limit, offset: a.offset });
   const only = new Set(meaningOnly);
-  return { ...r, rows: r.rows.map((v) => ({ ...v, byMeaning: only.has(v.rollCallId) })), meaning: a.meaning.ok ? "used" : "unavailable" };
+  return {
+    ...r, rows: r.rows.map((v) => ({ ...v, byMeaning: only.has(v.rollCallId) })), meaning: meaningState(a.meaning),
+    meaningOnly: r.total - words.length,
+  };
 }
 
-/** The bills text box with the search by meaning, as `hybridVotes`; the type filter and the counts by type follow the fused list. */
+/** The bills text box, as `hybridVotes`; the type filter and the counts by type cover the whole list shown. */
 export async function hybridBills(
   db: Db, memberId: number,
-  a: { terms: string[]; phrase?: string; type?: string; year?: number; meaning: RecordSearchResult; limit: number; offset: number },
-): Promise<Omit<Awaited<ReturnType<typeof listMemberBills>>, "rows"> & { rows: DeputyBill[]; meaning: RecordMeaning }> {
+  a: { terms: string[]; phrase?: string; type?: string; year?: number; meaning: RecordSearchResult | null; limit: number; offset: number },
+): Promise<Omit<Awaited<ReturnType<typeof listMemberBills>>, "rows"> & { rows: DeputyBill[]; meaning: RecordMeaning; meaningOnly: number }> {
   const words = (await memberBillIds(db, memberId, { q: a.terms, phrase: a.phrase, year: a.year })).map(String);
-  const { list, meaningOnly } = a.meaning.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
-  const r = await listMemberBills(db, memberId, { type: a.type, year: a.year, ids: list.map(Number), limit: a.limit, offset: a.offset });
-  const only = new Set(meaningOnly);
-  return { ...r, rows: r.rows.map((b) => ({ ...b, byMeaning: only.has(String(b.id)) })), meaning: a.meaning.ok ? "used" : "unavailable" };
+  const { list, meaningOnly } = a.meaning?.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
+  const filters = { type: a.type, year: a.year };
+  const [r, only] = await Promise.all([
+    listMemberBills(db, memberId, { ...filters, ids: list.map(Number), limit: a.limit, offset: a.offset }),
+    meaningOnly.length ? listMemberBills(db, memberId, { ...filters, ids: meaningOnly.map(Number), limit: 0 }) : null,
+  ]);
+  const marked = new Set(meaningOnly);
+  return {
+    ...r, rows: r.rows.map((b) => ({ ...b, byMeaning: marked.has(String(b.id)) })), meaning: meaningState(a.meaning), meaningOnly: only?.total ?? 0,
+  };
 }
 
 

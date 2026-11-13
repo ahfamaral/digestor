@@ -1,5 +1,5 @@
 {
-  "labelledBy": "Labelled on 2026-11-13 by the coding agent (Claude) reading the official texts, not an automated LLM judge (no labelling calls); owner review pending. Each query is scoped to one deputy, as the deputy page runs it: votes to Sargento Fahur (204387, 125 of the 126 roll calls of 2026), bills to Laura Carneiro (74856, 1,118 bills), Sargento Portugal (220618, 2,080) and Pedro Uczai (160604, 644). Votes: every one of the deputy's roll calls was read (the whole set, not a pool). Bills: the pooled top 10 of words / meaning / hybrid plus every bill of the deputy whose summary holds one of the topic's stems (câncer, oncol, mama…; animal, cães, maus-tratos…; arma, 10.826, porte…; trabalhador, trabalhista, jornada…) were read. Relevant = the record is about the topic itself: a ceremonial session or an honour motion is not (an awareness session on cancer is not cancer treatment), a request for urgency or for information on a relevant bill is. `terms`: the query translator's answer on 2026-11-13 (OpenRouter), frozen so the evaluation needs no paid call. Ids are the Câmara's roll-call and bill ids (stable).",
+  "labelledBy": "Labelled on 2026-11-13 by the coding agent (Claude) reading the official texts, not an automated LLM judge (no labelling calls); owner review pending. Each query is scoped to one deputy, as the deputy page runs it: votes to Sargento Fahur (204387, 125 of the 126 roll calls of 2026), bills to Laura Carneiro (74856, 1,118 bills), Sargento Portugal (220618, 2,080) and Pedro Uczai (160604, 644). Votes: every one of the deputy's roll calls was read (the whole set, not a pool). Bills: the pooled top 10 of words / meaning / hybrid plus every bill of the deputy whose summary holds one of the topic's stems (câncer, oncol, mama…; animal, cães, maus-tratos…; arma, 10.826, porte…; trabalhador, trabalhista, jornada…) were read. Relevant = the record is about the topic itself: a ceremonial session or an honour motion is not (an awareness session on cancer is not cancer treatment), a request for urgency or for information on a relevant bill is. `terms`: the query translator's answer on 2026-11-13 (OpenRouter), frozen so the evaluation needs no paid call. Ids are the Câmara's roll-call and bill ids (stable). Null queries n1 and n2 have no relevant record (checked: no 2026 roll call mentions aposentadoria, previdência, pensão or INSS; none of Pedro Uczai's 644 bills mentions space, rockets, satellites or Mars): every row they show is a false positive.",
   "queries": [
     {
       "id": "v1",
@@ -168,6 +168,34 @@
         "2600260",
         "2649499"
       ]
+    },
+    {
+      "id": "n1",
+      "kind": "rollCalls",
+      "q": "aposentadoria",
+      "lang": "pt",
+      "externalId": 204387,
+      "terms": [
+        "aposentadoria",
+        "previdência",
+        "benefício previdenciário",
+        "pensão por aposentadoria"
+      ],
+      "relevant": []
+    },
+    {
+      "id": "n2",
+      "kind": "bills",
+      "q": "space missions to Mars",
+      "lang": "en",
+      "externalId": 160604,
+      "terms": [
+        "missões espaciais a Marte",
+        "missões espaciais para Marte",
+        "exploração espacial de Marte",
+        "expedições a Marte"
+      ],
+      "relevant": []
     }
   ]
 }

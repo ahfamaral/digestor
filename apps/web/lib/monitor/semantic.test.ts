@@ -137,7 +137,7 @@ describe("recordSearch", () => {
     expect(f).toHaveBeenCalledTimes(3);
   });
 
-  it("a worker that is down gives ok: false and the speech search waits too; a 503 (that index not built yet) fails this search only", async () => {
+  it("a refused connection or a 5xx pauses the worker 30 s for the speech search too; a timeout or a 404 (index not built) fails this search only", async () => {
     const refused = vi.fn(async () => {
       throw new TypeError("fetch failed");
     });
@@ -146,10 +146,20 @@ describe("recordSearch", () => {
     expect(await semanticSearch("y", { fetch: never })).toEqual({ keys: [], ok: false });
     expect(never).not.toHaveBeenCalled();
     clearSemanticCache();
-    const missing = vi.fn(async () => new Response("{}", { status: 503 }));
-    expect(await recordSearch("bills", "x", ["1"], { fetch: missing })).toEqual({ hits: [], ok: false });
+    expect(await recordSearch("bills", "x", ["1"], { fetch: vi.fn(async () => new Response("{}", { status: 503 })) })).toEqual({ hits: [], ok: false });
+    expect(await semanticSearch("y", { fetch: never })).toEqual({ keys: [], ok: false });
+    expect(never).not.toHaveBeenCalled();
+    clearSemanticCache();
     const asked = ok([{ speechKey: "a", score: 0.9 }]);
+    expect(await recordSearch("bills", "x", ["1"], { fetch: vi.fn(async () => new Response("{}", { status: 404 })) })).toEqual({ hits: [], ok: false });
     expect(await semanticSearch("y", { fetch: asked })).toEqual({ keys: ["a"], ok: true });
+    clearSemanticCache();
+    const slow = vi.fn(
+      (_u: string, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason))),
+    );
+    expect(await recordSearch("bills", "z", ["1"], { fetch: slow as unknown as typeof fetch, timeoutMs: 20 })).toEqual({ hits: [], ok: false });
+    expect(await semanticSearch("w", { fetch: asked })).toEqual({ keys: ["a"], ok: true });
     clearSemanticCache();
     const garbage = vi.fn(async () => new Response(JSON.stringify({ hits: [{ speechKey: "a", score: 1 }] }), { status: 200 }));
     expect(await recordSearch("bills", "x", ["1"], { fetch: garbage })).toEqual({ hits: [], ok: false });

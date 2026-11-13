@@ -229,6 +229,8 @@ describe("a deputy's vote and bill text boxes with search by meaning", () => {
     expect(r.meaning).toBe("used");
     expect(r.total).toBe(3); // 3-1 is too far from the best hit
     expect(r.rows.map((v) => [v.rollCallId, v.byMeaning])).toEqual([["1-1", false], ["2-1", true], ["4-1", true]]);
+    // the rows only meaning found are counted apart (never part of "N of M recorded votes")
+    expect(r.meaningOnly).toBe(2);
 
     // the other filters narrow the ranked votes too
     const april = await voteMeaning(db, a, { from: "2026-04" }, "pensions", semantic);
@@ -246,6 +248,22 @@ describe("a deputy's vote and bill text boxes with search by meaning", () => {
     expect(r.meaning).toBe("unavailable");
     expect(r.rows.every((v) => !v.byMeaning)).toBe(true);
     expect(r.rows.map((v) => v.rollCallId).sort()).toEqual(["1-1", "2-1"]);
+    expect(r.meaningOnly).toBe(0);
+  });
+
+  it("votes: exact words (no meaning) keep the word rank, best first, and say so", async () => {
+    const a = await setup();
+    await upsertRollCalls(db, [{
+      id: "1-1", date: "2026-03-01", registeredAt: null, description: "Aprovado o projeto da aposentadoria.", yes: 1, no: 1, other: 0, billId: null,
+      billLabel: "PL 1/2026", billSummary: "Dispõe sobre a aposentadoria rural e a aposentadoria especial",
+    }]);
+    await upsertRollCalls(db, [{
+      id: "4-1", date: "2026-04-01", registeredAt: null, description: "Aprovado.", yes: 1, no: 1, other: 0, billId: null, billLabel: "PL 1/2026",
+      billSummary: "Benefício para pescadores e aposentadoria",
+    }]);
+    const r = await hybridVotes(db, a, { terms: ["aposentadoria"], phrase: "aposentadoria", filters: {}, meaning: null, ...page });
+    expect(r).toMatchObject({ meaning: "words", meaningOnly: 0, total: 2 });
+    expect(r.rows.map((v) => v.rollCallId)).toEqual(["1-1", "4-1"]); // best match first, not newest
   });
 
   it("bills: fused the same way; the type filter and the counts by type follow the fused list", async () => {
@@ -256,7 +274,11 @@ describe("a deputy's vote and bill text boxes with search by meaning", () => {
     const r = await hybridBills(db, a, { terms: ["aposentadoria"], meaning, ...page });
     expect(r).toMatchObject({ meaning: "used", total: 2, all: 3, byType: [{ type: "PL", n: 1 }, { type: "REQ", n: 1 }] });
     expect(r.rows.map((b) => [b.id, b.byMeaning])).toEqual([[10, false], [11, true]]);
-    expect((await hybridBills(db, a, { terms: ["aposentadoria"], type: "REQ", meaning, ...page })).rows.map((b) => b.id)).toEqual([11]);
+    expect(r.meaningOnly).toBe(1);
+    const req = await hybridBills(db, a, { terms: ["aposentadoria"], type: "REQ", meaning, ...page });
+    expect(req).toMatchObject({ total: 1, meaningOnly: 1 });
+    expect(req.rows.map((b) => b.id)).toEqual([11]);
+    expect(await hybridBills(db, a, { terms: ["aposentadoria"], type: "PL", meaning, ...page })).toMatchObject({ total: 1, meaningOnly: 0 });
     const down = await hybridBills(db, a, { terms: ["aposentadoria"], meaning: { ok: false, hits: [] }, ...page });
     expect(down).toMatchObject({ meaning: "unavailable", total: 1 });
   });

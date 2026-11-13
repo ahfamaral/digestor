@@ -68,8 +68,8 @@ const recordCache = new Map<string, { hits: RecordHit[]; at: number }>();
 /**
  * A deputy's own roll calls or bills (`ids`, already filtered) ranked by meaning by the worker (`POST /monitor/search`
  * with `kind`), best first, with the cosine score. Same contract as `semanticSearch`: 3 s, cached an hour per kind,
- * query and id list, `ok: false` on any failure (never a throw); only a worker that didn't answer is left alone for 30 s
- * (shared with the speech search).
+ * query and id list, `ok: false` on any failure (never a throw); only a refused connection or a 5xx leaves the worker
+ * alone for 30 s (shared with the speech search), never a timeout or a 404.
  */
 export async function recordSearch(
   kind: RecordKindParam, q: string, ids: string[], o: { url?: string; fetch?: typeof fetch; timeoutMs?: number } = {},
@@ -95,9 +95,10 @@ export async function recordSearch(
     recordCache.set(key, { hits, at: Date.now() });
     return { hits, ok: true };
   } catch (err) {
-    // A worker that answered (a 503: this kind's index not built yet, e.g. right after an update) fails this search
-    // only; a worker that didn't (refused, timed out) is left alone for 30 s, the speech search too.
-    if (!(err instanceof WorkerAnswered) && !(err instanceof z.ZodError)) downUntil = Date.now() + RETRY_AFTER_MS;
+    // Only a worker that is down (connection refused, or a 5xx: Chroma down) stops the next searches for 30 s, the
+    // speech search too. A slow answer (a cold index, many ids), a 404 (this index not built yet, right after an update)
+    // or an odd body fails this search only.
+    if (err instanceof TypeError || (err instanceof WorkerAnswered && err.status >= 500)) downUntil = Date.now() + RETRY_AFTER_MS;
     console.warn(`monitor ${kind} search by meaning:`, err instanceof Error ? err.message : err);
     return { hits: [], ok: false };
   }

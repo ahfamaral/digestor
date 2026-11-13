@@ -106,21 +106,20 @@ async function DeputyData({
         : listMemberSpeeches(db, member.id, { ...paging, ...filters });
   const votePage = { limit: VOTE_PAGE, offset: p.vp * VOTE_PAGE };
   const votesOf = async () =>
-    votesSearched && votesMeaning
+    votesSearched
       ? hybridVotes(db, member.id, { terms: queryTerms(votesSearched), phrase: typedPhrase(votesSearched.q), filters: voteFilters, meaning: votesMeaning, ...votePage })
-      : { ...(await listMemberVotes(db, member.id, { ...votePage, ...voteFilters, q: votesSearched ? queryTerms(votesSearched) : undefined })), meaning: "off" as const };
+      : { ...(await listMemberVotes(db, member.id, { ...votePage, ...voteFilters })), meaning: "off" as const, meaningOnly: 0 };
   const billPage = { limit: BILL_PAGE, offset: p.bp * BILL_PAGE };
   const billsOf = async () =>
-    billsSearched && billsMeaning
+    billsSearched
       ? hybridBills(db, member.id, {
           terms: queryTerms(billsSearched), phrase: typedPhrase(billsSearched.q), type: p.btype ?? undefined, year: p.byear ?? undefined, meaning: billsMeaning,
           ...billPage,
         })
       : {
-          ...(await listMemberBills(db, member.id, {
-            type: p.btype ?? undefined, q: billsSearched ? queryTerms(billsSearched) : undefined, year: p.byear ?? undefined, ...billPage,
-          })),
+          ...(await listMemberBills(db, member.id, { type: p.btype ?? undefined, year: p.byear ?? undefined, ...billPage })),
           meaning: "off" as const,
+          meaningOnly: 0,
         };
   const [speeches, votes, presence, bills, facets, words] = await Promise.all([
     speechesOf(),

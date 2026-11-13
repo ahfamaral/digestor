@@ -108,6 +108,8 @@ describe("worker HTTP", () => {
       { q: "x", kind: "bills", ids: ["PL 1/2026"] },
       { q: "x", kind: "rollCalls", ids: ["2512345"] },
       { q: "x", kind: "bills", ids: Array.from({ length: 5001 }, (_, i) => String(i + 1)) },
+      // roll-call ids are longer: at most 3,000 fit the 64 KB body
+      { q: "x", kind: "rollCalls", ids: Array.from({ length: 3001 }, (_, i) => `${i + 1}-1`) },
       { q: "", kind: "bills", ids: ["1"] },
     ]) {
       const res = await post("/monitor/search", body);
@@ -115,6 +117,21 @@ describe("worker HTTP", () => {
       expect(await res.json()).toHaveProperty("error");
     }
     expect(deps.searchRecords).not.toHaveBeenCalled();
+  });
+
+  it("record search: 3,000 roll-call ids fit the body; an index not built yet answers 404 (not 503: the worker is up)", async () => {
+    const { deps, post } = await start({
+      searchRecords: vi.fn(async (kind: string) => {
+        if (kind === "bill") throw new MeaningIndexMissingError();
+        return [];
+      }),
+    });
+    const ids = Array.from({ length: 3000 }, (_, i) => `${2_600_000 + i}-${100 + (i % 900)}`);
+    expect((await post("/monitor/search", { q: "x", kind: "rollCalls", ids })).status).toBe(200);
+    expect(deps.searchRecords).toHaveBeenCalledTimes(1);
+    const res = await post("/monitor/search", { q: "x", kind: "bills", ids: ["1"] });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toHaveProperty("error");
   });
 
   it("413 on a body over 64 KB", async () => {

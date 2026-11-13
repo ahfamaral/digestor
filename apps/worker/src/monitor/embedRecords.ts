@@ -99,15 +99,18 @@ export async function searchRecordMeaning(d: RecordDeps, kind: RecordKind, q: st
 
 /**
  * Loads the two record collections into Chroma at startup, so a deputy page's first vote or bill search after a restart
- * doesn't wait for it (dev: a cold first bill search took over the web's 3 s; warm, 0.15 to 1.5 s). Never throws.
+ * doesn't wait for it: a real read of stored vectors (as a search does) and one nearest-neighbour query (the HNSW index).
+ * A `peek` alone was not enough (a cold first search still took 3.5 s, over the web's 3 s). Never throws.
  */
 export async function warmRecordIndexes(d: RecordDeps): Promise<void> {
   for (const kind of ["roll_call", "bill"] as const) {
     try {
       const col = await d.chroma.getCollection({ name: nameOf(d, kind) });
-      await col.peek({ limit: 1 });
+      const got = await col.get({ limit: GET_BATCH, include: ["embeddings"] });
+      const v = got.embeddings[0];
+      if (v) await col.query({ queryEmbeddings: [Array.from(v)], nResults: 1, include: [] });
     } catch {
-      // not built yet: the search answers 503 and the page shows word matches
+      // not built yet: the search answers 404 and the page shows word matches
     }
   }
 }

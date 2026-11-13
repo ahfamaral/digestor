@@ -611,38 +611,52 @@ describe("monitor components", () => {
     expect(none).toContain("Nenhuma proposição ou requerimento corresponde a estes filtros.");
   });
 
-  it("vote and bill text boxes searched by meaning: rows found only by meaning are marked, a line says why; a worker down says so", () => {
+  it("vote and bill text boxes: rows only meaning found are marked as maybe unrelated, follow the matches and are counted apart", () => {
     const vote = { rollCallId: "1-1", date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: "PL 1/2026", billSummary: "Previdência", vote: "Sim", guidance: null, guidanceFrom: null };
     const params = parseDeputy({ vq: "pensions", bq: "pensions" });
-    const view = (meaning: "used" | "unavailable" | "off", marked: boolean, locale: "en" | "pt-BR" = "en") =>
-      renderToStaticMarkup(
+    const view = (meaning: "used" | "unavailable" | "words" | "off", meaningOnly: number, words = 1, locale: "en" | "pt-BR" = "en") => {
+      const rows = Array.from({ length: words + meaningOnly }, (_, i) => ({ ...vote, rollCallId: `${i}-1`, byMeaning: i >= words }));
+      return renderToStaticMarkup(
         <DeputyView
           locale={locale} member={member} params={params} searched={null} speeches={{ total: 0, rows: [] }}
-          votes={{ total: 2, all: 125, meaning, rows: [{ ...vote, byMeaning: false }, { ...vote, rollCallId: "2-1", byMeaning: marked }] }}
+          votes={{ total: rows.length, all: 125, meaning, meaningOnly, rows }}
           {...emptyWorkspace}
           bills={{
-            total: 2, all: 9, byType: [{ type: "PL", n: 2 }], meaning,
-            rows: [10, 11].map((id) => ({ id, type: "PL", number: id, year: 2026, summary: "Aposentadoria", presentedAt: "2026-03-01T10:00", firstAuthor: true, byMeaning: marked && id === 11 })),
+            total: rows.length, all: 9, byType: [{ type: "PL", n: rows.length }], meaning, meaningOnly,
+            rows: rows.map((r, i) => ({ id: 10 + i, type: "PL", number: i, year: 2026, summary: "Aposentadoria", presentedAt: "2026-03-01T10:00", firstAuthor: true, byMeaning: r.byMeaning })),
           }}
         />,
       );
-    const used = view("used", true);
+    };
+    const used = view("used", 2);
     const votes = used.slice(used.indexOf('id="votes"'));
     const bills = used.slice(used.indexOf('id="bills"'), used.indexOf('id="votes"'));
-    expect(votes.match(/Related by meaning</g)).toHaveLength(1);
-    expect(votes).toContain("Also searched by meaning: votes marked “related by meaning” are about the topic without using these words. Closest matches first.");
-    expect(bills.match(/Related by meaning</g)).toHaveLength(1);
-    expect(bills).toContain("Also searched by meaning: bills marked “related by meaning”");
-    // used, nothing marked: only the order is said
-    const plain = view("used", false);
-    expect(plain).not.toContain("Also searched by meaning");
-    expect(plain).toContain("Closest matches first.");
-    const down = view("unavailable", false, "pt-BR");
+    expect(votes.match(/Close in meaning</g)).toHaveLength(2);
+    expect(votes).toContain("1 of 125 recorded votes · plus 2 close in meaning");
+    expect(votes).toContain("After the votes with your words: votes marked “close in meaning” may not be about your topic; check the text.");
+    expect(bills.match(/Close in meaning</g)).toHaveLength(2);
+    expect(bills).toContain("1 of 9 bills and requests · plus 2 close in meaning");
+    expect(bills).toContain("After the bills with your words: bills marked “close in meaning” may not be about your topic; check the text.");
+    // the matches come before the rows close in meaning
+    expect(votes.indexOf("1 of 125")).toBeLessThan(votes.indexOf("After the votes"));
+    // no word match at all
+    const none = view("used", 3, 0);
+    expect(none).toContain("0 of 125 recorded votes · plus 3 close in meaning");
+    expect(none).toContain("No vote uses these words. Closest by meaning (may be unrelated):");
+    expect(none).toContain("No bill uses these words. Closest by meaning (may be unrelated):");
+    expect(view("used", 3, 0, "pt-BR")).toContain("Nenhuma votação usa estas palavras. As mais próximas pelo sentido (podem não ter relação):");
+    // nothing only by meaning, or exact words: the order is said
+    expect(view("used", 0)).toContain("Closest matches first.");
+    const exact = view("words", 0);
+    expect(exact).toContain("Closest matches first.");
+    expect(exact).not.toContain("Close in meaning");
+    const down = view("unavailable", 0, 1, "pt-BR");
     expect(down).toContain("A busca pelo sentido não está disponível agora; mostramos as votações com as suas palavras, primeiro as mais próximas.");
     expect(down).toContain("A busca pelo sentido não está disponível agora; mostramos as proposições com as suas palavras, primeiro as mais próximas.");
-    const exact = view("off", false);
-    expect(exact).not.toContain("by meaning");
-    expect(exact).not.toContain("Closest matches first.");
+    expect(view("off", 0)).not.toContain("Closest matches first.");
+    // never "related" or "about the topic" for these rows
+    expect(used).not.toContain("Related by meaning");
+    expect(used).not.toContain("are about the topic");
   });
 
   it("a bloc guidance names the bloc as the Câmara lists it", () => {

@@ -40,7 +40,7 @@ export type DeputyWorkspace = {
   /** `all`: every bill the deputy signed (the filters aside); `years`: the years presented; `searched`: what `bq` searched. */
   bills: {
     total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: (MemberBill & { byMeaning?: boolean })[];
-    searched?: Searched | null; meaning?: RecordMeaning;
+    searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number;
   };
   phases: string[]; today: string;
   /** "Words used more than the chamber" (`distinctiveWords`); null while searching. */
@@ -59,7 +59,7 @@ export function DeputyView({
   locale: MonitorLocale; member: MemberRow; params: DeputyParams; searched: Searched | null; searching?: boolean;
   speeches: { total: number; rows: (SpeechRow | SpeechHit)[] };
   /** `total`: the votes the filters keep; `all`: every recorded vote of the deputy; `searched`: what `vq` searched. */
-  votes: { total: number; all?: number; rows: (Vote & { byMeaning?: boolean })[]; searched?: Searched | null; meaning?: RecordMeaning } & Guided;
+  votes: { total: number; all?: number; rows: (Vote & { byMeaning?: boolean })[]; searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number } & Guided;
 }) {
   const id = member.externalId;
   const mentions = params.rel === "mentions";
@@ -158,7 +158,7 @@ export function DeputyView({
                 allVotes > 0 && (
                   <VoteFilters
                     locale={locale} externalId={id} params={params} today={today} total={votes.total} all={allVotes} searched={votes.searched ?? null}
-                    guidedAll={votes.guidedAll} meaning={votes.meaning} marked={votes.rows.some((v) => v.byMeaning)}
+                    guidedAll={votes.guidedAll} meaning={votes.meaning} meaningOnly={votes.meaningOnly}
                   />
                 )
               }

@@ -6,6 +6,9 @@
  *
  *   docker compose exec worker pnpm --filter @digestor/worker exec tsx scripts/eval-monitor-records.ts [golden.json] [--pool out.json] [--sweep]
  *
+ * A query with no relevant record (a null query) is left out of the averages; its false positives are reported instead:
+ * the rows the page would show in its first 10, word matches and rows only meaning found apart.
+ *
  * `--pool out.json` writes, per query, the union of the three methods' top 10 with each record's text and meaning
  * score, for judging relevance by reading; `--sweep` prints hybrid recall@10 / MRR for other meaning cuts (top, floor).
  */
@@ -57,6 +60,7 @@ async function texts(kind: "rollCalls" | "bills", ids: string[]): Promise<Map<st
 }
 
 const rows: Row[] = [];
+const nulls: { id: string; kind: string; q: string; words: number; meaning: number }[] = [];
 const pool: unknown[] = [];
 const perQuery: { g: Golden["queries"][number]; words: string[]; meaning: { id: string; score: number }[] }[] = [];
 try {
@@ -79,7 +83,11 @@ try {
       const top = lists[m].slice(0, TOP);
       row[m] = { recall: recall(top, rel), rr: rr(top, rel) };
     }
-    rows.push(row);
+    if (rel.size === 0) {
+      const { list, meaningOnly } = fuseRecords(words, meaning);
+      const top = list.slice(0, TOP);
+      nulls.push({ id: g.id, kind: g.kind, q: g.q, words: top.filter((k) => !meaningOnly.includes(k)).length, meaning: top.filter((k) => meaningOnly.includes(k)).length });
+    } else rows.push(row);
     if (poolFile) {
       const ids = [...new Set(methods.flatMap((m) => lists[m].slice(0, TOP)))];
       const t = await texts(g.kind, ids);
@@ -105,27 +113,37 @@ try {
   for (const [name, rs] of [["all", rows], ["votes", rows.filter((r) => r.kind === "rollCalls")], ["bills", rows.filter((r) => r.kind === "bills")]] as const) {
     console.log(`| ${name} | ${rs.length} | ${methods.map((m) => fmt(avg(rs, m, "recall"))).join(" | ")} | ${methods.map((m) => fmt(avg(rs, m, "rr"))).join(" | ")} |`);
   }
+  if (nulls.length) {
+    console.log("\nNull queries (no relevant record): rows shown in the first 10, all false positives");
+    console.log("| id | kind | query | word matches | close in meaning |");
+    console.log("|---|---|---|---|---|");
+    for (const n of nulls) console.log(`| ${n.id} | ${n.kind} | ${n.q} | ${n.words} | ${n.meaning} |`);
+  }
   if (sweep) {
     // precision@10: relevant rows among the first 10 shown (or fewer when the list is shorter); the cut trades it for recall
     const prec = (top: string[], rel: Set<string>) => (top.length ? top.filter((k) => rel.has(k)).length / top.length : 0);
-    console.log("\n| cut | hybrid recall@10 | hybrid precision@10 | hybrid MRR | meaning-only rows in the top 10 (avg) |");
-    console.log("|---|---|---|---|---|");
+    console.log("\n| cut | hybrid recall@10 | hybrid precision@10 | hybrid MRR | meaning-only rows in the top 10 (avg) | null-query false positives |");
+    console.log("|---|---|---|---|---|---|");
     const cuts: { label: string; keep: (m: { id: string; score: number }[]) => { id: string; score: number }[] }[] = [];
     for (const top of [5, 10]) for (const min of [0, 0.8, 0.82, 0.84]) cuts.push({ label: `top ${top}, floor ${min}`, keep: (m) => m.filter((h) => h.score >= min).slice(0, top) });
     for (const within of [0.02, 0.03, 0.04]) cuts.push({ label: `top 10, within ${within} of the best`, keep: (m) => m.filter((h) => h.score >= (m[0]?.score ?? 0) - within).slice(0, 10) });
     for (const c of cuts) {
-      let rec = 0, pr = 0, mrr = 0, extra = 0;
+      let rec = 0, pr = 0, mrr = 0, extra = 0, fp = 0;
       for (const { g, words, meaning } of perQuery) {
         const { list, meaningOnly } = fuseRecords(words, c.keep(meaning), { top: 1000, min: -1 });
         const rel = new Set(g.relevant);
+        if (rel.size === 0) {
+          fp += list.slice(0, TOP).length;
+          continue;
+        }
         const top10 = list.slice(0, TOP);
         rec += recall(top10, rel);
         pr += prec(top10, rel);
         mrr += rr(top10, rel);
         extra += top10.filter((id) => meaningOnly.includes(id)).length;
       }
-      const n = perQuery.length || 1;
-      console.log(`| ${c.label} | ${fmt(rec / n)} | ${fmt(pr / n)} | ${fmt(mrr / n)} | ${fmt(extra / n)} |`);
+      const n = perQuery.filter((q) => q.g.relevant.length > 0).length || 1;
+      console.log(`| ${c.label} | ${fmt(rec / n)} | ${fmt(pr / n)} | ${fmt(mrr / n)} | ${fmt(extra / n)} | ${fp} |`);
     }
   }
 } finally {

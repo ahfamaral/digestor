@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { RecordKind } from "@digestor/core/server";
-import type { MeaningHit, Passage } from "./monitor/embedSpeeches.js";
+import { MeaningIndexMissingError, type MeaningHit, type Passage } from "./monitor/embedSpeeches.js";
 import type { RecordHit } from "./monitor/embedRecords.js";
 
 /**
@@ -24,10 +24,15 @@ const MAX_K = 200;
 const MAX_KEYS = 50;
 const DEFAULT_PER_SPEECH = 3;
 const MAX_PER_SPEECH = 10;
-/** Record ids per search: a deputy's votes or bills (the most prolific signed about 2,800 bills in 2026); fits 64 KB. */
-const MAX_IDS = 5000;
-/** `kind` → the record kind and the shape of its ids (roll call "2643915-8", bill "2512345"). */
-const RECORD_KINDS = { rollCalls: { kind: "roll_call", id: /^\d{1,12}-\d{1,6}$/ }, bills: { kind: "bill", id: /^\d{1,12}$/ } } as const;
+/**
+ * `kind` → the record kind, the shape of its ids and how many one search takes: a deputy's votes or bills after the
+ * other filters (the most prolific signed about 2,800 bills in 2026). Sized for the 64 KB body: a bill id ("2512345")
+ * costs about 10 bytes in JSON, a roll-call id ("2500080-320") up to 14, so 5,000 and 3,000.
+ */
+const RECORD_KINDS = {
+  rollCalls: { kind: "roll_call", id: /^\d{1,12}-\d{1,6}$/, max: 3000, noun: "roll call" },
+  bills: { kind: "bill", id: /^\d{1,12}$/, max: 5000, noun: "bill" },
+} as const;
 const UNAVAILABLE = "Search by meaning isn't available right now.";
 
 class HttpError extends Error {
@@ -82,10 +87,16 @@ export function createHttpHandler(deps: HttpDeps): (req: IncomingMessage, res: S
       if (body.kind !== "rollCalls" && body.kind !== "bills") throw new HttpError(400, "kind must be speeches, rollCalls or bills.");
       const spec = RECORD_KINDS[body.kind];
       const ids = body.ids;
-      if (!Array.isArray(ids) || ids.length > MAX_IDS || !ids.every((id) => typeof id === "string" && spec.id.test(id))) {
-        throw new HttpError(400, `ids must be a list of at most ${MAX_IDS} ${body.kind === "bills" ? "bill" : "roll call"} ids.`);
+      if (!Array.isArray(ids) || ids.length > spec.max || !ids.every((id) => typeof id === "string" && spec.id.test(id))) {
+        throw new HttpError(400, `ids must be a list of at most ${spec.max} ${spec.noun} ids.`);
       }
-      return send(res, 200, { hits: await deps.searchRecords(spec.kind, q, ids as string[], k) });
+      try {
+        return send(res, 200, { hits: await deps.searchRecords(spec.kind, q, ids as string[], k) });
+      } catch (err) {
+        // the worker is up, only this index isn't built yet (right after an update): the web fails this search only
+        if (err instanceof MeaningIndexMissingError) throw new HttpError(404, "This search by meaning isn't built yet.");
+        throw err;
+      }
     }
     if (req.method === "POST" && path === "/monitor/passages") {
       const body = await readJson(req);

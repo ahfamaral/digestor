@@ -10,7 +10,7 @@ import { ExternalLink } from "./ExternalLink";
 import { FormSelect } from "./FormSelect";
 import { GetForm } from "./GetForm";
 import { KeptFields } from "./KeptFields";
-import { ByMeaning, MeaningNote } from "./MeaningNote";
+import { ByMeaning, MeaningCount, MeaningNote } from "./MeaningNote";
 import { SearchedFor } from "./SearchedFor";
 import { Pager } from "./Pager";
 import { Section } from "./Section";
@@ -39,13 +39,14 @@ export function AuthoredBills({
   locale: MonitorLocale; externalId: number; params: DeputyParams;
   bills: {
     total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: (MemberBill & { byMeaning?: boolean })[];
-    searched?: Searched | null; meaning?: RecordMeaning;
+    searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number;
   };
 }) {
   const all = bills.byType.reduce((s, r) => s + r.n, 0);
   const signed = bills.all ?? all;
   const years = bills.years ?? [];
   const filtered = !!(params.bq || params.byear || params.btype);
+  const meaningOnly = bills.meaningOnly ?? 0;
   const form = signed > 0 && (
     <div className="grid gap-2">
       <GetForm action={`${deputyHref(externalId)}#${BILLS}`} className="grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
@@ -79,15 +80,18 @@ export function AuthoredBills({
         <KeptFields params={keptBy("bills", params)} />
       </GetForm>
       {bills.searched && <SearchedFor locale={locale} searched={bills.searched} />}
-      <MeaningNote locale={locale} section="bills" meaning={bills.meaning} marked={bills.rows.some((b) => b.byMeaning)} />
       {filtered && (
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1 text-sm">
-          <p className="text-muted-foreground">{tm(locale, "bills.count", { n: formatCount(bills.total, locale), total: formatCount(signed, locale) })}</p>
+          <p className="text-muted-foreground">
+            {tm(locale, "bills.count", { n: formatCount(bills.total - meaningOnly, locale), total: formatCount(signed, locale) })}
+            <MeaningCount locale={locale} n={meaningOnly} />
+          </p>
           <Link href={`${deputyHref(externalId, { ...keptBy("bills", params), btype: null })}#${BILLS}`} className={link}>
             {tm(locale, "filters.clear")}
           </Link>
         </div>
       )}
+      <MeaningNote locale={locale} section="bills" meaning={bills.meaning} words={bills.total - meaningOnly} meaningOnly={meaningOnly} />
     </div>
   );
   const filter = (type: string | null, text: React.ReactNode) => (
