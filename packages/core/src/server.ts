@@ -14,6 +14,7 @@ export * from "./db/monitor.ts";
 export * from "./db/monitorRecord.ts";
 export * from "./db/monitorVideo.ts";
 export * from "./db/monitorWords.ts";
+export * from "./db/monitorEmbeddings.ts";
 export { runMigrations } from "./db/migrate.ts";
 export {
   sessions, transcripts, contextCards, analysisVersions, topics, moments, momentHighlights, briefings, translations,

@@ -68,3 +68,18 @@ export function isWrittenOnly(text: string): boolean {
   const head = text.slice(0, 400).toUpperCase();
   return head.includes("SEM REGISTRO TAQUIGR") || /^\s*DISCURSO NA ÍNTEGRA ENCAMINHAD/.test(head);
 }
+
+/** The typed words, ranked first when they appear together (`phrase` of the speech searches); one word needs no boost. */
+export const typedPhrase = (q: string): string | undefined => {
+  const words = q.replace(/["()]/g, " ").trim();
+  return /\s/.test(words) ? words : undefined;
+};
+
+/**
+ * Search terms as full-text queries: what the person typed (`q`) keeps its search syntax (quotes, OR, -word); a
+ * translated multi-word term is a phrase, so "violência contra a mulher" doesn't match those words scattered over a speech.
+ */
+export function phraseTerms(q: string, terms: string[]): string[] {
+  const typed = normName(q);
+  return terms.map((t) => (normName(t) === typed || !/\s/.test(t.trim()) ? t : `"${t.replace(/"/g, "")}"`));
+}

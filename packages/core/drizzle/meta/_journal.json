@@ -211,6 +211,13 @@
       "when": 1794594951412,
       "tag": "0029_library_ask_question",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794595130110,
+      "tag": "0030_monitor_embeddings",
+      "breakpoints": true
     }
   ]
 }

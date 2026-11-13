@@ -159,9 +159,9 @@ describe("monitor components", () => {
     expect(html).not.toContain("Not in office now");
   });
 
-  const searched = { q: "feminicídio", terms: ["feminicídio"], translatedFrom: null, notice: null, exact: false };
+  const searched = { q: "feminicídio", terms: ["feminicídio"], translatedFrom: null, notice: null, exact: false, meaning: "off" as const };
   const hit = {
-    id: 7, startsAt: "2026-04-08T11:28", phase: "Comissão Geral", kind: null, summary: "RESUMO OFICIAL", text: "texto",
+    id: 7, speechKey: "204407:2026-04-08T11:28:abc", startsAt: "2026-04-08T11:28", phase: "Comissão Geral", kind: null, summary: "RESUMO OFICIAL", text: "texto",
     urlText: null, textFile: false, video: null, member: { externalId: 204407, name: "Fernanda Melchionna", party: "PSOL", uf: "RS" }, snippet: "o \u0001feminicídio\u0002 no RS", partyThen: "PSOL", ufThen: "RS",
   };
 
@@ -338,6 +338,25 @@ describe("monitor components", () => {
     const same = renderToStaticMarkup(<SpeechItem locale="en" speech={hit} showMember />);
     expect(same).toContain("PSOL-RS");
     expect(same).not.toContain("now ");
+  });
+
+  it("search by meaning: rows found only by meaning are marked, with a quiet line saying why; a worker down says so", () => {
+    const params = landing({ q: "preço da comida" });
+    const used = renderToStaticMarkup(
+      <LandingView locale="en" params={params} facets={facets}
+        result={{ ...searched, meaning: "used", rollCalls: null, speeches: { total: 2, rows: [{ ...hit, byMeaning: false }, { ...hit, id: 8, byMeaning: true }] } }} />,
+    );
+    expect(used.match(/Related by meaning</g)).toHaveLength(1);
+    expect(used).toContain("Also searched by meaning");
+    const noneMarked = renderToStaticMarkup(
+      <LandingView locale="en" params={params} facets={facets} result={{ ...searched, meaning: "used", rollCalls: null, speeches: { total: 1, rows: [{ ...hit, byMeaning: false }] } }} />,
+    );
+    expect(noneMarked).not.toContain("Also searched by meaning");
+    const down = renderToStaticMarkup(
+      <LandingView locale="pt-BR" params={params} facets={facets} result={{ ...searched, meaning: "unavailable", rollCalls: null, speeches: { total: 1, rows: [hit] } }} />,
+    );
+    expect(down).toContain("A busca pelo sentido não está disponível agora");
+    expect(down).not.toContain("Relacionado pelo sentido");
   });
 
   it("a roll call opens the roll-call page; the official bill link stays", () => {

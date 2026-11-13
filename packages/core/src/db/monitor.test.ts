@@ -6,7 +6,7 @@ import { parlMembers, parlSpeeches, parlVotes } from "./schema.ts";
 import { fillSpeechParties, replaceHistory, replaceOrientations } from "./monitorRecord.ts";
 import {
   countSpeechesInWindow, speechFacets, getMember, listMembers, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
-  searchMembers, searchRollCalls, searchSpeeches, setInOffice, upsertMembers, upsertRollCalls, type MemberInput, type RollCallInput,
+  searchMembers, searchRollCalls, searchSpeeches, setInOffice, speechesByKeys, speechKeysByWords, filterSpeechKeys, upsertMembers, upsertRollCalls, type MemberInput, type RollCallInput,
   type SpeechInput,
 } from "./monitor.ts";
 
@@ -421,6 +421,64 @@ describe("search filters", () => {
     for (const name of ["Paulão", "Dr. Zacharias Calil", "D'Ávila", "Coronel Chrisóstomo-Silva", "!!!", "o"]) {
       await expect(searchSpeeches(db, { terms: [], mentionOf: { memberId: f, name } })).resolves.toBeTruthy();
     }
+  });
+
+  it("speechKeysByWords: the word search's ranked keys and total, filtered", async () => {
+    await setup();
+    const all = await searchSpeeches(db, { terms, limit: 10 });
+    const ranked = await speechKeysByWords(db, { terms, limit: 10 });
+    expect(ranked.total).toBe(4);
+    expect(ranked.keys).toEqual(all.rows.map((r) => r.speechKey));
+    expect((await speechKeysByWords(db, { terms, limit: 2 })).keys).toHaveLength(2);
+    expect((await speechKeysByWords(db, { terms, filters: { uf: "RS" } })).total).toBe(1);
+    expect(await speechKeysByWords(db, { terms: ["e"] })).toEqual({ total: 0, keys: [] });
+  });
+
+  it("speechesByKeys: rows in the given order, filters applied, unknown keys skipped", async () => {
+    await setup();
+    const { rows } = await searchSpeeches(db, { terms, sort: "new", limit: 10 });
+    const keys = rows.map((r) => r.speechKey!).reverse();
+    const got = await speechesByKeys(db, [...keys, "nope:2026-01-01T00:00:00:abc"]);
+    expect(got.map((r) => r.speechKey)).toEqual(keys);
+    expect(got[0]).toMatchObject({ member: { name: rows.at(-1)!.member.name }, startsAt: rows.at(-1)!.startsAt });
+    expect(names({ rows: await speechesByKeys(db, keys, { party: "UNIÃO" }) })).toEqual(["Alfredo Gaspar@2026-04-29"]);
+    expect((await speechesByKeys(db, keys, { inOffice: true })).length).toBe(3);
+    expect(await speechesByKeys(db, [])).toEqual([]);
+    // highlight: the terms marked in the snippet; without them the snippet is the text's start
+    const [h] = await speechesByKeys(db, [keys[0]!], {}, { terms });
+    expect(h!.snippet).toContain("\u0001");
+    const [plain] = await speechesByKeys(db, [keys[0]!]);
+    expect(plain!.snippet).not.toContain("\u0001");
+    expect(plain!.snippet).toBe(plain!.text.split(/\s+/).slice(0, 30).join(" "));
+  });
+
+  it("speechesByKeys: a row without the words opens with its summary, else its text without the header", async () => {
+    const ids = await upsertMembers(db, [member(1, "Fernando Máximo")]);
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-02-01", "2026-11-11", [
+      speech("2026-03-01T10:00", "O SR. FERNANDO MÁXIMO (UNIÃO - RO. Sem revisão do orador.) - Sr. Presidente, o preço do arroz subiu."),
+      speech("2026-03-02T10:00", "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO FERNANDO MÁXIMO (SEM REGISTRO TAQUIGRÁFICO). O Sr. FERNANDO MÁXIMO (UNIÃO-RO) pronuncia o seguinte discurso: Senhor Presidente, a comida está cara."),
+      speech("2026-03-03T10:00", "Texto longo.", { summary: "O Deputado criticou a alta dos alimentos." }),
+      speech("2026-03-04T10:00", "O feminicídio cresce."),
+    ]);
+    const { rows } = await db.execute<{ speech_key: string }>(sql`select speech_key from parl_speeches order by starts_at`);
+    const got = await speechesByKeys(db, rows.map((r) => r.speech_key), {}, { terms });
+    expect(got.slice(0, 3).map((r) => r.snippet)).toEqual([
+      "Sr. Presidente, o preço do arroz subiu.",
+      "Senhor Presidente, a comida está cara.",
+      "O Deputado criticou a alta dos alimentos.",
+    ]);
+    expect(got[3]!.snippet).toContain("\u0001feminicídio\u0002"); // a word match is highlighted as before
+  });
+
+  it("filterSpeechKeys keeps the keys that pass the filters, in order", async () => {
+    await setup();
+    const { rows } = await searchSpeeches(db, { terms, sort: "new", limit: 10 });
+    const keys = rows.map((r) => r.speechKey!);
+    expect(await filterSpeechKeys(db, keys, {})).toEqual(keys);
+    expect(await filterSpeechKeys(db, [...keys].reverse(), { inOffice: true })).toEqual(
+      [...keys].reverse().filter((_, i) => rows[rows.length - 1 - i]!.member.name !== "Ex Deputado"),
+    );
+    expect(await filterSpeechKeys(db, ["missing"], {})).toEqual([]);
   });
 
   it("speechFacets lists values alphabetically", async () => {

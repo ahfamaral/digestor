@@ -33,6 +33,8 @@ export type SpeechRow = {
 /** `member` carries today's party and state; `partyThen`/`ufThen` are the speaker's on the day (null without history). */
 export type SpeechHit = SpeechRow & {
   member: Pick<MemberRow, "externalId" | "name" | "party" | "uf">; snippet: string; partyThen: string | null; ufThen: string | null;
+  /** `parl_speeches.speech_key` (the meaning index and the hybrid search are keyed by it). */
+  speechKey: string | null;
 };
 /** Days inclusive; `party`/`uf` are the speaker's on the day; `inOffice` = in office today. */
 export type SpeechFilters = { from?: string; to?: string; party?: string; uf?: string; phase?: string; inOffice?: boolean };
@@ -49,6 +51,9 @@ export type VoteRow = {
   guidanceFrom: string | null;
 };
 
+/** A speech text's header: "O SR. FULANO (PL - PB. Sem revisão do orador.) - " or "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO FULANO (SEM REGISTRO TAQUIGRÁFICO)." plus "O Sr. FULANO (…) pronuncia o seguinte discurso:". */
+const OPENING_HEADER =
+  "^\\s*(?:DISCURSO NA ÍNTEGRA ENCAMINHADO PEL[OA] SRA?\\. DEPUTAD[OA] [^)]*\\)\\.?\\s*)?(?:(?:Discurso pronunciado [^:]{0,160}:\\s*)|(?:(?:O|A) SRA?\\.? [^(]+\\([^)]*\\)\\s*(?:[-–—]|pronuncia o seguinte discurso:)\\s*))?";
 const HEADLINE = `StartSel=${HIGHLIGHT_START},StopSel=${HIGHLIGHT_END},MaxFragments=2,MaxWords=30,MinWords=10`;
 const CHUNK = 500;
 
@@ -245,7 +250,7 @@ function speechFilterSql(f: SpeechFilters = {}): SQL {
 }
 
 type SpeechHitSql = {
-  id: number; starts_at: string; phase: string | null; kind: string | null; summary: string; text: string; external_id: number;
+  id: number; speech_key: string | null; starts_at: string; phase: string | null; kind: string | null; summary: string; text: string; external_id: number;
   url_text: string | null; text_file: boolean; video_id: string | null; start_s: number | null; end_s: number | null;
   name: string; party: string | null; uf: string | null; party_then: string | null; uf_then: string | null; snippet: string;
 };
@@ -279,7 +284,7 @@ export async function searchSpeeches(
   if (total === 0) return { total: 0, rows: [] };
   const r = await db.execute<SpeechHitSql>(sql`
     with q as (select (${match}) as q, (${head}) as hq)
-    select p.id, to_char(p.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, p.phase, p.kind, p.summary, p.text,
+    select p.id, p.speech_key, to_char(p.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, p.phase, p.kind, p.summary, p.text,
       p.url_text, p.text_file, p.party as party_then, p.uf as uf_then, m.external_id, m.name, m.party, m.uf,
       v.video_id, v.start_s, v.end_s,
       ts_headline('pt_unaccent', concat_ws(' … ', nullif(p.summary, ''), nullif(p.text, '')), q.hq, ${HEADLINE}) as snippet
@@ -287,15 +292,76 @@ export async function searchSpeeches(
     join parl_members m on m.id = p.member_id
     left join parl_speech_videos v on v.speech_key = p.speech_key, q
     order by ${outer}`);
-  return {
-    total,
-    rows: r.rows.map((x) => ({
-      id: x.id, startsAt: x.starts_at, phase: x.phase, kind: x.kind, summary: x.summary, text: x.text,
-      urlText: x.url_text, textFile: x.text_file, member: { externalId: x.external_id, name: x.name, party: x.party, uf: x.uf }, snippet: x.snippet,
-      partyThen: x.party_then, ufThen: x.uf_then,
-      video: x.video_id !== null && x.start_s !== null && x.end_s !== null ? { videoId: x.video_id, startS: x.start_s, endS: x.end_s } : null,
-    })),
-  };
+  return { total, rows: r.rows.map(toSpeechHit) };
+}
+
+const toSpeechHit = (x: SpeechHitSql): SpeechHit => ({
+  id: x.id, speechKey: x.speech_key, startsAt: x.starts_at, phase: x.phase, kind: x.kind, summary: x.summary, text: x.text,
+  urlText: x.url_text, textFile: x.text_file, member: { externalId: x.external_id, name: x.name, party: x.party, uf: x.uf }, snippet: x.snippet,
+  partyThen: x.party_then, ufThen: x.uf_then,
+  video: x.video_id !== null && x.start_s !== null && x.end_s !== null ? { videoId: x.video_id, startS: x.start_s, endS: x.end_s } : null,
+});
+
+/**
+ * The word search's ranking as speech keys only (no rows, no snippets): the same match, filters and "Best match" order
+ * as `searchSpeeches`. The hybrid search fuses its top keys with the meaning search's.
+ */
+export async function speechKeysByWords(
+  db: Db, a: { terms: string[]; phrase?: string; filters?: SpeechFilters; limit?: number; offset?: number },
+): Promise<{ total: number; keys: string[] }> {
+  const topic = tsQuery(a.terms);
+  if (!topic) return { total: 0, keys: [] };
+  const r = await db.execute<{ speech_key: string; n: number }>(sql`
+    with q as (select (${topic}) as q)
+    select s.speech_key, count(*) over ()::int as n from parl_speeches s, q
+    where numnode(q.q) > 0 and s.tsv @@ q.q and s.speech_key is not null ${speechFilterSql(a.filters)}
+    order by ${rankSql("s", a.phrase)} desc, s.starts_at desc, s.id desc
+    limit ${a.limit ?? 100} offset ${a.offset ?? 0}`);
+  if (r.rows.length > 0) return { total: r.rows[0]!.n, keys: r.rows.map((x) => x.speech_key) };
+  if (!a.offset) return { total: 0, keys: [] };
+  const c = await speechKeysByWords(db, { ...a, limit: 1, offset: 0 });
+  return { total: c.total, keys: [] };
+}
+
+/** The given keys as an ordered table `k(key, ord)`. */
+const keyTable = (keys: string[]) =>
+  sql`(select key, ord from unnest(array[${sql.join(keys.map((k) => sql`${k}`), sql`, `)}]::text[]) with ordinality as k(key, ord))`;
+
+/** The keys whose speeches pass the filters, in the given order (unknown keys dropped). Cheap: no text is read. */
+export async function filterSpeechKeys(db: Db, keys: string[], filters: SpeechFilters = {}): Promise<string[]> {
+  if (keys.length === 0) return [];
+  const r = await db.execute<{ key: string }>(sql`
+    select k.key from ${keyTable(keys)} k join parl_speeches s on s.speech_key = k.key
+    where true ${speechFilterSql(filters)} order by k.ord`);
+  return r.rows.map((x) => x.key);
+}
+
+/**
+ * Speeches by key, in the given order, with the same row shape and filters as `searchSpeeches` (unknown keys are
+ * skipped). `highlight.terms`: marked in the snippet like a word search; a row without them (found by meaning only)
+ * gets the start of its summary and text.
+ */
+export async function speechesByKeys(
+  db: Db, keys: string[], filters: SpeechFilters = {}, highlight: { terms?: string[] } = {},
+): Promise<SpeechHit[]> {
+  if (keys.length === 0) return [];
+  const hq = tsQuery(highlight.terms ?? []);
+  const doc = sql`concat_ws(' … ', nullif(s.summary, ''), nullif(s.text, ''))`;
+  // The opening: the summary, else the text without the stenographer's header (spoken or sent in writing).
+  const body = sql`coalesce(nullif(s.summary, ''), regexp_replace(s.text, ${OPENING_HEADER}, '', 'i'))`;
+  const opening = sql`array_to_string((regexp_split_to_array(btrim(${body}), '\\s+'))[1:30], ' ')`;
+  const snippet = hq ? sql`case when s.tsv @@ (${hq}) then ts_headline('pt_unaccent', ${doc}, ${hq}, ${HEADLINE}) else ${opening} end` : opening;
+  const r = await db.execute<SpeechHitSql>(sql`
+    select s.id, s.speech_key, to_char(s.starts_at, 'YYYY-MM-DD"T"HH24:MI') as starts_at, s.phase, s.kind, s.summary, s.text,
+      s.url_text, s.text_file, s.party as party_then, s.uf as uf_then, m.external_id, m.name, m.party, m.uf,
+      v.video_id, v.start_s, v.end_s, ${snippet} as snippet
+    from ${keyTable(keys)} k
+    join parl_speeches s on s.speech_key = k.key
+    join parl_members m on m.id = s.member_id
+    left join parl_speech_videos v on v.speech_key = s.speech_key
+    where true ${speechFilterSql(filters)}
+    order by k.ord`);
+  return r.rows.map(toSpeechHit);
 }
 
 /** The values the landing filters offer: speakers' parties and states on the day, session phases; alphabetical. */

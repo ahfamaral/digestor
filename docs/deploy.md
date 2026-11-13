@@ -182,6 +182,20 @@ On the server itself the same script would run with `docker compose -f docker-co
 
 The same update makes the nightly refresh remove speeches the Câmara files under two deputies with overlapping names (Mauricio Marcon's under Marcon too); the first refresh after the update cleans the stored ones (109 in dev on 2026-11-12).
 
+### Once, when updating to the monitor's search by meaning (migration 0030)
+
+`up -d --build` runs migration 0030 (`parl_speech_embeddings`: which speeches are in the meaning index) and starts the worker's internal HTTP endpoint on port 8790. Nothing publishes that port in production: the web container reaches it on the compose network as `http://worker:8790` (`WORKER_URL`, set in `docker-compose.prod.yml`; no `.env` change needed). Then build the index once (local e5 model, no paid calls; safe to stop and rerun, it continues where it stopped):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-embed.ts
+```
+
+Dev on 2026-11-13 (the Mac's Colima VM, 4 CPUs): 7,899 speeches in 23,460 chunks in 2,284 s (about 38 minutes; the worker test suite ran alongside for part of it); the worker container used about 2.5 GB of memory while the script ran inside it (`docker stats`), so on a 4 GB server run it when nothing else is processing. Until it has run, the topic search shows word results with the note "Search by meaning isn't available right now" (the same happens whenever the worker is restarting). Afterwards the worker adds each day's new and revised speeches at 10:00 UTC (`monitor.embed`, an hour after the refresh); check the next morning:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs worker | grep monitor.embed
+```
+
 ### Once, after updating to speaker names (Plan 3)
 
 Sessions analysed before speaker names existed keep their names only in the context card, so Who's who shows "No name yet" and their clips fail the speaker check. Import the card's names as proposals (confirm them in Who's who afterwards). It skips every session that already has names, so running it again is safe, and it never calls an LLM:

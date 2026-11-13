@@ -65,3 +65,24 @@ Reading the table:
 - The three step-limit failures in the debate (saidinhas, sewage figures, UN) are the loop running out of its 6 steps on a long, repetitive video, where the same topic returns in several blocks. The saidinhas question gave up in both runs; the sewage and UN questions were answered in the earlier trial run, so part of it is sampling noise; 3 of 12 is the number to beat.
 - Quote exact (before): the failures are quotes the model wrote in English or Portuguese about a German transcript (`"order my life again"`, `"se dispersa"`), i.e. a translation presented in quotation marks. The verify step (C2) checks those as claims instead.
 - 12 questions per video is a small sample: one question moves a percentage by 8 to 10 points, and the model's answers vary from run to run (the interview's citation hit was 20% in a first trial before the parser read time ranges, then 80%, then 100%).
+
+## Monitor search
+
+- **What was measured:** the Câmara monitor's topic search over plenary speeches, three ways: **words** (Postgres full-text on `pt_unaccent`, as the site runs it: the query translator's Portuguese terms, multi-word terms as phrases, the typed words together ranked first), **meaning** (the speeches' official text in chunks of whole sentences up to 1,000 characters, embedded with the local `multilingual-e5-small` into Chroma; best chunk per speech) and **hybrid** (Reciprocal Rank Fusion, k = 60, of the top 100 of each: what `/monitor` now shows under "Best match"). Recall@10 and MRR@10 per query (`apps/worker/scripts/eval-monitor-search.ts`).
+- **On what:** 7,899 speeches of 2026 with text or summary (23,460 chunks); 20 queries (`apps/worker/eval/monitor-search.golden.json`): 14 in Portuguese, several worded unlike the speeches ("aumento do preço da comida", "aposentados roubados por descontos indevidos", "perdão para os condenados pelos atos de 8 de janeiro"), and 6 in English.
+- **Golden file:** relevance judged by pooling the top 10 of the three methods per query and reading each pooled speech's official summary, opening and term counts (no LLM labelling); relevant = the speech is about the topic, not a passing mention in a list. Paired queries (the same topic in Portuguese and English) share their relevant speeches. Drafted by Claude on 13 November 2026; the owner has not reviewed it yet. Speeches are identified by deputy and start time, because a speech's key changes when the Câmara revises its text.
+- **When / cost:** 13 November 2026. The translator's terms for the 20 queries were fetched once (OpenRouter, about $0.001) and frozen in the golden file, so the evaluation itself is free and repeatable.
+
+| Subset | Queries | Words recall@10 | Meaning recall@10 | Hybrid recall@10 | Words MRR | Meaning MRR | Hybrid MRR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| All | 20 | 0.41 | 0.53 | **0.61** | 0.66 | 0.82 | **0.87** |
+| Portuguese | 14 | 0.40 | 0.58 | **0.66** | 0.62 | 0.78 | **0.82** |
+| English | 6 | 0.41 | 0.41 | **0.49** | 0.75 | 0.92 | **1.00** |
+
+Reading the table:
+
+- Hybrid beats words on recall@10 on 12 queries, ties on 6 and loses on 2 (q07 "vício em apostas online", 0.42 vs 0.47; q15 "food prices", 0.50 vs 0.63), so it is the default; exact words (`exact=1`), "Newest first" and a deputy's own speech search stay word-only.
+- Meaning helps most where the speeches use other words: "perdão para os condenados pelos atos de 8 de janeiro" (words 0.00, the phrase terms never match; meaning finds the dosimetria and 8 January speeches), "agricultores sofrendo com a falta de chuva" (words 0.00, meaning 1.00) and "end of the six-day work week" (the translator wrote "semana de trabalho de seis dias", which no speech says; words 0.00, meaning 0.37 by matching "escala 6x1").
+- Meaning hurts on broad cost-of-living queries: for "food prices" and "aumento do preço da comida" it ranks fuel-price and economy speeches above food ones (meaning 0.25 and 0.13); fusion keeps most of the word results there.
+- Recall is low in absolute terms because the relevant sets are large (up to 27 speeches for the 6x1 work week) and only 10 results count. Four queries have 1 to 3 relevant speeches in the pool (q04, q08, q11, q13), so one speech moves their recall by 0.33 to 1.00. Pooling only finds what one of the three methods ranked in its top 10, so the relevant sets miss speeches none of them surfaced; that limits all three methods alike.
+- Rows only the meaning search found carry a quiet "Related by meaning" mark and show the official summary instead of highlighted words; when the worker doesn't answer within 3 s the page shows word results and "Search by meaning isn't available right now".

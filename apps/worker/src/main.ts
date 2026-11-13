@@ -56,6 +56,8 @@ import { indexedSessions, searchTranscript } from "./search/index.js";
 import { RECORDS_RETRY_CRON, RECORDS_RETRY_QUEUE, namesJob, runRecordRetries } from "./records/retry.js";
 import { MONITOR_REFRESH_CRON, MONITOR_REFRESH_QUEUE, nightlyWindow, refreshMonitor } from "./monitor/refresh.js";
 import { MONITOR_VIDEO_CRON, MONITOR_VIDEO_QUEUE, runSessionVideos, videoJobEnabled } from "./monitor/video.js";
+import { embedSpeeches, MONITOR_EMBED_CRON, MONITOR_EMBED_QUEUE, searchSpeechMeaning, speechPassages } from "./monitor/embedSpeeches.js";
+import { DEFAULT_HTTP_PORT, startHttpServer } from "./http.js";
 import { fetchCaptions } from "./youtube/captions.js";
 import { SWEEP_CRON, SWEEP_QUEUE, sweepStaleJobRows, sweepStaleSessions } from "./sweep.js";
 import { downloadYouTube } from "./youtube/ytdlp.js";
@@ -118,7 +120,7 @@ async function main() {
   const boss = new PgBoss(databaseUrl);
   boss.on("error", console.error);
   await boss.start();
-  for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE, RECORDS_RETRY_QUEUE, MONITOR_REFRESH_QUEUE, MONITOR_VIDEO_QUEUE]) {
+  for (const name of [...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE, RECORDS_RETRY_QUEUE, MONITOR_REFRESH_QUEUE, MONITOR_VIDEO_QUEUE, MONITOR_EMBED_QUEUE]) {
     // Same options as every sender passes (JOB_OPTIONS): retries, 12 h expiry, 60 s heartbeat.
     await boss.createQueue(name, JOB_OPTIONS); // no-op when the queue already exists...
     await boss.updateQueue(name, JOB_OPTIONS); // ...so existing queues get the current options too
@@ -133,6 +135,7 @@ async function main() {
   await boss.schedule(SWEEP_QUEUE, SWEEP_CRON, {}, { tz: "UTC" });
   await boss.schedule(RECORDS_RETRY_QUEUE, RECORDS_RETRY_CRON, {}, { tz: "UTC" });
   await boss.schedule(MONITOR_REFRESH_QUEUE, MONITOR_REFRESH_CRON, {}, { tz: "UTC" });
+  await boss.schedule(MONITOR_EMBED_QUEUE, MONITOR_EMBED_CRON, {}, { tz: "UTC" });
   // The schedule lives in the database: switched off, it is removed, so a restart never brings the job back.
   const videoJob = videoJobEnabled(process.env);
   if (videoJob) await boss.schedule(MONITOR_VIDEO_QUEUE, MONITOR_VIDEO_CRON, {}, { tz: "UTC" });
@@ -186,6 +189,12 @@ async function main() {
     const counts = await refreshMonitor({ db, fetch }, nightlyWindow());
     console.log("monitor.refresh:", JSON.stringify(counts));
   });
+  // Search by meaning: new speeches into the index, revised ones' old chunks out. A throw retries; reruns are safe.
+  const meaning = { db, chroma, embedder };
+  await boss.work(MONITOR_EMBED_QUEUE, { batchSize: 1 }, async () => {
+    const out = await embedSpeeches(meaning);
+    console.log("monitor.embed:", JSON.stringify(out));
+  });
   // Video evidence (only with MONITOR_VIDEO_ENABLED=true): a session's failure is recorded on its row, never thrown.
   if (videoJob) {
     await boss.work(MONITOR_VIDEO_QUEUE, { batchSize: 1 }, async () => {
@@ -196,11 +205,21 @@ async function main() {
     console.log("monitor.video: off (MONITOR_VIDEO_ENABLED is not \"true\")");
   }
 
+  // Internal HTTP (search by meaning for the web app): loopback in dev, the compose network in prod; no auth.
+  const httpPort = Number(process.env.WORKER_HTTP_PORT) || DEFAULT_HTTP_PORT;
+  const http = startHttpServer(
+    { search: (q, k) => searchSpeechMeaning(meaning, q, k), passages: (q, keys, per) => speechPassages(meaning, q, keys, per) },
+    httpPort,
+  );
+  // Load the e5 model now, so the first search doesn't wait for it (the web gives up after 3 s).
+  embedder.embed(["warm-up"], "query").catch((err) => console.error("e5 warm-up failed:", err));
+
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     try {
+      http.close();
       await boss.stop({ graceful: true, timeout: 8000 });
       await askCheckpointer.end();
       await close();
@@ -212,7 +231,7 @@ async function main() {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
-  console.log(`worker ready (queues: ${[...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE, RECORDS_RETRY_QUEUE, MONITOR_REFRESH_QUEUE, MONITOR_VIDEO_QUEUE].join(", ")})`);
+  console.log(`worker ready (queues: ${[...Object.values(QUEUES), CLEANUP_QUEUE, SWEEP_QUEUE, RECORDS_RETRY_QUEUE, MONITOR_REFRESH_QUEUE, MONITOR_VIDEO_QUEUE, MONITOR_EMBED_QUEUE].join(", ")}; http :${httpPort})`);
 }
 
 main().catch((err) => {

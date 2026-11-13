@@ -51,6 +51,9 @@ services:
     working_dir: /app
     command: pnpm --filter @digestor/worker dev
     stop_grace_period: 30s
+    # Internal HTTP (monitor search by meaning): the host's loopback only, for the web dev server; no auth.
+    ports:
+      - "127.0.0.1:8790:8790"
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,6 +77,7 @@ services:
       MONITOR_VIDEO_ENABLED: ${MONITOR_VIDEO_ENABLED:-}
       BUNDESTAG_DIP_API_KEY: ${BUNDESTAG_DIP_API_KEY:-}
       API_DATA_GOV_KEY: ${API_DATA_GOV_KEY:-}
+      WORKER_HTTP_PORT: "8790"
     volumes:
       - .:/app
       - worker_node_modules:/app/node_modules

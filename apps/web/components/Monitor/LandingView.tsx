@@ -101,6 +101,10 @@ export function LandingView({
         <div className="grid gap-2">
           {searching && <SearchingStatus locale={locale} />}
           {result && <SearchedFor locale={locale} searched={result} />}
+          {result?.meaning === "unavailable" && <p className="text-sm text-muted-foreground">{tm(locale, "search.meaningUnavailable")}</p>}
+          {result?.meaning === "used" && result.speeches?.rows.some((s) => s.byMeaning) && (
+            <p className="text-sm text-muted-foreground">{tm(locale, "search.meaningUsed")}</p>
+          )}
           {counts.length > 0 && (
             <nav aria-label={tm(locale, "landing.resultsLabel")} className="flex flex-wrap items-center gap-x-2 text-sm">
               {counts.map((c, i) => (

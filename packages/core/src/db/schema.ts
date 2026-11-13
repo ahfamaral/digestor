@@ -700,3 +700,14 @@ export const parlWordCounts = pgTable(
     index("parl_word_counts_stem").on(t.stem),
   ],
 );
+
+/**
+ * Speeches in the meaning index (Chroma collection `monitor_camara_speeches`, `embedSpeeches` in the worker): one row
+ * per speech key whose chunks are stored there. A key no speech has any more (a revised text gets a new key) has its
+ * chunks deleted and its row removed on the next run.
+ */
+export const parlSpeechEmbeddings = pgTable("parl_speech_embeddings", {
+  speechKey: text("speech_key").primaryKey(),
+  chunks: integer("chunks").notNull(),
+  embeddedAt: timestamp("embedded_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -96,3 +96,93 @@ describe("runSearch", () => {
     expect((await runSearch(db, L("feminicídio", { sort: "new" }))).speeches!.rows[0]!.startsAt).toBe("2026-07-01T10:00");
   });
 });
+
+describe("runSearch with search by meaning (hybrid)", () => {
+  /** Speeches of two deputies; returns their keys by a short tag. */
+  async function seed() {
+    const ids = await upsertMembers(db, [
+      { house: "camara", externalId: 1, name: "Ana", party: "PSOL", uf: "RS", photoUrl: null },
+      { house: "camara", externalId: 2, name: "Bia", party: "PL", uf: "SP", photoUrl: null },
+    ]);
+    const speech = (startsAt: string, text: string) => ({ startsAt, phase: null, kind: null, summary: "", text, keywords: "" });
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-02-01", "2026-11-11", [
+      speech("2026-03-01T10:00", "A inflação dos alimentos pesa no bolso."), // both
+      speech("2026-03-02T10:00", "O preço da comida subiu de novo."), // words only
+      speech("2026-03-03T10:00", "O arroz e o feijão estão caros no mercado."), // meaning only
+    ]);
+    await replaceSpeechWindow(db, ids.get(2)!, "2026-02-01", "2026-11-11", [
+      speech("2026-03-04T10:00", "A cesta básica ficou mais cara em São Paulo."), // meaning only, other deputy
+    ]);
+    const { rows } = await db.execute<{ speech_key: string; text: string }>("select speech_key, text from parl_speeches");
+    const key = (start: string) => rows.find((r) => r.text.startsWith(start))!.speech_key;
+    return { both: key("A inflação"), words: key("O preço"), rice: key("O arroz"), basket: key("A cesta") };
+  }
+  const translate = async (): Promise<TranslateResult> => ({ terms: ["preço da comida", "inflação dos alimentos"], translated: false, failed: false });
+  const words = (r: Awaited<ReturnType<typeof runSearch>>) => r.speeches!.rows.map((s) => s.speechKey);
+
+  it("fuses word and meaning results; rows found only by meaning are marked", async () => {
+    const k = await seed();
+    const semantic = vi.fn(async () => ({ keys: [k.rice, k.both, k.basket], ok: true }));
+    const r = await runSearch(db, L("preço da comida"), translate, semantic);
+    expect(semantic).toHaveBeenCalledWith("preço da comida");
+    expect(r.meaning).toBe("used");
+    expect(r.speeches!.total).toBe(4);
+    expect(words(r)[0]).toBe(k.both); // in both lists
+    expect(new Set(words(r))).toEqual(new Set([k.both, k.words, k.rice, k.basket]));
+    const marked = Object.fromEntries(r.speeches!.rows.map((s) => [s.speechKey, s.byMeaning]));
+    expect(marked).toEqual({ [k.both]: false, [k.words]: false, [k.rice]: true, [k.basket]: true });
+    // word matches are highlighted; a meaning-only row shows its opening words
+    expect(r.speeches!.rows.find((s) => s.speechKey === k.words)!.snippet).toContain("\u0001");
+    expect(r.speeches!.rows.find((s) => s.speechKey === k.rice)!.snippet).toBe("O arroz e o feijão estão caros no mercado.");
+  });
+
+  it("filters apply to meaning hits too", async () => {
+    const k = await seed();
+    const semantic = async () => ({ keys: [k.rice, k.basket], ok: true });
+    const r = await runSearch(db, L("preço da comida", { from: "2026-03-02", to: "2026-03-03" }), translate, semantic);
+    expect(new Set(words(r))).toEqual(new Set([k.words, k.rice]));
+    expect(r.speeches!.total).toBe(2);
+  });
+
+  it("pages over the fused list without repeats or gaps", async () => {
+    const ids = await upsertMembers(db, [{ house: "camara", externalId: 1, name: "Ana", party: null, uf: null, photoUrl: null }]);
+    const speech = (i: number, text: string) => ({
+      startsAt: `2026-03-${String(1 + (i % 28)).padStart(2, "0")}T${String(10 + Math.floor(i / 28)).padStart(2, "0")}:00`,
+      phase: null, kind: null, summary: "", text, keywords: "",
+    });
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-02-01", "2026-11-11", [
+      ...Array.from({ length: 25 }, (_, i) => speech(i, `A saúde pública ${i}.`)),
+      ...Array.from({ length: 10 }, (_, i) => speech(30 + i, `Hospitais sem médicos ${i}.`)),
+    ]);
+    const all = await db.execute<{ speech_key: string; text: string }>("select speech_key, text from parl_speeches order by id");
+    const hospitals = all.rows.filter((r) => r.text.startsWith("Hospitais")).map((r) => r.speech_key);
+    const semantic = async () => ({ keys: hospitals, ok: true });
+    const t = async (): Promise<TranslateResult> => ({ terms: ["saúde"], translated: false, failed: false });
+    const p0 = await runSearch(db, L("saúde", { p: 0 }), t, semantic);
+    const p1 = await runSearch(db, L("saúde", { p: 1 }), t, semantic);
+    expect(p0.speeches!.total).toBe(35);
+    expect(p0.speeches!.rows).toHaveLength(20);
+    expect(p1.speeches!.rows).toHaveLength(15);
+    const seen = [...words(p0), ...words(p1)];
+    expect(new Set(seen).size).toBe(35);
+    expect(words(await runSearch(db, L("saúde", { p: 1 }), t, semantic))).toEqual(words(p1));
+  });
+
+  it("worker down or index empty: word results only, and says so", async () => {
+    const k = await seed();
+    const r = await runSearch(db, L("preço da comida"), translate, async () => ({ keys: [], ok: false }));
+    expect(r.meaning).toBe("unavailable");
+    expect(new Set(words(r))).toEqual(new Set([k.both, k.words]));
+    expect(r.speeches!.rows.every((s) => !s.byMeaning)).toBe(true);
+  });
+
+  it("exact, newest first and roll-call-only searches stay word-only", async () => {
+    await seed();
+    const semantic = vi.fn(async () => ({ keys: [], ok: true }));
+    expect((await runSearch(db, L("preço da comida", { exact: true }), translate, semantic)).meaning).toBe("off");
+    expect((await runSearch(db, L("preço da comida", { sort: "new" }), translate, semantic)).meaning).toBe("off");
+    expect((await runSearch(db, L("preço da comida", { show: { speeches: false, rollCalls: true } }), translate, semantic)).meaning).toBe("off");
+    expect((await runSearch(db, L("preço da comida"), translate)).meaning).toBe("off");
+    expect(semantic).not.toHaveBeenCalled();
+  });
+});

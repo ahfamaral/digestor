@@ -3,6 +3,7 @@ import { isWrittenOnly } from "@digestor/core";
 import type { SpeechHit, SpeechRow } from "@digestor/core/server";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref } from "@/lib/monitor/params";
+import type { LandingSpeech } from "@/lib/monitor/search";
 import { ExternalLink } from "./ExternalLink";
 import { Highlighted } from "./Highlighted";
 import { SpeechVideo } from "./SpeechVideo";
@@ -12,9 +13,13 @@ import { SpeechVideo } from "./SpeechVideo";
  * session phase, the Câmara's summary, labelled as theirs (or, for a search match, the matching passages), the full text
  * on demand and the link to the official text. A speech the Câmara published as an attached file says so instead.
  * A speech placed in the session's official video gets "Watch the speech"; one sent in writing says it wasn't spoken.
+ * A topic-search row found only by the search by meaning (none of the searched words) is marked "Related by meaning".
  */
-export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLocale; speech: SpeechRow | SpeechHit; showMember?: boolean }) {
+export function SpeechItem({
+  locale, speech, showMember,
+}: { locale: MonitorLocale; speech: SpeechRow | SpeechHit | LandingSpeech; showMember?: boolean }) {
   const hit = "snippet" in speech ? speech : null;
+  const byMeaning = "byMeaning" in speech && speech.byMeaning;
   const party = hit ? (hit.partyThen ?? hit.member.party) : null;
   const uf = hit ? (hit.partyThen ? hit.ufThen : hit.member.uf) : null;
   const changed = hit && hit.partyThen && hit.member.party && hit.member.party !== hit.partyThen ? hit.member.party : null;
@@ -34,6 +39,9 @@ export function SpeechItem({ locale, speech, showMember }: { locale: MonitorLoca
           {formatSpeechTime(speech.startsAt, locale)}
         </time>
         {speech.phase && <span className="text-xs text-muted-foreground">{speech.phase}</span>}
+        {byMeaning && (
+          <span className="rounded-full border border-border px-2 py-px text-xs text-muted-foreground">{tm(locale, "speech.byMeaning")}</span>
+        )}
       </div>
       {speech.video ? (
         <SpeechVideo locale={locale} video={speech.video} />

@@ -30,6 +30,7 @@ services:
   worker:
     build: *worker-build
     restart: unless-stopped
+    ports: !reset [] # internal HTTP (8790) only on the compose network: the web reaches it as http://worker:8790
     working_dir: /app/apps/worker
     command: ["node", "--import", "tsx", "src/main.ts"]
     environment: !override
@@ -49,6 +50,7 @@ services:
       MONITOR_VIDEO_ENABLED: ${MONITOR_VIDEO_ENABLED:-}
       BUNDESTAG_DIP_API_KEY: ${BUNDESTAG_DIP_API_KEY:-}
       API_DATA_GOV_KEY: ${API_DATA_GOV_KEY:-}
+      WORKER_HTTP_PORT: "8790"
     volumes: !override
       - appdata:/data
       - ./secrets:/secrets:ro
@@ -70,6 +72,8 @@ services:
       DATA_DIR: /data
       APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in .env - the app is public in production}
       MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-5}
+      # the monitor's search by meaning (worker's internal HTTP); unreachable = word search only, with a note
+      WORKER_URL: http://worker:8790
     volumes:
       - appdata:/data
     depends_on:

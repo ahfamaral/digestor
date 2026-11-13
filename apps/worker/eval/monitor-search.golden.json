@@ -1,0 +1,1341 @@
+{
+  "labelledBy": "Drafted by Claude (Opus 5.5) on 2026-11-13 by reading the official summaries, openings and term counts of the pooled top 10 of words / meaning / hybrid for each query (no LLM labelling): relevant = the speech is about the query's topic, not a passing mention in a list. Paired queries (q01/q17, q02/q15, q05/q16, q07/q18: the same topic in Portuguese and English) share their relevant speeches. Owner to review. `terms`: the query translator's answer on 2026-11-13 (OpenRouter), frozen so the evaluation needs no paid call.",
+  "queries": [
+    {
+      "id": "q01",
+      "q": "fim da escala 6x1",
+      "lang": "pt",
+      "terms": [
+        "fim da escala 6x1",
+        "fim da escala 6x1 de trabalho",
+        "jornada de trabalho 6x1",
+        "redução da jornada de trabalho"
+      ],
+      "relevant": [
+        {
+          "externalId": 178887,
+          "startsAt": "2026-06-02T13:55"
+        },
+        {
+          "externalId": 73531,
+          "startsAt": "2026-02-26T11:12"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-06-17T14:08"
+        },
+        {
+          "externalId": 74161,
+          "startsAt": "2026-02-24T17:28"
+        },
+        {
+          "externalId": 81055,
+          "startsAt": "2026-02-24T14:48"
+        },
+        {
+          "externalId": 220632,
+          "startsAt": "2026-05-26T16:20"
+        },
+        {
+          "externalId": 152605,
+          "startsAt": "2026-10-14T18:00"
+        },
+        {
+          "externalId": 80815,
+          "startsAt": "2026-05-27T23:00"
+        },
+        {
+          "externalId": 220588,
+          "startsAt": "2026-04-17T10:30"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-07-07T15:28"
+        },
+        {
+          "externalId": 74161,
+          "startsAt": "2026-04-14T20:40"
+        },
+        {
+          "externalId": 74161,
+          "startsAt": "2026-05-27T23:32"
+        },
+        {
+          "externalId": 204441,
+          "startsAt": "2026-06-30T17:36"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-05-05T19:44"
+        },
+        {
+          "externalId": 220615,
+          "startsAt": "2026-07-15T12:04"
+        },
+        {
+          "externalId": 204464,
+          "startsAt": "2026-09-02T16:08"
+        },
+        {
+          "externalId": 224333,
+          "startsAt": "2026-06-16T14:12"
+        },
+        {
+          "externalId": 220558,
+          "startsAt": "2026-05-12T16:28"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-04-15T21:52"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-05-27T23:32"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-06-17T14:48"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-10-15T10:00"
+        },
+        {
+          "externalId": 220617,
+          "startsAt": "2026-05-26T14:56"
+        },
+        {
+          "externalId": 220582,
+          "startsAt": "2026-02-11T15:24"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-05-26T20:36"
+        },
+        {
+          "externalId": 74400,
+          "startsAt": "2026-05-27T20:20"
+        },
+        {
+          "externalId": 74057,
+          "startsAt": "2026-05-27T21:00"
+        }
+      ]
+    },
+    {
+      "id": "q02",
+      "q": "aumento do preço da comida",
+      "lang": "pt",
+      "terms": [
+        "aumento do preço da comida",
+        "alta do preço dos alimentos",
+        "custo de vida alimentação",
+        "inflação dos alimentos"
+      ],
+      "relevant": [
+        {
+          "externalId": 220550,
+          "startsAt": "2026-06-10T17:52"
+        },
+        {
+          "externalId": 204455,
+          "startsAt": "2026-07-01T15:20"
+        },
+        {
+          "externalId": 204455,
+          "startsAt": "2026-04-28T14:04"
+        },
+        {
+          "externalId": 220588,
+          "startsAt": "2026-04-09T10:00"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-09-02T16:28"
+        },
+        {
+          "externalId": 162067,
+          "startsAt": "2026-03-17T14:28"
+        },
+        {
+          "externalId": 204455,
+          "startsAt": "2026-03-17T14:16"
+        },
+        {
+          "externalId": 141555,
+          "startsAt": "2026-05-20T22:36"
+        }
+      ]
+    },
+    {
+      "id": "q03",
+      "q": "violência contra a mulher",
+      "lang": "pt",
+      "terms": [
+        "violência contra a mulher",
+        "violência doméstica contra a mulher",
+        "violência de gênero",
+        "agressão contra mulheres"
+      ],
+      "relevant": [
+        {
+          "externalId": 220704,
+          "startsAt": "2026-03-03T16:16"
+        },
+        {
+          "externalId": 160575,
+          "startsAt": "2026-03-18T22:16"
+        },
+        {
+          "externalId": 220527,
+          "startsAt": "2026-02-03T19:20"
+        },
+        {
+          "externalId": 74856,
+          "startsAt": "2026-03-18T21:36"
+        },
+        {
+          "externalId": 220668,
+          "startsAt": "2026-03-03T16:28"
+        },
+        {
+          "externalId": 74398,
+          "startsAt": "2026-02-24T18:12"
+        },
+        {
+          "externalId": 204535,
+          "startsAt": "2026-02-24T19:20"
+        },
+        {
+          "externalId": 204355,
+          "startsAt": "2026-04-07T18:28"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-07-07T20:00"
+        },
+        {
+          "externalId": 160575,
+          "startsAt": "2026-03-25T20:08"
+        },
+        {
+          "externalId": 204572,
+          "startsAt": "2026-10-13T13:55"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-05-05T16:12"
+        },
+        {
+          "externalId": 74398,
+          "startsAt": "2026-04-08T09:40"
+        },
+        {
+          "externalId": 74398,
+          "startsAt": "2026-07-14T17:00"
+        },
+        {
+          "externalId": 74856,
+          "startsAt": "2026-03-10T21:24"
+        },
+        {
+          "externalId": 204407,
+          "startsAt": "2026-03-17T18:44"
+        },
+        {
+          "externalId": 74041,
+          "startsAt": "2026-03-10T15:24"
+        },
+        {
+          "externalId": 204535,
+          "startsAt": "2026-07-01T17:32"
+        },
+        {
+          "externalId": 235088,
+          "startsAt": "2026-03-18T19:24"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-03-19T10:32"
+        },
+        {
+          "externalId": 220527,
+          "startsAt": "2026-03-02T23:28"
+        },
+        {
+          "externalId": 220554,
+          "startsAt": "2026-06-16T16:04"
+        },
+        {
+          "externalId": 220652,
+          "startsAt": "2026-03-04T15:32"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-03-24T18:40"
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "q": "isenção do imposto de renda para quem ganha até cinco mil reais",
+      "lang": "pt",
+      "terms": [
+        "isenção do imposto de renda para quem ganha até cinco mil re",
+        "isenção do IR até cinco mil reais",
+        "isenção do imposto de renda para rendimentos até R$ 5 mil",
+        "faixa de isenção do imposto de renda"
+      ],
+      "relevant": [
+        {
+          "externalId": 160538,
+          "startsAt": "2026-05-13T15:16"
+        },
+        {
+          "externalId": 160610,
+          "startsAt": "2026-05-27T15:04"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-05-26T20:08"
+        }
+      ]
+    },
+    {
+      "id": "q05",
+      "q": "facções criminosas dominando territórios",
+      "lang": "pt",
+      "terms": [
+        "facções criminosas dominando territórios",
+        "facções criminosas controlando territórios",
+        "domínio territorial do crime organizado",
+        "milícias e facções em áreas dominadas"
+      ],
+      "relevant": [
+        {
+          "externalId": 220574,
+          "startsAt": "2026-06-09T17:40"
+        },
+        {
+          "externalId": 220590,
+          "startsAt": "2026-06-02T15:48"
+        },
+        {
+          "externalId": 178871,
+          "startsAt": "2026-06-09T19:00"
+        },
+        {
+          "externalId": 156190,
+          "startsAt": "2026-06-03T12:12"
+        },
+        {
+          "externalId": 204355,
+          "startsAt": "2026-02-25T15:24"
+        },
+        {
+          "externalId": 220594,
+          "startsAt": "2026-06-09T14:36"
+        },
+        {
+          "externalId": 128760,
+          "startsAt": "2026-05-19T16:16"
+        },
+        {
+          "externalId": 74428,
+          "startsAt": "2026-03-04T19:36"
+        },
+        {
+          "externalId": 204501,
+          "startsAt": "2026-03-04T18:40"
+        },
+        {
+          "externalId": 227310,
+          "startsAt": "2026-03-18T16:52"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-10-14T15:44"
+        },
+        {
+          "externalId": 220588,
+          "startsAt": "2026-05-05T13:55"
+        },
+        {
+          "externalId": 204387,
+          "startsAt": "2026-06-03T12:24"
+        },
+        {
+          "externalId": 74428,
+          "startsAt": "2026-03-04T17:04"
+        },
+        {
+          "externalId": 160604,
+          "startsAt": "2026-05-12T19:48"
+        },
+        {
+          "externalId": 160604,
+          "startsAt": "2026-02-24T22:48"
+        },
+        {
+          "externalId": 81055,
+          "startsAt": "2026-05-12T15:20"
+        },
+        {
+          "externalId": 204572,
+          "startsAt": "2026-02-25T13:55"
+        },
+        {
+          "externalId": 220666,
+          "startsAt": "2026-07-07T21:24"
+        },
+        {
+          "externalId": 204531,
+          "startsAt": "2026-02-24T21:28"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-02-24T14:52"
+        },
+        {
+          "externalId": 220621,
+          "startsAt": "2026-06-09T20:08"
+        },
+        {
+          "externalId": 220554,
+          "startsAt": "2026-05-12T14:40"
+        },
+        {
+          "externalId": 178908,
+          "startsAt": "2026-06-02T16:04"
+        },
+        {
+          "externalId": 220621,
+          "startsAt": "2026-05-12T16:16"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-05-12T20:00"
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "q": "aposentados roubados por descontos indevidos",
+      "lang": "pt",
+      "terms": [
+        "aposentados roubados por descontos indevidos",
+        "aposentados descontos indevidos",
+        "fraude descontos aposentados INSS",
+        "descontos ilegais benefícios previdenciários"
+      ],
+      "relevant": [
+        {
+          "externalId": 220574,
+          "startsAt": "2026-04-07T18:28"
+        },
+        {
+          "externalId": 205865,
+          "startsAt": "2026-03-24T16:32"
+        },
+        {
+          "externalId": 156190,
+          "startsAt": "2026-08-11T19:52"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-06-03T10:28"
+        },
+        {
+          "externalId": 204378,
+          "startsAt": "2026-03-16T20:08"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-08-11T19:52"
+        },
+        {
+          "externalId": 156190,
+          "startsAt": "2026-06-03T10:56"
+        },
+        {
+          "externalId": 204572,
+          "startsAt": "2026-05-26T20:36"
+        },
+        {
+          "externalId": 178857,
+          "startsAt": "2026-08-11T15:44"
+        },
+        {
+          "externalId": 220559,
+          "startsAt": "2026-03-10T18:16"
+        },
+        {
+          "externalId": 178871,
+          "startsAt": "2026-05-20T15:12"
+        }
+      ]
+    },
+    {
+      "id": "q07",
+      "q": "vício em apostas online",
+      "lang": "pt",
+      "terms": [
+        "vício em apostas online",
+        "apostas online",
+        "jogos de azar on-line",
+        "bets"
+      ],
+      "relevant": [
+        {
+          "externalId": 162067,
+          "startsAt": "2026-11-03T18:48"
+        },
+        {
+          "externalId": 178857,
+          "startsAt": "2026-11-03T18:52"
+        },
+        {
+          "externalId": 204480,
+          "startsAt": "2026-11-03T17:16"
+        },
+        {
+          "externalId": 204364,
+          "startsAt": "2026-02-24T23:48"
+        },
+        {
+          "externalId": 204441,
+          "startsAt": "2026-02-24T22:40"
+        },
+        {
+          "externalId": 204441,
+          "startsAt": "2026-10-13T16:36"
+        },
+        {
+          "externalId": 220682,
+          "startsAt": "2026-07-15T15:32"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-07-01T16:32"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-06-30T15:28"
+        },
+        {
+          "externalId": 220629,
+          "startsAt": "2026-07-15T16:36"
+        },
+        {
+          "externalId": 160635,
+          "startsAt": "2026-03-10T21:24"
+        },
+        {
+          "externalId": 220698,
+          "startsAt": "2026-08-11T15:00"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-07-08T14:36"
+        },
+        {
+          "externalId": 98057,
+          "startsAt": "2026-07-15T16:20"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-05-19T21:24"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-02-26T10:00"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-09-02T13:55"
+        },
+        {
+          "externalId": 204387,
+          "startsAt": "2026-07-01T16:48"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-05-05T13:55"
+        }
+      ]
+    },
+    {
+      "id": "q08",
+      "q": "fogo destruindo a floresta",
+      "lang": "pt",
+      "terms": [
+        "fogo destruindo a floresta",
+        "incêndio florestal",
+        "queimadas na floresta",
+        "desmatamento por queimadas"
+      ],
+      "relevant": [
+        {
+          "externalId": 204495,
+          "startsAt": "2026-11-10T14:12"
+        }
+      ]
+    },
+    {
+      "id": "q09",
+      "q": "tarifaço dos Estados Unidos contra o Brasil",
+      "lang": "pt",
+      "terms": [
+        "tarifaço dos Estados Unidos contra o Brasil",
+        "tarifas dos Estados Unidos contra o Brasil",
+        "tarifas comerciais americanas ao Brasil",
+        "sobretaxa dos Estados Unidos sobre produtos brasileiros"
+      ],
+      "relevant": [
+        {
+          "externalId": 160604,
+          "startsAt": "2026-07-07T21:16"
+        },
+        {
+          "externalId": 204501,
+          "startsAt": "2026-07-07T17:16"
+        },
+        {
+          "externalId": 220682,
+          "startsAt": "2026-06-03T12:24"
+        },
+        {
+          "externalId": 204495,
+          "startsAt": "2026-06-02T14:48"
+        },
+        {
+          "externalId": 204472,
+          "startsAt": "2026-06-02T15:44"
+        },
+        {
+          "externalId": 160575,
+          "startsAt": "2026-06-02T16:48"
+        },
+        {
+          "externalId": 204387,
+          "startsAt": "2026-06-03T10:16"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-02-24T17:20"
+        },
+        {
+          "externalId": 160604,
+          "startsAt": "2026-06-09T17:44"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-07-07T15:16"
+        },
+        {
+          "externalId": 160604,
+          "startsAt": "2026-07-15T15:00"
+        }
+      ]
+    },
+    {
+      "id": "q10",
+      "q": "perdão para os condenados pelos atos de 8 de janeiro",
+      "lang": "pt",
+      "terms": [
+        "perdão para os condenados pelos atos de 8 de janeiro",
+        "anistia aos condenados pelos atos de 8 de janeiro",
+        "anistia 8 de janeiro",
+        "indulto aos réus do 8 de janeiro"
+      ],
+      "relevant": [
+        {
+          "externalId": 204518,
+          "startsAt": "2026-04-29T15:28"
+        },
+        {
+          "externalId": 74171,
+          "startsAt": "2026-04-30T12:40"
+        },
+        {
+          "externalId": 204512,
+          "startsAt": "2026-03-25T14:12"
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "q": "hospitais sem médicos",
+      "lang": "pt",
+      "terms": [
+        "hospitais sem médicos",
+        "falta de médicos em hospitais",
+        "carência de médicos em hospitais",
+        "escassez de médicos na rede hospitalar"
+      ],
+      "relevant": [
+        {
+          "externalId": 235800,
+          "startsAt": "2026-06-30T16:08"
+        }
+      ]
+    },
+    {
+      "id": "q12",
+      "q": "proteger crianças na internet",
+      "lang": "pt",
+      "terms": [
+        "proteger crianças na internet",
+        "proteção de crianças na internet",
+        "segurança de crianças online",
+        "proteção infantil no ambiente digital"
+      ],
+      "relevant": [
+        {
+          "externalId": 204460,
+          "startsAt": "2026-05-05T14:24"
+        },
+        {
+          "externalId": 73692,
+          "startsAt": "2026-03-24T16:16"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-03-18T14:52"
+        },
+        {
+          "externalId": 160635,
+          "startsAt": "2026-03-05T10:00"
+        },
+        {
+          "externalId": 73692,
+          "startsAt": "2026-05-19T19:24"
+        },
+        {
+          "externalId": 220695,
+          "startsAt": "2026-05-19T18:44"
+        },
+        {
+          "externalId": 74376,
+          "startsAt": "2026-06-16T22:08"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-05-19T19:12"
+        },
+        {
+          "externalId": 74398,
+          "startsAt": "2026-08-12T15:28"
+        }
+      ]
+    },
+    {
+      "id": "q13",
+      "q": "agricultores sofrendo com a falta de chuva",
+      "lang": "pt",
+      "terms": [
+        "agricultores sofrendo com a falta de chuva",
+        "agricultores seca estiagem",
+        "produtores rurais falta de chuva",
+        "estiagem prejuízos agricultura"
+      ],
+      "relevant": [
+        {
+          "externalId": 136811,
+          "startsAt": "2026-04-07T15:44"
+        },
+        {
+          "externalId": 204572,
+          "startsAt": "2026-10-28T13:55"
+        }
+      ]
+    },
+    {
+      "id": "q14",
+      "q": "valorização salarial dos professores",
+      "lang": "pt",
+      "terms": [
+        "valorização salarial dos professores",
+        "piso salarial dos professores",
+        "remuneração dos docentes",
+        "valorização do magistério"
+      ],
+      "relevant": [
+        {
+          "externalId": 204427,
+          "startsAt": "2026-04-22T18:52"
+        },
+        {
+          "externalId": 74057,
+          "startsAt": "2026-05-19T16:32"
+        },
+        {
+          "externalId": 221338,
+          "startsAt": "2026-02-24T18:08"
+        },
+        {
+          "externalId": 204427,
+          "startsAt": "2026-04-22T21:44"
+        },
+        {
+          "externalId": 204427,
+          "startsAt": "2026-04-16T12:16"
+        },
+        {
+          "externalId": 220629,
+          "startsAt": "2026-04-07T15:00"
+        },
+        {
+          "externalId": 204536,
+          "startsAt": "2026-05-20T17:28"
+        },
+        {
+          "externalId": 74398,
+          "startsAt": "2026-05-20T17:16"
+        },
+        {
+          "externalId": 204533,
+          "startsAt": "2026-05-20T17:24"
+        },
+        {
+          "externalId": 178884,
+          "startsAt": "2026-05-20T17:20"
+        },
+        {
+          "externalId": 160575,
+          "startsAt": "2026-05-20T17:12"
+        },
+        {
+          "externalId": 74171,
+          "startsAt": "2026-05-20T17:08"
+        },
+        {
+          "externalId": 73579,
+          "startsAt": "2026-05-20T17:32"
+        },
+        {
+          "externalId": 221338,
+          "startsAt": "2026-06-02T17:36"
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "q": "food prices",
+      "lang": "en",
+      "terms": [
+        "preços dos alimentos",
+        "preço da comida",
+        "custo de vida",
+        "preços de alimentos"
+      ],
+      "relevant": [
+        {
+          "externalId": 204455,
+          "startsAt": "2026-04-28T14:04"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-09-02T16:28"
+        },
+        {
+          "externalId": 162067,
+          "startsAt": "2026-03-17T14:28"
+        },
+        {
+          "externalId": 220588,
+          "startsAt": "2026-04-09T10:00"
+        },
+        {
+          "externalId": 204455,
+          "startsAt": "2026-03-17T14:16"
+        },
+        {
+          "externalId": 220550,
+          "startsAt": "2026-06-10T17:52"
+        },
+        {
+          "externalId": 141555,
+          "startsAt": "2026-05-20T22:36"
+        },
+        {
+          "externalId": 204455,
+          "startsAt": "2026-07-01T15:20"
+        }
+      ]
+    },
+    {
+      "id": "q16",
+      "q": "organized crime gangs",
+      "lang": "en",
+      "terms": [
+        "crime organizado",
+        "facções criminosas",
+        "organizações criminosas",
+        "milícias"
+      ],
+      "relevant": [
+        {
+          "externalId": 160604,
+          "startsAt": "2026-05-12T19:48"
+        },
+        {
+          "externalId": 160604,
+          "startsAt": "2026-02-24T22:48"
+        },
+        {
+          "externalId": 81055,
+          "startsAt": "2026-05-12T15:20"
+        },
+        {
+          "externalId": 74428,
+          "startsAt": "2026-03-04T17:04"
+        },
+        {
+          "externalId": 204572,
+          "startsAt": "2026-02-25T13:55"
+        },
+        {
+          "externalId": 220666,
+          "startsAt": "2026-07-07T21:24"
+        },
+        {
+          "externalId": 204531,
+          "startsAt": "2026-02-24T21:28"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-02-24T14:52"
+        },
+        {
+          "externalId": 220621,
+          "startsAt": "2026-06-09T20:08"
+        },
+        {
+          "externalId": 220588,
+          "startsAt": "2026-05-05T13:55"
+        },
+        {
+          "externalId": 204387,
+          "startsAt": "2026-06-03T12:24"
+        },
+        {
+          "externalId": 220554,
+          "startsAt": "2026-05-12T14:40"
+        },
+        {
+          "externalId": 204355,
+          "startsAt": "2026-02-25T15:24"
+        },
+        {
+          "externalId": 178908,
+          "startsAt": "2026-06-02T16:04"
+        },
+        {
+          "externalId": 220621,
+          "startsAt": "2026-05-12T16:16"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-05-12T20:00"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-06-09T17:40"
+        },
+        {
+          "externalId": 220590,
+          "startsAt": "2026-06-02T15:48"
+        },
+        {
+          "externalId": 178871,
+          "startsAt": "2026-06-09T19:00"
+        },
+        {
+          "externalId": 156190,
+          "startsAt": "2026-06-03T12:12"
+        },
+        {
+          "externalId": 220594,
+          "startsAt": "2026-06-09T14:36"
+        },
+        {
+          "externalId": 128760,
+          "startsAt": "2026-05-19T16:16"
+        },
+        {
+          "externalId": 74428,
+          "startsAt": "2026-03-04T19:36"
+        },
+        {
+          "externalId": 204501,
+          "startsAt": "2026-03-04T18:40"
+        },
+        {
+          "externalId": 227310,
+          "startsAt": "2026-03-18T16:52"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-10-14T15:44"
+        }
+      ]
+    },
+    {
+      "id": "q17",
+      "q": "end of the six-day work week",
+      "lang": "en",
+      "terms": [
+        "fim da semana de trabalho de seis dias",
+        "fim da jornada de seis dias",
+        "fim da escala de seis dias de trabalho",
+        "fim do regime de seis dias úteis"
+      ],
+      "relevant": [
+        {
+          "externalId": 178887,
+          "startsAt": "2026-04-15T21:52"
+        },
+        {
+          "externalId": 74161,
+          "startsAt": "2026-04-14T20:40"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-05-27T23:32"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-06-17T14:48"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-10-15T10:00"
+        },
+        {
+          "externalId": 220617,
+          "startsAt": "2026-05-26T14:56"
+        },
+        {
+          "externalId": 220582,
+          "startsAt": "2026-02-11T15:24"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-05-26T20:36"
+        },
+        {
+          "externalId": 74400,
+          "startsAt": "2026-05-27T20:20"
+        },
+        {
+          "externalId": 74057,
+          "startsAt": "2026-05-27T21:00"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-06-02T13:55"
+        },
+        {
+          "externalId": 73531,
+          "startsAt": "2026-02-26T11:12"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-06-17T14:08"
+        },
+        {
+          "externalId": 74161,
+          "startsAt": "2026-02-24T17:28"
+        },
+        {
+          "externalId": 81055,
+          "startsAt": "2026-02-24T14:48"
+        },
+        {
+          "externalId": 220632,
+          "startsAt": "2026-05-26T16:20"
+        },
+        {
+          "externalId": 152605,
+          "startsAt": "2026-10-14T18:00"
+        },
+        {
+          "externalId": 80815,
+          "startsAt": "2026-05-27T23:00"
+        },
+        {
+          "externalId": 220588,
+          "startsAt": "2026-04-17T10:30"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-07-07T15:28"
+        },
+        {
+          "externalId": 74161,
+          "startsAt": "2026-05-27T23:32"
+        },
+        {
+          "externalId": 204441,
+          "startsAt": "2026-06-30T17:36"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-05-05T19:44"
+        },
+        {
+          "externalId": 220615,
+          "startsAt": "2026-07-15T12:04"
+        },
+        {
+          "externalId": 204464,
+          "startsAt": "2026-09-02T16:08"
+        },
+        {
+          "externalId": 224333,
+          "startsAt": "2026-06-16T14:12"
+        },
+        {
+          "externalId": 220558,
+          "startsAt": "2026-05-12T16:28"
+        }
+      ]
+    },
+    {
+      "id": "q18",
+      "q": "online gambling",
+      "lang": "en",
+      "terms": [
+        "jogos de azar online",
+        "apostas online",
+        "bets",
+        "jogos on-line"
+      ],
+      "relevant": [
+        {
+          "externalId": 162067,
+          "startsAt": "2026-11-03T18:48"
+        },
+        {
+          "externalId": 178857,
+          "startsAt": "2026-11-03T18:52"
+        },
+        {
+          "externalId": 204480,
+          "startsAt": "2026-11-03T17:16"
+        },
+        {
+          "externalId": 204364,
+          "startsAt": "2026-02-24T23:48"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-07-01T16:32"
+        },
+        {
+          "externalId": 204441,
+          "startsAt": "2026-02-24T22:40"
+        },
+        {
+          "externalId": 204441,
+          "startsAt": "2026-10-13T16:36"
+        },
+        {
+          "externalId": 220682,
+          "startsAt": "2026-07-15T15:32"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-06-30T15:28"
+        },
+        {
+          "externalId": 98057,
+          "startsAt": "2026-07-15T16:20"
+        },
+        {
+          "externalId": 160635,
+          "startsAt": "2026-03-10T21:24"
+        },
+        {
+          "externalId": 220698,
+          "startsAt": "2026-08-11T15:00"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-09-02T13:55"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-05-19T21:24"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-07-08T14:36"
+        },
+        {
+          "externalId": 204387,
+          "startsAt": "2026-07-01T16:48"
+        },
+        {
+          "externalId": 220629,
+          "startsAt": "2026-07-15T16:36"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-02-26T10:00"
+        },
+        {
+          "externalId": 220543,
+          "startsAt": "2026-05-05T13:55"
+        }
+      ]
+    },
+    {
+      "id": "q19",
+      "q": "fuel prices",
+      "lang": "en",
+      "terms": [
+        "preços dos combustíveis",
+        "preço da gasolina",
+        "custo do combustível",
+        "valor dos combustíveis"
+      ],
+      "relevant": [
+        {
+          "externalId": 162067,
+          "startsAt": "2026-03-18T15:28"
+        },
+        {
+          "externalId": 221148,
+          "startsAt": "2026-03-18T15:24"
+        },
+        {
+          "externalId": 220550,
+          "startsAt": "2026-03-18T15:28"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-04-07T19:36"
+        },
+        {
+          "externalId": 204364,
+          "startsAt": "2026-04-07T19:44"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-03-18T15:04"
+        },
+        {
+          "externalId": 220568,
+          "startsAt": "2026-03-17T19:28"
+        },
+        {
+          "externalId": 160604,
+          "startsAt": "2026-03-17T20:44"
+        },
+        {
+          "externalId": 188097,
+          "startsAt": "2026-05-20T20:44"
+        },
+        {
+          "externalId": 205476,
+          "startsAt": "2026-03-18T16:44"
+        },
+        {
+          "externalId": 178884,
+          "startsAt": "2026-07-08T16:44"
+        },
+        {
+          "externalId": 204455,
+          "startsAt": "2026-03-17T14:16"
+        },
+        {
+          "externalId": 220684,
+          "startsAt": "2026-03-17T14:20"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-04-08T16:20"
+        },
+        {
+          "externalId": 205865,
+          "startsAt": "2026-03-24T16:56"
+        },
+        {
+          "externalId": 220574,
+          "startsAt": "2026-03-18T16:24"
+        },
+        {
+          "externalId": 220550,
+          "startsAt": "2026-03-11T15:04"
+        },
+        {
+          "externalId": 178873,
+          "startsAt": "2026-04-28T14:44"
+        }
+      ]
+    },
+    {
+      "id": "q20",
+      "q": "climate change",
+      "lang": "en",
+      "terms": [
+        "mudança climática",
+        "aquecimento global",
+        "mudanças do clima",
+        "crise climática"
+      ],
+      "relevant": [
+        {
+          "externalId": 206018,
+          "startsAt": "2026-03-11T20:20"
+        },
+        {
+          "externalId": 178986,
+          "startsAt": "2026-06-16T18:48"
+        },
+        {
+          "externalId": 74376,
+          "startsAt": "2026-05-05T13:55"
+        },
+        {
+          "externalId": 220670,
+          "startsAt": "2026-03-11T19:56"
+        },
+        {
+          "externalId": 178970,
+          "startsAt": "2026-07-08T16:12"
+        },
+        {
+          "externalId": 178986,
+          "startsAt": "2026-05-19T16:08"
+        },
+        {
+          "externalId": 74848,
+          "startsAt": "2026-06-10T17:08"
+        },
+        {
+          "externalId": 220599,
+          "startsAt": "2026-02-24T14:48"
+        },
+        {
+          "externalId": 204495,
+          "startsAt": "2026-11-10T14:12"
+        },
+        {
+          "externalId": 160538,
+          "startsAt": "2026-11-10T16:00"
+        },
+        {
+          "externalId": 178887,
+          "startsAt": "2026-06-10T18:28"
+        },
+        {
+          "externalId": 74856,
+          "startsAt": "2026-07-15T11:00"
+        }
+      ]
+    }
+  ]
+}

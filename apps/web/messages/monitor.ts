@@ -20,6 +20,8 @@ export const monitorEn = {
     exactFor: "Searched for exactly: {q}",
     exact: "Exact words only",
     translationFailed: "Couldn't translate the search; searched for your words as typed.",
+    meaningUsed: "Also searched by meaning: speeches marked “related by meaning” are about the topic without using these words.",
+    meaningUnavailable: "Search by meaning isn't available right now; showing speeches with your words.",
     searching: "Searching…",
   },
   landing: {
@@ -217,6 +219,7 @@ export const monitorEn = {
     videoNote: "The Câmara's official video on YouTube. Playing it loads YouTube, which may set cookies.",
     videoFrameTitle: "Official video of the session, from {at}",
     writtenOnly: "Sent in writing: not spoken in the session, so there is no video.",
+    byMeaning: "Related by meaning",
   },
   rollCall: {
     totals: "Yes {yes} · No {no} · Other {other}",
@@ -286,6 +289,8 @@ export const monitorPtBR: MonitorMessages = {
     exactFor: "Buscado exatamente: {q}",
     exact: "Somente as palavras exatas",
     translationFailed: "Não foi possível traduzir a busca; buscamos as palavras como foram digitadas.",
+    meaningUsed: "Também buscamos pelo sentido: discursos marcados “relacionado pelo sentido” tratam do tema sem usar estas palavras.",
+    meaningUnavailable: "A busca pelo sentido não está disponível agora; mostramos os discursos com as suas palavras.",
     searching: "Buscando…",
   },
   landing: {
@@ -483,6 +488,7 @@ export const monitorPtBR: MonitorMessages = {
     videoNote: "Vídeo oficial da Câmara no YouTube. Ao reproduzir, o YouTube é carregado e pode gravar cookies.",
     videoFrameTitle: "Vídeo oficial da sessão, a partir de {at}",
     writtenOnly: "Enviado por escrito: não foi falado na sessão, por isso não há vídeo.",
+    byMeaning: "Relacionado pelo sentido",
   },
   rollCall: {
     totals: "Sim {yes} · Não {no} · Outros {other}",

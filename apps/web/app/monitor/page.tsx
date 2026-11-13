@@ -8,6 +8,7 @@ import type { MonitorLocale } from "@/lib/monitor/i18n";
 import { landingHref, parseLanding, type LandingParams } from "@/lib/monitor/params";
 import { requestLocale, translator } from "@/lib/monitor/server";
 import { runSearch } from "@/lib/monitor/search";
+import { semanticSearch } from "@/lib/monitor/semantic";
 import { monitorTitle } from "@/lib/monitor/titles";
 import type { Metadata } from "next";
 import { getServer } from "@/lib/server";
@@ -50,6 +51,6 @@ async function MonitorSearch({ searchParams }: { searchParams: PageProps<"/monit
 }
 
 async function MonitorResults(view: { locale: MonitorLocale; params: LandingParams; facets: Facets; deputies: number }) {
-  const result = await runSearch(getServer().db, view.params, translator());
+  const result = await runSearch(getServer().db, view.params, translator(), (q) => semanticSearch(q));
   return <LandingView {...view} result={result} />;
 }
