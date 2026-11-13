@@ -256,6 +256,7 @@ export const monitorEn = {
     disabled: "Clipping downloads the video from YouTube, which this server can't do. Open the monitor on your own computer to clip this speech.",
     noSpeech: "Pick a speech to clip.",
     noVideo: "This speech has no place in the session's video yet, so it can't be clipped.",
+    tooLong: "This speech runs over an hour, too long to clip here. Watch it on YouTube instead.",
   },
   rollCall: {
     totals: "Yes {yes} · No {no} · Other {other}",
@@ -567,6 +568,7 @@ export const monitorPtBR: MonitorMessages = {
     disabled: "O recorte baixa o vídeo do YouTube, o que este servidor não consegue fazer. Abra o monitor no seu próprio computador para recortar este discurso.",
     noSpeech: "Escolha um discurso para recortar.",
     noVideo: "Este discurso ainda não tem lugar no vídeo da sessão, por isso não pode ser recortado.",
+    tooLong: "Este discurso passa de uma hora, longo demais para recortar aqui. Assista no YouTube.",
   },
   rollCall: {
     totals: "Sim {yes} · Não {no} · Outros {other}",
