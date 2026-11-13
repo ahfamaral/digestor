@@ -84,13 +84,35 @@ export function parseLanding(sp: RawParams): LandingParams {
   };
 }
 
+/** The vote filter (`vv`): the vote labels as published, in the URL without accents. */
+export const VOTE_VALUES = ["sim", "nao", "abstencao", "obstrucao"] as const;
+export type VoteValue = (typeof VOTE_VALUES)[number];
+
 export type DeputyParams = {
   q: string; rel: "by" | "mentions"; from: string | null; to: string | null; phase: string | null; sort: "best" | "new"; year: number;
   p: number; btype: string | null; bp: number; vp: number; exact: boolean;
+  /** Bills: words in the summary (`bexact`: as typed), the year presented. */
+  bq: string; bexact: boolean; byear: number | null;
+  /** Votes: words in what was voted (`vexact`: as typed), the vote, a bill or a request, months "YYYY-MM", different from the party's guidance. */
+  vq: string; vexact: boolean; vv: VoteValue | null; vk: "bill" | "request" | null; vfrom: string | null; vto: string | null; vdiff: boolean;
 };
+
+const MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
+/** A `YYYY-MM` month of `year`, else null. */
+function monthParam(v: Raw, year: number): string | null {
+  const s = first(v);
+  const m = s ? MONTH.exec(s) : null;
+  return m && Number(m[1]) === year ? s! : null;
+}
 
 export function parseDeputy(sp: RawParams): DeputyParams {
   const year = yearParam(sp.year);
+  const vv = first(sp.vv);
+  const vk = first(sp.vk);
+  const byear = first(sp.byear);
+  const vfrom = monthParam(sp.vfrom, year);
+  const vto = monthParam(sp.vto, year);
+  const swap = vfrom && vto && vfrom > vto;
   return {
     q: cleanQuery(first(sp.q) ?? ""),
     rel: first(sp.rel) === "mentions" ? "mentions" : "by",
@@ -103,7 +125,27 @@ export function parseDeputy(sp: RawParams): DeputyParams {
     bp: pageParam(sp.bp),
     vp: pageParam(sp.vp),
     exact: first(sp.exact) === "1",
+    bq: cleanQuery(first(sp.bq) ?? ""),
+    bexact: first(sp.bexact) === "1",
+    byear: byear && /^(19|20)\d\d$/.test(byear) ? Number(byear) : null,
+    vq: cleanQuery(first(sp.vq) ?? ""),
+    vexact: first(sp.vexact) === "1",
+    vv: (VOTE_VALUES as readonly string[]).includes(vv ?? "") ? (vv as VoteValue) : null,
+    vk: vk === "bill" || vk === "request" ? vk : null,
+    vfrom: swap ? vto : vfrom,
+    vto: swap ? vfrom : vto,
+    vdiff: first(sp.vdiff) === "1",
   };
+}
+
+/**
+ * What a section's form keeps of the page: every other section's state, as hidden fields. Its own fields come from the
+ * form, and its list starts again on page 1 (a filter changed).
+ */
+export function keptBy(section: "speeches" | "bills" | "votes", p: DeputyParams): DeputyParams {
+  if (section === "speeches") return { ...p, q: "", exact: false, rel: "by", from: null, to: null, phase: null, p: 0 };
+  if (section === "bills") return { ...p, bq: "", bexact: false, byear: null, bp: 0 };
+  return { ...p, vq: "", vexact: false, vv: null, vk: null, vfrom: null, vto: null, vdiff: false, vp: 0 };
 }
 
 /** The deputies directory: today's party and state; `former`: also the deputies not in office now. */
@@ -137,7 +179,9 @@ export function deputyHref(externalId: number, p: Partial<DeputyParams> = {}): s
   return href(`/monitor/deputados/${externalId}`, [
     ["q", p.q], ["exact", p.exact ? "1" : null], ["rel", p.rel === "mentions" ? "mentions" : null], ["from", p.from], ["to", p.to], ["phase", p.phase],
     ["sort", p.sort === "new" ? "new" : null], ["year", p.year && p.year !== DEFAULT_YEAR ? p.year : null], ["p", p.p],
-    ["btype", p.btype], ["bp", p.bp], ["vp", p.vp],
+    ["bq", p.bq], ["bexact", p.bexact ? "1" : null], ["byear", p.byear], ["btype", p.btype], ["bp", p.bp],
+    ["vq", p.vq], ["vexact", p.vexact ? "1" : null], ["vv", p.vv], ["vk", p.vk], ["vfrom", p.vfrom], ["vto", p.vto], ["vdiff", p.vdiff ? "1" : null],
+    ["vp", p.vp],
   ]);
 }
 

@@ -3,7 +3,7 @@ import pg from "pg";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "./client.ts";
 import { parlMembers, parlSpeeches, parlVotes } from "./schema.ts";
-import { fillSpeechParties, replaceHistory } from "./monitorRecord.ts";
+import { fillSpeechParties, replaceHistory, replaceOrientations } from "./monitorRecord.ts";
 import {
   countSpeechesInWindow, speechFacets, getMember, listMembers, listMemberSpeeches, listMemberVotes, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill,
   searchMembers, searchRollCalls, searchSpeeches, setInOffice, upsertMembers, upsertRollCalls, type MemberInput, type RollCallInput,
@@ -229,6 +229,117 @@ describe("roll calls", () => {
     await upsertRollCalls(db, [rollCall("2449741-72", "2026-03-18", { yes: 410, billSummary: "violência doméstica" })]);
     const hits = (await searchRollCalls(db, { terms: ["violência doméstica"] })).rows;
     expect(hits.map((h) => h.yes)).toEqual([410]);
+  });
+});
+
+describe("a deputy's vote filters", () => {
+  /**
+   * Member A votes in 8 roll calls (party at the vote PT, then PSD from July); B votes in two. Guidance: the PT
+   * federation (Não, Não, Liberado, empty), none at all, the bloc named "UniPpPsd" (Sim, Não), PSD's own label over its bloc.
+   */
+  async function setup() {
+    const { a, b } = await twoMembers();
+    await upsertRollCalls(db, [
+      rollCall("1-1", "2026-02-10", { billLabel: "PL 100/2026", billSummary: "Monitoramento de agressores em casos de violência doméstica" }),
+      rollCall("1-2", "2026-03-05", { billLabel: "REQ 5/2026", billSummary: "", description: "Aprovado o requerimento de urgência." }),
+      rollCall("1-3", "2026-04-20", { billLabel: "PL 200/2026", billSummary: "Reforma tributária", description: "Rejeitado o Requerimento de adiamento." }),
+      rollCall("1-4", "2026-05-15", { billLabel: "PL 300/2026", billSummary: "Saúde pública", description: "Aprovada a emenda." }),
+      rollCall("1-5", "2026-06-01", { billLabel: null, billId: null, billSummary: "" }),
+      rollCall("1-6", "2026-07-01"),
+      rollCall("1-7", "2026-07-02"),
+      rollCall("1-8", "2026-07-03"),
+    ]);
+    const vote = (vote: string, party: string) => ({ memberId: a, vote, party, uf: "SP" });
+    await replaceVotes(db, "1-1", [vote("Sim", "PT"), { memberId: b, vote: "Sim", party: "PL" }]);
+    await replaceVotes(db, "1-2", [vote("Não", "PT")]);
+    await replaceVotes(db, "1-3", [vote("Obstrução", "PT")]);
+    await replaceVotes(db, "1-4", [vote("Não", "PT"), { memberId: b, vote: "Não", party: "PL" }]);
+    await replaceVotes(db, "1-5", [vote("Sim", "PT")]);
+    await replaceVotes(db, "1-6", [vote("Abstenção", "PSD")]);
+    await replaceVotes(db, "1-7", [vote("Artigo 17", "PSD")]);
+    await replaceVotes(db, "1-8", [vote("Não", "PSD")]);
+    const fed = "Fdr PT-PCdoB-PV";
+    await replaceOrientations(db, "1-1", [{ bloc: fed, orientation: "Não" }, { bloc: "PL", orientation: "Sim" }]);
+    await replaceOrientations(db, "1-2", [{ bloc: fed, orientation: "Não" }, { bloc: "Governo", orientation: "Sim" }]);
+    await replaceOrientations(db, "1-3", [{ bloc: fed, orientation: "Liberado" }]);
+    await replaceOrientations(db, "1-4", [{ bloc: fed, orientation: "" }, { bloc: "Oposição", orientation: "Sim" }]);
+    await replaceOrientations(db, "1-6", [{ bloc: "Bl UniPpPsd...", orientation: "Sim" }, { bloc: fed, orientation: "Abstenção" }]);
+    await replaceOrientations(db, "1-7", [{ bloc: "Bl UniPpPsd...", orientation: "Não" }]);
+    await replaceOrientations(db, "1-8", [{ bloc: "Bl UniPpPsd...", orientation: "Não" }, { bloc: "PSD", orientation: "Sim" }]);
+    return { a, b };
+  }
+  const ids = (r: { rows: { rollCallId: string }[] }) => r.rows.map((x) => x.rollCallId);
+
+  it("no filter: every recorded vote, newest first, with the guidance that applies to the party at the vote", async () => {
+    const { a } = await setup();
+    const r = await listMemberVotes(db, a, {});
+    expect(r.total).toBe(8);
+    expect(r.all).toBe(8);
+    expect(r.rows.map((x) => [x.rollCallId, x.vote, x.guidance, x.guidanceFrom])).toEqual([
+      ["1-8", "Não", "Sim", null], // the party's own label wins over its bloc
+      ["1-7", "Artigo 17", "Não", "Bl UniPpPsd..."],
+      ["1-6", "Abstenção", "Sim", "Bl UniPpPsd..."], // a bloc whose name shows the party; the PT federation is not PSD's
+      ["1-5", "Sim", null, null], // no guidance row
+      ["1-4", "Não", null, null], // empty guidance; the opposition's is never the party's
+      ["1-3", "Obstrução", "Liberado", "Fdr PT-PCdoB-PV"],
+      ["1-2", "Não", "Não", "Fdr PT-PCdoB-PV"], // the government's guidance is never the party's
+      ["1-1", "Sim", "Não", "Fdr PT-PCdoB-PV"],
+    ]);
+  });
+
+  it("each filter alone", async () => {
+    const { a } = await setup();
+    expect(ids(await listMemberVotes(db, a, { vote: "Sim" }))).toEqual(["1-5", "1-1"]);
+    expect(ids(await listMemberVotes(db, a, { vote: "Não" }))).toEqual(["1-8", "1-4", "1-2"]);
+    expect(ids(await listMemberVotes(db, a, { vote: "Obstrução" }))).toEqual(["1-3"]);
+    expect(ids(await listMemberVotes(db, a, { vote: "Abstenção" }))).toEqual(["1-6"]);
+    // "Artigo 17" (the chair) is never matched by a vote filter
+    expect(ids(await listMemberVotes(db, a, { vote: "Artigo 17" }))).toEqual([]);
+    expect(ids(await listMemberVotes(db, a, { kind: "request" }))).toEqual(["1-3", "1-2"]);
+    expect(ids(await listMemberVotes(db, a, { kind: "bill" }))).toEqual(["1-8", "1-7", "1-6", "1-5", "1-4", "1-1"]);
+    expect(ids(await listMemberVotes(db, a, { from: "2026-04", to: "2026-06" }))).toEqual(["1-5", "1-4", "1-3"]);
+    expect(ids(await listMemberVotes(db, a, { from: "2026-07" }))).toEqual(["1-8", "1-7", "1-6"]);
+    expect(ids(await listMemberVotes(db, a, { to: "2026-02" }))).toEqual(["1-1"]);
+    // differs: a directed guidance (Sim / Não / Obstrução / Abstenção) and another vote; Liberado, empty, none and the chair never
+    expect(ids(await listMemberVotes(db, a, { differsFromGuidance: true }))).toEqual(["1-8", "1-6", "1-1"]);
+  });
+
+  it("text: what was voted, the bill's label and its summary, across accents", async () => {
+    const { a } = await setup();
+    expect(ids(await listMemberVotes(db, a, { q: ["violencia domestica"] }))).toEqual(["1-1"]);
+    expect(ids(await listMemberVotes(db, a, { q: ["urgência"] }))).toEqual(["1-2"]);
+    expect(ids(await listMemberVotes(db, a, { q: ["PL 300/2026"] }))).toEqual(["1-4"]);
+    expect(ids(await listMemberVotes(db, a, { q: ["PL 300"] }))).toEqual(["1-4"]);
+    // terms are OR-ed, as in the speech search
+    expect(ids(await listMemberVotes(db, a, { q: ["urgência", "saúde"] }))).toEqual(["1-4", "1-2"]);
+    // nothing searchable: nothing matches (never everything)
+    expect(await listMemberVotes(db, a, { q: ["o"] })).toMatchObject({ total: 0, all: 8, rows: [] });
+  });
+
+  it("filters combined, counted and paged; another deputy's votes never show", async () => {
+    const { a, b } = await setup();
+    expect(ids(await listMemberVotes(db, a, { kind: "bill", differsFromGuidance: true }))).toEqual(["1-8", "1-6", "1-1"]);
+    expect(ids(await listMemberVotes(db, a, { vote: "Não", kind: "request" }))).toEqual(["1-2"]);
+    expect(ids(await listMemberVotes(db, a, { q: ["reforma tributária"], vote: "Obstrução", from: "2026-04" }))).toEqual(["1-3"]);
+    expect(ids(await listMemberVotes(db, a, { q: ["reforma tributária"], differsFromGuidance: true }))).toEqual([]);
+    const page = await listMemberVotes(db, a, { differsFromGuidance: true, limit: 2, offset: 2 });
+    expect(page).toMatchObject({ total: 3, all: 8 });
+    expect(ids(page)).toEqual(["1-1"]);
+    const other = await listMemberVotes(db, b, { vote: "Não" });
+    expect(other).toMatchObject({ total: 1, all: 2 });
+    expect(other.rows[0]).toMatchObject({ rollCallId: "1-4", guidance: null });
+  });
+
+  it("the request rule in SQL is the one the page marks with", async () => {
+    const samples = [
+      "Rejeitado o Requerimento de adiamento.", "Aprovados os requerimentos.", "Requerimento de urgência", "  mantida a requerimento",
+      "Aprovada a Subemenda Substitutiva.", "Requerimentoxyz", "Aprovado o projeto; requerimento prejudicado.",
+    ];
+    const { REQUEST_DESCRIPTION_PG, isRequestVote } = await import("../monitorVotes.ts");
+    for (const d of samples) {
+      const r = await db.execute<{ m: boolean }>(sql`select ${d} ~* ${REQUEST_DESCRIPTION_PG} as m`);
+      expect([d, r.rows[0]!.m]).toEqual([d, isRequestVote(d, null)]);
+    }
   });
 });
 

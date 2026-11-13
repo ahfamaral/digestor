@@ -150,6 +150,34 @@ describe("presence, bills and roll calls", () => {
     expect(rcp.rows[0]).toMatchObject({ type: "RCP", number: 1, year: 2026, presentedAt: "2026-02-02T09:54" });
   });
 
+  it("listMemberBills: words in the summary (accents aside, terms OR-ed) and the year presented, with the type filter", async () => {
+    const ids = await upsertMembers(db, [member(204407, "Fernanda Melchionna"), member(5, "Outra Pessoa")]);
+    const f = ids.get(204407)!;
+    await upsertBills(db, [
+      { id: 1, type: "PL", number: 10, year: 2026, summary: "Dispõe sobre a violência doméstica", presentedAt: "2026-02-10T10:00" },
+      { id: 2, type: "PL", number: 11, year: 2025, summary: "Altera a lei da saúde", presentedAt: "2025-11-10T10:00" },
+      { id: 3, type: "REQ", number: 1, year: 2026, summary: "Requer informações sobre violência contra a mulher", presentedAt: "2026-03-02T09:54" },
+      { id: 4, type: "PL", number: 12, year: 2026, summary: "Violência doméstica, de outra autora", presentedAt: "2026-03-03T09:54" },
+    ]);
+    await replaceBillAuthors(db, [1, 2, 3, 4], [
+      { billId: 1, memberId: f, firstAuthor: true }, { billId: 2, memberId: f, firstAuthor: true }, { billId: 3, memberId: f, firstAuthor: false },
+      { billId: 4, memberId: ids.get(5)!, firstAuthor: true },
+    ]);
+    const idsOf = (r: { rows: { id: number }[] }) => r.rows.map((b) => b.id);
+    const all = await listMemberBills(db, f, {});
+    expect(all).toMatchObject({ total: 3, all: 3, years: [2026, 2025] });
+    const violence = await listMemberBills(db, f, { q: ["violencia"] });
+    expect(idsOf(violence)).toEqual([3, 1]);
+    // counts by type follow the words and the year (the type filter aside); `all` stays the deputy's whole list
+    expect(violence).toMatchObject({ total: 2, all: 3, byType: [{ type: "PL", n: 1 }, { type: "REQ", n: 1 }] });
+    expect(idsOf(await listMemberBills(db, f, { q: ["saúde", "mulher"] }))).toEqual([3, 2]);
+    expect(idsOf(await listMemberBills(db, f, { year: 2025 }))).toEqual([2]);
+    expect(idsOf(await listMemberBills(db, f, { year: 2026, type: "PL" }))).toEqual([1]);
+    expect(await listMemberBills(db, f, { q: ["violência"], type: "REQ" })).toMatchObject({ total: 1, rows: [{ id: 3 }] });
+    expect(await listMemberBills(db, f, { q: ["o"] })).toMatchObject({ total: 0, all: 3, rows: [], byType: [] });
+    expect(await listMemberBills(db, f, { year: 1999 })).toMatchObject({ total: 0, rows: [] });
+  });
+
   it("getRollCall groups by party at the vote", async () => {
     const ids = await upsertMembers(db, [member(220576, "Alfredo Gaspar", "PL"), member(204407, "Fernanda Melchionna", "PSOL", "RS"), member(5, "Ana Pimentel", "PT", "MG"), member(6, "Bruno Teste", "PT", "BA")]);
     await upsertRollCalls(db, [{

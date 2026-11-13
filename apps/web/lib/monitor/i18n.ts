@@ -34,6 +34,11 @@ export function formatSpeechTime(startsAt: string, locale: MonitorLocale): strin
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(`${startsAt}:00Z`));
 }
 
+/** A month ("2026-03") as "March 2026" / "março de 2026". */
+export function formatMonth(month: string, locale: MonitorLocale): string {
+  return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+}
+
 /** A calendar day ("2026-03-10") formatted as written. */
 export function formatDay(day: string, locale: MonitorLocale): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));

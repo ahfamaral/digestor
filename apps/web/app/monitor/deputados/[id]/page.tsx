@@ -12,6 +12,7 @@ import { DeputyView } from "@/components/Monitor/DeputyView";
 import type { MonitorLocale } from "@/lib/monitor/i18n";
 import { requestLocale, translator } from "@/lib/monitor/server";
 import { deputyHref, parseDeputy, type DeputyParams } from "@/lib/monitor/params";
+import { VOTE_FILTERS } from "@digestor/core";
 import { MEMBER_PAGE, queryTerms, searchTerms, typedPhrase, VOTE_PAGE } from "@/lib/monitor/search";
 import { getServer } from "@/lib/server";
 import { monitorTitle } from "@/lib/monitor/titles";
@@ -53,11 +54,12 @@ async function Deputy({ params, searchParams }: Pick<PageProps<"/monitor/deputad
   const record = { profile, bands: partyTimeline(history) };
   if (!p.q) return <DeputyData locale={locale} member={member} params={p} {...record} />;
   // A search is translated first (up to 10 s): the header and the search form show at once, with "Searching…" meanwhile.
+  // Keyed on the speech search only: filtering or paging the votes or bills keeps the page on screen while it loads.
   const empty = { total: 0, rows: [] };
   const workspace = { ...record, presence: null, bills: { total: 0, byType: [], rows: [] }, phases: [], today: today(), words: null };
   return (
     <Suspense
-      key={deputyHref(member.externalId, p)}
+      key={deputyHref(member.externalId, { q: p.q, exact: p.exact, rel: p.rel, from: p.from, to: p.to, phase: p.phase, sort: p.sort, year: p.year, p: p.p })}
       fallback={<DeputyView locale={locale} member={member} params={p} searched={null} speeches={empty} votes={empty} {...workspace} searching />}
     >
       <DeputyData locale={locale} member={member} params={p} {...record} />
@@ -71,7 +73,13 @@ async function DeputyData({
   locale, member, params: p, profile, bands,
 }: { locale: MonitorLocale; member: MemberRow; params: DeputyParams; profile: ProfileInput; bands: TimelineBand[] }) {
   const { db } = getServer();
-  const searched = p.q ? await searchTerms(p.q, translator(), p.exact) : null;
+  const translate = translator();
+  // The three text boxes (speeches, votes, bills) are translated side by side, each with its own "exact" box.
+  const [searched, votesSearched, billsSearched] = await Promise.all([
+    p.q ? searchTerms(p.q, translate, p.exact) : null,
+    p.vq ? searchTerms(p.vq, translate, p.vexact) : null,
+    p.bq ? searchTerms(p.bq, translate, p.bexact) : null,
+  ]);
   const terms = searched ? queryTerms(searched) : [];
   const phrase = searched ? typedPhrase(searched.q) : undefined;
   const paging = { limit: MEMBER_PAGE, offset: p.p * MEMBER_PAGE };
@@ -84,16 +92,22 @@ async function DeputyData({
         : listMemberSpeeches(db, member.id, { ...paging, ...filters });
   const [speeches, votes, presence, bills, facets, words] = await Promise.all([
     speechesOf(),
-    listMemberVotes(db, member.id, { limit: VOTE_PAGE, offset: p.vp * VOTE_PAGE }),
+    listMemberVotes(db, member.id, {
+      limit: VOTE_PAGE, offset: p.vp * VOTE_PAGE, q: votesSearched ? queryTerms(votesSearched) : undefined, vote: p.vv ? VOTE_FILTERS[p.vv] : undefined,
+      kind: p.vk ?? undefined, from: p.vfrom ?? undefined, to: p.vto ?? undefined, differsFromGuidance: p.vdiff || undefined,
+    }),
     getPresence(db, member.id, p.year),
-    listMemberBills(db, member.id, { type: p.btype ?? undefined, limit: BILL_PAGE, offset: p.bp * BILL_PAGE }),
+    listMemberBills(db, member.id, {
+      type: p.btype ?? undefined, q: billsSearched ? queryTerms(billsSearched) : undefined, year: p.byear ?? undefined, limit: BILL_PAGE,
+      offset: p.bp * BILL_PAGE,
+    }),
     speechFacets(db),
     distinctiveWords(db, { memberId: member.id }, { year: p.year }),
   ]);
   return (
     <DeputyView
-      locale={locale} member={member} params={p} searched={searched} speeches={speeches} votes={votes} profile={profile}
-      bands={bands} presence={presence} bills={bills} phases={facets.phases} today={today()} words={words}
+      locale={locale} member={member} params={p} searched={searched} speeches={speeches} votes={{ ...votes, searched: votesSearched }}
+      profile={profile} bands={bands} presence={presence} bills={{ ...bills, searched: billsSearched }} phases={facets.phases} today={today()} words={words}
     />
   );
 }

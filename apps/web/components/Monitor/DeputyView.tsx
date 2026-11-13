@@ -25,6 +25,7 @@ import { Section } from "./Section";
 import { SortSwitch } from "./SortSwitch";
 import { SpeechItem } from "./SpeechItem";
 import { TopicNote } from "./TopicNote";
+import { VoteFilters, votesFiltered } from "./VoteFilters";
 import { VoteRow } from "./VoteRow";
 import { WordHeat } from "./WordHeat";
 import { YearSelect } from "./YearSelect";
@@ -36,7 +37,9 @@ const NAV = ["speeches", "words", "bills", "votes", "presence", "fronts"] as con
 
 export type DeputyWorkspace = {
   profile: ProfileInput; bands: TimelineBand[]; presence: PresenceRecord | null;
-  bills: { total: number; byType: { type: string; n: number }[]; rows: MemberBill[] }; phases: string[]; today: string;
+  /** `all`: every bill the deputy signed (the filters aside); `years`: the years presented; `searched`: what `bq` searched. */
+  bills: { total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: MemberBill[]; searched?: Searched | null };
+  phases: string[]; today: string;
   /** "Words used more than the chamber" (`distinctiveWords`); null while searching. */
   words: { enough: boolean; words: DistinctiveWord[] } | null;
 };
@@ -51,12 +54,15 @@ export function DeputyView({
   locale, member, params, searched, speeches, votes, profile, bands, presence, bills, phases, today, words, searching = false,
 }: DeputyWorkspace & {
   locale: MonitorLocale; member: MemberRow; params: DeputyParams; searched: Searched | null; searching?: boolean;
-  speeches: { total: number; rows: (SpeechRow | SpeechHit)[] }; votes: { total: number; rows: Vote[] };
+  speeches: { total: number; rows: (SpeechRow | SpeechHit)[] };
+  /** `total`: the votes the filters keep; `all`: every recorded vote of the deputy; `searched`: what `vq` searched. */
+  votes: { total: number; all?: number; rows: Vote[]; searched?: Searched | null };
 }) {
   const id = member.externalId;
   const mentions = params.rel === "mentions";
   const filtered = !!(params.q || mentions || params.from || params.to || params.phase);
-  const yearHrefs = Object.fromEntries(MONITOR_YEARS.map((y) => [y, deputyHref(id, { ...params, year: y, p: 0, bp: 0 })]));
+  const yearHrefs = Object.fromEntries(MONITOR_YEARS.map((y) => [y, deputyHref(id, { ...params, year: y, p: 0, bp: 0, vp: 0, vfrom: null, vto: null })]));
+  const allVotes = votes.all ?? votes.total;
   return (
     <div lang={locale} className="grid gap-8">
       <div className="grid gap-3">
@@ -143,9 +149,16 @@ export function DeputyView({
             <Section
               id="votes"
               title={tm(locale, "sections.votes")}
-              count={votes.total ? formatCount(votes.total, locale) : undefined}
+              count={allVotes ? formatCount(allVotes, locale) : undefined}
               note={tm(locale, "votes.note")}
-              empty={votes.total ? null : tm(locale, "empty.memberVotes")}
+              toolbar={
+                allVotes > 0 && (
+                  <VoteFilters
+                    locale={locale} externalId={id} params={params} today={today} total={votes.total} all={allVotes} searched={votes.searched ?? null}
+                  />
+                )
+              }
+              empty={votes.total ? null : tm(locale, allVotes > 0 && votesFiltered(params) ? "votes.none" : "empty.memberVotes")}
             >
               {votes.rows.map((v) => (
                 <VoteRow key={v.rollCallId} locale={locale} vote={v} from={id} />

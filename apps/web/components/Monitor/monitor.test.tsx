@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { landingHref, parseDeputy, parseDirectory, parseLanding, type LandingParams } from "@/lib/monitor/params";
+import { deputyHref, landingHref, parseDeputy, parseDirectory, parseLanding, type LandingParams } from "@/lib/monitor/params";
 import { DeputyView } from "./DeputyView";
 import { DirectoryView } from "./DirectoryView";
 import { formQuery } from "./GetForm";
@@ -55,7 +55,7 @@ describe("monitor components", () => {
   it("VoteRow shows the vote label exactly as published", () => {
     const html = renderToStaticMarkup(
       <ul>
-        <VoteRow locale="en" from={204407} vote={{ rollCallId: "2449741-72", date: "2026-03-10", description: "Mantido o texto.", billId: 2449741, billLabel: "PL 2942/2024", billSummary: "Ementa", vote: "Artigo 17" }} />
+        <VoteRow locale="en" from={204407} vote={{ rollCallId: "2449741-72", date: "2026-03-10", description: "Mantido o texto.", billId: 2449741, billLabel: "PL 2942/2024", billSummary: "Ementa", vote: "Artigo 17", guidance: null, guidanceFrom: null }} />
       </ul>,
     );
     expect(html).toContain(">Artigo 17<");
@@ -127,7 +127,7 @@ describe("monitor components", () => {
   });
 
   it("the deputy page lists its sections at the top and pages the votes", () => {
-    const vote = (i: number) => ({ rollCallId: `1-${i}`, date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: null, billSummary: "", vote: "Sim" });
+    const vote = (i: number) => ({ rollCallId: `1-${i}`, date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: null, billSummary: "", vote: "Sim", guidance: null, guidanceFrom: null });
     const html = renderToStaticMarkup(
       <DeputyView
         locale="en" member={{ ...member, inOffice: true }} params={parseDeputy({})} searched={null} speeches={{ total: 0, rows: [] }}
@@ -482,6 +482,77 @@ describe("monitor components", () => {
     expect(renderToStaticMarkup(<AuthoredBills locale="en" externalId={204407} params={parseDeputy({})} bills={{ total: 0, byType: [], rows: [] }} />)).toContain("No bills or requests filed in 2026.");
   });
 
+  it("a vote row shows the party's guidance next to the vote, and the federation or bloc it came from", () => {
+    const v = { rollCallId: "1-1", date: "2026-03-10", description: "Aprovado o projeto.", billId: 1, billLabel: "PL 1/2026", billSummary: "", vote: "Não" };
+    const own = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance: "Sim", guidanceFrom: null }} /></ul>);
+    expect(own).toMatch(/Party guidance: <span lang="pt-BR"[^>]*>Sim<\/span>/);
+    expect(own).not.toContain("(PSD)");
+    const bloc = renderToStaticMarkup(<ul><VoteRow locale="pt-BR" vote={{ ...v, guidance: "Liberado", guidanceFrom: "Bl UniPpPsd..." }} /></ul>);
+    expect(bloc).toMatch(/Orientação do partido: <span lang="pt-BR"[^>]*>Liberado<\/span>/);
+    expect(bloc).toContain("(Bl UniPpPsd...)");
+    const none = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance: null, guidanceFrom: null }} /></ul>);
+    expect(none).not.toContain("guidance");
+  });
+
+  it("the votes have a filter row: words, vote, kind, months, different from the party's guidance; counts and paging keep it", () => {
+    const params = parseDeputy({ q: "saúde", bq: "mulher", vv: "nao", vdiff: "1", vfrom: "2026-03", vp: "1" });
+    const rows = [{ rollCallId: "1-1", date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: null, billSummary: "", vote: "Não", guidance: "Sim", guidanceFrom: "PL" }];
+    const html = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={params} searched={null} speeches={{ total: 0, rows: [] }} votes={{ total: 45, all: 125, rows }} {...emptyWorkspace} />,
+    );
+    const form = html.slice(html.indexOf('id="votes"'));
+    for (const name of ["vq", "vv", "vk", "vfrom", "vto"]) expect(form).toContain(`name="${name}"`);
+    expect(form).toMatch(/<input[^>]*type="checkbox"[^>]*name="vdiff"[^>]*checked=""[^>]*value="1"/);
+    expect(form).toContain("Different from the party&#x27;s guidance");
+    expect(form).toContain("Compared with the guidance the party (or its bloc) gave for that vote. A free vote (‘Liberado’) or no guidance never counts.");
+    // the other sections' state travels with the form; its own page does not
+    expect(form).toMatch(/<input type="hidden" name="q" value="saúde"/);
+    expect(form).toMatch(/<input type="hidden" name="bq" value="mulher"/);
+    expect(form).not.toMatch(/<input type="hidden" name="vp"/);
+    // the vote select's own field only (no kept copy of the current filter)
+    expect(form.match(/name="vv"/g)).toHaveLength(1);
+    // counts of this deputy's own records only
+    expect(html).toContain("45 of 125 recorded votes");
+    expect(html).toContain(`href="${deputyHref(999, { ...params, vp: 2 }).replace(/&/g, "&amp;")}#votes"`);
+    expect(html).toContain(`href="${deputyHref(999, { ...params, vv: null, vdiff: false, vfrom: null, vp: 0 }).replace(/&/g, "&amp;")}#votes"`);
+    // never a ranking, a score or a judgement
+    const text = form.replace(/<[^>]*>/g, " ").toLowerCase();
+    for (const w of ["%", "rebel", "disloyal", "loyal"]) expect(text).not.toContain(w);
+    const none = renderToStaticMarkup(
+      <DeputyView locale="pt-BR" member={member} params={params} searched={null} speeches={{ total: 0, rows: [] }} votes={{ total: 0, all: 125, rows: [] }} {...emptyWorkspace} />,
+    );
+    expect(none).toContain("Diferente da orientação do partido");
+    expect(none).toContain("0 de 125 votos registrados");
+    expect(none).toContain("Nenhum voto corresponde a estes filtros.");
+    // no filter: no count line, the heading counts every vote
+    const plain = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={parseDeputy({})} searched={null} speeches={{ total: 0, rows: [] }} votes={{ total: 125, all: 125, rows }} {...emptyWorkspace} />,
+    );
+    expect(plain).not.toContain("of 125 recorded votes");
+    expect(plain).toMatch(/Votes<span[^>]*>\(125\)</);
+  });
+
+  it("the bills have a filter row: words in the summary and the year presented when there is more than one; type links keep it", () => {
+    const bills = {
+      total: 1, all: 3, years: [2026, 2025], byType: [{ type: "REQ", n: 1 }, { type: "PL", n: 1 }],
+      rows: [{ id: 2646307, type: "REQ", number: 12, year: 2026, summary: "Requer informações", presentedAt: "2026-09-09T22:16", firstAuthor: true }],
+    };
+    const params = parseDeputy({ bq: "informações", vv: "sim", bp: "2" });
+    const html = renderToStaticMarkup(<AuthoredBills locale="en" externalId={204407} params={params} bills={bills} />);
+    expect(html).toContain('name="bq"');
+    expect(html).toContain('value="informações"');
+    expect(html).toContain('name="byear"');
+    expect(html).toMatch(/<input type="hidden" name="vv" value="sim"/);
+    expect(html).not.toMatch(/<input type="hidden" name="bp"/);
+    expect(html).toContain("1 of 3 bills and requests");
+    expect(html).toContain('href="/monitor/deputados/204407?bq=informa%C3%A7%C3%B5es&amp;btype=REQ&amp;vv=sim#bills"');
+    const oneYear = renderToStaticMarkup(<AuthoredBills locale="en" externalId={204407} params={parseDeputy({})} bills={{ ...bills, total: 3, years: [2026] }} />);
+    expect(oneYear).not.toContain('name="byear"');
+    expect(oneYear).not.toContain("of 3 bills and requests");
+    const none = renderToStaticMarkup(<AuthoredBills locale="pt-BR" externalId={204407} params={params} bills={{ ...bills, total: 0, byType: [], rows: [] }} />);
+    expect(none).toContain("Nenhuma proposição ou requerimento corresponde a estes filtros.");
+  });
+
   it("the profile line merges earlier mandates", () => {
     const html = renderToStaticMarkup(
       <ProfileLine locale="en" profile={{ profession: "Bibliotecária", externalMandates: [{ office: "Vereador(a)", place: "Porto Alegre", uf: "RS", from: 2009, to: 2018, party: "PSOL" }], fronts: [], positions: [] }} />,
@@ -517,7 +588,7 @@ describe("monitor components", () => {
   });
 
   it("a vote row leads with what was voted; the bill summary comes second; a request is marked", () => {
-    const v = { rollCallId: "1-1", date: "2026-03-10", description: "Rejeitado o Requerimento.", billId: 1, billLabel: "MPV 1313/2025", billSummary: "Dispõe sobre X", vote: "Não" };
+    const v = { rollCallId: "1-1", date: "2026-03-10", description: "Rejeitado o Requerimento.", billId: 1, billLabel: "MPV 1313/2025", billSummary: "Dispõe sobre X", vote: "Não", guidance: null, guidanceFrom: null };
     const html = renderToStaticMarkup(<ul><VoteRow locale="en" vote={v} /></ul>);
     expect(html.indexOf("Rejeitado o Requerimento.")).toBeLessThan(html.indexOf("Dispõe sobre X"));
     expect(html).toMatch(/<p[^>]*text-muted-foreground[^>]*>Dispõe sobre X<\/p>/);

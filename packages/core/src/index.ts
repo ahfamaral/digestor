@@ -23,3 +23,4 @@ export * from "./recordRef.ts";
 export * from "./recordSuggest.ts";
 export * from "./monitorText.ts";
 export * from "./monitorTimeline.ts";
+export * from "./monitorVotes.ts";

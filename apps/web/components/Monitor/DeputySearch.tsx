@@ -1,10 +1,11 @@
 import { Search } from "lucide-react";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
-import { deputyHref, MAX_QUERY, type DeputyParams } from "@/lib/monitor/params";
+import { deputyHref, keptBy, MAX_QUERY, type DeputyParams } from "@/lib/monitor/params";
 import { ExactBox } from "./ExactBox";
 import { FormSelect } from "./FormSelect";
 import { Spinner } from "@/components/ui/spinner";
 import { GetForm } from "./GetForm";
+import { KeptFields } from "./KeptFields";
 
 const field = "h-9 w-full min-w-0 rounded-lg border border-input bg-white px-2 text-sm outline-none focus-visible:border-stone-500 focus-visible:ring-3 focus-visible:ring-stone-500";
 
@@ -61,8 +62,8 @@ export function DeputySearch({ locale, externalId, params, phases }: { locale: M
           className="col-span-2 sm:col-span-1"
         />
       </div>
-      {params.sort === "new" && <input type="hidden" name="sort" value="new" />}
-      {params.btype && <input type="hidden" name="btype" value={params.btype} />}
+      {/* the sort, and the bills' and votes' filters and pages, stay as they are */}
+      <KeptFields params={keptBy("speeches", params)} />
     </GetForm>
   );
 }

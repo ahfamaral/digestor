@@ -99,6 +99,14 @@ export const monitorEn = {
     coAuthor: "co-author",
     empty: "No bills or requests filed in {year}.",
     types: "Filter by type",
+    count: "{n} of {total} bills and requests",
+    none: "No bills or requests match these filters.",
+  },
+  billFilters: {
+    label: "Search these bills and requests",
+    placeholder: "Words in the summary",
+    year: "Year presented",
+    apply: "Show",
   },
   presence: {
     title: "Presence",
@@ -217,8 +225,23 @@ export const monitorEn = {
   votes: {
     note: "Roll calls without a recorded vote are not listed.",
     request: "Vote on a request",
+    count: "{n} of {total} recorded votes",
+    none: "No votes match these filters.",
+    guidance: "Party guidance:",
     pageTitle: "{bill} roll call",
     pageTitleNoBill: "Roll call",
+  },
+  voteFilters: {
+    label: "Search these votes",
+    placeholder: "What was voted, or a bill",
+    vote: "Vote",
+    kind: "Kind",
+    kindBill: "On bills",
+    kindRequest: "On requests",
+    differs: "Different from the party's guidance",
+    differsNote:
+      "Compared with the guidance the party (or its bloc) gave for that vote. A free vote (‘Liberado’) or no guidance never counts. A bloc's guidance is used only for the parties its published name shows.",
+    apply: "Show",
   },
   paging: {
     range: "{from}–{to} of {total}",
@@ -335,6 +358,14 @@ export const monitorPtBR: MonitorMessages = {
     coAuthor: "coautoria",
     empty: "Nenhuma proposição ou requerimento apresentado em {year}.",
     types: "Filtrar por tipo",
+    count: "{n} de {total} proposições e requerimentos",
+    none: "Nenhuma proposição ou requerimento corresponde a estes filtros.",
+  },
+  billFilters: {
+    label: "Buscar nestas proposições e requerimentos",
+    placeholder: "Palavras da ementa",
+    year: "Ano de apresentação",
+    apply: "Mostrar",
   },
   presence: {
     title: "Presença",
@@ -453,8 +484,23 @@ export const monitorPtBR: MonitorMessages = {
   votes: {
     note: "Votações sem voto registrado não aparecem.",
     request: "Votação de requerimento",
+    count: "{n} de {total} votos registrados",
+    none: "Nenhum voto corresponde a estes filtros.",
+    guidance: "Orientação do partido:",
     pageTitle: "Votação {bill}",
     pageTitleNoBill: "Votação nominal",
+  },
+  voteFilters: {
+    label: "Buscar nestes votos",
+    placeholder: "O que foi votado, ou uma proposição",
+    vote: "Voto",
+    kind: "Tipo",
+    kindBill: "De proposições",
+    kindRequest: "De requerimentos",
+    differs: "Diferente da orientação do partido",
+    differsNote:
+      "Comparado com a orientação que o partido (ou seu bloco) deu para aquela votação. Votação liberada (‘Liberado’) ou sem orientação nunca conta. A orientação de um bloco só vale para os partidos que aparecem no nome publicado.",
+    apply: "Mostrar",
   },
   paging: {
     range: "{from}–{to} de {total}",

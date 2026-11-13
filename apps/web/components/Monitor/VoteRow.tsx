@@ -9,8 +9,9 @@ import { ExternalLink } from "./ExternalLink";
 /**
  * One recorded vote: what was voted (the roll call's published description) first, then the bill it belongs to (opens
  * the roll-call page; the bill on the Câmara's site) and its summary, and the vote exactly as published. A vote on a
- * request is marked, since a "Não" on it is not a vote against the bill. `from`: the deputy whose page lists it, so the
- * roll-call page leads back to them.
+ * request is marked, since a "Não" on it is not a vote against the bill. The guidance that applied to the party at the
+ * vote sits under the vote, as published, with the federation or bloc it came from. `from`: the deputy whose page lists
+ * it, so the roll-call page leads back to them.
  */
 export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote: Vote; from?: number }) {
   return (
@@ -39,7 +40,15 @@ export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote
           <p lang="pt-BR" className="break-words text-muted-foreground">{v.billSummary}</p>
         )}
       </div>
-      <span lang="pt-BR" className="h-fit w-fit rounded-full border border-border bg-stone-100 px-2.5 py-0.5 text-xs font-semibold text-foreground sm:self-start">{v.vote}</span>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 sm:flex-col sm:items-end">
+        <span lang="pt-BR" className="h-fit w-fit rounded-full border border-border bg-stone-100 px-2.5 py-0.5 text-xs font-semibold text-foreground">{v.vote}</span>
+        {v.guidance && (
+          <span className="text-xs text-muted-foreground sm:text-right">
+            {tm(locale, "votes.guidance")} <span lang="pt-BR" className="font-semibold text-foreground">{v.guidance}</span>
+            {v.guidanceFrom && <span lang="pt-BR"> ({v.guidanceFrom})</span>}
+          </span>
+        )}
+      </div>
     </li>
   );
 }

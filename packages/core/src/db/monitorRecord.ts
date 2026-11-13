@@ -1,8 +1,8 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { misfiledCopies } from "../monitorText.ts";
 import { inOfficeSpans, type ExternalMandate, type HistoryRow, type Position } from "../monitorTimeline.ts";
 import type { Db } from "./client.ts";
-import type { House } from "./monitor.ts";
+import { tsQuery, type House } from "./monitor.ts";
 import {
   parlBillAuthors, parlBills, parlMemberHistory, parlMembers, parlOrientations, parlPresence, parlRollCalls, parlSessions, parlSpeeches, parlVotes,
 } from "./schema.ts";
@@ -211,22 +211,40 @@ export async function getPresence(db: Db, memberId: number, year: number): Promi
 
 export type MemberBill = { id: number; type: string; number: number; year: number; summary: string; presentedAt: string; firstAuthor: boolean };
 
-/** Bills and requests the deputy signed, newest first; `byType` counts all of them (the filter aside), most first. */
+/**
+ * Bills and requests the deputy signed, newest first. `q`: search terms (OR-ed, as the speech search) over the summary;
+ * `year`: the year presented. `byType` counts the bills matching `q` and `year` (the type filter aside), most first;
+ * `all` counts every bill the deputy signed; `years`: the years presented, newest first.
+ */
 export async function listMemberBills(
-  db: Db, memberId: number, a: { type?: string; limit?: number; offset?: number },
-): Promise<{ total: number; byType: { type: string; n: number }[]; rows: MemberBill[] }> {
-  const by = await db.execute<{ type: string; n: number }>(sql`
-    select b.type, count(*)::int as n from parl_bill_authors a join parl_bills b on b.id = a.bill_id
-    where a.member_id = ${memberId} group by b.type order by n desc, b.type`);
+  db: Db, memberId: number, a: { type?: string; q?: string[]; year?: number; limit?: number; offset?: number },
+): Promise<{ total: number; all: number; years: number[]; byType: { type: string; n: number }[]; rows: MemberBill[] }> {
+  const terms = a.q === undefined ? null : tsQuery(a.q);
+  const where: SQL[] = [];
+  if (a.q !== undefined) {
+    where.push(terms ? sql`and to_tsvector('pt_unaccent', b.summary) @@ (${terms}) and numnode(${terms}) > 0` : sql`and false`);
+  }
+  if (a.year !== undefined) where.push(sql`and extract(year from b.presented_at) = ${a.year}`);
+  const filters = sql.join(where, sql` `);
+  const [by, years] = await Promise.all([
+    db.execute<{ type: string; n: number }>(sql`
+      select b.type, count(*)::int as n from parl_bill_authors a join parl_bills b on b.id = a.bill_id
+      where a.member_id = ${memberId} ${filters} group by b.type order by n desc, b.type`),
+    db.execute<{ y: number; n: number }>(sql`
+      select extract(year from b.presented_at)::int as y, count(*)::int as n from parl_bill_authors a join parl_bills b on b.id = a.bill_id
+      where a.member_id = ${memberId} group by 1 order by 1 desc`),
+  ]);
   const typeWhere = a.type ? sql`and b.type = ${a.type}` : sql``;
   const total = a.type ? (by.rows.find((r) => r.type === a.type)?.n ?? 0) : by.rows.reduce((s, r) => s + r.n, 0);
-  const rows = await db.execute<{ id: number; type: string; number: number; year: number; summary: string; presented_at: string; first_author: boolean }>(sql`
+  const rows = total === 0 ? { rows: [] } : await db.execute<{ id: number; type: string; number: number; year: number; summary: string; presented_at: string; first_author: boolean }>(sql`
     select b.id, b.type, b.number, b.year, b.summary, to_char(b.presented_at, 'YYYY-MM-DD"T"HH24:MI') as presented_at, a.first_author
     from parl_bill_authors a join parl_bills b on b.id = a.bill_id
-    where a.member_id = ${memberId} ${typeWhere}
+    where a.member_id = ${memberId} ${typeWhere} ${filters}
     order by b.presented_at desc, b.id desc limit ${a.limit ?? 20} offset ${a.offset ?? 0}`);
   return {
     total,
+    all: years.rows.reduce((s, r) => s + r.n, 0),
+    years: years.rows.map((r) => r.y),
     byType: by.rows,
     rows: rows.rows.map((r) => ({
       id: r.id, type: r.type, number: r.number, year: r.year, summary: r.summary, presentedAt: r.presented_at, firstAuthor: r.first_author,

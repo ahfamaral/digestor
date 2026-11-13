@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  backToSearch, deputyHref, directoryHref, fromDeputy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam, type DeputyParams, type LandingParams,
+  backToSearch, deputyHref, directoryHref, fromDeputy, keptBy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam,
+  type DeputyParams, type LandingParams,
 } from "./params";
 
 const DEFAULT_LANDING: LandingParams = {
@@ -93,10 +94,19 @@ describe("landingHref", () => {
   });
 });
 
+const DEFAULT_DEPUTY: DeputyParams = {
+  q: "", rel: "by", from: null, to: null, phase: null, sort: "best", year: 2026, p: 0, btype: null, bp: 0, vp: 0, exact: false,
+  bq: "", bexact: false, byear: null, vq: "", vexact: false, vv: null, vk: null, vfrom: null, vto: null, vdiff: false,
+};
+const FULL_DEPUTY: DeputyParams = {
+  q: "Paulão", rel: "mentions", from: "2026-02-01", to: "2026-05-01", phase: "Ordem do Dia", sort: "new", year: 2026, p: 1, btype: "PL", bp: 3, vp: 2,
+  exact: true, bq: "violência doméstica", bexact: true, byear: 2025, vq: "reforma tributária", vexact: true, vv: "nao", vk: "request",
+  vfrom: "2026-03", vto: "2026-06", vdiff: true,
+};
+
 describe("parseDeputy and deputyHref", () => {
   it("defaults and invalid values", () => {
-    const d: DeputyParams = { q: "", rel: "by", from: null, to: null, phase: null, sort: "best", year: 2026, p: 0, btype: null, bp: 0, vp: 0, exact: false };
-    expect(parseDeputy({})).toEqual(d);
+    expect(parseDeputy({})).toEqual(DEFAULT_DEPUTY);
     expect(parseDeputy({ vp: "2" }).vp).toBe(2);
     expect(parseDeputy({ vp: "x" }).vp).toBe(0);
     expect(parseDeputy({ rel: "x" }).rel).toBe("by");
@@ -107,13 +117,47 @@ describe("parseDeputy and deputyHref", () => {
     expect(parseDeputy({ from: "2026-09-01", to: "2026-02-01" })).toMatchObject({ from: "2026-02-01", to: "2026-09-01" });
   });
 
-  it("deputyHref omits defaults and round-trips", () => {
+  it("vote and bill filters: invalid values are ignored", () => {
+    for (const vv of ["sim", "nao", "abstencao", "obstrucao"] as const) expect(parseDeputy({ vv }).vv).toBe(vv);
+    for (const vv of ["Sim", "artigo17", "não", "", "1"]) expect(parseDeputy({ vv }).vv).toBeNull();
+    expect(parseDeputy({ vk: "bill" }).vk).toBe("bill");
+    expect(parseDeputy({ vk: "request" }).vk).toBe("request");
+    expect(parseDeputy({ vk: "REQ" }).vk).toBeNull();
+    expect(parseDeputy({ vfrom: "2026-03", vto: "2026-12" })).toMatchObject({ vfrom: "2026-03", vto: "2026-12" });
+    for (const bad of ["2026-13", "2026-00", "2026-3", "2025-12", "2027-01", "2026-03-01", "x"]) {
+      expect(parseDeputy({ vfrom: bad }).vfrom).toBeNull();
+      expect(parseDeputy({ vto: bad }).vto).toBeNull();
+    }
+    // from after to is swapped
+    expect(parseDeputy({ vfrom: "2026-09", vto: "2026-02" })).toMatchObject({ vfrom: "2026-02", vto: "2026-09" });
+    expect(parseDeputy({ vdiff: "1" }).vdiff).toBe(true);
+    expect(parseDeputy({ vdiff: "true" }).vdiff).toBe(false);
+    expect(parseDeputy({ vexact: "1", bexact: "1" })).toMatchObject({ vexact: true, bexact: true });
+    expect(parseDeputy({ vq: "  reforma\u0000 tributária ", bq: ["saúde", "x"] })).toMatchObject({ vq: "reforma tributária", bq: "saúde" });
+    expect(parseDeputy({ vq: "x".repeat(300) }).vq).toHaveLength(200);
+    expect(parseDeputy({ byear: "2025" }).byear).toBe(2025);
+    for (const bad of ["1899", "3000", "2025.5", "-2025", "abc"]) expect(parseDeputy({ byear: bad }).byear).toBeNull();
+  });
+
+  it("deputyHref omits defaults and round-trips, keys in a fixed order", () => {
     expect(deputyHref(204407)).toBe("/monitor/deputados/204407");
-    const x: DeputyParams = { q: "Paulão", rel: "mentions", from: "2026-02-01", to: "2026-05-01", phase: "Ordem do Dia", sort: "new", year: 2026, p: 1, btype: "PL", bp: 3, vp: 2, exact: true };
-    const href = deputyHref(204407, x);
+    const href = deputyHref(204407, FULL_DEPUTY);
     expect(href.startsWith("/monitor/deputados/204407?q=")).toBe(true);
-    expect([...new URLSearchParams(href.split("?")[1]).keys()]).toEqual(["q", "exact", "rel", "from", "to", "phase", "sort", "p", "btype", "bp", "vp"]);
-    expect(parseDeputy(spOf(href))).toEqual(x);
+    expect([...new URLSearchParams(href.split("?")[1]).keys()]).toEqual([
+      "q", "exact", "rel", "from", "to", "phase", "sort", "p", "bq", "bexact", "byear", "btype", "bp", "vq", "vexact", "vv", "vk", "vfrom", "vto", "vdiff", "vp",
+    ]);
+    expect(parseDeputy(spOf(href))).toEqual(FULL_DEPUTY);
+  });
+
+  it("each section's form keeps the other sections and starts its own list on page 1", () => {
+    // the votes form: its own fields come from the form, so they and their page are dropped here
+    expect(keptBy("votes", FULL_DEPUTY)).toEqual({ ...FULL_DEPUTY, vq: "", vexact: false, vv: null, vk: null, vfrom: null, vto: null, vdiff: false, vp: 0 });
+    // the bills form keeps the type picked from the type links, and starts on page 1
+    expect(keptBy("bills", FULL_DEPUTY)).toEqual({ ...FULL_DEPUTY, bq: "", bexact: false, byear: null, bp: 0 });
+    expect(keptBy("speeches", FULL_DEPUTY)).toEqual({ ...FULL_DEPUTY, q: "", exact: false, rel: "by", from: null, to: null, phase: null, p: 0 });
+    // a filter submitted from page 3 of the votes lands on page 1
+    const next = parseDeputy(spOf(deputyHref(1, { ...keptBy("votes", FULL_DEPUTY), vv: "sim" })));
+    expect(next).toMatchObject({ vv: "sim", vp: 0, vdiff: false, bp: 3, p: 1 });
   });
 });
 
