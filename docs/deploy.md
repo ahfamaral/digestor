@@ -170,11 +170,15 @@ Dev on 2026-11-11 printed: 568 deputies, history and profiles 568 ok / 0 failed,
 
 ### Once, when updating to video evidence (migration 0025)
 
-`up -d --build` runs migration 0025: `parl_session_videos` (each held plenary's official YouTube video and the state of matching it) and `parl_speech_videos` (each speech's start and end second in that video, keyed by the speech key). With `MONITOR_VIDEO_ENABLED=true` the worker matches one session every 5 minutes on its own (`monitor.video`; captions only, no video is downloaded). **Leave it unset on this server**: on 2026-11-12 YouTube blocked the server's IP for caption fetches even with the cookies (rotated twice, after about 25 requests each). Unset or anything but `true`, the worker removes the job's schedule at startup and logs `monitor.video: off`. The sessions are matched from a home connection instead and imported. The script below matches sessions directly (it ignores the switch; safe to stop and rerun; keep the pause long):
+`up -d --build` runs migration 0025: `parl_session_videos` (each held plenary's official YouTube video and the state of matching it) and `parl_speech_videos` (each speech's start and end second in that video, keyed by the speech key). With `MONITOR_VIDEO_ENABLED=true` the worker matches one session every 5 minutes on its own (`monitor.video`; captions only, no video is downloaded). **Leave it unset on this server**: on 2026-11-12 YouTube blocked the server's IP for caption fetches even with the cookies (rotated twice, after about 25 requests each). Unset or anything but `true`, the worker removes the job's schedule at startup and logs `monitor.video: off`. The sessions are matched from a home connection instead, once a week (any day after Thursday's plenary; a run that finds nothing to do is harmless), from the Mac with Colima running:
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-videos.ts --pause 180
+pnpm monitor:videos:prod            # every session that needs it, 20 s apart; --max N to stop earlier
 ```
+
+`scripts/monitor-videos-prod.sh` reads `PROD_SSH` (`deploy@<server>`) and `PROD_SSH_KEY` from the local `.env`, opens an SSH tunnel to the prod postgres container (its address and password are read over SSH at run time; the database is never exposed), runs `scripts/monitor-videos.ts` in a throwaway local worker container against it, with the local code and no YouTube cookies, and closes the tunnel. It queues new held plenaries, plenaries whose speech texts arrived since their last match, and plenaries whose speeches got new keys (the nightly refresh stored a revised text, so their stored moments point nowhere). Safe to stop and rerun. The local code must match what prod runs (deploy first if the monitor schema changed).
+
+On the server itself the same script would run with `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-videos.ts --pause 180`, but YouTube blocks it there.
 
 The same update makes the nightly refresh remove speeches the Câmara files under two deputies with overlapping names (Mauricio Marcon's under Marcon too); the first refresh after the update cleans the stored ones (109 in dev on 2026-11-12).
 

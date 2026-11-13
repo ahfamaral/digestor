@@ -64,6 +64,23 @@ describe("monitor videos", () => {
     expect(await claimSessionVideo(db)).toMatchObject({ sessionId: 1 });
   });
 
+  it("sends a done session back to pending when a speech it placed got a new key (its text changed)", async () => {
+    await upsertSessions(db, [session(1, "2026-06-30T14:24")]);
+    const ids = await upsertMembers(db, [{ house: "camara", externalId: 1, name: "A", party: "PL", uf: "RS", photoUrl: null }]);
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-06-30", "2026-06-30", [speech("2026-06-30T14:28", "um")]);
+    await queueSessionVideos(db);
+    await claimSessionVideo(db);
+    const [placed] = await speechesInRange(db, "2026-06-30 14:00:00", "2026-06-30 16:00:00");
+    await replaceSessionSpeechVideos(db, 1, "v", [{ speechKey: placed!.speechKey, startS: 10, endS: 60, score: 0.9 }]);
+    await finishSessionVideo(db, 1, { status: "done", videoId: "v", streamStart: "2026-06-30 14:24:31", durationS: 3600, spoken: 1, matched: 1 });
+    expect((await queueSessionVideos(db)).requeued).toBe(0);
+
+    // the nightly refresh stores a revised text: same speech count, new key, the video row now points nowhere
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-06-30", "2026-06-30", [speech("2026-06-30T14:28", "um revisto")]);
+    expect((await queueSessionVideos(db)).requeued).toBe(1);
+    expect(await claimSessionVideo(db)).toMatchObject({ sessionId: 1 });
+  });
+
   it("stores speech moments per session; an overlapping session keeps the better score", async () => {
     await upsertSessions(db, [session(1, "2026-06-30T10:00"), session(2, "2026-06-30T14:00")]);
     const ids = await upsertMembers(db, [{ house: "camara", externalId: 1, name: "A", party: "PL", uf: "RS", photoUrl: null }]);

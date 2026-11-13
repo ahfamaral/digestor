@@ -15,8 +15,9 @@ const STALE_RUNNING_MIN = 30;
 
 /**
  * Adds a `pending` row for every held session (status "Encerrada…") that has none, and sends a `done` session back to
- * `pending` when more of its speeches have text now than at its last run (transcriptions arrive weeks late). Returns
- * both counts.
+ * `pending` when more of its speeches have text now than at its last run (transcriptions arrive weeks late), or when a
+ * speech moment it stored points at a key no speech has any more (the nightly refresh stored a revised text, so the
+ * speech got a new key; the rematch replaces the session's moments). Returns both counts.
  */
 export async function queueSessionVideos(db: Db): Promise<{ added: number; requeued: number }> {
   const added = await db.execute(sql`
@@ -25,12 +26,17 @@ export async function queueSessionVideos(db: Db): Promise<{ added: number; reque
     on conflict (session_id) do nothing`);
   const requeued = await db.execute(sql`
     update parl_session_videos v set status = 'pending', retry_at = null, updated_at = now()
-    where v.status = 'done' and v.stream_start is not null and v.duration_s is not null
-      and (
+    where v.status = 'done' and (
+      (v.stream_start is not null and v.duration_s is not null and (
         select count(*) from parl_speeches s
         where s.text <> '' and s.starts_at between v.stream_start - interval '45 minutes'
           and v.stream_start + make_interval(secs => v.duration_s) + interval '10 minutes'
-      ) > v.spoken`);
+      ) > v.spoken)
+      or exists (
+        select 1 from parl_speech_videos sv
+        where sv.session_id = v.session_id
+          and not exists (select 1 from parl_speeches s where s.speech_key = sv.speech_key)
+      ))`);
   return { added: added.rowCount ?? 0, requeued: requeued.rowCount ?? 0 };
 }
 
