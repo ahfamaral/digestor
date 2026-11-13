@@ -84,6 +84,16 @@ export function parseLanding(sp: RawParams): LandingParams {
   };
 }
 
+/** "Ask the record" (`/monitor/perguntar`): the question and the speeches' dates (inside the default year). */
+export type AskParams = { q: string; from: string | null; to: string | null };
+
+export function parseAsk(sp: RawParams): AskParams {
+  return { q: cleanQuery(first(sp.q) ?? ""), ...range(sp, DEFAULT_YEAR) };
+}
+
+/** The "Ask the record" page with only the values set. */
+export const askHref = (p: Partial<AskParams> = {}) => href("/monitor/perguntar", [["q", p.q], ["from", p.from], ["to", p.to]]);
+
 /** The vote filter (`vv`): the vote labels as published, in the URL without accents. */
 export const VOTE_VALUES = ["sim", "nao", "abstencao", "obstrucao"] as const;
 export type VoteValue = (typeof VOTE_VALUES)[number];

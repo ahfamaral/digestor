@@ -9,9 +9,10 @@ import { ExternalLink } from "./ExternalLink";
 /**
  * "Watch the speech": the session's official video (the Câmara's YouTube channel) loads only when clicked, in the
  * privacy-enhanced player, from the speech's start to its end; plus a plain link to YouTube at that moment. Nothing
- * from YouTube loads before the click.
+ * from YouTube loads before the click. `label="at"`: the button names the moment ("Watch at 1:18:42") instead of the
+ * speech's length (a quoted passage on "Ask the record").
  */
-export function SpeechVideo({ locale, video }: { locale: MonitorLocale; video: VideoMoment }) {
+export function SpeechVideo({ locale, video, label = "length" }: { locale: MonitorLocale; video: VideoMoment; label?: "length" | "at" }) {
   const [open, setOpen] = useState(false);
   const src = embedUrl(video);
   const href = watchUrl(video);
@@ -37,7 +38,7 @@ export function SpeechVideo({ locale, video }: { locale: MonitorLocale; video: V
             className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-stone-500"
           >
             <Play className="size-3.5" aria-hidden />
-            {tm(locale, "speech.watch", { length: videoLength(video.endS - video.startS) })}
+            {label === "at" ? tm(locale, "speech.watchAt", { at }) : tm(locale, "speech.watch", { length: videoLength(video.endS - video.startS) })}
           </button>
         )}
         <ExternalLink href={href} className="text-xs">

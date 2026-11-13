@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { clearSemanticCache, semanticSearch } from "./semantic";
+import { clearSemanticCache, semanticSearch, speechPassages } from "./semantic";
 
 const ok = (hits: { speechKey: string; score: number }[]) =>
   vi.fn(async () => new Response(JSON.stringify({ hits }), { status: 200, headers: { "content-type": "application/json" } }));
@@ -64,5 +64,30 @@ describe("semanticSearch", () => {
     const f = ok([]);
     expect(await semanticSearch("  ", { fetch: f })).toEqual({ keys: [], ok: true });
     expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe("speechPassages", () => {
+  const passage = { speechKey: "a", sentences: ["O preço subiu.", "A comida está cara."], score: 0.8 };
+
+  it("asks the worker for the passages of these speeches and returns them in its order", async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ passages: [passage] }), { status: 200 }));
+    expect(await speechPassages("preço da comida", ["a", "b"], 1, { fetch: f, url: "http://w:1/" })).toEqual({ ok: true, passages: [passage] });
+    const [url, init] = f.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(url).toBe("http://w:1/monitor/passages");
+    expect(JSON.parse(init.body as string)).toEqual({ q: "preço da comida", speechKeys: ["a", "b"], perSpeech: 1 });
+  });
+
+  it("no speeches asks nothing; a worker that is down or answers garbage gives ok: false and is left alone for 30 s", async () => {
+    const f = vi.fn(async () => new Response("{}", { status: 503 }));
+    expect(await speechPassages("q", [], 1, { fetch: f })).toEqual({ ok: true, passages: [] });
+    expect(f).not.toHaveBeenCalled();
+    expect(await speechPassages("q", ["a"], 1, { fetch: f })).toEqual({ ok: false, passages: [] });
+    const garbage = vi.fn(async () => new Response(JSON.stringify({ passages: [{ speechKey: 1 }] }), { status: 200 }));
+    expect(await speechPassages("q", ["a"], 1, { fetch: garbage })).toEqual({ ok: false, passages: [] });
+    expect(garbage).not.toHaveBeenCalled();
+    clearSemanticCache();
+    expect(await speechPassages("q", ["a"], 1, { fetch: garbage })).toEqual({ ok: false, passages: [] });
+    expect(garbage).toHaveBeenCalledTimes(1);
   });
 });

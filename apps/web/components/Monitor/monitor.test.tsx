@@ -6,6 +6,7 @@ import { DirectoryView } from "./DirectoryView";
 import { formQuery } from "./GetForm";
 import { Highlighted } from "./Highlighted";
 import { AuthoredBills } from "./AuthoredBills";
+import { AskRecordView } from "./AskRecordView";
 import { LandingView } from "./LandingView";
 import { PartyTimeline } from "./PartyTimeline";
 import { Positions } from "./Positions";
@@ -701,5 +702,55 @@ describe("monitor components", () => {
     expect(html).toContain("No guidance");
     const pt = renderToStaticMarkup(<RollCallView locale="pt-BR" rollCall={rollCallDetail} />);
     expect(pt).toContain("Sem orientação");
+  });
+});
+
+describe("Ask the record", () => {
+  const speech = {
+    id: 7, speechKey: "204407:2026-04-08T11:28:abc", startsAt: "2026-04-08T11:28", phase: "Breves Comunicações", kind: null, summary: "", text: "texto",
+    urlText: "https://www.camara.leg.br/notas?x=1", textFile: false, video: { videoId: "abcdefghijk", startS: 4722, endS: 5000 },
+    member: { externalId: 204407, name: "Fernanda Melchionna", party: "PT", uf: "RS" }, snippet: "", partyThen: "PSOL", ufThen: "RS",
+  };
+  const params = { q: "preço da comida", from: "2026-03-01", to: null };
+
+  it("quotes the record's sentences with who, party and state on the day, when, the video moment and the speech", () => {
+    const html = renderToStaticMarkup(
+      <AskRecordView locale="en" params={params} result={{ ok: true, passages: [{ speech, sentences: ["O preço da comida subiu.", "A cesta básica ficou cara."] }] }} />,
+    );
+    expect(html).toContain("These are passages from the official record, chosen by similarity to your question. Nothing here is written by AI.");
+    expect(html).toMatch(/<blockquote lang="pt-BR"[^>]*>O preço da comida subiu. A cesta básica ficou cara.<\/blockquote>/);
+    expect(html).toContain("Fernanda Melchionna");
+    expect(html).toContain("· PSOL-RS");
+    expect(html).toContain("Watch at 1:18:42");
+    expect(html).toContain('href="/monitor/deputados/204407?from=2026-04-08&amp;to=2026-04-08#speeches"');
+    expect(html).toContain("Official record");
+    expect(html).toContain("At most two passages per deputy");
+    const pt = renderToStaticMarkup(<AskRecordView locale="pt-BR" params={params} result={{ ok: true, passages: [{ speech, sentences: ["Frase."] }] }} />);
+    expect(pt).toContain("Nada aqui foi escrito por IA.");
+    expect(pt).toContain("Ver a partir de 1:18:42");
+  });
+
+  it("the worker down offers the word search with the question; nothing found says so", () => {
+    const down = renderToStaticMarkup(<AskRecordView locale="en" params={params} result={{ ok: false, passages: [] }} />);
+    expect(down).toContain("Asking the record isn&#x27;t available right now.");
+    expect(down).toContain('href="/monitor?q=pre%C3%A7o+da+comida&amp;from=2026-03-01"');
+    expect(down).toContain("Try the word search.");
+    const none = renderToStaticMarkup(<AskRecordView locale="en" params={params} result={{ ok: true, passages: [] }} />);
+    expect(none).toContain("No passages in the record match this question.");
+  });
+
+  it("an empty question says what to type; the landing's third door asks the record", () => {
+    expect(renderToStaticMarkup(<AskRecordView locale="en" params={{ q: "", from: null, to: null }} result={null} askedEmpty />)).toContain(
+      "Type a question to find passages in the record.",
+    );
+    const facets = { parties: [], ufs: [], phases: [] };
+    const landing = renderToStaticMarkup(<LandingView locale="en" params={parseLanding({})} facets={facets} result={null} />);
+    expect(landing).toContain('action="/monitor/perguntar"');
+    expect(landing).toContain("Ask the record");
+    const withResults = renderToStaticMarkup(
+      <LandingView locale="en" params={parseLanding({ q: "saúde" })} facets={facets}
+        result={{ q: "saúde", terms: ["saúde"], translatedFrom: null, notice: null, exact: false, meaning: "off", speeches: { total: 0, rows: [] }, rollCalls: null }} />,
+    );
+    expect(withResults).not.toContain('action="/monitor/perguntar"');
   });
 });

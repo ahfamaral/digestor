@@ -54,3 +54,38 @@ export async function semanticSearch(
     return { keys: [], ok: false };
   }
 }
+
+export type Passage = { speechKey: string; sentences: string[]; score: number };
+export type PassagesResult = { ok: boolean; passages: Passage[] };
+const passagesReply = z.object({
+  passages: z.array(z.object({ speechKey: z.string(), sentences: z.array(z.string()), score: z.number() })),
+});
+
+/**
+ * "Ask the record": the passages of these speeches closest in meaning to the question (`POST /monitor/passages`, the
+ * worker's stored chunks scored against the question), best first, at most `perSpeech` each. Each passage is official
+ * text split into sentences, as stored. A worker that is down, slow (10 s: speeches not indexed yet are embedded on
+ * the fly) or answers garbage is `ok: false`, never a throw, and is left alone for 30 s like the search.
+ */
+export async function speechPassages(
+  q: string, speechKeys: string[], perSpeech: number, o: { url?: string; fetch?: typeof fetch; timeoutMs?: number } = {},
+): Promise<PassagesResult> {
+  if (!q.trim() || speechKeys.length === 0) return { ok: true, passages: [] };
+  if (Date.now() < downUntil) return { ok: false, passages: [] };
+  const base = (o.url ?? process.env.WORKER_URL ?? DEFAULT_WORKER_URL).replace(/\/+$/, "");
+  try {
+    const res = await (o.fetch ?? fetch)(`${base}/monitor/passages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ q, speechKeys, perSpeech }),
+      signal: AbortSignal.timeout(o.timeoutMs ?? 10_000),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`worker answered ${res.status}`);
+    return { ok: true, passages: passagesReply.parse(await res.json()).passages };
+  } catch (err) {
+    downUntil = Date.now() + RETRY_AFTER_MS;
+    console.warn("monitor passages:", err instanceof Error ? err.message : err);
+    return { ok: false, passages: [] };
+  }
+}

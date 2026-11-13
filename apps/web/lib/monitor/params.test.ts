@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  backToSearch, deputyHref, directoryHref, fromDeputy, keptBy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam,
+  askHref, backToSearch, parseAsk, deputyHref, directoryHref, fromDeputy, keptBy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam,
   type DeputyParams, type LandingParams,
 } from "./params";
 
@@ -196,6 +196,27 @@ describe("roll-call links", () => {
     expect(isRollCallId("x")).toBe(false);
     expect(isRollCallId("1-")).toBe(false);
     expect(isRollCallId("../1-1")).toBe(false);
+  });
+});
+
+describe("parseAsk and askHref", () => {
+  it("defaults, and a question cleaned and capped", () => {
+    expect(parseAsk({})).toEqual({ q: "", from: null, to: null });
+    expect(parseAsk({ q: ["  O que   disseram\u0000 sobre a fome? ", "x"] }).q).toBe("O que disseram sobre a fome?");
+    expect(parseAsk({ q: "x".repeat(300) }).q).toHaveLength(200);
+  });
+
+  it("ignores invalid dates and swaps a reversed range", () => {
+    expect(parseAsk({ from: "2026-02-30", to: "yesterday" })).toMatchObject({ from: null, to: null });
+    expect(parseAsk({ from: "2025-12-31", to: "2027-01-01" })).toMatchObject({ from: null, to: null });
+    expect(parseAsk({ from: "2026-05-01", to: "2026-03-01" })).toMatchObject({ from: "2026-03-01", to: "2026-05-01" });
+  });
+
+  it("builds the page's address with only what is set, and round-trips", () => {
+    expect(askHref({})).toBe("/monitor/perguntar");
+    const p = { q: "preço da comida", from: "2026-03-01", to: null };
+    expect(askHref(p)).toBe("/monitor/perguntar?q=pre%C3%A7o+da+comida&from=2026-03-01");
+    expect(parseAsk(spOf(askHref(p)))).toEqual(p);
   });
 });
 

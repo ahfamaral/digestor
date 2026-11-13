@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { directoryHref, landingHref, MONITOR_YEARS, type LandingParams } from "@/lib/monitor/params";
 import { MAX_QUERY, SEARCH_PAGE, type LandingResult } from "@/lib/monitor/search";
+import { AskForm } from "./AskRecordView";
 import { DeputyCombobox } from "./DeputyCombobox";
 import { ExactBox } from "./ExactBox";
 import { Spinner } from "@/components/ui/spinner";
@@ -21,8 +22,10 @@ import { YearSelect } from "./YearSelect";
 const card = "grid gap-3 rounded-xl border border-border bg-white p-4 sm:p-5";
 
 /**
- * `/monitor`: two doors. Find a deputy (the combobox opens their page) or search a topic across the Câmara (a GET form
- * with filters); then the topic's speeches and roll calls, each with its own count and pages. `searching`: the
+ * `/monitor`: three doors. Find a deputy (the combobox opens their page), search a topic across the Câmara (a GET form
+ * with filters), or ask the record (a question answered with quoted passages, `/monitor/perguntar`; hidden while topic
+ * results show, so they stay right under their form); then the topic's speeches and roll calls, each with its own
+ * count and pages. `searching`: the
  * Suspense fallback while the query is translated and run. `askedEmpty`: the form was sent without a topic. `deputies`:
  * how many are in office, for the link to the directory.
  */
@@ -96,6 +99,17 @@ export function LandingView({
           <TopicFilters locale={locale} params={params} facets={facets} />
         </GetForm>
       </section>
+
+      {!searching && !result?.q && (
+        <section className={card} aria-labelledby="door-ask">
+          <div className="grid gap-0.5">
+            <h2 id="door-ask" className="text-base font-semibold">{tm(locale, "ask.door")}</h2>
+            <p className="text-sm text-muted-foreground">{tm(locale, "ask.doorHint")}</p>
+          </div>
+          <AskForm locale={locale} params={{ q: "", from: null, to: null }} id="door-ask-q" />
+          <p className="text-xs text-muted-foreground">{tm(locale, "ask.fixedLine")}</p>
+        </section>
+      )}
 
       {(searching || result?.q) && (
         <div className="grid gap-2">
