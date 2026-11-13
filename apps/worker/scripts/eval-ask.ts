@@ -67,7 +67,7 @@ async function cleanup(): Promise<void> {
     ];
     const left: string[] = [];
     for (const [label, q] of steps) {
-      const n = (await db.execute(q)).length;
+      const n = (await db.execute(q)).rowCount ?? 0;
       if (n > 0) left.push(`${n} ${label}`);
     }
     console.error(left.length ? `eval cleanup removed leftovers: ${left.join(", ")}` : "eval cleanup: nothing left behind");
