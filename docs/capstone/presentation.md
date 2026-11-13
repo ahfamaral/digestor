@@ -135,13 +135,16 @@ Speaker names, attribution score `(correct − 5 × wrong) / total`: debate 0.99
 | Gave up on the step limit | 3 of 12 | 1 of 12 | 0 of 12 | 1 of 12 |
 | Sent back by verify | – | 1 of 12 | – | 1 of 12 |
 
-Monitor search (extension), words vs meaning vs hybrid, 20 queries. Search by meaning is in progress (results to come):
+Monitor search (extension), 20 queries over 7,899 speeches of 2026 (14 Portuguese, 6 English); golden labelled by the coding agent (Claude), my review pending:
 
-<!-- D1 numbers: recall@10 / MRR words vs meaning vs hybrid -->
+| Metric | Words | Meaning | Hybrid (RRF, what `/monitor` shows) |
+|---|---|---|---|
+| Recall@10 | 0.41 | 0.53 | 0.61 |
+| MRR@10 | 0.66 | 0.82 | 0.87 |
 
-- **If the D1 numbers are missing:** drop this box and say "search by meaning is next".
+Hybrid vs words on recall@10: better on 12 queries, equal on 6, worse on 2.
 
-- **Speaker notes (1:00):** "'Before' is the plain tool loop; 'after' is the LangGraph version with approval and verify. Retrieval misses 5 of 20 answerable questions; those are figures and names that the question's words don't resemble. The agent still finds most of them because it reads transcript ranges and searches again, which is why citation hit is higher than recall. Verify sent one answer back per video and both corrections passed. The debate got better and the interview got worse, but with 12 questions one question moves a rate by 8 to 10 points, so both changes are inside the noise. I would not claim more than that. For the monitor, search by meaning is fused with word search; here are recall at 10 and MRR for the three." (Read the D1 numbers when they are in; without them, say "search by meaning is next".)
+- **Speaker notes (1:00):** "'Before' is the plain tool loop; 'after' is the LangGraph version with approval and verify. Retrieval misses 5 of 20 answerable questions; those are figures and names that the question's words don't resemble. The agent still finds most of them because it reads transcript ranges and searches again, which is why citation hit is higher than recall. Verify sent one answer back per video and both corrections passed. The debate got better and the interview got worse, but with 12 questions one question moves a rate by 8 to 10 points, so both changes are inside the noise. I would not claim more than that. For the monitor, search by meaning is fused with word search by reciprocal rank fusion. Over 20 queries, recall at 10 goes from 0.41 with words to 0.61 hybrid, and MRR from 0.66 to 0.87; hybrid is better on 12 queries and worse on 2, broad cost-of-living ones where meaning pulls in fuel prices. The queries were labelled by the coding agent and I still have to review them."
 - **If short of time:** read only the citation-hit and refusal rows.
 
 ## Slide 9. Risks and safeguards
@@ -173,7 +176,7 @@ Monitor search (extension), words vs meaning vs hybrid, 20 queries. Search by me
 ## Slide 11. What's next
 
 - **Message:** the next step is the Câmara monitor in front of a real journalist on 1 Dec, then accounts and more history.
-- **Visual:** a timeline from 17 Nov to 1 Feb 2027 with the four goals below; already built for the monitor this round shown as ticks: video moment per speech, words used more than the chamber (counted, no AI), vote and bill filters with party guidance; search by meaning is in progress (results to come). The D4 and 2023–25 boxes carry the tag "proposal to confirm" on the slide.
+- **Visual:** a timeline from 17 Nov to 1 Feb 2027 with the four goals below; already built for the monitor this round shown as ticks: video moment per speech, words used more than the chamber (counted, no AI), vote and bill filters with party guidance, search by meaning (hybrid with word search). Not built yet: "Ask the record" (D3), "Clip this speech" (D2), the rest of the vote and bill filters (D6 part 2) and the audio-only check (D7). The D4 and 2023–25 boxes carry the tag "proposal to confirm" on the slide.
 - **SMART goals** (dates from the monitor roadmap where it has them; the D4 and 2023–25 rows are proposals to confirm, and say so on the slide):
 
 | Goal | Specific | Measurable | Achievable | Relevant | Time-bound |
@@ -183,7 +186,7 @@ Monitor search (extension), words vs meaning vs hybrid, 20 queries. Search by me
 | D4 topic labels (proposal to confirm) | AI labels speeches with topics from a fixed list; labels only, never text about a person | provisional target: at least 80% agreement with a hand-labelled set of 50 speeches | same pattern as the word heat map, plus one fast-model call per speech | journalists search themes, not exact words | decide in the week of 23 Nov; if agreed, labelled set and first run by Fri 11 Dec 2026 |
 | 2023–25 history (proposal to confirm) | load the legislature's earlier years (from 1 Feb 2023) of speeches, roll calls and votes; years selectable on every page | per-year counts of speeches, roll calls and votes within 1% of the Câmara API's per-year totals | the backfill script and bulk-file parsers exist; the year list (`MONITOR_YEARS`) holds only 2026 today | a deputy's record since the start of the mandate is what journalists ask for | by 31 Dec 2026, before the public beta on 1 Feb 2027 |
 
-- **Speaker notes (45 s):** "Digestor is the capstone; the Câmara monitor is where it goes next. It applies the same rule to official records: the AI finds and labels, it never writes about a person. This round added the video moment for each speech, the words a deputy uses more than the rest of the chamber, counted with log-odds and no AI, and vote filters against the party's guidance; search by meaning is in progress. On 1 December a Brazilian journalist tries it on production. Before that: sign-in, so she can use it alone afterwards. In December: topic labels if we agree on them, and the history back to 2023, before the new legislature starts in February."
+- **Speaker notes (45 s):** "Digestor is the capstone; the Câmara monitor is where it goes next. It applies the same rule to official records: the AI finds and labels, it never writes about a person. This round added the video moment for each speech, the words a deputy uses more than the rest of the chamber, counted with log-odds and no AI, vote filters against the party's guidance, and search by meaning fused with word search. On 1 December a Brazilian journalist tries it on production. Before that: sign-in, so she can use it alone afterwards. In December: topic labels if we agree on them, and the history back to 2023, before the new legislature starts in February."
 - **If short of time:** say two goals aloud: the 1 Dec demo and sign-in.
 
 ---
