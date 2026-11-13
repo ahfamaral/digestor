@@ -1,0 +1,1002 @@
+{
+ "sessionId": "2680cf15-24a9-4db0-801f-836d84e1977e",
+ "videoPath": "https://www.youtube.com/watch?v=hiwnD00kV0w",
+ "profile": "interview",
+ "labelledBy": "drafted by Claude from the transcript (2026-11-13); owner to review",
+ "topics": [
+  {
+   "title": "Osangs Einführung: der Spiegel-Text „Die Auflösung“",
+   "startMs": 116850,
+   "endMs": 690000
+  },
+  {
+   "title": "Wie geht es Ihnen? Die Zeit nach dem Amt, Ostsee, Zittern",
+   "startMs": 697000,
+   "endMs": 1236000
+  },
+  {
+   "title": "Informationsstand vor dem 24. Februar und der Regierungswechsel",
+   "startMs": 1236000,
+   "endMs": 1575000
+  },
+  {
+   "title": "Versäumnisse, Sicherheitsarchitektur und der Dissens mit Putin",
+   "startMs": 1575000,
+   "endMs": 1898000
+  },
+  {
+   "title": "Warum nicht wieder antreten? Der NATO-Gipfel Bukarest 2008 (Membership Action Plan)",
+   "startMs": 1898000,
+   "endMs": 2439000
+  },
+  {
+   "title": "Aufhören und die Erwartung der Öffentlichkeit",
+   "startMs": 2439000,
+   "endMs": 2924000
+  },
+  {
+   "title": "Kritik aus der Ukraine: Melnyk, Italienreise, Minsk, Appeasement-Vorwurf",
+   "startMs": 2924000,
+   "endMs": 3703000
+  },
+  {
+   "title": "Putins Logik, Abschreckung und die Bundeswehr",
+   "startMs": 3703000,
+   "endMs": 4280000
+  },
+  {
+   "title": "Das Verhältnis zu Putin: Parallelen, Hund, Sprache",
+   "startMs": 4280000,
+   "endMs": 4811000
+  },
+  {
+   "title": "Russland als Kultur und als Politik: Faszination, Netrebko, Dissidenten",
+   "startMs": 4811000,
+   "endMs": 5356000
+  },
+  {
+   "title": "Zäsur, Nord Stream 2 und das Verhältnis zu den USA",
+   "startMs": 5356000,
+   "endMs": 5560000
+  },
+  {
+   "title": "Vermächtnis, CDU, Merz und das Buch",
+   "startMs": 5560000,
+   "endMs": 5910000
+  }
+ ],
+ "moments": [
+  {
+   "granularity": "exchange",
+   "title": "Merkel: Mit dem 24. Februar ist eine Zäsur entstanden",
+   "startMs": 697000,
+   "endMs": 758000,
+   "types": [
+    "key_point"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Osang fragt nach den Zitteranfällen, Merkel nennt Erschöpfung und Angst",
+   "startMs": 962000,
+   "endMs": 1034000,
+   "types": [
+    "emotional"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Anrufe von Politikern: Merkel will nicht sagen, wer angerufen hat",
+   "startMs": 1512000,
+   "endMs": 1568000,
+   "types": [
+    "dodge"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Merkel über Putins Sicht auf den Zerfall der Sowjetunion und ihren Dissens",
+   "startMs": 1637000,
+   "endMs": 1730545,
+   "types": [
+    "news_line",
+    "key_point"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Warum Merkel 2008 den NATO-Aktionsplan für die Ukraine ablehnte",
+   "startMs": 2145000,
+   "endMs": 2393590,
+   "types": [
+    "key_point",
+    "news_line"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Melnyks Vorwurf, Butscha statt Sonne Italiens, und Merkels Antwort",
+   "startMs": 2924536,
+   "endMs": 3100835,
+   "types": [
+    "key_point"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Melnyks Appeasement-Frage und Merkels Antwort zu Minsk",
+   "startMs": 3280490,
+   "endMs": 3378111,
+   "types": [
+    "heated",
+    "key_point"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "Merkel: „Ich werde mich deshalb auch nicht entschuldigen“ (Diplomatie)",
+   "startMs": 3524597,
+   "endMs": 3547610,
+   "types": [
+    "news_line",
+    "quotable"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Osang: die Bundeswehr sei verlottert; Merkel verteidigt den Wehretat",
+   "startMs": 3851000,
+   "endMs": 3977260,
+   "types": [
+    "heated",
+    "dodge"
+   ]
+  },
+  {
+   "granularity": "punchline",
+   "title": "Merkel: „Wer brüllt, hat meistens unrecht“",
+   "startMs": 4658816,
+   "endMs": 4669000,
+   "types": [
+    "quotable",
+    "light"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Der Hund von Putin: „Eine tapfere Bundeskanzlerin muss damit fertig werden“",
+   "startMs": 4555000,
+   "endMs": 4628000,
+   "types": [
+    "light",
+    "quotable"
+   ]
+  },
+  {
+   "granularity": "exchange",
+   "title": "Würde Merkel Netrebko zum Essen einladen? Nein, und keine Kulturverbote",
+   "startMs": 5197000,
+   "endMs": 5267000,
+   "types": [
+    "news_line"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Nord Stream 2: Merkels Ärger über die US-Sanktionen und die Erklärung mit Biden",
+   "startMs": 5358727,
+   "endMs": 5560558,
+   "types": [
+    "news_line",
+    "key_point"
+   ]
+  },
+  {
+   "granularity": "passage",
+   "title": "Merkel: Buch, CDU-Mitglied und der Scherz über Merz",
+   "startMs": 5633490,
+   "endMs": 5713600,
+   "types": [
+    "news_line",
+    "light"
+   ]
+  }
+ ],
+ "speakers": [
+  {
+   "startMs": 116850,
+   "endMs": 253840,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 257430,
+   "endMs": 271450,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 273109,
+   "endMs": 458352,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 462130,
+   "endMs": 484331,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 487520,
+   "endMs": 616959,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 625246,
+   "endMs": 657395,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 694280,
+   "endMs": 696368,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 697416,
+   "endMs": 705912,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 706287,
+   "endMs": 758230,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 758230,
+   "endMs": 792435,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 794476,
+   "endMs": 849590,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 849590,
+   "endMs": 853260,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 854510,
+   "endMs": 856890,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 857130,
+   "endMs": 859350,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 861816,
+   "endMs": 865824,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 865954,
+   "endMs": 906696,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 907049,
+   "endMs": 925330,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 926866,
+   "endMs": 961170,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 962116,
+   "endMs": 981630,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 981630,
+   "endMs": 1016682,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1017223,
+   "endMs": 1022530,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1022530,
+   "endMs": 1029810,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1029810,
+   "endMs": 1032010,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1032350,
+   "endMs": 1034740,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1039590,
+   "endMs": 1048807,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1049016,
+   "endMs": 1129150,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1132150,
+   "endMs": 1163631,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1166090,
+   "endMs": 1194459,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1195832,
+   "endMs": 1205470,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1208040,
+   "endMs": 1234310,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1236490,
+   "endMs": 1252280,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1252280,
+   "endMs": 1355850,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1357960,
+   "endMs": 1419190,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1420300,
+   "endMs": 1483767,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1486356,
+   "endMs": 1512135,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1512504,
+   "endMs": 1517062,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1517417,
+   "endMs": 1519963,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1522517,
+   "endMs": 1529922,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1534192,
+   "endMs": 1538263,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1541449,
+   "endMs": 1568201,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1575680,
+   "endMs": 1585199,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1585610,
+   "endMs": 1730545,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1743160,
+   "endMs": 1748252,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1752024,
+   "endMs": 1754763,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1757344,
+   "endMs": 1867419,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1869551,
+   "endMs": 1889517,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 1898107,
+   "endMs": 1901150,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1903919,
+   "endMs": 1930189,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1932775,
+   "endMs": 1969306,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 1969981,
+   "endMs": 2144849,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2145126,
+   "endMs": 2157322,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2164598,
+   "endMs": 2170903,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2172322,
+   "endMs": 2393590,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2396240,
+   "endMs": 2404870,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2409253,
+   "endMs": 2437630,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2439076,
+   "endMs": 2445667,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2447416,
+   "endMs": 2451764,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2457490,
+   "endMs": 2468861,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2469905,
+   "endMs": 2545333,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2548450,
+   "endMs": 2560710,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2560710,
+   "endMs": 2603050,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2605579,
+   "endMs": 2621643,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2622490,
+   "endMs": 2829943,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2841566,
+   "endMs": 2924536,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2924905,
+   "endMs": 2959170,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 2959170,
+   "endMs": 2980550,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 2986252,
+   "endMs": 3100835,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3109124,
+   "endMs": 3130502,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3130871,
+   "endMs": 3142442,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3143736,
+   "endMs": 3151199,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3154309,
+   "endMs": 3195997,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3198777,
+   "endMs": 3205172,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3213590,
+   "endMs": 3231550,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3231590,
+   "endMs": 3239110,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3240070,
+   "endMs": 3244605,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3244734,
+   "endMs": 3251696,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3251761,
+   "endMs": 3257703,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3257784,
+   "endMs": 3268070,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3269590,
+   "endMs": 3272490,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3272490,
+   "endMs": 3280150,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3280490,
+   "endMs": 3327728,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3328242,
+   "endMs": 3378111,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3380102,
+   "endMs": 3410980,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3411800,
+   "endMs": 3415750,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3419620,
+   "endMs": 3424167,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3426906,
+   "endMs": 3439675,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3450022,
+   "endMs": 3701211,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3703180,
+   "endMs": 3722232,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3723939,
+   "endMs": 3850191,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3851660,
+   "endMs": 3859322,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3859435,
+   "endMs": 3868683,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3873920,
+   "endMs": 3877140,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 3877140,
+   "endMs": 3977260,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 3977260,
+   "endMs": 4045120,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4049220,
+   "endMs": 4052920,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4052920,
+   "endMs": 4054990,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4057080,
+   "endMs": 4188467,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4190410,
+   "endMs": 4195370,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4196350,
+   "endMs": 4280190,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4280560,
+   "endMs": 4303581,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4306580,
+   "endMs": 4346243,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4347507,
+   "endMs": 4533961,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4534155,
+   "endMs": 4546502,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4549012,
+   "endMs": 4552861,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4555960,
+   "endMs": 4573050,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4573110,
+   "endMs": 4596040,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4598600,
+   "endMs": 4614517,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4622449,
+   "endMs": 4628388,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4629215,
+   "endMs": 4645510,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4648540,
+   "endMs": 4656720,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4658816,
+   "endMs": 4669791,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4674839,
+   "endMs": 4699093,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4700380,
+   "endMs": 4713152,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4716176,
+   "endMs": 4726677,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4728216,
+   "endMs": 4743660,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4747180,
+   "endMs": 4803340,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4806900,
+   "endMs": 4811100,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4811480,
+   "endMs": 4854300,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4863050,
+   "endMs": 4865230,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4867420,
+   "endMs": 4869730,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4872840,
+   "endMs": 4875680,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4875680,
+   "endMs": 4902070,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 4902670,
+   "endMs": 4947375,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 4949897,
+   "endMs": 5005792,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5009650,
+   "endMs": 5026640,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5027800,
+   "endMs": 5040320,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5040320,
+   "endMs": 5108022,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5112405,
+   "endMs": 5130691,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5130804,
+   "endMs": 5146413,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5147360,
+   "endMs": 5189783,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5197280,
+   "endMs": 5210771,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5210884,
+   "endMs": 5229677,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5230144,
+   "endMs": 5233542,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5233945,
+   "endMs": 5267751,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5271933,
+   "endMs": 5298779,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5302980,
+   "endMs": 5349071,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5350196,
+   "endMs": 5356683,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5358727,
+   "endMs": 5560558,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5560993,
+   "endMs": 5600671,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5603320,
+   "endMs": 5622070,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5622070,
+   "endMs": 5625630,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5626290,
+   "endMs": 5633490,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5633490,
+   "endMs": 5713600,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5715850,
+   "endMs": 5722280,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5722280,
+   "endMs": 5733220,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5733220,
+   "endMs": 5777484,
+   "person": "Alexander Osang"
+  },
+  {
+   "startMs": 5778013,
+   "endMs": 5802395,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5815885,
+   "endMs": 5828960,
+   "person": "Angela Merkel"
+  },
+  {
+   "startMs": 5831106,
+   "endMs": 5910151,
+   "person": "Alexander Osang"
+  }
+ ],
+ "traps": [
+  {
+   "kind": "quoted_opponent",
+   "title": "Merkel gibt Putins Sicht (Zerfall der Sowjetunion als größte Katastrophe) und ihre Antwort wieder",
+   "startMs": 1640000,
+   "endMs": 1694494
+  },
+  {
+   "kind": "quoted_opponent",
+   "title": "Merkel schildert Putins Sicht auf die Ukraine-Öffnung als „Kriegserklärung“",
+   "startMs": 2213727,
+   "endMs": 2281172
+  },
+  {
+   "kind": "quoted_opponent",
+   "title": "Osang zitiert Melnyks Tweet (Butscha statt Sonne Italiens)",
+   "startMs": 2924536,
+   "endMs": 2959170
+  },
+  {
+   "kind": "quoted_opponent",
+   "title": "Osang gibt Melnyks Nachricht und Appeasement-Frage wieder",
+   "startMs": 3280490,
+   "endMs": 3327728
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Merkels Antwort zur Ukraine-NATO-Frage läuft über mehrere Punkte („erstens … zweitens“) weiter",
+   "startMs": 2172322,
+   "endMs": 2300000
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Beginn der Antwort zur Entschuldigung: Ehrung 1989/90 bevor der Schluss („Ich werde mich nicht entschuldigen“) kommt",
+   "startMs": 3419620,
+   "endMs": 3500000
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Merkels erste Hälfte der Bundeswehr-Antwort („erstens …“), der Schluss folgt weiter",
+   "startMs": 3877140,
+   "endMs": 3927142
+  },
+  {
+   "kind": "mid_argument",
+   "title": "Nord Stream: erste Hälfte der Erklärung vor der Biden-Erklärung",
+   "startMs": 5358727,
+   "endMs": 5416900
+  }
+ ]
+}
