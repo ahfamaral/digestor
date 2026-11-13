@@ -5,6 +5,7 @@ import { directoryHref, landingHref, MONITOR_YEARS, type LandingParams } from "@
 import { MAX_QUERY, SEARCH_PAGE, type LandingResult } from "@/lib/monitor/search";
 import { DeputyCombobox } from "./DeputyCombobox";
 import { ExactBox } from "./ExactBox";
+import { Spinner } from "@/components/ui/spinner";
 import { GetForm } from "./GetForm";
 import { JumpLink } from "./JumpLink";
 import { LanguageSwitch } from "./LanguageSwitch";
@@ -84,7 +85,8 @@ export function LandingView({
               type="submit"
               className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-3 focus-visible:ring-stone-500"
             >
-              <Search className="size-4" aria-hidden />
+              <Search className="size-4 group-aria-busy/get:hidden" aria-hidden />
+              <Spinner className="size-4 hidden group-aria-busy/get:block" />
               {tm(locale, "search.button")}
             </button>
           </div>

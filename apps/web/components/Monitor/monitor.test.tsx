@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { landingHref, parseDeputy, parseDirectory, parseLanding, type LandingParams } from "@/lib/monitor/params";
 import { DeputyView } from "./DeputyView";
 import { DirectoryView } from "./DirectoryView";
+import { formQuery } from "./GetForm";
 import { Highlighted } from "./Highlighted";
 import { AuthoredBills } from "./AuthoredBills";
 import { LandingView } from "./LandingView";
@@ -29,6 +30,19 @@ const emptyWorkspace = {
   profile: { profession: null, externalMandates: [], fronts: [], positions: [] }, bands: [], presence: null,
   bills: { total: 0, byType: [], rows: [] }, phases: [], today: "2026-11-11", words: null,
 };
+
+describe("formQuery", () => {
+  it("drops empty fields and radios left at their default", () => {
+    const entries: [string, string][] = [["rel", "by"], ["q", "saúde pública"], ["exact", "1"], ["from", ""], ["to", ""], ["phase", ""]];
+    expect(formQuery(entries, new Set(["rel=by"]))).toBe("q=sa%C3%BAde+p%C3%BAblica&exact=1");
+  });
+  it("keeps a radio that is not the default, and repeated names", () => {
+    expect(formQuery([["rel", "mentions"], ["party", "PT"], ["party", "PL"]], new Set(["rel=by"]))).toBe("rel=mentions&party=PT&party=PL");
+  });
+  it("is empty when nothing is filled in", () => {
+    expect(formQuery([["q", ""]])).toBe("");
+  });
+});
 
 describe("monitor components", () => {
   it("Highlighted marks hits and escapes official text instead of rendering it as HTML", () => {

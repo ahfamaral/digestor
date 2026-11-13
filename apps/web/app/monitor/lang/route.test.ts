@@ -7,7 +7,7 @@ describe("GET /monitor/lang", () => {
   it("sets the language cookie and goes back to the monitor page", async () => {
     const res = await call(`to=pt-BR&back=${encodeURIComponent("/monitor/deputados/204407?q=a")}`);
     expect(res.status).toBe(303);
-    expect(new URL(res.headers.get("location")!).pathname + new URL(res.headers.get("location")!).search).toBe("/monitor/deputados/204407?q=a");
+    expect(res.headers.get("location")).toBe("/monitor/deputados/204407?q=a");
     const cookie = res.headers.get("set-cookie")!;
     expect(cookie).toContain("monitor_lang=pt-BR");
     expect(cookie).toMatch(/Path=\//);
@@ -18,10 +18,13 @@ describe("GET /monitor/lang", () => {
   it("never redirects off the monitor", async () => {
     for (const back of ["//evil.example", "https://evil.example", "/\\evil.example", "/login", "/monitorx", "javascript:alert(1)"]) {
       const res = await call(`to=en&back=${encodeURIComponent(back)}`);
-      const loc = new URL(res.headers.get("location")!);
-      expect(loc.host).toBe("localhost:3000");
-      expect(loc.pathname).toBe("/monitor");
+      expect(res.headers.get("location")).toBe("/monitor");
     }
+  });
+
+  it("redirects with a path only, never the server's own address (behind the proxy that is 0.0.0.0:3000)", async () => {
+    const res = await GET(new Request("http://0.0.0.0:3000/monitor/lang?to=en&back=%2Fmonitor%3Fq%3Dx"));
+    expect(res.headers.get("location")).toBe("/monitor?q=x");
   });
 
   it("ignores an unknown language", async () => {

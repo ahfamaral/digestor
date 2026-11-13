@@ -3,6 +3,7 @@ import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, MAX_QUERY, type DeputyParams } from "@/lib/monitor/params";
 import { ExactBox } from "./ExactBox";
 import { FormSelect } from "./FormSelect";
+import { Spinner } from "@/components/ui/spinner";
 import { GetForm } from "./GetForm";
 
 const field = "h-9 w-full min-w-0 rounded-lg border border-input bg-white px-2 text-sm outline-none focus-visible:border-stone-500 focus-visible:ring-3 focus-visible:ring-stone-500";
@@ -40,7 +41,8 @@ export function DeputySearch({ locale, externalId, params, phases }: { locale: M
           type="submit"
           className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-3 focus-visible:ring-stone-500"
         >
-          <Search className="size-4" aria-hidden />
+          <Search className="size-4 group-aria-busy/get:hidden" aria-hidden />
+              <Spinner className="size-4 hidden group-aria-busy/get:block" />
           {tm(locale, "search.button")}
         </button>
       </div>
