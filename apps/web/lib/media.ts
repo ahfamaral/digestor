@@ -6,6 +6,14 @@ export function sampleSrc(sessionId: string, proxyReady: boolean): string {
   return `/api/files/${sessionId}/${proxyReady ? "proxy.mp4" : "audio.mp3"}`;
 }
 
+/**
+ * The worker found no picture in a file nobody acknowledged as audio (an audio-only .mp4 or .mov): the session goes on
+ * as audio-only, and the screens before the Briefing show the upload's audio-only notice instead.
+ */
+export function foundNoVideo(session: { hasVideo: boolean; audioOnlyAck: boolean }): boolean {
+  return !session.hasVideo && !session.audioOnlyAck;
+}
+
 /** Pauses every playing `<video>` / `<audio>` under `root`; returns how many it paused. */
 export function pauseAllMedia(root: Pick<Document, "querySelectorAll"> = document): number {
   let n = 0;

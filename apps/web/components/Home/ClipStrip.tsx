@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { AudioLinesIcon, FilmIcon } from "lucide-react";
 import { formatLength, type ClipFormat } from "@digestor/core";
 import { t } from "@/lib/i18n";
 
@@ -15,6 +16,8 @@ export interface ClipTile {
   rendered: boolean;
   thumbUrl: string | null;
   languages: string[];
+  /** An audio-only session: without a thumbnail the tile shows a waveform sign instead of a film sign. */
+  audio: boolean;
 }
 
 const SHOWN = 4;
@@ -34,7 +37,7 @@ export function ClipStrip({ sessionId, clips }: { sessionId: string; clips: Clip
             className={`${TILE} outline-none hover:border-muted-foreground/40 focus-visible:ring-2 focus-visible:ring-ring`}
           >
             <span className="relative flex h-16 items-center justify-center bg-[#2a2b31]">
-              {c.thumbUrl && (
+              {c.thumbUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- a small thumbnail from our own files route
                 <img
                   src={c.thumbUrl}
@@ -43,6 +46,10 @@ export function ClipStrip({ sessionId, clips }: { sessionId: string; clips: Clip
                   className={c.format === "9:16" ? "h-full w-auto object-cover" : "h-full w-full object-cover"}
                   style={c.format === "9:16" ? { aspectRatio: "9 / 16" } : undefined}
                 />
+              ) : c.audio ? (
+                <AudioLinesIcon aria-hidden data-placeholder="audio" className="size-6 text-stone-300" />
+              ) : (
+                <FilmIcon aria-hidden data-placeholder="video" className="size-5 text-stone-500" />
               )}
               <span className="absolute right-1 bottom-1 rounded bg-black/60 px-1 font-mono text-[10px] text-white">
                 {formatLength(c.endMs - c.startMs)}

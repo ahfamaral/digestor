@@ -3,7 +3,7 @@ import pg from "pg";
 import { eq } from "drizzle-orm";
 import { createDb, type Db } from "./client.ts";
 import { completeAnalysisVersion, saveMoments, startAnalysisVersion } from "./analysis.ts";
-import { createSession, type Session } from "./repo.ts";
+import { createSession, updateSession, type Session } from "./repo.ts";
 import { sql } from "drizzle-orm";
 import { clipEvents, clips, subtitleTracks } from "./schema.ts";
 import {
@@ -852,10 +852,12 @@ describe("listClipPreviews", () => {
     expect(out.filter((c) => c.sessionId === s.id).map((c) => c.id)).toEqual([early.id, late.id]);
     expect(out.find((c) => c.id === early.id)).toEqual({
       id: early.id, sessionId: s.id, startMs: 10_000, endMs: 20_000, format: "16:9", merged: false, rendered: false,
-      thumbKey: `${s.id}/thumbs/${m!.id}.jpg`, momentId: m!.id, languages: ["de", "en"],
+      thumbKey: `${s.id}/thumbs/${m!.id}.jpg`, momentId: m!.id, languages: ["de", "en"], audio: false,
     });
     expect(out.find((c) => c.id === late.id)).toMatchObject({ merged: true, rendered: true, thumbKey: null, momentId: null, languages: [] });
-    expect(out.find((c) => c.id === other.id)).toMatchObject({ sessionId: s2.id });
+    expect(out.find((c) => c.id === other.id)).toMatchObject({ sessionId: s2.id, audio: false });
+    await updateSession(db, s2.id, { hasVideo: false });
+    expect((await listClipPreviews(db, OWNER, [s2.id]))[0]).toMatchObject({ id: other.id, audio: true });
     expect(out).toHaveLength(3);
   });
 

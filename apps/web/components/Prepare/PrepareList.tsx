@@ -33,6 +33,7 @@ import { ForAllClips, type ForAllRun } from "./ForAllClips";
 import { SubtitlesPanel } from "./SubtitlesPanel";
 import { TrimStrip } from "./TrimStrip";
 import { Busy } from "@/components/ui/spinner";
+import { HasVideoProvider } from "@/components/HasVideo";
 
 /** One clip as the server page sends it. */
 export interface PrepareClipData {
@@ -409,7 +410,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
   });
 
   return (
-    <>
+    <HasVideoProvider value={session.hasVideo}>
       <AppBar current="Prepare" session={{ id: session.id, ready: true }} facts={{ hasClips: items.length > 0, allReadyRendered: false }} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
@@ -574,7 +575,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
           </div>
         </footer>
       </main>
-    </>
+    </HasVideoProvider>
   );
 }
 

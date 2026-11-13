@@ -449,6 +449,8 @@ export interface ClipPreview {
   momentId: string | null;
   /** Its subtitle tracks' languages, sorted. */
   languages: string[];
+  /** The session has no picture (an audio-only file): its renders show a waveform. */
+  audio: boolean;
 }
 
 /** Live clips of these sessions, each session's in Prepare order (`listClips`). */
@@ -458,8 +460,10 @@ export async function listClipPreviews(db: Db, ownerId: string, sessionIds: stri
     .select({
       id: clips.id, sessionId: clips.sessionId, startMs: clips.startMs, endMs: clips.endMs, format: clips.format,
       mergedMomentIds: clips.mergedMomentIds, renderStatus: clips.renderStatus, momentId: clips.momentId, thumbKey: moments.thumbKey,
+      hasVideo: sessions.hasVideo,
     })
     .from(clips)
+    .innerJoin(sessions, eq(sessions.id, clips.sessionId))
     .leftJoin(moments, eq(moments.id, clips.momentId))
     .where(and(eq(clips.ownerId, ownerId), inArray(clips.sessionId, sessionIds), alive))
     .orderBy(asc(clips.sessionId), asc(clips.startMs), asc(clips.createdAt), asc(clips.id));
@@ -480,6 +484,7 @@ export async function listClipPreviews(db: Db, ownerId: string, sessionIds: stri
     merged: r.mergedMomentIds.length > 0, rendered: r.renderStatus === "done",
     thumbKey: r.thumbKey ?? null, momentId: r.momentId,
     languages: (languagesByClip.get(r.id) ?? []).sort(),
+    audio: !r.hasVideo,
   }));
 }
 

@@ -10,6 +10,7 @@ import { errorMessage } from "@/lib/http";
 import { reportTargetId, scopeFields, type NamesData, type VoiceLabel } from "@/lib/names";
 import { t } from "@/lib/i18n";
 import { Spinner } from "@/components/ui/spinner";
+import { useHasVideo } from "@/components/HasVideo";
 
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
@@ -59,6 +60,7 @@ export function NamePopover({
   atMs?: number;
 }) {
   const router = useRouter();
+  const hasVideo = useHasVideo();
   const [open, setOpen] = useState(false);
   const [changing, setChanging] = useState(startChanging);
   const [query, setQuery] = useState("");
@@ -200,7 +202,7 @@ export function NamePopover({
                       const where =
                         scoped && spans.length > 0
                           ? `${formatTimestamp(Math.min(...spans.map((r) => r.startMs)))}–${formatTimestamp(Math.max(...spans.map((r) => r.endMs)))}`
-                          : t("names.noNameWhole");
+                          : t(hasVideo ? "names.noNameWhole" : "names.noNameWholeAudio");
                       setNoName({ part, where });
                       reset(false);
                     }}

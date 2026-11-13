@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { cueAt, previewCss, reviewColumns, seekFor } from "./subtitlePreview";
+import { cueAt, previewCss, reviewColumns, seekFor, startingLook, subtitlePositions } from "./subtitlePreview";
+
+describe("subtitle positions", () => {
+  it("offer Above name banner only when there is a picture", () => {
+    expect(subtitlePositions(true)).toEqual(["bottom", "above_banner", "top"]);
+    expect(subtitlePositions(false)).toEqual(["bottom", "top"]);
+  });
+  it("an audio clip stored above the banner starts at the bottom in the dialog; others keep their look", () => {
+    expect(startingLook({ style: "white", position: "above_banner" }, false)).toEqual({ style: "white", position: "bottom" });
+    expect(startingLook({ style: "white", position: "above_banner" }, true)).toEqual({ style: "white", position: "above_banner" });
+    expect(startingLook({ style: "yellow", position: "top" }, false)).toEqual({ style: "yellow", position: "top" });
+  });
+});
 
 describe("previewCss", () => {
   it("draws yellow above the banner like the render", () => {

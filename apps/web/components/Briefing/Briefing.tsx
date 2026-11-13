@@ -30,6 +30,7 @@ import type { RowContext } from "./MomentRow";
 import { SomethingOff } from "./SomethingOff";
 import { SummaryCard } from "./SummaryCard";
 import { TopicCard } from "./TopicCard";
+import { HasVideoProvider } from "@/components/HasVideo";
 
 const NOTICE = "mb-3 rounded-xl border px-3 py-2 text-sm";
 const ANNOUNCE: Record<SelectionStatus, MessageKey> = { approved: "briefing.announceApproved", rejected: "briefing.announceSkipped" };
@@ -242,7 +243,7 @@ export function Briefing(props: BriefingProps) {
   ].filter((x): x is NonNullable<typeof x> => Boolean(x));
 
   return (
-    <>
+    <HasVideoProvider value={session.hasVideo}>
       <header className="mb-3">
         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
           <h1 lang={lang} dir="auto" className="min-w-0 basis-full text-xl font-bold tracking-tight break-words sm:flex-1 sm:basis-0">
@@ -428,6 +429,6 @@ export function Briefing(props: BriefingProps) {
         language={lang}
         videoRemoved={session.videoRemoved}
       />
-    </>
+    </HasVideoProvider>
   );
 }

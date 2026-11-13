@@ -17,6 +17,8 @@ function maxUploadGb(): number {
 /**
  * PUT /api/sessions/upload?filename=<name>&hint=<text>[&language=<pt|en|es|fr|de|it>][&record=<date, sitting number or link>][&chamber=<house>][&audioOnlyAck=1] — body is the raw file stream.
  * Audio files (mp3, m4a, wav) need `audioOnlyAck=1`: clips from them show a waveform, and the user must accept that.
+ * A video file without a picture (audio in an .mp4/.mov) isn't refused: the worker goes on as audio-only and the
+ * Processing and context screens show the same notice (`foundNoVideo`).
  */
 export async function PUT(req: Request): Promise<Response> {
   // Excluded from middleware.ts (Next would buffer the body), so the gate is checked here.

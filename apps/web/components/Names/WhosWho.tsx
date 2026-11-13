@@ -15,6 +15,7 @@ import { NamePopover } from "./NamePopover";
 import { RecordLink } from "./RecordLink";
 import { SpeakerName } from "./SpeakerName";
 import { Busy } from "@/components/ui/spinner";
+import { useHasVideo } from "@/components/HasVideo";
 
 const BTN =
   "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
@@ -94,6 +95,7 @@ export function WhosWho({
   blocking?: Record<string, number>;
 }) {
   const router = useRouter();
+  const hasVideo = useHasVideo();
   const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +156,7 @@ export function WhosWho({
   const noNameWhere =
     noNameSpans.length > 0
       ? `${formatTimestamp(Math.min(...noNameSpans.map((r) => r.startMs)))}–${formatTimestamp(Math.max(...noNameSpans.map((r) => r.endMs)))}`
-      : t("names.noNameWhole");
+      : t(hasVideo ? "names.noNameWhole" : "names.noNameWholeAudio");
 
   return (
     <div>
@@ -166,7 +168,7 @@ export function WhosWho({
       )}
       <RecordLink sessionId={sessionId} profile={profile} />
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("names.whoEmpty")}</p>
+        <p className="text-sm text-muted-foreground">{t(hasVideo ? "names.whoEmpty" : "names.whoEmptyAudio")}</p>
       ) : (
         <>
           {proposed && (

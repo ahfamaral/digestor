@@ -18,6 +18,7 @@ import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
 import { Busy } from "@/components/ui/spinner";
 import { DownloadAllDialog } from "@/components/Export/DownloadAllDialog";
+import { HasVideoProvider } from "@/components/HasVideo";
 
 export const EXPORT_POLL_MS = 3000;
 
@@ -37,7 +38,7 @@ export interface ExportClipData {
 }
 
 export interface ExportListProps {
-  session: { id: string; title: string; language: string | null; videoRemoved: boolean; sensitive: boolean };
+  session: { id: string; title: string; language: string | null; videoRemoved: boolean; sensitive: boolean; hasVideo: boolean };
   names: NamesData;
   /** Who's who rows of the whole session, and the voices that block clips (the banner). */
   whoRows: WhosWhoRow[];
@@ -98,7 +99,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
   }
 
   return (
-    <>
+    <HasVideoProvider value={session.hasVideo}>
       <AppBar
         current="Export"
         session={{ id: session.id, ready: true }}
@@ -186,7 +187,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
           </div>
         </footer>
       </main>
-    </>
+    </HasVideoProvider>
   );
 }
 

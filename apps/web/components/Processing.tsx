@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROFILES, type ProfileId } from "@digestor/core";
 import { buildSteps, type StageName } from "@/lib/processingSteps";
+import { foundNoVideo } from "@/lib/media";
+import { WarningNote } from "@/components/WarningNote";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
 import { Busy } from "@/components/ui/spinner";
@@ -13,6 +15,8 @@ export interface ProgressState {
   progress: number;
   language: string | null;
   profile: string | null;
+  /** From the live events: false once the worker found no picture. */
+  hasVideo?: boolean;
 }
 
 const CLOSING: StageName[] = ["awaiting_context", "ready", "failed"];
@@ -27,8 +31,13 @@ function eventLabel(id: string | null): string | null {
   return id && id in PROFILES ? t(`profile.${id as ProfileId}`) : null;
 }
 
-/** Processing screen: live stepper fed by SSE; refreshes the server page when the pipeline pauses or ends. */
-export function Processing({ sessionId, source, hasVideo = true, initial }: { sessionId: string; source: "upload" | "youtube"; hasVideo?: boolean; initial: ProgressState }) {
+/**
+ * Processing screen: live stepper fed by SSE; refreshes the server page when the pipeline pauses or ends.
+ * `hasVideo` / `audioOnlyAck` are the session's at render time; the events update `hasVideo` once the file is probed.
+ */
+export function Processing({
+  sessionId, source, hasVideo = true, audioOnlyAck = false, initial,
+}: { sessionId: string; source: "upload" | "youtube"; hasVideo?: boolean; audioOnlyAck?: boolean; initial: ProgressState }) {
   const router = useRouter();
   const [state, setState] = useState(initial);
 
@@ -49,12 +58,16 @@ export function Processing({ sessionId, source, hasVideo = true, initial }: { se
     return () => es.close();
   }, [sessionId, router]);
 
-  const steps = buildSteps(state.stage, source, hasVideo);
+  const liveHasVideo = state.hasVideo ?? hasVideo;
+  const steps = buildSteps(state.stage, source, liveHasVideo && !audioOnlyAck);
+  const noVideo = foundNoVideo({ hasVideo: liveHasVideo, audioOnlyAck });
   const language = state.language;
   const type = eventLabel(state.profile);
 
   return (
-    <div className="mx-auto max-w-xl rounded-xl border border-border bg-white px-4 py-1.5">
+    <div className="mx-auto flex max-w-xl flex-col gap-3">
+    {noVideo && <WarningNote role="status">{t("upload.audioOnlyWarning")}</WarningNote>}
+    <div className="rounded-xl border border-border bg-white px-4 py-1.5">
       {steps.map((s, i) => (
         <div key={s.key} className={cn("flex items-start gap-3 py-3", i < steps.length - 1 && "border-b border-border")} data-state={s.state}>
           <span
@@ -91,6 +104,7 @@ export function Processing({ sessionId, source, hasVideo = true, initial }: { se
           </div>
         </div>
       ))}
+    </div>
     </div>
   );
 }

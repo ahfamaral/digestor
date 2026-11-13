@@ -404,12 +404,11 @@ describe("pipeline", () => {
     expect(llm.calls.length).toBe(0);
   });
 
-  it("audio-only without acknowledgement fails with the copy", async () => {
-    const { start, sessionId, llm } = await setup({ fixture: AUDIO });
-    expect(await start()).toBe("stopped");
-    expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "This file has no video." });
-    expect(await start()).toBe("ignored"); // nothing left to run
-    expect(llm.calls.length).toBe(0);
+  it("a file without a picture and without acknowledgement (a video container) goes on as audio-only", async () => {
+    const { start, sessionId, paused } = await setup({ fixture: AUDIO, context: [draft()] });
+    await start();
+    expect(await getSession(db, sessionId)).toMatchObject({ hasVideo: false, audioOnlyAck: false, error: null, stage: "awaiting_context", proxyKey: `${sessionId}/proxy.mp4` });
+    expect(await paused()).toBe(true);
   });
 
   it("with acknowledgement continues and sets hasVideo false", async () => {

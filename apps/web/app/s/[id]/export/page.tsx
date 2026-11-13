@@ -61,7 +61,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <ExportList
-      session={{ id: session.id, title: session.title, language: session.language, videoRemoved: session.videoDeletedAt !== null, sensitive }}
+      session={{ id: session.id, title: session.title, language: session.language, videoRemoved: session.videoDeletedAt !== null, sensitive, hasVideo: session.hasVideo }}
       names={names}
       whoRows={whosWhoRows(names, words)}
       unconfirmed={unconfirmed}

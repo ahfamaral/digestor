@@ -50,7 +50,7 @@ describe("GET /api/sessions/[id]/events", () => {
     expect(res.headers.get("cache-control")).toContain("no-cache");
     const text = await readAll(res);
     expect(events(text)).toEqual([
-      { stage: "ready", progress: 100, error: null, language: "pt", profile: "interview" },
+      { stage: "ready", progress: 100, error: null, language: "pt", profile: "interview", hasVideo: true },
     ]);
   });
 
@@ -60,11 +60,12 @@ describe("GET /api/sessions/[id]/events", () => {
     const res = await call(s.id);
     const pending = readAll(res);
     await new Promise((r) => setTimeout(r, 200)); // several polls with no change
-    await updateSession(h.db, s.id, { stage: "transcribing", progress: 30 });
+    await updateSession(h.db, s.id, { stage: "transcribing", progress: 30, hasVideo: false }); // ingest found no picture
     await new Promise((r) => setTimeout(r, 100));
     await updateSession(h.db, s.id, { stage: "failed", error: "No speech was detected in this video." });
     const text = await pending;
     expect(events(text).map((e) => e.stage)).toEqual(["preparing", "transcribing", "failed"]);
+    expect(events(text).map((e) => e.hasVideo)).toEqual([true, false, false]);
     expect(events(text)[2].error).toBe("No speech was detected in this video.");
     expect(text).toContain(": ping\n\n");
   });

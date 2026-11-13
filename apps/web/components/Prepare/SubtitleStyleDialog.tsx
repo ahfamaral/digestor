@@ -9,7 +9,7 @@ import { Busy } from "@/components/ui/spinner";
 import { pauseAllMedia } from "@/lib/media";
 import { t } from "@/lib/i18n";
 import { cn } from "cn";
-import { previewCss, type SubtitleLook } from "@/lib/subtitlePreview";
+import { previewCss, startingLook, subtitlePositions, type SubtitleLook } from "@/lib/subtitlePreview";
 import type { ClipView, TrackView } from "@/lib/prepareData";
 import { cropPosition } from "./FormatPicker";
 
@@ -24,11 +24,11 @@ const STYLES: { value: SubtitleStyle; label: string }[] = [
   { value: "white", label: t("prepare.styleWhite") },
   { value: "white_box", label: t("prepare.styleWhiteBox") },
 ];
-const POSITIONS: { value: SubtitlePosition; label: string }[] = [
-  { value: "bottom", label: t("prepare.positionBottom") },
-  { value: "above_banner", label: t("prepare.positionAboveBanner") },
-  { value: "top", label: t("prepare.positionTop") },
-];
+const POSITION_LABEL: Record<SubtitlePosition, string> = {
+  bottom: t("prepare.positionBottom"),
+  above_banner: t("prepare.positionAboveBanner"),
+  top: t("prepare.positionTop"),
+};
 
 export interface SubtitleStyleDialogProps {
   open: boolean;
@@ -68,7 +68,8 @@ export function SubtitleStyleDialog(props: SubtitleStyleDialogProps) {
 function Body({
   onOpenChange, clip, track, sessionId, hasVideo, onUse, languageLabel, cancelRef, busy, setBusy,
 }: SubtitleStyleDialogProps & { cancelRef: React.RefObject<HTMLButtonElement | null>; busy: boolean; setBusy: (b: boolean) => void }) {
-  const [look, setLook] = useState<SubtitleLook>({ style: clip.subtitleStyle, position: clip.subtitlePosition });
+  const [look, setLook] = useState<SubtitleLook>(() => startingLook({ style: clip.subtitleStyle, position: clip.subtitlePosition }, hasVideo));
+  const positions = subtitlePositions(hasVideo).map((value) => ({ value, label: POSITION_LABEL[value] }));
   const [error, setError] = useState<string | null>(null);
   const [frameH, setFrameH] = useState(0);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -146,7 +147,7 @@ function Body({
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Choice legend={t("prepare.styleLegend")} name="subtitle-style" value={look.style} options={STYLES} onChange={(style) => setLook((l) => ({ ...l, style }))} sample />
-        <Choice legend={t("prepare.positionLegend")} name="subtitle-position" value={look.position} options={POSITIONS} onChange={(position) => setLook((l) => ({ ...l, position }))} />
+        <Choice legend={t("prepare.positionLegend")} name="subtitle-position" value={look.position} options={positions} onChange={(position) => setLook((l) => ({ ...l, position }))} />
       </div>
       {error && (
         <p role="alert" className="text-xs text-red-700">

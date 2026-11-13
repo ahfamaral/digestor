@@ -64,7 +64,6 @@ export type Step = (deps: PipelineDeps, run: PipelineRun, resume?: ResumePayload
 
 const STOP = { stop: true } as const;
 
-const NO_VIDEO = "This file has no video.";
 const NO_AUDIO = "This video has no audio track.";
 const NO_SPEECH = "No speech was detected in this video.";
 const UNREADABLE_VIDEO = "We couldn't read this video file.";
@@ -205,10 +204,8 @@ const ingest: Step = async (deps, s) => {
     await setStage(db, s.sessionId, "failed", 5, NO_AUDIO);
     return STOP;
   }
-  if (!info.hasVideo && !session.audioOnlyAck) {
-    await setStage(db, s.sessionId, "failed", 5, NO_VIDEO);
-    return STOP;
-  }
+  // No picture: go on as audio-only (clips show a waveform). An audio extension was acknowledged at upload; a video
+  // container without a picture wasn't, so the web shows the same notice from `hasVideo` false + `audioOnlyAck` false.
   const audioKey = storage.key(s.sessionId, "audio.mp3");
   await media.extractAudio(original, storage.resolve(audioKey));
   await updateSession(db, s.sessionId, {

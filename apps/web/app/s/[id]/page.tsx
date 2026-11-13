@@ -8,6 +8,7 @@ import { ContextCheck } from "@/components/ContextCheck";
 import { Briefing } from "@/components/Briefing/Briefing";
 import { Processing } from "@/components/Processing";
 import { isUuid } from "@/lib/ids";
+import { foundNoVideo } from "@/lib/media";
 import { loadBriefingPage } from "@/lib/briefingPage";
 import { loadNames } from "@/lib/namesServer";
 import { whosWhoRows } from "@/lib/names";
@@ -38,7 +39,7 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
     const { db } = getServer();
     const [found, names, transcript] = await Promise.all([getContextCard(db, id), loadNames(db, id), getTranscript(db, id)]);
     body = found ? (
-      <ContextCheck sessionId={session.id} card={found.card} names={names} rows={whosWhoRows(names, transcript?.words ?? [])} proxyReady={isProxyReady(session)} hasVideo={session.hasVideo && !session.audioOnlyAck} />
+      <ContextCheck sessionId={session.id} card={found.card} names={names} rows={whosWhoRows(names, transcript?.words ?? [])} proxyReady={isProxyReady(session)} hasVideo={session.hasVideo && !session.audioOnlyAck} noVideoNotice={foundNoVideo(session)} />
     ) : (
       <div role="alert" className="rounded-xl border border-border bg-white p-5 text-sm text-red-700">
         {t("session.contextMissing")}
@@ -59,7 +60,8 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
       <Processing
         sessionId={session.id}
         source={session.source}
-        hasVideo={session.hasVideo && !session.audioOnlyAck}
+        hasVideo={session.hasVideo}
+        audioOnlyAck={session.audioOnlyAck}
         initial={{ stage, progress: session.progress, language: session.language, profile: session.profile }}
       />
     );

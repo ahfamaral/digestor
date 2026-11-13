@@ -10,6 +10,8 @@ import { labelText, splitSpeakerQuestions, voiceLabel } from "@/lib/names";
 import { factBadge, profileBadge, shownBadge, type BadgeKind, type ShownBadge } from "@/lib/contextBadge";
 import { buildContextPayload, buildSkipPayload, type ContextFields } from "@/lib/contextPayload";
 import { sampleSrc } from "@/lib/media";
+import { WarningNote } from "@/components/WarningNote";
+import { HasVideoProvider } from "@/components/HasVideo";
 import { usePauseWhenHidden } from "@/lib/usePauseWhenHidden";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -69,11 +71,12 @@ function Row({ label, badge, audio, children }: { label: string; badge: BadgeKin
 
 /** Context check screen: review what the agent understood, answer its questions, then continue or skip. */
 export function ContextCheck({
-  sessionId, card, names, rows, proxyReady, hasVideo,
+  sessionId, card, names, rows, proxyReady, hasVideo, noVideoNotice = false,
 }: {
   sessionId: string; card: ContextCard; names: NamesData; rows: WhosWhoRow[];
   /** The 360p preview copy exists; until then the samples play from the audio. */ proxyReady: boolean;
   /** False for an audio-only file: what was read from the recording says "from audio". */ hasVideo: boolean;
+  /** The worker found no picture in a file not acknowledged as audio at upload: show the audio-only notice. */ noVideoNotice?: boolean;
 }) {
   const router = useRouter();
   const [original] = useState(() => toFields(card));
@@ -149,7 +152,9 @@ export function ContextCheck({
   );
 
   return (
+    <HasVideoProvider value={hasVideo}>
     <div className="flex flex-col gap-4">
+    {noVideoNotice && <WarningNote role="note">{t("upload.audioOnlyWarning")}</WarningNote>}
     <RecordLink sessionId={sessionId} profile={edited.profile} suggestionOnly />
     <div className={cn("grid grid-cols-1 gap-4", showQuestions && "md:grid-cols-2")}>
       <section className="rounded-xl border border-border bg-white p-5">
@@ -272,5 +277,6 @@ export function ContextCheck({
         </button>
       </div>
     </div>
+    </HasVideoProvider>
   );
 }

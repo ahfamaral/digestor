@@ -6,6 +6,16 @@ export interface SubtitleLook {
   position: SubtitlePosition;
 }
 
+/** The positions offered: a waveform (audio-only file) has no name banner to sit above. */
+export function subtitlePositions(hasVideo: boolean): SubtitlePosition[] {
+  return hasVideo ? ["bottom", "above_banner", "top"] : ["bottom", "top"];
+}
+
+/** The look the style dialog starts from: a position it doesn't offer starts at the bottom. */
+export function startingLook(look: SubtitleLook, hasVideo: boolean): SubtitleLook {
+  return subtitlePositions(hasVideo).includes(look.position) ? look : { ...look, position: "bottom" };
+}
+
 /**
  * The CSS twin of the worker's `buildAss`: the same geometry from `SUBTITLE_GEOMETRY`, scaled to the shown frame's
  * height. Close, not exact: the made video (Watch on Export) is the real check.
