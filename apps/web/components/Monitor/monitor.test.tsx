@@ -784,13 +784,14 @@ describe("Ask the record", () => {
     expect(html).toMatch(/<blockquote lang="pt-BR"[^>]*>O preço da comida subiu. A cesta básica ficou cara.<\/blockquote>/);
     expect(html).toContain("Fernanda Melchionna");
     expect(html).toContain("· PSOL-RS");
-    expect(html).toContain("Watch at 1:18:42");
+    // the button says the video starts at the speech, not at the quoted sentence
+    expect(html).toContain("Watch the speech from its start (1:18:42)");
     expect(html).toContain('href="/monitor/deputados/204407?from=2026-04-08&amp;to=2026-04-08#speeches"');
     expect(html).toContain("Official record");
     expect(html).toContain("At most two passages per deputy");
     const pt = renderToStaticMarkup(<AskRecordView locale="pt-BR" params={params} result={{ ok: true, passages: [{ speech, sentences: ["Frase."] }] }} />);
     expect(pt).toContain("Nada aqui foi escrito por IA.");
-    expect(pt).toContain("Ver a partir de 1:18:42");
+    expect(pt).toContain("Ver o discurso desde o início (1:18:42)");
   });
 
   it("the worker down offers the word search with the question; nothing found says so", () => {

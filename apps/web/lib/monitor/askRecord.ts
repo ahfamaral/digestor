@@ -1,5 +1,5 @@
 import { normName, SPEECH_HEADER_PATTERN } from "@digestor/core";
-import type { Db, SpeechHit } from "@digestor/core/server";
+import { speechTextsByKeys, type Db, type SpeechHit } from "@digestor/core/server";
 import { cleanQuery } from "./params";
 import { hybridSpeeches, queryTerms, searchTerms, typedPhrase, type Semantic, type Translate } from "./search";
 import { semanticSearch, speechPassages, type PassagesResult } from "./semantic";
@@ -9,10 +9,16 @@ import { semanticSearch, speechPassages, type PassagesResult } from "./semantic"
  * generated text. The speeches come from the topic search's hybrid retrieval (words and meaning, fused); the worker
  * then scores each speech's stored passages against the question, and the best one of each speech is quoted (1–3 of its
  * sentences, verbatim). At most `PER_DEPUTY` passages per deputy, so more voices show (diversity, not a ranking).
+ * Only the speech owner's own words are quoted: the Câmara files other speakers' turns (apartes, the chair) inside a
+ * speech's text, so each passage is placed in that text and a sentence of someone else's turn, or one crossing a turn,
+ * is never quoted (`ownSentences`); a passage with none of the owner's words falls back to the speech's next passage
+ * (`PER_SPEECH`). A speech with no published text (its passages come from the Câmara's summary) is not quoted.
  */
 export const ASK_POOL = 30;
 export const ASK_SHOWN = 6;
 export const PER_DEPUTY = 2;
+/** Passages asked per speech: the next one is quoted when the best holds only other speakers' words. */
+export const PER_SPEECH = 3;
 /** Longest quote: whole sentences up to this many characters (a single longer sentence is cut at a word). */
 export const QUOTE_CHARS = 450;
 /** A passage with none of the question's words is quoted whole, up to this many characters (a stored chunk's cap). */
@@ -43,8 +49,9 @@ export async function askRecord(
   });
   const byKey = new Map(pool.rows.filter((r) => r.speechKey).map((r) => [r.speechKey!, r]));
   if (byKey.size === 0) return { ok: true, passages: [] };
-  const scored = await passages(topic, [...byKey.keys()], 1);
+  const scored = await passages(topic, [...byKey.keys()], PER_SPEECH);
   if (!scored.ok) return { ok: false, passages: [] };
+  const texts = new Map((await speechTextsByKeys(db, [...byKey.keys()])).map((t) => [t.speechKey, t.text]));
   const stems = queryStems(q, searched.terms);
   const perDeputy = new Map<number, number>();
   const out: AskPassage[] = [];
@@ -53,7 +60,9 @@ export async function askRecord(
     if (!speech) continue;
     const n = perDeputy.get(speech.member.externalId) ?? 0;
     if (n >= PER_DEPUTY) continue;
-    const sentences = pickSentences(p.sentences, stems);
+    const own = ownSentences(texts.get(p.speechKey) ?? "", p.sentences, speech.member.name);
+    if (!own) continue;
+    const sentences = pickSentences(own, stems);
     if (sentences.length === 0) continue;
     perDeputy.set(speech.member.externalId, n + 1);
     byKey.delete(p.speechKey);
@@ -179,31 +188,81 @@ function wholePassage(s: string[]): string[] {
 }
 
 /**
+ * A speaker's turn header inside a speech's text, as the stenographers write it: "O SR. KIM KATAGUIRI (MISSÃO - SP) - ",
+ * "A SRA. FULANA (PT - SP. Sem revisão da oradora.) - ", "O SR. PRESIDENTE (Charles Fernandes. Bloco/PSD - BA) - ".
+ * Upper case "SR."/"SRA." and a name in capitals, so prose ("o Sr. Presidente") never matches.
+ */
+const TURN = /(?<![\p{L}\p{N}])(?:O|A) SRA?\. (\p{Lu}[\p{Lu}\p{M}'’. -]{1,80}?) ?\(([^()]{0,300})\)(?: ?[-–—])? ?/gu;
+const flat = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/**
+ * Each of a passage's sentences as it may be quoted under the speech owner's name, or null when it isn't the owner's:
+ * the passage is placed in the speech's text (whitespace collapsed, as the worker chunks it), and a sentence is the
+ * owner's when it lies in the owner's turn (the text before any other speaker's header, or after a header naming the
+ * owner: the speech's own opening header or `ownerName`; the chair counts as the owner only when the parenthesis names
+ * them) and crosses no other speaker's header. A sentence that opens with the owner's own header is quoted without it.
+ * Null for the whole passage when it isn't found in the text (or the speech has no text: its chunks are the summary).
+ */
+export function ownSentences(text: string, sentences: readonly string[], ownerName: string): (string | null)[] | null {
+  const t = flat(text);
+  if (!t || sentences.length === 0) return null;
+  const at = t.indexOf(sentences.join(" "));
+  if (at < 0) return null;
+  const owner = normName(ownerName);
+  const turns = [...t.matchAll(TURN)].map((m) => ({ start: m.index, end: m.index + m[0].length, name: normName(m[1]!), paren: normName(m[2]!) }));
+  const names = new Set([owner]);
+  const opening = turns[0];
+  if (opening && !t.slice(0, opening.start).trim()) names.add(opening.name);
+  const isOwner = (turn: { name: string; paren: string }) =>
+    names.has(turn.name) || (turn.name === "presidente" && owner !== "" && turn.paren.startsWith(owner));
+  const out: (string | null)[] = [];
+  let pos = at;
+  for (const sentence of sentences) {
+    const [a, b] = [pos, pos + sentence.length];
+    pos = b + 1;
+    const crossing = turns.filter((x) => x.start < b && x.end > a);
+    const before = turns.filter((x) => x.start < a).at(-1);
+    const opensWithOwn = crossing.length === 1 && crossing[0]!.start === a && isOwner(crossing[0]!);
+    if (opensWithOwn) {
+      const rest = t.slice(crossing[0]!.end, b).trim();
+      out.push(rest || null);
+    } else if (crossing.length === 0 && (!before || isOwner(before))) out.push(sentence);
+    else out.push(null);
+  }
+  return out;
+}
+
+/**
  * The sentences of a passage to quote: the one holding most of the question's words (the first on a tie), then its
  * neighbours (next, then previous) while the quote stays within `QUOTE_CHARS`, at most 3. When no sentence holds any
  * (an English question without the translator), the whole passage, up to `WHOLE_CHARS`. Sentences are never edited:
  * a single sentence over the cap is cut at a word, and "…" marks a quote that starts or ends mid-sentence.
+ * A null sentence (not the speech owner's, `ownSentences`) is never quoted, picked or quoted across.
  */
-export function pickSentences(sentences: string[], stems: ReadonlySet<string>): string[] {
-  const s = sentences.map((x) => x.trim()).filter((x) => x && !isHeader(x));
-  if (s.length === 0) return [];
-  const hits = s.map((x) => new Set(words(x).map(stem).filter((w) => stems.has(w))).size);
-  let best = 0;
-  for (let i = 1; i < s.length; i++) if (hits[i]! > hits[best]!) best = i;
-  if (hits[best] === 0) return edges(wholePassage(s));
+export function pickSentences(sentences: readonly (string | null)[], stems: ReadonlySet<string>): string[] {
+  const s = sentences.map((x) => x?.trim() ?? null).filter((x) => x !== "" && (x === null || !isHeader(x)));
+  const hits = s.map((x) => (x === null ? -1 : new Set(words(x).map(stem).filter((w) => stems.has(w))).size));
+  let best = hits.findIndex((h) => h >= 0);
+  if (best < 0) return [];
+  for (let i = best + 1; i < s.length; i++) if (hits[i]! > hits[best]!) best = i;
+  if (hits[best] === 0) {
+    const run = s.slice(best);
+    const end = run.indexOf(null);
+    return edges(wholePassage((end < 0 ? run : run.slice(0, end)) as string[]));
+  }
   if (s[best]!.length > QUOTE_CHARS) return edges([cut(s[best]!, QUOTE_CHARS)]);
   let [lo, hi] = [best, best];
   let size = s[best]!.length;
   while (hi - lo + 1 < QUOTE_SENTENCES) {
     const next = s[hi + 1];
     const prev = s[lo - 1];
-    if (next !== undefined && size + 1 + next.length <= QUOTE_CHARS) {
+    if (next != null && size + 1 + next.length <= QUOTE_CHARS) {
       hi++;
       size += 1 + next.length;
-    } else if (prev !== undefined && size + 1 + prev.length <= QUOTE_CHARS) {
+    } else if (prev != null && size + 1 + prev.length <= QUOTE_CHARS) {
       lo--;
       size += 1 + prev.length;
     } else break;
   }
-  return edges(s.slice(lo, hi + 1));
+  return edges(s.slice(lo, hi + 1) as string[]);
 }

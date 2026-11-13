@@ -242,7 +242,7 @@ export const monitorEn = {
     videoFrameTitle: "Official video of the session, from {at}",
     writtenOnly: "Sent in writing: not spoken in the session, so there is no video.",
     byMeaning: "Related by meaning",
-    watchAt: "Watch at {at}",
+    watchAt: "Watch the speech from its start ({at})",
   },
   clip: {
     button: "Clip this speech",
@@ -554,7 +554,7 @@ export const monitorPtBR: MonitorMessages = {
     videoFrameTitle: "Vídeo oficial da sessão, a partir de {at}",
     writtenOnly: "Enviado por escrito: não foi falado na sessão, por isso não há vídeo.",
     byMeaning: "Relacionado pelo sentido",
-    watchAt: "Ver a partir de {at}",
+    watchAt: "Ver o discurso desde o início ({at})",
   },
   clip: {
     button: "Recortar este discurso",

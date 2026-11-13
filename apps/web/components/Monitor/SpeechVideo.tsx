@@ -10,8 +10,9 @@ import { ExternalLink } from "./ExternalLink";
 /**
  * "Watch the speech": the session's official video (the Câmara's YouTube channel) loads only when clicked, in the
  * privacy-enhanced player, from the speech's start to its end; plus a plain link to YouTube at that moment. Nothing
- * from YouTube loads before the click. `label="at"`: the button names the moment ("Watch at 1:18:42") instead of the
- * speech's length (a quoted passage on "Ask the record"). `clip`: "Clip this speech" into a Digestor session when enabled
+ * from YouTube loads before the click. `label="at"`: the button names where the video starts ("Watch the speech from
+ * its start (1:18:42)": the speech's start, not the quoted sentence) instead of the speech's length (a quoted passage on
+ * "Ask the record"). `clip`: "Clip this speech" into a Digestor session when enabled
  * (`MONITOR_CLIP_ENABLED=true`); when off, a line under the opened player says why (once, where the person looks, not
  * on every row).
  */
