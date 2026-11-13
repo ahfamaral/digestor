@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 const runMock = vi.hoisted(() => vi.fn());
 vi.mock("../media/ffmpeg.js", async (orig) => ({ ...(await orig<typeof import("../media/ffmpeg.js")>()), run: runMock }));
 
-import { FfmpegError } from "../media/ffmpeg.js";
-import { downloadYouTube, mapInfoJson, mapYtDlpError, ytDlpArgs } from "./ytdlp.js";
+import { FfmpegError, FfmpegTimeoutError } from "../media/ffmpeg.js";
+import { downloadYouTube, mapInfoJson, mapYtDlpError, sectionTimeoutMs, ytDlpArgs } from "./ytdlp.js";
 
 const fixture = JSON.parse(readFileSync(new URL("../../test/fixtures/ytdlp-info.json", import.meta.url), "utf8"));
 
@@ -129,13 +129,31 @@ describe("ytDlpArgs", () => {
     expect(args).not.toContain("--max-filesize");
     // Verified 2026-11-13 (yt-dlp 2026.10.26, an 8 h plenary stream, a 137 s section): the https DASH files took
     // 2 min 49 s; the HLS format the plain selector picked (itag 616) wrote nothing in 25 min.
-    expect(args[args.indexOf("-f") + 1]).toBe("bv*[height<=1080][protocol=https]+ba[protocol=https]/b[height<=1080][protocol=https]/b[height<=1080]");
+    // No protocol-less fallback: a video without https formats fails at once instead of stalling on HLS.
+    expect(args[args.indexOf("-f") + 1]).toBe("bv*[height<=1080][protocol=https]+ba[protocol=https]/b[height<=1080][protocol=https]");
     expect(args.slice(-2)).toEqual(["--", "u"]);
   });
-  it("no section: the whole video, as before", () => {
-    const args = ytDlpArgs("u", "/o", {});
-    expect(args).not.toContain("--download-sections");
-    expect(args[args.indexOf("-f") + 1]).toBe("bv*[height<=1080]+ba/b[height<=1080]");
+  it("no section: the whole video, byte for byte as before", () => {
+    expect(ytDlpArgs("u", "/o", { MAX_UPLOAD_GB: "5" }, "/c.txt")).toEqual([
+      "--js-runtimes", "node", "--cookies", "/c.txt", "-f", "bv*[height<=1080]+ba/b[height<=1080]", "--merge-output-format", "mp4",
+      "--no-playlist", "--max-filesize", "5G", "--break-match-filters", "!is_live", "--write-info-json", "--no-progress",
+      "-o", "/o.%(ext)s", "--", "u",
+    ]);
+  });
+  it("a section run gets a time limit (4 × its length, at least 10 min) and kills yt-dlp's ffmpeg with it; a whole video none", async () => {
+    expect(sectionTimeoutMs({ startS: 0, endS: 137 })).toBe(600_000);
+    expect(sectionTimeoutMs({ startS: 100, endS: 100 + 30 * 60 })).toBe(7_200_000);
+    runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    await downloadYouTube("https://youtu.be/x", path.join(os.tmpdir(), "ytdlp-t1"), {}, { startS: 0, endS: 137 }).catch(() => {});
+    expect(runMock.mock.lastCall![2]).toEqual({ timeoutMs: 600_000, killGroup: true });
+    runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    await downloadYouTube("https://youtu.be/x", path.join(os.tmpdir(), "ytdlp-t2"), {}).catch(() => {});
+    expect(runMock.mock.lastCall![2]).toEqual({});
+  });
+  it("a section that runs out of time fails with the slow-part sentence", async () => {
+    runMock.mockRejectedValueOnce(new FfmpegTimeoutError("yt-dlp", 600_000, "[download] ..."));
+    await expect(downloadYouTube("https://youtu.be/x", path.join(os.tmpdir(), "ytdlp-t3"), {}, { startS: 0, endS: 137 }))
+      .rejects.toThrow(/^YouTube is sending this part too slowly\. Please try again later\.$/);
   });
   it("passes the section through downloadYouTube", async () => {
     runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });

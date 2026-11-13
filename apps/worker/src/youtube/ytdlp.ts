@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
-import { FfmpegError, run } from "../media/ffmpeg.js";
+import { FfmpegError, FfmpegTimeoutError, run } from "../media/ffmpeg.js";
 import { withYouTubeCookies } from "./cookieJar.js";
 
 export type YouTubeMetadata = {
@@ -32,6 +32,14 @@ export function mapInfoJson(info: unknown): YouTubeMetadata {
     webpageUrl: str(i.webpage_url),
     durationS: typeof i.duration === "number" && Number.isFinite(i.duration) ? i.duration : null,
   };
+}
+
+/** A section that runs past its time limit (`sectionTimeoutMs`). */
+export const SLOW_SECTION_MESSAGE = "YouTube is sending this part too slowly. Please try again later.";
+
+/** A section download may take 4 × its length (YouTube serves it at about playback speed), and at least 10 minutes. */
+export function sectionTimeoutMs(section: VideoSection): number {
+  return Math.max(10 * 60_000, 4 * (section.endS - section.startS) * 1000);
 }
 
 const LIVE_MESSAGE = "Live streams can't be processed. Try again after the stream has ended.";
@@ -66,7 +74,9 @@ export function ytDlpArgs(
     ...(cookiesPath ? ["--cookies", cookiesPath] : []),
     // A section is read by ffmpeg straight from YouTube: from the plain https (DASH) files it seeks at once; from the
     // HLS playlist YouTube offers for long streams (itag 616) it crawled for 25 min without writing a byte (2026-11-13).
-    "-f", section ? "bv*[height<=1080][protocol=https]+ba[protocol=https]/b[height<=1080][protocol=https]/b[height<=1080]" : "bv*[height<=1080]+ba/b[height<=1080]",
+    // No protocol-less fallback for a section: without https formats yt-dlp fails at once (a friendly message) instead
+    // of stalling on HLS while it holds the process's one YouTube slot (`withYouTubeCookies`).
+    "-f", section ? "bv*[height<=1080][protocol=https]+ba[protocol=https]/b[height<=1080][protocol=https]" : "bv*[height<=1080]+ba/b[height<=1080]",
     "--merge-output-format", "mp4",
     "--no-playlist",
     // A section is cut by ffmpeg at the nearest keyframe (no --force-keyframes-at-cuts: re-encoding is slow, and the
@@ -93,11 +103,15 @@ export async function downloadYouTube(
   // The live cookie jar (`cookieJar.ts`): yt-dlp keeps YouTube's refreshed cookies in it, one run at a time.
   await withYouTubeCookies(env, async (cookies) => {
     try {
-      const { stdout, stderr } = await run("yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies, section));
+      // A whole video has no limit (hours of 1080p are legitimate); a section that stalls must not hold the slot forever.
+      const { stdout, stderr } = await run(
+        "yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies, section), section ? { timeoutMs: sectionTimeoutMs(section), killGroup: true } : {},
+      );
       output = `${stdout}\n${stderr}`;
     } catch (err) {
       // Verified against yt-dlp 2026.10.26: --break-match-filters rejecting a live stream exits 101 with the
       // "does not pass filter" text on stdout (which run() does not keep in the error), so the exit code is the signal.
+      if (err instanceof FfmpegTimeoutError) throw new YouTubeDownloadError(SLOW_SECTION_MESSAGE, err.stderrTail);
       if (err instanceof FfmpegError && err.code === 101) throw new YouTubeDownloadError(LIVE_MESSAGE, err.stderrTail);
       const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
       if (cookies && /Sign in to confirm|not a bot/i.test(stderr)) {

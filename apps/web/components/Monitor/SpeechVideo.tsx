@@ -12,12 +12,20 @@ import { ExternalLink } from "./ExternalLink";
  * privacy-enhanced player, from the speech's start to its end; plus a plain link to YouTube at that moment. Nothing
  * from YouTube loads before the click. `label="at"`: the button names the moment ("Watch at 1:18:42") instead of the
  * speech's length (a quoted passage on "Ask the record"). `clip`: "Clip this speech" into a Digestor session when enabled
- * (`MONITOR_CLIP_ENABLED=true`), else a line saying why it isn't offered.
+ * (`MONITOR_CLIP_ENABLED=true`); when off, a line under the opened player says why (once, where the person looks, not
+ * on every row).
  */
-export function SpeechVideo({
-  locale, video, label = "length", clip,
-}: { locale: MonitorLocale; video: VideoMoment; label?: "length" | "at"; clip?: { speechKey: string; enabled: boolean } }) {
+export function SpeechVideo(props: SpeechVideoProps) {
   const [open, setOpen] = useState(false);
+  return <SpeechVideoView {...props} open={open} onOpenChange={setOpen} />;
+}
+
+type SpeechVideoProps = { locale: MonitorLocale; video: VideoMoment; label?: "length" | "at"; clip?: { speechKey: string; enabled: boolean } };
+
+/** `SpeechVideo` without its state (exported for tests: the opened player renders on the server too). */
+export function SpeechVideoView({
+  locale, video, label = "length", clip, open, onOpenChange: setOpen,
+}: SpeechVideoProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
   const src = embedUrl(video);
   const href = watchUrl(video);
   if (!src || !href) return null;
@@ -50,18 +58,20 @@ export function SpeechVideo({
           {tm(locale, "speech.openOnYouTube", { at })}
         </ExternalLink>
       </div>
-      {clip && !clip.enabled && <p className="text-xs text-muted-foreground">{tm(locale, "clip.disabled")}</p>}
       {open ? (
-        <div className="aspect-video w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-black">
-          <iframe
-            src={src}
-            title={tm(locale, "speech.videoFrameTitle", { at })}
-            className="size-full"
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-        </div>
+        <>
+          <div className="aspect-video w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-black">
+            <iframe
+              src={src}
+              title={tm(locale, "speech.videoFrameTitle", { at })}
+              className="size-full"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+          {clip && !clip.enabled && <p className="text-xs text-muted-foreground">{tm(locale, "clip.disabled")}</p>}
+        </>
       ) : (
         <p className="text-xs text-muted-foreground">{tm(locale, "speech.videoNote")}</p>
       )}

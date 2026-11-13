@@ -32,9 +32,12 @@ export const STDERR_CAP = 64 * 1024;
  * Resolves with the full stdout (unbounded on purpose: ffprobe JSON needs all of it, and
  * callers that stream huge stdout should not use this) and a bounded stderr tail (last STDERR_CAP chars).
  */
-export function run(cmd: string, args: string[], opts: { timeoutMs?: number } = {}): Promise<{ stdout: string; stderr: string }> {
+export function run(
+  cmd: string, args: string[], opts: { timeoutMs?: number; killGroup?: boolean } = {},
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // `killGroup`: the process leads its own group, and a timeout kills the whole group (yt-dlp's ffmpeg child too).
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], detached: opts.killGroup === true });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (d: string) => (stdout += d));
@@ -46,7 +49,13 @@ export function run(cmd: string, args: string[], opts: { timeoutMs?: number } = 
     const timer = opts.timeoutMs
       ? setTimeout(() => {
           timedOut = true;
-          child.kill("SIGKILL");
+          if (opts.killGroup && child.pid !== undefined) {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch {
+              child.kill("SIGKILL");
+            }
+          } else child.kill("SIGKILL");
         }, opts.timeoutMs)
       : null;
     child.on("error", (err) => {

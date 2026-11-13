@@ -121,9 +121,9 @@ describe("POST /api/monitor/clip", () => {
 
   it("clamps the section at the video's start and end", async () => {
     vi.stubEnv("MONITOR_CLIP_ENABLED", "true");
-    const key = await seed({ startS: 12, endS: 30_050 });
+    const key = await seed({ startS: 12, endS: 300, durationS: 310 });
     const { sessionId } = (await (await post({ speechKey: key })).json()) as { sessionId: string };
-    expect(await getSession(h.db, sessionId)).toMatchObject({ sourceStartMs: 0, sourceEndMs: 30_060_000 });
+    expect(await getSession(h.db, sessionId)).toMatchObject({ sourceStartMs: 0, sourceEndMs: 310_000 });
   });
 
   it("without a known video length the end is the speech's end plus 20 s", async () => {
@@ -131,6 +131,20 @@ describe("POST /api/monitor/clip", () => {
     const key = await seed({ startS: 100, endS: 200, durationS: null });
     const { sessionId } = (await (await post({ speechKey: key })).json()) as { sessionId: string };
     expect(await getSession(h.db, sessionId)).toMatchObject({ sourceStartMs: 80_000, sourceEndMs: 220_000 });
+  });
+
+  it("refuses a part longer than 60 minutes with a friendly 422, and starts nothing", async () => {
+    vi.stubEnv("MONITOR_CLIP_ENABLED", "true");
+    const key = await seed({ startS: 1000, endS: 1000 + 3600 - 39 }); // 3,601 s with the 20 s either side
+    const rows = (await h.db.select().from(sessions)).length;
+    const res = await post({ speechKey: key });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: "This speech runs over an hour, too long to clip here. Watch it on YouTube instead." });
+    expect((await h.db.select().from(sessions)).length).toBe(rows);
+    expect(h.send).not.toHaveBeenCalled();
+    // exactly 60 minutes is fine
+    await h.db.execute("UPDATE parl_speech_videos SET end_s = 1000 + 3600 - 40");
+    expect((await post({ speechKey: key })).status).toBe(200);
   });
 
   it("leaves no row behind when sending the start job fails", async () => {

@@ -3,7 +3,7 @@ import { createSession, deleteSession, linkRecord, speechClipSource } from "@dig
 import { errorResponse } from "@/lib/http";
 import { START_FAILED } from "@/lib/languageInput";
 import { sendStart } from "@/lib/jobs";
-import { clipSection, monitorClipEnabled, speakerLabel } from "@/lib/monitor/clip";
+import { MAX_CLIP_S, clipSection, monitorClipEnabled, speakerLabel } from "@/lib/monitor/clip";
 import { MONITOR_LANG_COOKIE, monitorLocale, tm } from "@/lib/monitor/i18n";
 import { readRecordInput } from "@/lib/recordInput";
 import { getServer } from "@/lib/server";
@@ -21,7 +21,8 @@ function cookieValue(req: Request, name: string): string | undefined {
 /**
  * POST /api/monitor/clip { speechKey } → { sessionId }: one speech's moment in the plenary's official video opened as a
  * YouTube session that downloads only that part (± 20 s), in Portuguese, with the speaker in the hint and the plenary
- * linked as the official record; the profile is left to the context check. Off unless `MONITOR_CLIP_ENABLED=true`.
+ * linked as the official record; the profile is left to the context check. Off unless `MONITOR_CLIP_ENABLED=true`;
+ * a part over 60 minutes is refused (422).
  */
 export async function POST(req: Request): Promise<Response> {
   const locale = monitorLocale(cookieValue(req, MONITOR_LANG_COOKIE), req.headers.get("accept-language"));
@@ -34,6 +35,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!src) return errorResponse(404, tm(locale, "clip.noVideo"));
 
   const section = clipSection(src, src.durationS);
+  if (section.endS - section.startS > MAX_CLIP_S) return errorResponse(422, tm(locale, "clip.tooLong"));
   const url = `https://www.youtube.com/watch?v=${src.videoId}`;
   const day = src.startsAt.slice(0, 10);
   const who = speakerLabel(src.name, src.party, src.uf);

@@ -5,6 +5,9 @@ import type { VideoMoment } from "./video";
 /** Seconds kept before and after the speech's moment (the alignment is approximate; the transcript shows the real start). */
 export const CLIP_PAD_S = 20;
 
+/** The longest part a clip may download (padding included): 60 minutes. */
+export const MAX_CLIP_S = 60 * 60;
+
 /** Off unless `MONITOR_CLIP_ENABLED=true`: the download runs yt-dlp, which a server IP YouTube blocks can't do. */
 export function monitorClipEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.MONITOR_CLIP_ENABLED === "true";

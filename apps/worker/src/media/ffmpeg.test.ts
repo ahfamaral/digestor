@@ -205,6 +205,19 @@ describe("run with a timeout", () => {
     expect((await run("node", ["-e", "console.log('ok')"])).stdout.trim()).toBe("ok");
   });
 
+  it("killGroup: a timeout also kills the process's children (yt-dlp's ffmpeg)", async () => {
+    const pidFile = join(mkdtempSync(join(tmpdir(), "run-group-")), "child.pid");
+    const script = `const c=require("child_process").spawn("node",["-e","setTimeout(()=>{},30000)"],{stdio:"ignore"});require("fs").writeFileSync(${JSON.stringify(pidFile)},String(c.pid));setTimeout(()=>{},30000)`;
+    const err = await run("node", ["-e", script], { timeoutMs: 800, killGroup: true }).catch((e) => e);
+    expect(err).toBeInstanceOf(FfmpegTimeoutError);
+    const fs = await import("node:fs");
+    const childPid = Number(fs.readFileSync(pidFile, "utf8"));
+    await new Promise((r) => setTimeout(r, 200));
+    // Gone, or a zombie waiting for PID 1 to reap it (the test container's PID 1 doesn't): either way not running.
+    const stat = fs.existsSync(`/proc/${childPid}/stat`) ? fs.readFileSync(`/proc/${childPid}/stat`, "utf8") : null;
+    expect(stat === null || / Z /.test(stat.slice(stat.lastIndexOf(")")))).toBe(true);
+  });
+
   it("frames get a 60 s limit; encodes get none", () => {
     expect(FRAME_TIMEOUT_MS).toBe(60_000);
   });

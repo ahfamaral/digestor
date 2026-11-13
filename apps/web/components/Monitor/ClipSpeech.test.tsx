@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { clipMinutes, clipSection, monitorClipEnabled, speakerLabel } from "@/lib/monitor/clip";
 import { SpeechItem } from "./SpeechItem";
+import { SpeechVideoView } from "./SpeechVideo";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
@@ -22,13 +23,26 @@ describe("Clip this speech", () => {
     expect(renderToStaticMarkup(<ul><SpeechItem locale="pt-BR" speech={row} /></ul>)).toContain("Recortar este discurso");
   });
 
-  it("off (missing or not exactly \"true\"): the line says why, no button", () => {
+  it("off (missing or not exactly \"true\"): no button, and no line on the row", () => {
     for (const v of ["", "1", "TRUE"]) {
       vi.stubEnv("MONITOR_CLIP_ENABLED", v);
       const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>);
-      expect(html).toContain(DISABLED);
+      expect(html).not.toContain(DISABLED);
       expect(html).not.toContain("Clip this speech");
     }
+  });
+
+  it("off: the line says why once the video is opened, under the player", () => {
+    const off = { speechKey: "k", enabled: false };
+    const closed = renderToStaticMarkup(<SpeechVideoView locale="en" video={row.video} clip={off} open={false} onOpenChange={() => {}} />);
+    expect(closed).not.toContain(DISABLED);
+    const opened = renderToStaticMarkup(<SpeechVideoView locale="en" video={row.video} clip={off} open onOpenChange={() => {}} />);
+    expect(opened.split(DISABLED)).toHaveLength(2);
+    expect(opened.indexOf(DISABLED)).toBeGreaterThan(opened.indexOf("<iframe"));
+    // on: never the line, open or not
+    const on = renderToStaticMarkup(<SpeechVideoView locale="en" video={row.video} clip={{ speechKey: "k", enabled: true }} open onOpenChange={() => {}} />);
+    expect(on).not.toContain(DISABLED);
+    expect(on).toContain("Clip this speech");
   });
 
   it("nothing about clipping for a speech without a video moment or a key", () => {
