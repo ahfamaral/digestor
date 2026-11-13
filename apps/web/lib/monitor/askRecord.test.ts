@@ -181,6 +181,14 @@ describe("ownSentences: only the speech owner's words are quotable", () => {
     ]);
   });
 
+  it("a speech opening with the chair's turn: the chair's words are not the owner's; a split owner header is left out", () => {
+    const text = "O SR. PRESIDENTE (Fulano de Tal. PT - SP) - Tem a palavra o Deputado. O SR. BELTRANO (PL - SP. Sem revisão do orador.) - Peço a palavra. Falo da comida.";
+    const sentences = ["Tem a palavra o Deputado.", "O SR. BELTRANO (PL - SP.", "Sem revisão do orador.) - Peço a palavra.", "Falo da comida."];
+    expect(ownSentences(text, sentences, "Beltrano")).toEqual([null, null, "Peço a palavra.", "Falo da comida."]);
+    // the chair is the owner only when the parenthesis names them
+    expect(ownSentences(text, sentences.slice(0, 1), "Fulano de Tal")).toEqual(["Tem a palavra o Deputado."]);
+  });
+
   it("a passage not found in the speech's text is not quotable at all (null)", () => {
     expect(ownSentences(DAGOBERTO, ["Uma frase que não está no texto."], "Dagoberto Nogueira")).toBeNull();
     expect(ownSentences("", ["Resumo da Câmara."], "Dagoberto Nogueira")).toBeNull();

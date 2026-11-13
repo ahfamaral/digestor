@@ -197,11 +197,12 @@ const flat = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /**
  * Each of a passage's sentences as it may be quoted under the speech owner's name, or null when it isn't the owner's:
- * the passage is placed in the speech's text (whitespace collapsed, as the worker chunks it), and a sentence is the
- * owner's when it lies in the owner's turn (the text before any other speaker's header, or after a header naming the
- * owner: the speech's own opening header or `ownerName`; the chair counts as the owner only when the parenthesis names
- * them) and crosses no other speaker's header. A sentence that opens with the owner's own header is quoted without it.
- * Null for the whole passage when it isn't found in the text (or the speech has no text: its chunks are the summary).
+ * the passage is placed in the speech's text (whitespace collapsed, as the worker chunks it); a sentence is the owner's
+ * when it lies in the owner's turn: the text before any other speaker's header, or after a header naming the owner
+ * (`ownerName`, or the speech's own opening header unless that is the chair's; the chair is the owner only when the
+ * parenthesis names them). A sentence crossing a header is quoted only after the last header it crosses, and only when
+ * that header is the owner's; it never carries another speaker's words. Null for the whole passage when it isn't found
+ * in the text (or the speech has no text: its chunks are the Câmara's summary).
  */
 export function ownSentences(text: string, sentences: readonly string[], ownerName: string): (string | null)[] | null {
   const t = flat(text);
@@ -212,7 +213,7 @@ export function ownSentences(text: string, sentences: readonly string[], ownerNa
   const turns = [...t.matchAll(TURN)].map((m) => ({ start: m.index, end: m.index + m[0].length, name: normName(m[1]!), paren: normName(m[2]!) }));
   const names = new Set([owner]);
   const opening = turns[0];
-  if (opening && !t.slice(0, opening.start).trim()) names.add(opening.name);
+  if (opening && opening.name !== "presidente" && !t.slice(0, opening.start).trim()) names.add(opening.name);
   const isOwner = (turn: { name: string; paren: string }) =>
     names.has(turn.name) || (turn.name === "presidente" && owner !== "" && turn.paren.startsWith(owner));
   const out: (string | null)[] = [];
@@ -220,14 +221,14 @@ export function ownSentences(text: string, sentences: readonly string[], ownerNa
   for (const sentence of sentences) {
     const [a, b] = [pos, pos + sentence.length];
     pos = b + 1;
-    const crossing = turns.filter((x) => x.start < b && x.end > a);
-    const before = turns.filter((x) => x.start < a).at(-1);
-    const opensWithOwn = crossing.length === 1 && crossing[0]!.start === a && isOwner(crossing[0]!);
-    if (opensWithOwn) {
-      const rest = t.slice(crossing[0]!.end, b).trim();
-      out.push(rest || null);
-    } else if (crossing.length === 0 && (!before || isOwner(before))) out.push(sentence);
-    else out.push(null);
+    // the turn the sentence's quotable part is in: the last header it crosses, else the last one before it
+    const last = turns.filter((x) => x.start < b && x.end > a).at(-1);
+    const turn = last ?? turns.filter((x) => x.start < a).at(-1);
+    if (turn && !isOwner(turn)) {
+      out.push(null);
+      continue;
+    }
+    out.push(last ? t.slice(Math.max(a, last.end), b).trim() || null : sentence);
   }
   return out;
 }
