@@ -128,7 +128,7 @@ export function inFlight(rows: ExportRow[]): boolean {
   return rows.some((r) => active(r.renderStatus) || r.languages.some((l) => active(l.burn.status)));
 }
 
-/** Subtitle videos Export ready clips would still make: not made, out of date, or failed on an approved track. */
+/** Subtitle videos "Make the videos" would still make: not made, out of date, or failed on an approved track. */
 export function toMake(rows: ExportRow[]): number {
   let n = 0;
   for (const r of rows)
@@ -144,7 +144,7 @@ export function isExportReady(c: { dismissed: boolean; failing: string[] }): boo
   return c.failing.length === 0 && !c.dismissed;
 }
 
-/** The clips "Export ready clips" sends. */
+/** The clips "Make the videos" (Export) sends. */
 export function exportableIds(clips: { id: string; dismissed: boolean; failing: string[] }[]): string[] {
   return clips.filter(isExportReady).map((c) => c.id);
 }

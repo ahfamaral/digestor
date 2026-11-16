@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ExternalMandate, Position } from "@digestor/core";
+import { billLabel, type ExternalMandate, type Position } from "@digestor/core";
 import type { BlocInput, HistoryInput, MemberInput, ProfileInput, SpeechInput } from "@digestor/core/server";
 import { getJson, httpTiming } from "../records/http.js";
 
@@ -252,7 +252,7 @@ export async function fetchYearCsv(f: typeof fetch, kind: YearCsv, year: number)
 }
 
 const LABEL_RE = /^([A-Z]+) (\d+)\/(\d{4})$/;
-const toBill = (p: z.infer<typeof proposicao>) => ({ id: p.id, label: `${p.siglaTipo} ${p.numero}/${p.ano}`, summary: p.ementa ?? "" });
+const toBill = (p: z.infer<typeof proposicao>) => ({ id: p.id, label: billLabel(p.siglaTipo, p.numero, p.ano), summary: p.ementa ?? "" });
 
 const bloco = z.object({ id: z.coerce.number(), nome: z.string(), idLegislatura: z.coerce.number().nullish(), federacao: z.boolean().nullish() }).passthrough();
 const blocoPartido = z.object({ sigla: z.string() }).passthrough();

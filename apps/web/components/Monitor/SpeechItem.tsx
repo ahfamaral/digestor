@@ -5,6 +5,7 @@ import { monitorClipEnabled } from "@/lib/monitor/clip";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref } from "@/lib/monitor/params";
 import type { LandingSpeech } from "@/lib/monitor/search";
+import { snippetCuts } from "@/lib/monitor/snippet";
 import { ExternalLink } from "./ExternalLink";
 import { Highlighted } from "./Highlighted";
 import { ByMeaning } from "./MeaningNote";
@@ -17,15 +18,18 @@ import { SpeechVideo } from "./SpeechVideo";
  * A speech placed in the session's official video gets "Watch the speech" (and "Clip this speech" when
  * `MONITOR_CLIP_ENABLED=true`); one sent in writing says it wasn't spoken.
  * A topic-search row found only by the search by meaning (none of the searched words) is marked "Close in meaning".
+ * A snippet cut mid-text gets "…" where it is cut; a speech with no summary yet says so. `videoNote`: this row's video
+ * button carries the note about YouTube's cookies (the list's first video, `firstVideoRow`).
  */
 export function SpeechItem({
-  locale, speech, showMember,
-}: { locale: MonitorLocale; speech: SpeechRow | SpeechHit | LandingSpeech; showMember?: boolean }) {
+  locale, speech, showMember, videoNote = true,
+}: { locale: MonitorLocale; speech: SpeechRow | SpeechHit | LandingSpeech; showMember?: boolean; videoNote?: boolean }) {
   const hit = "snippet" in speech ? speech : null;
   const byMeaning = "byMeaning" in speech && speech.byMeaning;
   const party = hit ? (hit.partyThen ?? hit.member.party) : null;
   const uf = hit ? (hit.partyThen ? hit.ufThen : hit.member.uf) : null;
   const changed = hit && hit.partyThen && hit.member.party && hit.member.party !== hit.partyThen ? hit.member.party : null;
+  const cuts = hit ? snippetCuts(hit.snippet, speech.summary, speech.text) : null;
   return (
     <li className="grid gap-1.5 px-4 py-3 text-sm">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -45,21 +49,26 @@ export function SpeechItem({
         {byMeaning && <ByMeaning locale={locale} />}
       </div>
       {speech.video ? (
-        <SpeechVideo locale={locale} video={speech.video} clip={speech.speechKey ? { speechKey: speech.speechKey, enabled: monitorClipEnabled() } : undefined} />
+        <SpeechVideo
+          locale={locale} video={speech.video} note={videoNote}
+          clip={speech.speechKey ? { speechKey: speech.speechKey, enabled: monitorClipEnabled() } : undefined}
+        />
       ) : (
         isWrittenOnly(speech.text) && <p className="text-xs text-muted-foreground">{tm(locale, "speech.writtenOnly")}</p>
       )}
       {hit ? (
         <p lang="pt-BR" className="break-words">
-          <Highlighted text={hit.snippet} />
+          {cuts?.before && "… "}
+          <Highlighted text={hit.snippet.replaceAll(" ... ", " … ")} />
+          {cuts?.after && " …"}
+        </p>
+      ) : speech.summary ? (
+        <p className="break-words">
+          <span className="mr-1.5 text-xs text-muted-foreground">{tm(locale, "speech.summaryLabel")}:</span>
+          <span lang="pt-BR">{speech.summary}</span>
         </p>
       ) : (
-        speech.summary && (
-          <p className="break-words">
-            <span className="mr-1.5 text-xs text-muted-foreground">{tm(locale, "speech.summaryLabel")}:</span>
-            <span lang="pt-BR">{speech.summary}</span>
-          </p>
-        )
+        <p className="text-xs text-muted-foreground">{tm(locale, "speech.noSummary")}</p>
       )}
       {speech.textFile ? (
         <p className="text-xs text-muted-foreground">{tm(locale, "speech.attachedFile")}</p>
@@ -76,7 +85,7 @@ export function SpeechItem({
         <p className="text-xs text-muted-foreground">{tm(locale, "speech.noText")}</p>
       )}
       {speech.urlText && (
-        <ExternalLink href={speech.urlText} className="w-fit text-xs">
+        <ExternalLink href={speech.urlText} className="w-fit text-xs font-medium underline">
           {tm(locale, "member.officialRecord")}
         </ExternalLink>
       )}

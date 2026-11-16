@@ -14,6 +14,8 @@ import { loadNames } from "@/lib/namesServer";
 import { whosWhoRows } from "@/lib/names";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
+import { pastContext } from "@/lib/stepLinks";
 
 /** Stage router: the session row decides which screen shows (later screens arrive in later tasks). Reads the DB per request (Cache Components: inside Suspense). */
 export default function SessionPage({ params }: PageProps<"/s/[id]">) {
@@ -62,16 +64,17 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
         source={session.source}
         hasVideo={session.hasVideo}
         audioOnlyAck={session.audioOnlyAck}
-        initial={{ stage, progress: session.progress, language: session.language, profile: session.profile }}
+        initial={{ stage, progress: session.progress, language: session.language, profile: session.profile, durationMs: session.durationMs }}
       />
     );
   }
 
   return (
     <>
-      <AppBar current={current} session={{ id: session.id, ready: false }} />
+      <AppBar current={current} session={{ id: session.id, ready: false }} facts={{ hasClips: false, allReadyRendered: false, contextDone: pastContext(stage) }} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
-        <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
+        {/* Processing and the failure card are centred (max-w-xl): the title lines up with them; the context check is full width. */}
+        <h1 className={cn("mb-4 truncate text-xl font-bold tracking-tight", current === "Processing" && "mx-auto max-w-xl")}>{session.title}</h1>
         {body}
       </main>
     </>

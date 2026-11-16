@@ -21,13 +21,16 @@ export function heatLevel(share: number | null): HeatLevel {
   return share < HEAT_MUCH_MORE ? "more" : "muchMore";
 }
 
-/** "2026-01" … "2026-12". */
-export function yearMonths(year: number): string[] {
-  return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
+/** "2026-01" … "2026-12"; with `today` ("YYYY-MM-DD"), months after today's are left out (none for a later year). */
+export function yearMonths(year: number, today?: string): string[] {
+  const all = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
+  return today ? all.filter((m) => m <= today.slice(0, 7)) : all;
 }
 
-/** One cell per month of `year`; a month missing from `months` (no text in the chamber, or not yet) is "none". */
-export function heatRow(months: { month: string; share: number | null }[], year: number): { month: string; level: HeatLevel }[] {
+/** One cell per month of `year` up to `today`'s; a month missing from `months` (no text in the chamber) is "none". */
+export function heatRow(
+  months: { month: string; share: number | null }[], year: number, today?: string,
+): { month: string; level: HeatLevel }[] {
   const byMonth = new Map(months.map((m) => [m.month, m.share]));
-  return yearMonths(year).map((month) => ({ month, level: heatLevel(byMonth.get(month) ?? null) }));
+  return yearMonths(year, today).map((month) => ({ month, level: heatLevel(byMonth.get(month) ?? null) }));
 }

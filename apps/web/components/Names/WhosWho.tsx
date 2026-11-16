@@ -166,7 +166,7 @@ export function WhosWho({
           <span>{t("names.whoSensitive")}</span>
         </p>
       )}
-      <RecordLink sessionId={sessionId} profile={profile} />
+      <RecordLink sessionId={sessionId} profile={profile} suggestionElsewhere={mode === "context"} />
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t(hasVideo ? "names.whoEmpty" : "names.whoEmptyAudio")}</p>
       ) : (

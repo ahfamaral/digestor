@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  askHref, backToSearch, parseAsk, deputyHref, directoryHref, fromDeputy, keptBy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam,
+  activeTopicFilters, askHref, backToSearch, parseAsk, deputyHref, directoryHref, fromDeputy, keptBy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam,
   type DeputyParams, type LandingParams,
 } from "./params";
 
@@ -228,5 +228,15 @@ describe("client safety", () => {
       const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
       expect(imports.filter((i) => i === "./search" || i!.includes("/server") || i === "./server"), f).toEqual([]);
     }
+  });
+});
+
+describe("activeTopicFilters", () => {
+  it("counts each filter that narrows the topic search", () => {
+    expect(activeTopicFilters(DEFAULT_LANDING)).toBe(0);
+    expect(activeTopicFilters({ ...DEFAULT_LANDING, q: "saúde", sort: "new", exact: true, p: 2 })).toBe(0);
+    expect(activeTopicFilters({ ...DEFAULT_LANDING, from: "2026-03-01", to: "2026-04-01", party: "PT" })).toBe(3);
+    expect(activeTopicFilters({ ...DEFAULT_LANDING, uf: "SP", phase: "Ordem do Dia", inOffice: true })).toBe(3);
+    expect(activeTopicFilters({ ...DEFAULT_LANDING, show: { speeches: true, rollCalls: false } })).toBe(1);
   });
 });

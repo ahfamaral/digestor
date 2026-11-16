@@ -12,7 +12,9 @@ export interface TimelineBand {
 export interface TimelinePin {
   momentId: string;
   type: HighlightTypeId;
-  /** Pin centre, kept at least half a pin from either end so the first and last pins aren't cut off. */
+  /** Where the moment starts on the strip (0–100), before any spreading. */
+  atPct: number;
+  /** Pin centre, kept at least half a pin from either end so the first and last pins aren't cut off; moved aside when pins would overlap (`layoutPins`). */
   leftPct: number;
   /** 0-based lane: a pin that would overlap the one before it drops to the next lane. */
   row: number;
@@ -72,22 +74,53 @@ export function buildTimeline(
     }
     return { momentId: h.moment.id, type: h.type, leftPct };
   });
-  // Keep each pin whole inside the track, then give pins that would overlap (closer than one pin width) a lane of their own.
-  const halfPct = (PIN_PX / 2 / TRACK_PX) * 100;
-  const gapPct = (PIN_PX / TRACK_PX) * 100;
-  const lastInRow: number[] = [];
-  const rows = new Map<number, number>();
-  pins
-    .map((p, i) => ({ i, x: Math.min(100 - halfPct, Math.max(halfPct, p.leftPct)) }))
-    .sort((a, b) => a.x - b.x || a.i - b.i)
-    .forEach(({ i, x }) => {
-      let row = lastInRow.findIndex((last) => x - last >= gapPct - 1e-9);
-      if (row < 0) row = lastInRow.length < MAX_PIN_ROWS ? lastInRow.length : MAX_PIN_ROWS - 1;
-      lastInRow[row] = x;
-      rows.set(i, row);
-    });
-  return {
-    bands,
-    pins: pins.map((p, i) => ({ ...p, leftPct: Math.min(100 - halfPct, Math.max(halfPct, p.leftPct)), row: rows.get(i) ?? 0 })),
-  };
+  const placed = layoutPins(pins.map((p) => p.leftPct), TRACK_PX);
+  return { bands, pins: pins.map((p, i) => ({ ...p, atPct: p.leftPct, ...placed[i]! })) };
+}
+
+/**
+ * Places pins on a strip `trackPx` wide so none overlaps another and each stays clickable: every pin is kept whole
+ * inside the track; a pin closer than one pin width to the last pin of a lane takes the next lane (up to `maxRows`);
+ * when every lane is taken there, it goes to the lane with the most room and is moved sideways just enough (and pins
+ * crowding an end are pushed back inside). Input positions are 0–100; the result is in the input's order.
+ */
+export function layoutPins(xs: number[], trackPx: number, pinPx: number = PIN_PX, maxRows: number = MAX_PIN_ROWS): { leftPct: number; row: number }[] {
+  const width = Math.max(trackPx, pinPx);
+  const half = (pinPx / 2 / width) * 100;
+  const gap = (pinPx / width) * 100;
+  const clamp = (x: number) => Math.min(100 - half, Math.max(half, Number.isFinite(x) ? x : 0));
+  const order = xs.map((x, i) => ({ i, x: clamp(x) })).sort((a, b) => a.x - b.x || a.i - b.i);
+  const lanes: { i: number; x: number }[][] = [];
+  for (const p of order) {
+    let lane = lanes.findIndex((l) => p.x - l.at(-1)!.x >= gap - 1e-9);
+    if (lane < 0 && lanes.length < Math.max(1, maxRows)) lane = lanes.push([]) - 1;
+    if (lane < 0) {
+      // Every lane is taken here: the one whose last pin ends furthest left needs the smallest move.
+      lane = lanes.reduce((best, l, k) => (l.at(-1)!.x < lanes[best]!.at(-1)!.x ? k : best), 0);
+    }
+    const prev = lanes[lane]!.at(-1);
+    lanes[lane]!.push({ i: p.i, x: prev ? Math.max(p.x, prev.x + gap) : p.x });
+  }
+  const out: { leftPct: number; row: number }[] = xs.map(() => ({ leftPct: half, row: 0 }));
+  lanes.forEach((lane, row) => {
+    const room = Math.floor((100 - 2 * half) / gap + 1e-9) + 1;
+    if (lane.length > room) {
+      // More pins than fit side by side: share the lane evenly (they touch, but each keeps a slice to click).
+      const step = lane.length > 1 ? (100 - 2 * half) / (lane.length - 1) : 0;
+      lane.forEach((p, k) => (out[p.i] = { leftPct: half + k * step, row }));
+      return;
+    }
+    // Pushed past the right end: walk back from the end, keeping one pin width between neighbours.
+    for (let k = lane.length - 1; k >= 0; k--) {
+      const limit = k === lane.length - 1 ? 100 - half : lane[k + 1]!.x - gap;
+      if (lane[k]!.x > limit + 1e-9) lane[k]!.x = limit;
+    }
+    lane.forEach((p) => (out[p.i] = { leftPct: p.x, row }));
+  });
+  return out;
+}
+
+/** Which sides of a sideways-scrolling strip hide more (a pixel of slack for rounding): the fades the strip shows. */
+export function scrollEdges(scrollLeft: number, clientWidth: number, scrollWidth: number): { left: boolean; right: boolean } {
+  return { left: scrollLeft > 1, right: scrollLeft + clientWidth < scrollWidth - 1 };
 }

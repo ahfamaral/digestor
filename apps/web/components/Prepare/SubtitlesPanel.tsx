@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { LANGUAGES } from "@digestor/core";
+import { LANGUAGES, estimateTranslationUsd } from "@digestor/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WarningIcon } from "@/components/WarningNote";
 import { addTrack, patchTrack } from "@/lib/prepareApi";
 import { subtitleLanguages, type ClipView, type TrackView } from "@/lib/prepareData";
 import { languageName, t } from "@/lib/i18n";
+import { aboutUsd } from "@/lib/cost";
 import { TrackEditor } from "./TrackEditor";
 import { Dropdown } from "@/components/Dropdown";
 import { Busy, Spinner } from "@/components/ui/spinner";
@@ -142,9 +143,16 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, on
               }))}
             />
           </label>
-          <button type="button" className={`${ACT} h-8`} disabled={busy || !chosen} onClick={() => void add()}>
+          <button type="button" className={`${ACT} h-8`} disabled={busy || !chosen} onClick={() => void add()} aria-describedby={chosen ? `${clipId}-sub-cost` : undefined}>
             <Busy busy={busy}>{busy ? t("prepare.adding") : t("prepare.add")}</Busy>
           </button>
+          {chosen && (
+            <span id={`${clipId}-sub-cost`} className="self-center text-xs text-muted-foreground">
+              {chosen === originalLanguage
+                ? t("cost.subtitleOriginal")
+                : t("cost.subtitleTranslate", { cost: aboutUsd(estimateTranslationUsd(clip.endMs - clip.startMs)) })}
+            </span>
+          )}
         </div>
       )}
       {error && (

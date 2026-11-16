@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChecklistId } from "@digestor/core";
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, Minus } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -11,12 +11,14 @@ export interface ChecklistProps {
   /** `exportChecklist` items; `protected` is present for the trial profile only. */
   items: { id: ChecklistId; ok: boolean }[];
   protectedAck: boolean;
+  /** No subtitles are put in the video (`noSubtitlesInVideo`): the subtitles item reads as a neutral line. */
+  noSubtitles?: boolean;
   busy: boolean;
   onProtected: (ack: boolean) => void;
 }
 
 /** The pre-export checklist of one clip (spec §9.4). The trial item is the acknowledgement itself. The speaker item is one line: the session banner says who is missing. */
-export function Checklist({ clipId, items, protectedAck, busy, onProtected }: ChecklistProps) {
+export function Checklist({ clipId, items, protectedAck, noSubtitles = false, busy, onProtected }: ChecklistProps) {
   return (
     <section aria-labelledby={`checklist-h-${clipId}`}>
       <h3 id={`checklist-h-${clipId}`} className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -30,6 +32,11 @@ export function Checklist({ clipId, items, protectedAck, busy, onProtected }: Ch
                 <Checkbox checked={protectedAck} disabled={busy} onCheckedChange={(v) => onProtected(v === true)} className="mt-0.5" />
                 <span>{t("prepare.item.protected")}</span>
               </label>
+            </li>
+          ) : item.id === "subtitles" && item.ok && noSubtitles ? (
+            <li key={item.id} className="flex items-start gap-2 text-[13px] text-muted-foreground">
+              <Minus aria-hidden className="mt-0.5 size-4 shrink-0 text-stone-400" />
+              <span>{t("prepare.item.noSubtitles")}</span>
             </li>
           ) : (
             <li key={item.id} className={cn("flex items-start gap-2 text-[13px]", item.ok ? "text-foreground" : "text-muted-foreground")}>

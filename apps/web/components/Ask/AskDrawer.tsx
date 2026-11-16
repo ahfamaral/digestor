@@ -81,7 +81,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
-  /** Answers being worked on at the last load: one that finished since may have changed clips, so the page refreshes. */
+  /** Answers being worked on at the last load: one that stopped since may have changed clips or selections, so the page refreshes. */
   const working = useRef<Set<string>>(new Set());
 
   // Beside the page, not over it: the page makes room for the 28 rem panel (`sm:max-w-md`) so nothing hides under it.
@@ -99,7 +99,8 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
       const res = await fetch(`/api/sessions/${sessionId}/ask`);
       if (!res.ok) throw new Error("load");
       const body = (await res.json()) as { messages: Message[] };
-      const finished = body.messages.some((m) => working.current.has(m.id) && m.status === "done");
+      // Done, failed, or paused on a further approval card: whatever it changed before stopping is in the database now.
+      const finished = body.messages.some((m) => working.current.has(m.id) && !isWorkingOn(m));
       working.current = new Set(body.messages.filter(isWorkingOn).map((m) => m.id));
       if (finished) router.refresh();
       setMessages(body.messages);
@@ -353,8 +354,11 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
             />
             <div className="mt-2 flex items-center justify-between gap-2">
               <p id="ask-hint" className="min-h-4 min-w-0 text-xs text-muted-foreground">
-                {count >= COUNTER_FROM && (
+                {count >= COUNTER_FROM ? (
                   <span className={tooLong ? "font-semibold text-red-700" : undefined}>{t("ask.counter", { n: count, max: MAX_QUESTION })}</span>
+                ) : (
+                  // The pay hint: each question is a paid AI call (an estimate; rates in core cost.ts).
+                  t("cost.askQuestion")
                 )}
               </p>
               <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:brightness-90">

@@ -269,6 +269,19 @@ export function labelText(label: VoiceLabel): string {
 }
 
 /** The "Names from the … record" line of a matched record (a Câmara event link carries no date). */
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A record's date as the house writes it ("04/11/2026": MM/DD for the US houses, DD/MM elsewhere) read without ambiguity: "4 Nov 2026". Anything else is returned as is. */
+export function readableRecordDate(date: string, chamber?: ChamberId): string {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(date.trim());
+  if (!m) return date;
+  const us = chamber === "us_house" || chamber === "us_senate";
+  const day = Number(us ? m[2] : m[1]);
+  const month = Number(us ? m[1] : m[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return date;
+  return `${day} ${MONTH_ABBR[month - 1]} ${m[3]}`;
+}
+
 export function recordMatchedLine(record: { chamber?: ChamberId; date: string | null }): string {
   if (record.chamber && record.chamber !== "senado") {
     const house = CHAMBERS[record.chamber].shortName;
@@ -341,13 +354,19 @@ export interface Voice {
 }
 
 /**
- * The voices shown for a range: those speaking long enough, longest first. A range too short for any voice to count
- * (a punchline) shows the voices in `fallback` instead, resolved at the range start.
+ * The voices shown for a range (Briefing rows, top highlights, Prepare, Export): those speaking long enough, in the
+ * order they first speak there (so "Speaker A, Speaker B" reads as the exchange runs). A range too short for any voice
+ * to count (a punchline) shows the voices in `fallback` instead, by label (A, B, C), resolved at the range start.
  */
 export function rangeVoices(names: NamesData, words: Pick<Word, "startMs" | "endMs" | "speaker">[], r: Range, sensitive: boolean, fallback: string[] = []): Voice[] {
   const people = momentPeople(names, words, r, sensitive);
-  if (people.length > 0) return people.map(({ speakerId, atMs }) => ({ speakerId, atMs }));
-  return fallback.map((speakerId) => ({ speakerId, atMs: r.startMs }));
+  const bySpeaker = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
+  if (people.length > 0) {
+    return people
+      .map(({ speakerId, atMs }) => ({ speakerId, atMs }))
+      .sort((a, b) => a.atMs - b.atMs || bySpeaker(a.speakerId, b.speakerId));
+  }
+  return [...new Set(fallback)].sort(bySpeaker).map((speakerId) => ({ speakerId, atMs: r.startMs }));
 }
 
 /** A voice is a main voice of the session when it speaks at least this share of the words' time. */

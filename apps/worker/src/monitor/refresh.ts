@@ -1,6 +1,6 @@
 import {
   countHistory, countInOffice, countSpeechesInWindow, dropMisfiledSpeeches, fillSpeechParties, getProfile, monitorRowCounts, membersNeedingProfile, replaceBillAuthors, replaceHistory, replaceOrientations,
-  refreshWordCounts, replacePresence, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, setProfile, upsertBills, upsertMembers,
+  mainBillsWithoutLabel, refreshWordCounts, replacePresence, setMainBillLabels, replaceSpeechWindow, replaceVotes, rollCallIdsWithBill, setInOffice, setProfile, upsertBills, upsertMembers,
   replaceBlocs, upsertRollCalls, upsertSessions, type Db,
 } from "@digestor/core/server";
 import { mapLimit } from "../records/http.js";
@@ -21,12 +21,21 @@ export type RefreshCounts = {
   members: number; speeches: { inserted: number; kept: number; failed: number }; misfiled: number; rollCalls: number; votes: number; bills: number;
   history: { ok: number; failed: number; kept: number }; profiles: { ok: number; failed: number; kept: number };
   orientations: number; sessions: number; presence: number; authoredBills: number;
+  /** Main bills whose label was fetched from the API this run (for items like "PRL 1 on PL 1761/2025"). */
+  mainBills: number;
   /** Party blocs and federations listed by the API this run (0: the fetch failed or listed none; the stored ones kept). */
   blocs: number;
   /** Rows of `parl_word_counts` after the rebuild ("Words used more than the chamber"). */
   words: number;
 };
-export type RefreshWindow = { speechesFrom: string; to: string; year: number; profiles: "all" | "missing" };
+export type RefreshWindow = {
+  speechesFrom: string; to: string; year: number; profiles: "all" | "missing";
+  /** At most this many main-bill labels fetched from the API (default MAIN_BILL_FETCHES; the backfill passes Infinity). */
+  mainBillFetches?: number;
+};
+
+/** Main-bill labels fetched per nightly run: the first run has about 4,900 to fetch, later ones a few dozen. */
+export const MAIN_BILL_FETCHES = 1_000;
 
 /** Days of speeches re-read each night: transcriptions are often published weeks late (42 still empty in dev, some 2 months old). */
 export const SPEECH_WINDOW_DAYS = 60;
@@ -148,7 +157,7 @@ export async function refreshMonitor(
   }
   const counts = {
     members: members.length, speeches, misfiled, words, history, profiles, rollCalls: 0, votes: 0, bills: 0, orientations: 0, sessions: 0, presence: 0,
-    authoredBills: 0, blocs,
+    authoredBills: 0, mainBills: 0, blocs,
   };
 
   // One file at a time: three large parallel downloads are what the Câmara cut off. A file that doesn't exist (a 4xx,
@@ -253,6 +262,7 @@ export async function refreshMonitor(
   if (billRows) {
     const billsOfYear = toBills(billRows);
     await upsertBills(db, billsOfYear);
+    counts.mainBills = await fillMainBillLabels({ db, fetch: f }, a.mainBillFetches ?? MAIN_BILL_FETCHES);
     const authorRows = await optional("proposicoesAutores", AUTHOR_COLUMNS);
     if (authorRows) {
       const billIds = billsOfYear.map((b) => b.id);
@@ -268,6 +278,31 @@ export async function refreshMonitor(
   }
 
   return counts;
+}
+
+/**
+ * Labels of main bills the year's file doesn't hold (bills presented in earlier years), for the items numbered inside
+ * them ("PRL 1 on PL 1761/2025"): at most `limit` API calls, 4 in flight. An id the Câmara doesn't know is stored as ""
+ * (not asked again); a failed call is tried again next run. Returns how many labels were stored.
+ */
+export async function fillMainBillLabels(deps: { db: Db; fetch: typeof fetch }, limit: number): Promise<number> {
+  const ids = await mainBillsWithoutLabel(deps.db, limit);
+  if (ids.length === 0) return 0;
+  let failed = 0;
+  const found = await mapLimit(ids, CONCURRENCY, (id) =>
+    fetchBill(deps.fetch, { id }).then(
+      (b) => ({ mainBillId: id, label: b?.label ?? "" }),
+      (err) => {
+        failed++;
+        if (failed === 1) console.warn(`monitor.refresh: main bill ${id} not fetched:`, err instanceof Error ? err.message : err);
+        return null;
+      },
+    ),
+  );
+  const rows = found.filter((x): x is { mainBillId: number; label: string } => x !== null);
+  await setMainBillLabels(deps.db, rows);
+  if (failed > 0) console.warn(`monitor.refresh: ${failed} main bills not fetched; tried again next run`);
+  return rows.length;
 }
 
 /**

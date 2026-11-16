@@ -30,7 +30,7 @@ export interface ExportClipData {
   endMs: number;
   /** Checklist items that don't hold yet. Empty = ready to export. */
   failing: ChecklistId[];
-  /** The clip's moment is no longer approved on the Briefing: shown with a label, left out of Export ready clips. */
+  /** The clip's moment is no longer approved on the Briefing: shown with a label, left out of "Make the videos". */
   dismissed: boolean;
   /** Who speaks in the clip (longest first). */
   voices: Voice[];
@@ -182,7 +182,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
               aria-describedby={session.videoRemoved ? "video-removed" : undefined}
               className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
             >
-              <Busy busy={busy}>{busy ? t("exportScreen.exporting") : t("exportScreen.exportReady")}</Busy>
+              <Busy busy={busy}>{busy ? t("exportScreen.exporting") : t("exportScreen.makeVideos")}</Busy>
             </button>
           </div>
         </footer>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { CHAMBERS, parseRecordRef, type RecordRef, recordInputError, type ChamberId, type RecordStatus } from "@digestor/core";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
-import { recordMatchedLine } from "@/lib/names";
+import { readableRecordDate, recordMatchedLine } from "@/lib/names";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "./RecordHouseSelect";
 import { Busy, Spinner } from "@/components/ui/spinner";
@@ -30,12 +30,12 @@ export function recordFieldError(text: string, chamber?: ChamberId): string | nu
   return recordInputError(text, chamber) ?? (parseRecordRef(text, chamber) ? null : t("record.invalid"));
 }
 
-/** "This looks like the Bundestag sitting of 16/10/2026." (a Bundestag ref with no date yet reads "…sitting 104."). */
+/** "This looks like the Bundestag sitting of 16 Oct 2026." (a Bundestag ref with no date yet reads "…sitting 104."). */
 function suggestionLine(record: RecordState): string {
   const house = CHAMBERS[record.chamber ?? "senado"].shortName;
   const sitting = record.ref?.chamber === "bundestag" ? record.ref.sitting : null;
   if (!record.date && sitting) return t("names.record.suggestedSitting", { house, sitting: String(sitting) });
-  return t("names.record.suggested", { house, date: record.date ?? "" });
+  return t("names.record.suggested", { house, date: record.date ? readableRecordDate(record.date, record.chamber) : "" });
 }
 
 /** A suggestion shows only while the session is a parliament one (the row stays, and comes back if the profile does). It needs its ref: that is what the buttons send. */
@@ -86,7 +86,19 @@ export function RecordStatusLine({ record }: { record: RecordState }) {
  * friendly failure) and a field to link or re-link one. Shown for parliament sessions and whenever a record is linked.
  * Polls while the record is matched in the worker, then refreshes the names.
  */
-export function RecordLink({ sessionId, profile, suggestionOnly = false }: { sessionId: string; profile?: string; /** The context check's copy: only the open suggestion, nothing else. */ suggestionOnly?: boolean }) {
+export function RecordLink({
+  sessionId,
+  profile,
+  suggestionOnly = false,
+  suggestionElsewhere = false,
+}: {
+  sessionId: string;
+  profile?: string;
+  /** The context check's copy: only the open suggestion, nothing else. */
+  suggestionOnly?: boolean;
+  /** Who's who inside the context check: the page shows the open suggestion above the form, so this copy stays hidden while it is open. */
+  suggestionElsewhere?: boolean;
+}) {
   const router = useRouter();
   const [record, setRecord] = useState<RecordState | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -217,6 +229,7 @@ export function RecordLink({ sessionId, profile, suggestionOnly = false }: { ses
   const hidden = record?.status === "suggested" && !suggestionShown(record, profile);
   if (!loaded || hidden || (!record && profile !== "parliament")) return null;
   const suggesting = suggestionShown(record, profile);
+  if (suggesting && suggestionElsewhere) return null;
   if (suggestionOnly) {
     return suggesting && record ? (
       <div className="rounded-lg border border-border bg-stone-50 px-3 py-2 text-sm">

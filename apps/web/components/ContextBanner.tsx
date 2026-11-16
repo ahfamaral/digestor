@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { XIcon } from "lucide-react";
 import { type ContextCard } from "@digestor/core";
 import { browserStorage, readBannerDismissed, writeBannerDismissed } from "@/lib/bannerDismiss";
 import { t } from "@/lib/i18n";
@@ -12,8 +11,8 @@ function subscribeStorage(onChange: () => void): () => void {
 }
 
 /**
- * The context card's extra details (date, setting, title) as spans inside the Briefing's header meta line, with a small
- * dismiss button after them (profile and language are already in that line). Remembered per session in this browser.
+ * The context card's extra details (date, setting, title) as spans at the end of the Briefing's header meta line ("·" between
+ * them; the span before them ends in one), with a small "Hide" text button after them (profile and language are already in that line). Remembered per session in this browser.
  */
 export function ContextBanner({ sessionId, card, sessionTitle, language }: { sessionId: string; card: ContextCard; sessionTitle: string; language?: string }) {
   // null on the server and before hydration, so a dismissed banner never flashes in.
@@ -35,7 +34,7 @@ export function ContextBanner({ sessionId, card, sessionTitle, language }: { ses
   return (
     <>
       {parts.map((p, i) => (
-        <span key={i} lang={p.spoken ? language : undefined} dir={p.spoken ? "auto" : undefined} className="after:ml-1.5 after:content-['·']">
+        <span key={i} lang={p.spoken ? language : undefined} dir={p.spoken ? "auto" : undefined} className={i < parts.length - 1 ? "after:ml-1.5 after:content-['·']" : undefined}>
           {p.text}
         </span>
       ))}
@@ -44,9 +43,9 @@ export function ContextBanner({ sessionId, card, sessionTitle, language }: { ses
         onClick={dismiss}
         aria-label={t("context.bannerDismiss")}
         title={t("context.bannerDismiss")}
-        className="-ml-2 mr-1 grid size-8 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+        className="rounded-sm px-0.5 font-sans text-xs text-muted-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
       >
-        <XIcon className="size-3.5" aria-hidden />
+        {t("context.bannerHide")}
       </button>
     </>
   );

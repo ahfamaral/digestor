@@ -296,13 +296,16 @@ describe("monitor components", () => {
       urlText: null, textFile: false, video: { videoId: "NmI46Y25mEU", startS: 76, endS: 414 },
     };
     const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>);
-    expect(html).toContain("Watch the speech (5:38)");
+    expect(html).toContain("Watch the speech · 5:38");
+    // the note about YouTube's cookies: under the list's first video only
+    expect(html).toContain("may set cookies");
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} videoNote={false} /></ul>)).not.toContain("may set cookies");
     expect(html).toContain('aria-label="Watch the speech in the session&#x27;s official video, from 0:01:16"');
     expect(html).toContain('href="https://www.youtube.com/watch?v=NmI46Y25mEU&amp;t=76s"');
     expect(html).toContain("Open on YouTube at 0:01:16");
     expect(html).not.toContain("<iframe");
     expect(html).not.toContain("youtube-nocookie");
-    expect(renderToStaticMarkup(<ul><SpeechItem locale="pt-BR" speech={row} /></ul>)).toContain("Ver o discurso (5:38)");
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="pt-BR" speech={row} /></ul>)).toContain("Ver o discurso · 5:38");
   });
 
   it("a speech sent in writing says it wasn't spoken; a spoken one without a match says nothing about video", () => {
@@ -315,6 +318,18 @@ describe("monitor components", () => {
     const html = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={spoken} /></ul>);
     expect(html).not.toContain("Sent in writing");
     expect(html).not.toContain("Watch the speech");
+  });
+
+  it("a speech with no summary yet says so; a search snippet cut mid-text gets an ellipsis", () => {
+    const row = { id: 9, startsAt: "2026-06-30T14:24", phase: null, kind: null, summary: "", text: "O SR. X (PL - RS.) - Quero falar hoje.", urlText: null, textFile: false, video: null };
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>)).toContain("No summary published yet.");
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="pt-BR" speech={row} /></ul>)).toContain("Resumo ainda não publicado.");
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={{ ...row, summary: "Defesa da saúde." }} /></ul>)).not.toContain("No summary");
+    const hit = {
+      ...row, text: "O SR. X (PL - RS.) - Quero falar hoje sobre a saúde pública no meu estado e nos municípios.",
+      member: { externalId: 1, name: "X", party: "PL", uf: "RS" }, partyThen: null, ufThen: null, snippet: "sobre a \u0001saúde\u0002 pública",
+    };
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={hit} /></ul>)).toMatch(/>… <span>sobre a <\/span><mark[^>]*>saúde<\/mark><span> pública<\/span> …</);
   });
 
   it("a speech published as an attached file says so instead of showing its text", () => {
@@ -374,13 +389,16 @@ describe("monitor components", () => {
       <LandingView locale="en" params={params} facets={facets} result={{ ...searched, q: "xkcd qwerty zzz", meaning: "used", rollCalls: null, speeches: { total: 2, meaningOnly: 2, rows } }} />,
     );
     expect(en).toContain("No speech uses these words. Closest by meaning (may be unrelated):");
-    expect(en).toContain("0 speeches · plus 2 close in meaning");
+    // the counts line and the section count say only what is shown: no word match, the rows close in meaning
+    expect(en).toContain("No speech uses these words · 2 close in meaning");
+    expect(en).toContain("(2 close in meaning)");
+    expect(en).not.toContain("0 speeches");
     expect(en).not.toContain("Also searched by meaning");
     const pt = renderToStaticMarkup(
       <LandingView locale="pt-BR" params={params} facets={facets} result={{ ...searched, q: "xkcd qwerty zzz", meaning: "used", rollCalls: null, speeches: { total: 2, meaningOnly: 2, rows } }} />,
     );
     expect(pt).toContain("Nenhum discurso usa estas palavras. Os mais próximos pelo sentido (podem não ter relação):");
-    expect(pt).toContain("e mais 2 próximos pelo sentido");
+    expect(pt).toContain("Nenhum discurso usa estas palavras · 2 próximos pelo sentido");
     expect(pt.match(/Próximo pelo sentido</g)).toHaveLength(2);
   });
 
@@ -485,6 +503,10 @@ describe("monitor components", () => {
       }
     }
     expect(renderToStaticMarkup(<Presence locale="en" presence={null} year={2026} />)).toContain("Presence not available for this deputy.");
+    // present at every session: no note about why sessions are missing
+    const all = renderToStaticMarkup(<Presence locale="en" presence={{ sessions: 79, present: 79, missing: [] }} year={2026} />);
+    expect(all).toContain("Present at 79 of 79");
+    expect(all).not.toContain("justified");
   });
 
   it("a mention result highlights the name and shows the speaker", () => {
@@ -540,6 +562,18 @@ describe("monitor components", () => {
     expect(blocEn).toContain("(bloc: Bl AvanSolidPrd...)");
     const none = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance: null, guidanceFrom: null }} /></ul>);
     expect(none).not.toContain("guidance");
+  });
+
+  it("a vote row labels the deputy's vote and says in words when it differs from a directed guidance", () => {
+    const v = { rollCallId: "1-1", date: "2026-03-10", description: "Aprovado o projeto.", billId: 1, billLabel: "PL 1/2026", billSummary: "", vote: "Não" };
+    const differs = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance: "Sim", guidanceFrom: null }} /></ul>);
+    expect(differs).toMatch(/Voted:<span lang="pt-BR"[^>]*>Não<\/span>/);
+    expect(differs).toContain("Differs from party guidance");
+    expect(renderToStaticMarkup(<ul><VoteRow locale="pt-BR" vote={{ ...v, guidance: "Sim", guidanceFrom: null }} /></ul>)).toContain("Difere da orientação do partido");
+    for (const guidance of ["Não", "Liberado", null]) {
+      expect(renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidance, guidanceFrom: null }} /></ul>)).not.toContain("Differs");
+    }
+    expect(renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, vote: "Artigo 17", guidance: "Sim", guidanceFrom: null }} /></ul>)).not.toContain("Differs");
   });
 
   it("the votes have a filter row: words, vote, kind, months, different from the party's guidance; counts and paging keep it", () => {
@@ -693,8 +727,16 @@ describe("monitor components", () => {
     const html = renderToStaticMarkup(
       <ProfileLine locale="en" profile={{ profession: "Bibliotecária", externalMandates: [{ office: "Vereador(a)", place: "Porto Alegre", uf: "RS", from: 2009, to: 2018, party: "PSOL" }], fronts: [], positions: [] }} />,
     );
-    expect(html).toContain("Bibliotecária");
-    expect(html).toContain("Vereador(a) · Porto Alegre (RS) · 2009–2018, PSOL");
+    expect(html).toMatch(/Profession: <span[^>]*>Bibliotecária<\/span>/);
+    expect(html).toMatch(/Earlier office: <span[^>]*>Vereador\(a\) · Porto Alegre \(RS\) · 2009–2018, PSOL<\/span>/);
+    const pt = renderToStaticMarkup(
+      <ProfileLine locale="pt-BR" profile={{ profession: "Bancária", externalMandates: [
+        { office: "Deputado(a) Distrital", place: "", uf: "DF", from: 2003, to: 2010, party: "PT" }, { office: "Vereador(a)", place: "Brasília", uf: "DF", from: 1999, to: 2002, party: "PT" },
+      ], fronts: [], positions: [] }} />,
+    );
+    expect(pt).toContain("Profissão: ");
+    expect(pt).toContain("Mandatos anteriores: ");
+    expect(pt).toContain("Deputado(a) Distrital · DF · 2003–2010, PT; Vereador(a)");
     const noTown = renderToStaticMarkup(
       <ProfileLine locale="en" profile={{ profession: null, externalMandates: [{ office: "Governador(a)", place: "", uf: "MA", from: 2009, to: 2014, party: "MDB" }], fronts: [], positions: [] }} />,
     );
@@ -760,6 +802,10 @@ describe("monitor components", () => {
     expect(list.indexOf(">Ana<")).toBeLessThan(list.indexOf(">Bia<"));
     expect(html).toContain('aria-current="true"');
     expect(html).toMatch(/Bia: <span[^>]*>Sim<\/span>/);
+    // the row is marked by more than a fill: a left rule, the name in bold and a text tag
+    expect(html).toMatch(/aria-current="true" class="[^"]*border-l-4/);
+    expect(html).toMatch(/font-bold"[^>]*>Bia</);
+    expect(html).toContain("From their page");
     // the party holding that deputy opens by itself
     expect(html).toMatch(/<details[^>]*open=""/);
     // the motion leads the header, the bill summary is secondary
@@ -781,6 +827,29 @@ describe("monitor components", () => {
     const plain = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} />);
     expect(plain).toContain('href="/monitor"');
     expect(plain).toContain("Câmara monitor");
+  });
+
+  it("totals use the official Sim / Não; the chair's Artigo 17 gets a footnote only when present", () => {
+    const html = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} />);
+    expect(html).toContain("Sim 2 · Não 1 · Other 0");
+    expect(html).not.toContain("Yes 2");
+    expect(html).not.toContain("Article 17");
+    const chair = {
+      ...rollCallDetail,
+      parties: [{ party: "PL", counts: [{ vote: "Artigo 17", n: 1 }], deputies: [{ externalId: 9, name: "Hugo", uf: "PB", vote: "Artigo 17" }] }],
+    };
+    expect(renderToStaticMarkup(<RollCallView locale="en" rollCall={chair} />)).toContain("votes only to break a tie or in a secret ballot");
+    expect(renderToStaticMarkup(<RollCallView locale="pt-BR" rollCall={chair} />)).toContain("só vota para desempatar ou em escrutínio secreto");
+  });
+
+  it("a split bar for the whole vote and one per party, hidden from screen readers, with a note that each bar is its own whole", () => {
+    const html = renderToStaticMarkup(<RollCallView locale="en" rollCall={rollCallDetail} />);
+    // whole vote (Sim 2, Não 1) + UNIÃO (Sim 1, Não 1) + no party (Sim 1)
+    expect(html.match(/data-vote="Sim"/g)).toHaveLength(3);
+    expect(html.match(/data-vote="Não"/g)).toHaveLength(2);
+    expect(html).toMatch(/<span aria-hidden="true" class="flex[^"]*"><span data-vote="Sim" title="Sim 2"[^>]*style="flex-grow:667;flex-basis:0"/);
+    expect(html).toContain("not how many deputies it has");
+    expect(renderToStaticMarkup(<RollCallView locale="pt-BR" rollCall={rollCallDetail} />)).toContain("não quantos deputados ele tem");
   });
 
   it('empty guidance reads "No guidance"', () => {
@@ -807,15 +876,18 @@ describe("Ask the record", () => {
     expect(html).toContain("These are passages from the official record, chosen by similarity to your question. Nothing here is written by AI.");
     expect(html).toMatch(/<blockquote lang="pt-BR"[^>]*>O preço da comida subiu. A cesta básica ficou cara.<\/blockquote>/);
     expect(html).toContain("Fernanda Melchionna");
-    expect(html).toContain("· PSOL-RS");
+    expect(html).toContain("</a><span class=\"text-muted-foreground\"> · PSOL-RS</span>");
     // the button says the video starts at the speech, not at the quoted sentence
-    expect(html).toContain("Watch the speech from its start (1:18:42)");
+    expect(html).toContain("Watch from 1:18:42");
+    // the YouTube link doesn't repeat the time the button already names
+    expect(html).toContain(">Open on YouTube<");
+    expect(html).not.toContain("Open on YouTube at");
     expect(html).toContain('href="/monitor/deputados/204407?from=2026-04-08&amp;to=2026-04-08#speeches"');
     expect(html).toContain("Official record");
     expect(html).toContain("At most two passages per deputy");
     const pt = renderToStaticMarkup(<AskRecordView locale="pt-BR" params={params} result={{ ok: true, passages: [{ speech, sentences: ["Frase."] }] }} />);
     expect(pt).toContain("Nada aqui foi escrito por IA.");
-    expect(pt).toContain("Ver o discurso desde o início (1:18:42)");
+    expect(pt).toContain("Ver a partir de 1:18:42");
   });
 
   it("the worker down offers the word search with the question; nothing found says so", () => {

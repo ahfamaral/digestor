@@ -1,5 +1,6 @@
 import { parse } from "csv-parse/sync";
 import type { BillInput, SessionInput } from "@digestor/core/server";
+import { billLabel, idFromUri } from "@digestor/core";
 import { MONITOR_FROM } from "./camara.js";
 
 /**
@@ -61,18 +62,34 @@ export function toPresence(rows: CsvRow[], sessionIds: Set<number>): { sessionId
 }
 
 /** The columns `toBills` reads (for `parseCsv(text, BILL_COLUMNS)`). */
-export const BILL_COLUMNS = ["id", "siglaTipo", "numero", "ano", "ementa", "dataApresentacao"];
+export const BILL_COLUMNS = ["id", "siglaTipo", "numero", "ano", "ementa", "dataApresentacao", "uriPropPrincipal"];
 /** The columns `toBillAuthors` reads. */
 export const AUTHOR_COLUMNS = ["idProposicao", "idDeputadoAutor", "ordemAssinatura"];
 
-/** Bills (proposicoes) presented on or after `from`; the year's file also lists older bills that moved this year. */
+/**
+ * Bills (proposicoes) presented on or after `from`; the year's file also lists older bills that moved this year. Each
+ * keeps its main bill (`uriPropPrincipal`: the bill an opinion, substitute or amendment belongs to, or the one a bill is
+ * attached to); an item numbered inside its main bill (year 0, "PRL 1") gets the main bill's label when any row of the
+ * file is that bill (else null: the refresh asks the API, `fillMainBillLabels`).
+ */
 export function toBills(rows: CsvRow[], from = MONITOR_FROM): BillInput[] {
+  const labelOf = new Map<number, string>();
+  for (const r of rows) {
+    const id = positiveId(r.id);
+    const year = Number(r.ano) || 0;
+    if (id !== null && r.siglaTipo && year > 0) labelOf.set(id, billLabel(r.siglaTipo, Number(r.numero) || 0, year));
+  }
   const out: BillInput[] = [];
   for (const r of rows) {
     const id = positiveId(r.id);
     const presentedAt = (r.dataApresentacao ?? "").slice(0, 16);
     if (id === null || !r.siglaTipo || presentedAt < from) continue;
-    out.push({ id, type: r.siglaTipo, number: Number(r.numero) || 0, year: Number(r.ano) || 0, summary: (r.ementa ?? "").trim(), presentedAt });
+    const year = Number(r.ano) || 0;
+    const mainBillId = idFromUri(r.uriPropPrincipal);
+    out.push({
+      id, type: r.siglaTipo, number: Number(r.numero) || 0, year, summary: (r.ementa ?? "").trim(), presentedAt,
+      mainBillId, mainBillLabel: year === 0 && mainBillId !== null ? (labelOf.get(mainBillId) ?? null) : null,
+    });
   }
   return out;
 }

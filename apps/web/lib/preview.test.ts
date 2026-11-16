@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BriefingContent, MomentWithHighlights, Topic } from "@digestor/core";
-import { buildSections, latestFailedAfter, mostDiscussedCard, splitFirstSentence, versionNote } from "./preview";
+import { buildSections, groupTopHighlights, latestFailedAfter, mostDiscussedCard, splitFirstSentence, versionNote } from "./preview";
 
 const topic = (id: string, idx: number, startMs: number, endMs: number): Topic => ({
   id, analysisId: "a", idx, startMs, endMs, title: `Topic ${id}`, summary: `Summary ${id}`,
@@ -91,5 +91,30 @@ describe("latestFailedAfter", () => {
     // an old failure before the shown version doesn't count
     expect(latestFailedAfter([v("a", 1, "failed"), v("b", 2, "complete")], "b")).toBeNull();
     expect(latestFailedAfter([v("b", 2, "failed")], "missing")).toBeNull();
+  });
+});
+
+describe("groupTopHighlights", () => {
+  it("gives a moment that tops several types one card with every chip, in type order", () => {
+    const a = moment("a", null, 10_000, 90, ["news_line", "dodge", "key_point"]);
+    const b = moment("b", null, 50_000, 80, ["quotable"]);
+    const cards = groupTopHighlights([
+      { type: "news_line", moment: a },
+      { type: "quotable", moment: b },
+      { type: "dodge", moment: a },
+      { type: "key_point", moment: a },
+    ]);
+    expect(cards.map((c) => c.moment.id)).toEqual(["a", "b"]);
+    expect(cards[0].types.map((x) => x.type)).toEqual(["news_line", "dodge", "key_point"]);
+    expect(cards[1].types.map((x) => x.type)).toEqual(["quotable"]);
+  });
+  it("keeps each chip's method", () => {
+    const m = { ...moment("m", null, 0, 70, ["heated"]), highlights: [{ type: "heated" as const, method: "ai" as const, value: null }, { type: "longest_speech" as const, method: "counted" as const, value: null }] };
+    const cards = groupTopHighlights([{ type: "heated", moment: m }, { type: "longest_speech", moment: m }]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].types).toEqual([{ type: "heated", method: "ai" }, { type: "longest_speech", method: "counted" }]);
+  });
+  it("is empty for no highlights", () => {
+    expect(groupTopHighlights([])).toEqual([]);
   });
 });

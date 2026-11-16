@@ -7,6 +7,7 @@ import { BackLink } from "@/components/BackLink";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, directoryHref, MONITOR_YEARS, type DeputyParams } from "@/lib/monitor/params";
 import { deputyUrl, MEMBER_PAGE, VOTE_PAGE, type RecordMeaning, type Searched } from "@/lib/monitor/search";
+import { firstVideoRow } from "@/lib/monitor/video";
 import { AuthoredBills } from "./AuthoredBills";
 import { DeputyCombobox } from "./DeputyCombobox";
 import { DeputySearch } from "./DeputySearch";
@@ -134,8 +135,8 @@ export function DeputyView({
                 count={speeches.total ? formatCount(speeches.total, locale) : undefined}
                 empty={speeches.total ? null : tm(locale, filtered ? "empty.speeches" : "empty.memberSpeeches")}
               >
-                {speeches.rows.map((s) => (
-                  <SpeechItem key={s.id} locale={locale} speech={s} showMember={mentions} />
+                {speeches.rows.map((s, i, rows) => (
+                  <SpeechItem key={s.id} locale={locale} speech={s} showMember={mentions} videoNote={i === firstVideoRow(rows)} />
                 ))}
               </Section>
               <Pager locale={locale} page={params.p} size={MEMBER_PAGE} total={speeches.total} href={(p) => `${deputyHref(id, { ...params, p })}#${SPEECHES}`} label={tm(locale, "paging.speeches")} />
@@ -146,7 +147,7 @@ export function DeputyView({
 
       {!searching && (
         <>
-          {words && <WordHeat locale={locale} result={words} year={params.year} />}
+          {words && <WordHeat locale={locale} result={words} year={params.year} today={today} />}
           <AuthoredBills locale={locale} externalId={id} params={params} bills={bills} />
           <div className="grid">
             <Section

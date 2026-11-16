@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applicableGuidance, guidanceLabels, isRequestVote, linkBloc, VOTE_FILTERS, type StoredBloc } from "./monitorVotes.ts";
+import { applicableGuidance, differsFromGuidance, guidanceLabels, isRequestVote, linkBloc, VOTE_FILTERS, type StoredBloc } from "./monitorVotes.ts";
 
 /** The parties at the vote in the dev data (2026), as the Câmara spells them. */
 const PARTIES = [
@@ -116,5 +116,20 @@ describe("isRequestVote and VOTE_FILTERS", () => {
 
   it("vote filters map to the labels as published", () => {
     expect(VOTE_FILTERS).toEqual({ sim: "Sim", nao: "Não", abstencao: "Abstenção", obstrucao: "Obstrução" });
+  });
+});
+
+describe("differsFromGuidance", () => {
+  it("is the vdiff rule: a directed guidance the vote differs from", () => {
+    expect(differsFromGuidance("Não", "Sim")).toBe(true);
+    expect(differsFromGuidance("Abstenção", "Não")).toBe(true);
+    expect(differsFromGuidance("Sim", "Obstrução")).toBe(true);
+    expect(differsFromGuidance("Sim", "Sim")).toBe(false);
+  });
+  it("a free vote, no guidance or the chair's Artigo 17 never counts", () => {
+    expect(differsFromGuidance("Não", "Liberado")).toBe(false);
+    expect(differsFromGuidance("Não", null)).toBe(false);
+    expect(differsFromGuidance("Não", "")).toBe(false);
+    expect(differsFromGuidance("Artigo 17", "Sim")).toBe(false);
   });
 });

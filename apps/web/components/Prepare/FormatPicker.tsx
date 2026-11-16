@@ -20,7 +20,8 @@ export interface FormatPickerProps {
   onCropCommit: () => void;
 }
 
-const FORMATS: { id: ClipFormat; hint: "prepare.landscapeHint" | "prepare.verticalHint"; label: "prepare.landscape" | "prepare.vertical" }[] = [
+/** The two formats with their labels ("16:9 landscape", "9:16 vertical"), the same in "For all clips" and on each clip. */
+export const FORMATS: { id: ClipFormat; hint: "prepare.landscapeHint" | "prepare.verticalHint"; label: "prepare.landscape" | "prepare.vertical" }[] = [
   { id: "16:9", label: "prepare.landscape", hint: "prepare.landscapeHint" },
   { id: "9:16", label: "prepare.vertical", hint: "prepare.verticalHint" },
 ];

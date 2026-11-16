@@ -277,6 +277,7 @@ export async function verifyAnswer(
     else if (v === false) result.unsupported.push(c.part);
     else result.unchecked.push(c.part);
   });
+  result.unsupported = [...new Set(result.unsupported)];
   return result;
 }
 
@@ -289,15 +290,67 @@ export function splitCouldntConfirm(answer: string): { body: string; parts: stri
   return { body: lines.some(isCouldntConfirmLine) ? lines.filter((l) => !isCouldntConfirmLine(l)).join("\n").trimEnd() : answer, parts };
 }
 
+/** How long one part of the "I couldn't confirm" line may be (cut on a word boundary). */
+export const SHORT_PART_CHARS = 120;
+/** Parts named on the line; the rest are counted ("and 2 more"). */
+export const MAX_LINE_PARTS = 4;
+
+/** Text cut to `max` characters on a word boundary, with "…". */
+function cutWords(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const head = s.slice(0, max - 1);
+  const space = head.lastIndexOf(" ");
+  return `${(space > max / 2 ? head.slice(0, space) : head).replace(/[\s.,;:–—-]+$/, "")}…`;
+}
+
 /**
- * The answer kept after the last round, with what still couldn't be confirmed on one last line. A line the model
+ * One part as the last line shows it: citations ([00:12:03], [S2 00:12:03], a bare "S1 00:24:44") and a list
+ * bullet dropped, no closing full stop, at most SHORT_PART_CHARS on a word boundary. A quote stays a quote.
+ */
+export function shortPart(p: string): string {
+  let s = p
+    .replace(/\s*\[[^\]]*\]/g, "")
+    .replace(/\s*\(?\bS\d+\s+\d{1,3}(?::\d{2}){1,2}\)?/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,;:!?…”»])/g, "$1")
+    .replace(/^\s*[-•*]\s*/, "")
+    .trim()
+    .replace(/[\s.,;:]+$/, "");
+  const quoted = /^[“„«"]/.test(s) && /[“”»"]$/.test(s) && s.length > 2;
+  if (!quoted) return cutWords(s, SHORT_PART_CHARS);
+  const open = s[0]!;
+  const close = s.at(-1)!;
+  const inner = s.slice(1, -1).replace(/…$/, "");
+  return s.length <= SHORT_PART_CHARS ? s : `${open}${cutWords(inner, SHORT_PART_CHARS - 2)}${close}`;
+}
+
+/**
+ * The answer kept after the last round, with what still couldn't be confirmed on one short last line: each part once,
+ * as a short snippet without citations (`shortPart`), joined by "; ", at most MAX_LINE_PARTS named. A line the model
  * wrote itself is merged into it, so the line never appears twice.
  */
 export function withCouldntConfirm(answer: string, unsupported: string[]): string {
   const { body, parts } = splitCouldntConfirm(answer);
   if (body === answer && unsupported.length === 0) return answer;
-  const all = [...new Set([...parts, ...unsupported])];
-  return all.length === 0 ? body : `${body.trimEnd()}\n\n${COULDNT_CONFIRM}${all.join("; ")}`;
+  const seen = new Set<string>();
+  const all: string[] = [];
+  let counted = 0;
+  for (const raw of [...parts.flatMap((l) => l.split(/;\s+/)), ...unsupported]) {
+    const count = /^and (\d+) more$/.exec(raw.trim()); // our own count, from a line merged again
+    if (count) {
+      counted += Number(count[1]);
+      continue;
+    }
+    const short = shortPart(raw);
+    const key = normaliseText(short.replace(/…/g, ""));
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    all.push(short);
+  }
+  if (all.length === 0) return counted > 0 ? `${body.trimEnd()}\n\n${COULDNT_CONFIRM}${counted} parts` : body;
+  const named = all.slice(0, MAX_LINE_PARTS);
+  const more = all.length - named.length + counted;
+  return `${body.trimEnd()}\n\n${COULDNT_CONFIRM}${named.join("; ")}${more > 0 ? `; and ${more} more` : ""}`;
 }
 
 /** The message sending unsupported parts back to the model (a user-role turn). */

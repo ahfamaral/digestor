@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Word } from "./schemas.ts";
-import { insideOf, longestSpeech, mostDiscussedTopic, speakersIn, topHighlights } from "./moments.ts";
+import { insideOf, longestSpeech, mostDiscussedTopic, speakersIn, topHighlights, topicForStart } from "./moments.ts";
 import type { MomentWithHighlights, Topic } from "./analysisTypes.ts";
 
 const w = (speaker: string, startMs: number, endMs = startMs + 500): Word => ({ text: "x", startMs, endMs, speaker, confidence: 1 });
@@ -76,5 +76,33 @@ describe("mostDiscussedTopic", () => {
     const t = (id: string, startMs: number, endMs: number): Topic => ({ id, analysisId: "a", idx: 0, startMs, endMs, title: id, summary: "" });
     expect(mostDiscussedTopic([t("a", 0, 10), t("b", 10, 100), t("c", 100, 150)])!.id).toBe("b");
     expect(mostDiscussedTopic([])).toBeNull();
+  });
+});
+
+describe("topicForStart", () => {
+  const topics = [
+    { id: "t1", startMs: 0, endMs: 600_000 },
+    { id: "t2", startMs: 600_000, endMs: 1_200_000 },
+    { id: "t3", startMs: 1_500_000, endMs: 2_000_000 },
+  ];
+  it("picks the topic whose range holds the start (end exclusive)", () => {
+    expect(topicForStart(topics, 0)?.id).toBe("t1");
+    expect(topicForStart(topics, 600_000)?.id).toBe("t2");
+    expect(topicForStart(topics, 1_999_999)?.id).toBe("t3");
+  });
+  it("falls back to the nearest topic in a gap, before the first or after the last; null without topics", () => {
+    expect(topicForStart(topics, 1_250_000)?.id).toBe("t2");
+    expect(topicForStart(topics, 1_450_000)?.id).toBe("t3");
+    expect(topicForStart(topics, 5_000_000)?.id).toBe("t3");
+    expect(topicForStart([{ id: "late", startMs: 10_000, endMs: 20_000 }], 0)?.id).toBe("late");
+    expect(topicForStart([], 1000)).toBeNull();
+  });
+  it("never falls back to the first topic for a late moment (01:19:26 in a 1h39 interview)", () => {
+    const merkel = [
+      { id: "intro", startMs: 0, endMs: 615_736 },
+      { id: "putin-calls", startMs: 4_629_065, endMs: 4_811_330 },
+      { id: "russian", startMs: 4_811_330, endMs: 5_027_650 },
+    ];
+    expect(topicForStart(merkel, 4_766_012)?.id).toBe("putin-calls");
   });
 });

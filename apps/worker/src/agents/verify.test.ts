@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Word } from "@digestor/core";
 import { FakeLLM } from "../llm/structured.js";
-import { COULDNT_CONFIRM, JUDGE_SYSTEM, citedSentences, extractQuotes, findQuote, judgeClaims, verifyAnswer, withCouldntConfirm } from "./verify.js";
+import { COULDNT_CONFIRM, JUDGE_SYSTEM, SHORT_PART_CHARS, citedSentences, extractQuotes, findQuote, judgeClaims, shortPart, verifyAnswer, withCouldntConfirm } from "./verify.js";
 
 /** Words from a sentence, one per second from `startMs`. */
 const wordsOf = (text: string, startMs = 0, speaker = "A"): Word[] =>
@@ -174,10 +174,42 @@ describe("verifyAnswer", () => {
 describe("withCouldntConfirm", () => {
   it("adds one last line, merged with a line the model wrote itself", () => {
     expect(withCouldntConfirm("A [00:00:01].", [])).toBe("A [00:00:01].");
-    expect(withCouldntConfirm("A [00:00:01].", ["“x y z w”", "B."])).toBe(`A [00:00:01].\n\n${COULDNT_CONFIRM}“x y z w”; B.`);
+    expect(withCouldntConfirm("A [00:00:01].", ["“x y z w”", "B."])).toBe(`A [00:00:01].\n\n${COULDNT_CONFIRM}“x y z w”; B`);
     const own = `A.\n\n${COULDNT_CONFIRM}the date\nMore.`;
     expect(withCouldntConfirm(own, ["“x y z w”"])).toBe(`A.\n\nMore.\n\n${COULDNT_CONFIRM}the date; “x y z w”`);
     expect(withCouldntConfirm(`A.\n${COULDNT_CONFIRM}the date`, ["the date"]).split(COULDNT_CONFIRM)).toHaveLength(2);
+  });
+
+  it("keeps the line short: citations dropped, each part once, sentences cut on a word boundary, no '.;'", () => {
+    const long =
+      "C asked how such a senator could possibly continue to sit on the committee while the investigation into his campaign finances was still open and unresolved [S1 00:24:44].";
+    const line = withCouldntConfirm("Answer [S1 00:01:00].", [
+      "Lula promised to continue [S1 00:24:44].",
+      long,
+      "Lula promised to continue [S1 00:24:44].",
+      "“Wir haben es nie versucht”",
+    ]).split("\n").at(-1)!;
+    expect(line.startsWith(COULDNT_CONFIRM)).toBe(true);
+    expect(line).not.toContain("[");
+    expect(line).not.toContain("00:24:44");
+    expect(line).not.toContain(".;");
+    expect(line.match(/Lula promised/g)).toHaveLength(1);
+    expect(line).toContain("“Wir haben es nie versucht”");
+    const parts = line.slice(COULDNT_CONFIRM.length).split("; ");
+    expect(parts[0]).toBe("Lula promised to continue");
+    expect(parts[1]!.endsWith("…")).toBe(true);
+    expect(parts[1]!.length).toBeLessThanOrEqual(SHORT_PART_CHARS);
+    expect(long.startsWith(parts[1]!.slice(0, -1))).toBe(true); // a prefix of the sentence, cut between words
+    expect(long.charAt(parts[1]!.length - 1)).toBe(" ");
+  });
+
+  it("a long quote stays a quote; bare 'S1 00:24:44' citations are dropped; beyond 4 parts the rest are counted", () => {
+    expect(shortPart(`“${"word ".repeat(40).trim()}”`)).toMatch(/^“(word )+word…”$/);
+    expect(shortPart("They will continue S1 00:24:44 .")).toBe("They will continue");
+    const line = withCouldntConfirm("A.", ["one claim.", "two claim.", "three claim.", "four claim.", "five claim.", "six claim."]);
+    expect(line.endsWith(`${COULDNT_CONFIRM}one claim; two claim; three claim; four claim; and 2 more`)).toBe(true);
+    // Merging an answer that already ends with such a line again changes nothing.
+    expect(withCouldntConfirm(line, [])).toBe(line);
   });
 });
 

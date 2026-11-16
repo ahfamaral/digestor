@@ -2,8 +2,8 @@ import type { Presence as PresenceRecord } from "@digestor/core/server";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 
 /**
- * The presence record as published: "Present at N of M…", the sessions with no presence recorded, and why that list
- * explains nothing. Never a percentage, a comparison, a ranking or a colour; never "absent".
+ * The presence record as published: "Present at N of M…", the sessions with no presence recorded, and (only when N < M)
+ * why that list explains nothing. Never a percentage, a comparison, a ranking or a colour; never "absent".
  */
 export function Presence({ locale, presence, year }: { locale: MonitorLocale; presence: PresenceRecord | null; year: number }) {
   return (
@@ -29,7 +29,7 @@ export function Presence({ locale, presence, year }: { locale: MonitorLocale; pr
               </ul>
             </details>
           )}
-          <p className="text-xs text-muted-foreground">{tm(locale, "presence.note")}</p>
+          {presence.present < presence.sessions && <p className="text-xs text-muted-foreground">{tm(locale, "presence.note")}</p>}
         </div>
       )}
     </section>

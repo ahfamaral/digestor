@@ -41,7 +41,8 @@ const found = moment("found", "exchange", "t2", 600, 700, { relevance: 40, origi
 const mine = moment("mine", "passage", "t2", 330, 380, { relevance: 0, speakers: ["A"], origin: "user" });
 const all = [ex1, pa1, pu1, pa2, ex2, pu2, cnt, mine];
 
-const f = (over: Partial<BriefingFilters> = {}): BriefingFilters => ({ ...DEFAULT_FILTERS, ...over });
+/** Every level ticked (most cases below are about nesting, so punchlines are in); the page's default is `DEFAULT_FILTERS`. */
+const f = (over: Partial<BriefingFilters> = {}): BriefingFilters => ({ ...DEFAULT_FILTERS, levels: ["exchange", "passage", "punchline"], ...over });
 /** `[id, [child ids…]]` per top-level row (children listed recursively the same way). */
 type Shape = [string, Shape[]];
 const shape = (views: MomentView[]): Shape[] => views.map((v) => [v.moment.id, shape(v.children)]);
@@ -113,7 +114,7 @@ describe("filterMoments", () => {
     const g = moment("f", "passage", "t1", 62, 68, { inside: "e" });
     const ms = [a, b, c, d, e, g];
     const flatten = (vs: MomentView[]): MomentView[] => vs.flatMap((v) => [v, ...flatten(v.children)]);
-    const ids = flatten(filterMoments(ms, {}, DEFAULT_FILTERS, topics)).map((v) => v.moment.id).sort();
+    const ids = flatten(filterMoments(ms, {}, f(), topics)).map((v) => v.moment.id).sort();
     expect(ids).toEqual(ms.map((m) => m.id).sort());
   });
 
@@ -265,7 +266,7 @@ describe("search params", () => {
     expect(fromSearchParams(new URLSearchParams(qs))).toEqual(state);
     // defaults are omitted
     expect(toSearchParams(DEFAULT_FILTERS)).toBe("");
-    expect(toSearchParams(f({ minRelevance: 40 }))).toBe("r=40");
+    expect(toSearchParams({ ...DEFAULT_FILTERS, minRelevance: 40 })).toBe("r=40");
     expect(fromSearchParams(new URLSearchParams(""))).toEqual(DEFAULT_FILTERS);
   });
 
@@ -286,6 +287,31 @@ describe("search params", () => {
   it("fromSearchParams: legacy g and show=neutral fall back to defaults", () => {
     expect(fromSearchParams(new URLSearchParams("g=passage&show=neutral"))).toEqual(DEFAULT_FILTERS);
     expect(fromSearchParams(new URLSearchParams("show=rejected"))).toEqual(DEFAULT_FILTERS);
+  });
+
+  it("the page opens on Exchanges and Passages; a URL with levels wins, all three included", () => {
+    expect(DEFAULT_FILTERS.levels).toEqual(["exchange", "passage"]);
+    expect(fromSearchParams(new URLSearchParams("")).levels).toEqual(["exchange", "passage"]);
+    expect(fromSearchParams(new URLSearchParams("lv=punchline")).levels).toEqual(["punchline"]);
+    const every = f();
+    expect(toSearchParams(every)).toBe("lv=exchange,passage,punchline");
+    expect(fromSearchParams(new URLSearchParams("lv=exchange,passage,punchline"))).toEqual(every);
+  });
+
+  it("by default punchlines are not listed, but an approved punchline is (nested under its exchange)", () => {
+    expect(shape(filterMoments(all, {}, DEFAULT_FILTERS, topics))).toEqual([
+      ["ex1", [["pa1", []], ["pa2", []]]],
+      ["ex2", []],
+      ["mine", []],
+      ["cnt", []],
+    ]);
+    expect(shape(filterMoments(all, { pu2: "approved" }, DEFAULT_FILTERS, topics))).toEqual([
+      ["ex1", [["pa1", []], ["pa2", []]]],
+      ["ex2", [["pu2", []]]],
+      ["mine", []],
+      ["cnt", []],
+    ]);
+    expect(hiddenApprovedCount(filterMoments(all, { pu1: "approved" }, DEFAULT_FILTERS, topics), ["pu1"])).toBe(0);
   });
 
   it("levels round-trip through lv and default levels are omitted", () => {
@@ -349,7 +375,7 @@ describe("person focus", () => {
   });
 
   it("p= round-trips through the URL and an unknown person falls back to everyone", () => {
-    const state = f({ person: "p 1&2" });
+    const state = { ...DEFAULT_FILTERS, person: "p 1&2" };
     expect(toSearchParams(state)).toBe("p=p%201%262");
     expect(fromSearchParams(new URLSearchParams(toSearchParams(state)))).toEqual(state);
     expect(fromSearchParams(new URLSearchParams("p=P"), { persons: ["P"] }).person).toBe("P");

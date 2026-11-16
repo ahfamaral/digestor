@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byLetter, directoryOptions, filterDirectory, letterOf, type DirectoryMember } from "./directory";
+import { byLetter, directoryOptions, filterDirectory, initials, letterOf, type DirectoryMember } from "./directory";
 
 const dep = (externalId: number, name: string, party: string | null, uf: string | null, inOffice = true): DirectoryMember => ({
   externalId, name, party, uf, photoUrl: null, inOffice,
@@ -37,5 +37,16 @@ describe("directory", () => {
     const g = byLetter([...members, dep(6, "Ana Pimentel", "PT", "MG")]);
     expect(g.map((x) => x.letter)).toEqual(["A", "B", "E"]);
     expect(g[0]!.members.map((m) => m.externalId)).toEqual([1, 2, 6]);
+  });
+});
+
+describe("initials", () => {
+  it("first and last name's first letters, particles skipped", () => {
+    expect(initials("Acácio Favacho")).toBe("AF");
+    expect(initials("Adriano do Baldy")).toBe("AB");
+    expect(initials("Érika Kokay")).toBe("ÉK");
+    expect(initials("Tiririca")).toBe("T");
+    expect(initials("  ")).toBe("");
+    expect(initials("Pr. Marco Feliciano")).toBe("PF");
   });
 });

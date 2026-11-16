@@ -13,7 +13,11 @@ import {
 
 export type HistoryInput = HistoryRow;
 export type ProfileInput = { profession: string | null; externalMandates: ExternalMandate[]; fronts: string[]; positions: Position[] };
-export type BillInput = { id: number; type: string; number: number; year: number; summary: string; presentedAt: string };
+export type BillInput = {
+  id: number; type: string; number: number; year: number; summary: string; presentedAt: string;
+  /** The main bill (`uriPropPrincipal`) and its label when the same file holds it; left out = none. */
+  mainBillId?: number | null; mainBillLabel?: string | null;
+};
 export type SessionInput = { id: number; startsAt: string; description: string; status: string };
 
 const CHUNK = 500;
@@ -99,9 +103,36 @@ export async function upsertBills(db: Db, rows: BillInput[]): Promise<void> {
         target: parlBills.id,
         set: {
           type: sql`excluded.type`, number: sql`excluded.number`, year: sql`excluded.year`, summary: sql`excluded.summary`,
-          presentedAt: sql`excluded.presented_at`,
+          presentedAt: sql`excluded.presented_at`, mainBillId: sql`excluded.main_bill_id`,
+          // A label fetched earlier stays while the main bill is the same one.
+          mainBillLabel: sql`case when excluded.main_bill_id is not distinct from ${parlBills.mainBillId}
+            then coalesce(excluded.main_bill_label, ${parlBills.mainBillLabel}) else excluded.main_bill_label end`,
         },
       });
+  }
+}
+
+/**
+ * Main bills whose label is still unknown, of items numbered inside them (year 0: PRL, SBR, EMC…), those a deputy
+ * signed first, then the newest; at most `limit`.
+ */
+export async function mainBillsWithoutLabel(db: Db, limit: number): Promise<number[]> {
+  const r = await db.execute<{ id: number }>(sql`
+    select b.main_bill_id as id from parl_bills b
+    where b.year = 0 and b.main_bill_id is not null and b.main_bill_label is null
+    group by b.main_bill_id
+    order by bool_or(exists (select 1 from parl_bill_authors a where a.bill_id = b.id)) desc, max(b.presented_at) desc, b.main_bill_id
+    limit ${Number.isFinite(limit) ? limit : null}`);
+  return r.rows.map((x) => Number(x.id));
+}
+
+/** Stores main bills' labels ("PL 1761/2025"; "" = the Câmara doesn't know the id) on every item attached to them. */
+export async function setMainBillLabels(db: Db, rows: { mainBillId: number; label: string }[]): Promise<void> {
+  for (const part of chunks(rows)) {
+    const values = sql.join(part.map((r) => sql`(${r.mainBillId}::int, ${r.label}::text)`), sql`, `);
+    await db.execute(sql`
+      update parl_bills b set main_bill_label = v.label from (values ${values}) as v(id, label)
+      where b.main_bill_id = v.id and b.main_bill_label is null`);
   }
 }
 
@@ -245,7 +276,11 @@ export async function getPresence(db: Db, memberId: number, year: number): Promi
   };
 }
 
-export type MemberBill = { id: number; type: string; number: number; year: number; summary: string; presentedAt: string; firstAuthor: boolean };
+export type MemberBill = {
+  id: number; type: string; number: number; year: number; summary: string; presentedAt: string; firstAuthor: boolean;
+  /** The main bill's label ("PL 1761/2025") of an item numbered inside it (year 0); null when none or not known yet. */
+  mainBillLabel?: string | null;
+};
 
 /**
  * Bills and requests the deputy signed, newest first. `q`: search terms (OR-ed, as the speech search) over the summary;
@@ -267,8 +302,11 @@ export async function listMemberBills(
   const typeWhere = a.type ? sql`and b.type = ${a.type}` : sql``;
   const total = a.type ? (by.rows.find((r) => r.type === a.type)?.n ?? 0) : by.rows.reduce((s, r) => s + r.n, 0);
   const order = a.ids ? sql`array_position(${intArray(a.ids)}, b.id)` : sql`b.presented_at desc, b.id desc`;
-  const rows = total === 0 ? { rows: [] } : await db.execute<{ id: number; type: string; number: number; year: number; summary: string; presented_at: string; first_author: boolean }>(sql`
-    select b.id, b.type, b.number, b.year, b.summary, to_char(b.presented_at, 'YYYY-MM-DD"T"HH24:MI') as presented_at, a.first_author
+  const rows = total === 0 ? { rows: [] } : await db.execute<{
+    id: number; type: string; number: number; year: number; summary: string; presented_at: string; first_author: boolean; main_bill_label: string | null;
+  }>(sql`
+    select b.id, b.type, b.number, b.year, b.summary, to_char(b.presented_at, 'YYYY-MM-DD"T"HH24:MI') as presented_at, a.first_author,
+      case when b.year = 0 then nullif(b.main_bill_label, '') end as main_bill_label
     from parl_bill_authors a join parl_bills b on b.id = a.bill_id
     where a.member_id = ${memberId} ${typeWhere} ${filters}
     order by ${order} limit ${a.limit ?? 20} offset ${a.offset ?? 0}`);
@@ -279,6 +317,7 @@ export async function listMemberBills(
     byType: by.rows,
     rows: rows.rows.map((r) => ({
       id: r.id, type: r.type, number: r.number, year: r.year, summary: r.summary, presentedAt: r.presented_at, firstAuthor: r.first_author,
+      mainBillLabel: r.main_bill_label,
     })),
   };
 }

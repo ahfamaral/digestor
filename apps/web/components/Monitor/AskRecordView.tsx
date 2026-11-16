@@ -4,6 +4,7 @@ import { isWrittenOnly } from "@digestor/core";
 import { Spinner } from "@/components/ui/spinner";
 import { questionTopic, type AskPassage, type AskResult } from "@/lib/monitor/askRecord";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
+import { firstVideoRow } from "@/lib/monitor/video";
 import { askHref, deputyHref, landingHref, MAX_QUERY, MONITOR_YEARS, type AskParams } from "@/lib/monitor/params";
 import { ExternalLink } from "./ExternalLink";
 import { GetForm } from "./GetForm";
@@ -67,8 +68,8 @@ export function AskRecordView({
           <h2 id="ask-passages" className="sr-only">{tm(locale, "ask.passagesLabel")}</h2>
           <p className="text-xs text-muted-foreground">{tm(locale, "ask.perDeputy")}</p>
           <ul className="divide-y divide-border rounded-xl border border-border bg-white">
-            {result.passages.map((p) => (
-              <PassageItem key={p.speech.id} locale={locale} passage={p} />
+            {result.passages.map((p, i, all) => (
+              <PassageItem key={p.speech.id} locale={locale} passage={p} videoNote={i === firstVideoRow(all.map((x) => x.speech))} />
             ))}
           </ul>
         </section>
@@ -124,7 +125,7 @@ export function AskForm({
 }
 
 /** One quoted passage: the record's sentences, then who said them and when, the video moment and the whole speech. */
-function PassageItem({ locale, passage }: { locale: MonitorLocale; passage: AskPassage }) {
+function PassageItem({ locale, passage, videoNote }: { locale: MonitorLocale; passage: AskPassage; videoNote: boolean }) {
   const { speech, sentences } = passage;
   const party = speech.partyThen ?? speech.member.party;
   const uf = speech.partyThen ? speech.ufThen : speech.member.uf;
@@ -136,10 +137,12 @@ function PassageItem({ locale, passage }: { locale: MonitorLocale; passage: AskP
           {sentences.join(" ")}
         </blockquote>
         <figcaption className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <Link href={deputyHref(speech.member.externalId)} className="font-semibold underline-offset-2 hover:underline">
-            {speech.member.name}
-          </Link>
-          {party && <span className="text-muted-foreground">· {[party, uf].filter(Boolean).join("-")}</span>}
+          <span>
+            <Link href={deputyHref(speech.member.externalId)} className="font-semibold underline-offset-2 hover:underline">
+              {speech.member.name}
+            </Link>
+            {party && <span className="text-muted-foreground"> · {[party, uf].filter(Boolean).join("-")}</span>}
+          </span>
           <time dateTime={speech.startsAt} className="font-mono text-xs text-muted-foreground">
             {formatSpeechTime(speech.startsAt, locale)}
           </time>
@@ -147,7 +150,7 @@ function PassageItem({ locale, passage }: { locale: MonitorLocale; passage: AskP
         </figcaption>
       </figure>
       {speech.video ? (
-        <SpeechVideo locale={locale} video={speech.video} label="at" />
+        <SpeechVideo locale={locale} video={speech.video} label="at" note={videoNote} />
       ) : (
         speech.text && isWrittenOnly(speech.text) && <p className="text-xs text-muted-foreground">{tm(locale, "speech.writtenOnly")}</p>
       )}
@@ -155,7 +158,7 @@ function PassageItem({ locale, passage }: { locale: MonitorLocale; passage: AskP
         <Link href={`${deputyHref(speech.member.externalId, { from: day, to: day })}#speeches`} className={link}>
           {tm(locale, "ask.readSpeech")}
         </Link>
-        {speech.urlText && <ExternalLink href={speech.urlText}>{tm(locale, "member.officialRecord")}</ExternalLink>}
+        {speech.urlText && <ExternalLink href={speech.urlText} className="font-medium underline">{tm(locale, "member.officialRecord")}</ExternalLink>}
       </div>
     </li>
   );

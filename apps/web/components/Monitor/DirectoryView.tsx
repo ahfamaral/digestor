@@ -3,6 +3,7 @@ import { BackLink } from "@/components/BackLink";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { byLetter, directoryOptions, filterDirectory, type DirectoryMember } from "@/lib/monitor/directory";
 import { deputyHref, directoryHref, type DirectoryParams } from "@/lib/monitor/params";
+import { Avatar } from "./Avatar";
 import { FormSelect } from "./FormSelect";
 import { GetForm } from "./GetForm";
 import { LanguageSwitch } from "./LanguageSwitch";
@@ -101,12 +102,7 @@ function DirectoryRow({ locale, member: m }: { locale: MonitorLocale; member: Di
       href={deputyHref(m.externalId)}
       className="flex h-full items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-stone-500"
     >
-      {m.photoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- the Câmara's photo, shown as published
-        <img src={m.photoUrl} alt="" width={40} height={40} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="size-10 shrink-0 rounded-full border border-border object-cover object-top" />
-      ) : (
-        <span aria-hidden className="size-10 shrink-0 rounded-full border border-border bg-muted" />
-      )}
+      <Avatar name={m.name} photoUrl={m.photoUrl} size={40} lazy />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-sm font-semibold break-words">{m.name}</span>
         <span className="text-xs text-muted-foreground">{[m.party, m.uf].filter(Boolean).join(" · ")}</span>

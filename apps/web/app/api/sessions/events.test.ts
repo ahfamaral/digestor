@@ -50,7 +50,7 @@ describe("GET /api/sessions/[id]/events", () => {
     expect(res.headers.get("cache-control")).toContain("no-cache");
     const text = await readAll(res);
     expect(events(text)).toEqual([
-      { stage: "ready", progress: 100, error: null, language: "pt", profile: "interview", hasVideo: true },
+      { stage: "ready", progress: 100, error: null, language: "pt", profile: "interview", hasVideo: true, durationMs: null },
     ]);
   });
 

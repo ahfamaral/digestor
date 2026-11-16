@@ -4,7 +4,9 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRightIcon, UploadIcon, XIcon } from "lucide-react";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
-import { SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
+import { PROCESSING_USD_PER_HOUR, SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { aboutUsd } from "@/lib/cost";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,8 +48,9 @@ function estimateMinutes(ms: number): number {
   return Math.max(2, Math.round(ms / 60_000 / 12));
 }
 
+/** "≈ $0.42", or "under $0.01" for a short file (never "≈ < $0.01"). */
 function formatCost(usd: number): string {
-  return usd < 0.01 ? "< $0.01" : `$${usd.toFixed(2)}`;
+  return usd < 0.01 ? t("upload.costUnder") : `≈ $${usd.toFixed(2)}`;
 }
 
 /** Reads duration and resolution in the browser; null when the browser can't decode the container (e.g. some MKVs). */
@@ -133,11 +136,15 @@ export function UploadForm() {
   const [language, setLanguage] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** The pay check: "Digest this video" first says what will be paid, then Continue starts it. */
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const urlError = youtubeError(url);
   const recordError = record.trim() ? recordFieldError(record, house || undefined) : null;
   const busy = submitting || upload.phase !== "idle";
   const audioOnly = file !== null && isAudioExtension(extOf(file.name));
+  // An audio file waits for the "no video picture" tick: the button says why it can't go on yet.
+  const audioWaiting = mode === "file" && audioOnly && !audioAck && !busy;
   const canSubmit = !busy && recordError === null && (mode === "file" ? file !== null && (!audioOnly || audioAck) : url.trim() !== "" && urlError === null);
 
   async function pick(f: File | undefined) {
@@ -193,10 +200,22 @@ export function UploadForm() {
     }
   }
 
+  // What the pay check says: the estimate when the length is known, else the hourly rate.
+  const confirmText =
+    mode === "file" && meta
+      ? {
+          description: t("cost.uploadFile", { length: formatDuration(meta.durationMs) }),
+          estimate: t("cost.uploadFileCost", { cost: aboutUsd(estimateCostUsd(meta.durationMs, { captions: !audioOnly })) }),
+        }
+      : {
+          description: mode === "file" ? t("cost.uploadUnknown") : t("cost.uploadYoutube"),
+          estimate: t("cost.uploadRate", { rate: aboutUsd(PROCESSING_USD_PER_HOUR) }),
+        };
+
   const estimate =
     mode === "file" && meta ? (
       <>
-        {t("upload.estimateCost")} <b className="text-foreground">≈ {formatCost(estimateCostUsd(meta.durationMs, { captions: !audioOnly }))}</b> · {t("upload.estimateTime")}{" "}
+        {t("upload.estimateCost")} <b className="text-foreground">{formatCost(estimateCostUsd(meta.durationMs, { captions: !audioOnly }))}</b> · {t("upload.estimateTime")}{" "}
         <b className="text-foreground">≈ {t("upload.minutes", { n: estimateMinutes(meta.durationMs) })}</b>
       </>
     ) : mode === "file" && file ? (
@@ -426,17 +445,33 @@ export function UploadForm() {
           size="lg"
           className="h-10 w-full bg-brand text-brand-foreground hover:brightness-90"
           disabled={!canSubmit}
-          onClick={() => void submit()}
+          aria-describedby={audioWaiting ? "audio-ack-hint" : undefined}
+          onClick={() => canSubmit && setConfirmOpen(true)}
         >
           <Busy busy={upload.phase === "uploading" || submitting}>
             {upload.phase === "uploading" ? t("upload.submitUploading", { pct: upload.pct }) : submitting ? t("upload.submitStarting") : t("upload.submit")}
           </Busy>
         </Button>
+        {audioWaiting && (
+          <p id="audio-ack-hint" className="mt-2 text-xs text-muted-foreground">
+            {t("upload.audioAckHint", { label: t("upload.audioOnlyCheckbox") })}
+          </p>
+        )}
         {submitError && (
           <p role="alert" className="mt-2 text-sm text-destructive">
             {submitError}
           </p>
         )}
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={t("cost.uploadTitle")}
+          description={confirmText.description}
+          estimate={confirmText.estimate}
+          actionLabel={t("cost.uploadAction")}
+          // Closes at once: the upload's progress shows on the form, and its errors there too.
+          onConfirm={async () => void submit()}
+        />
       </Card>
     </div>
   );

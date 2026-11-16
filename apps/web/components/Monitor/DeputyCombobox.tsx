@@ -9,6 +9,7 @@ import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, directoryHref } from "@/lib/monitor/params";
 import { panelStatus, worthAsking, type Suggestion } from "@/lib/monitor/suggest";
 import { cn } from "@/lib/utils";
+import { Avatar } from "./Avatar";
 
 /** The server's answer for one text and attempt (`key`); while the current key has none, the panel says "Searching…". */
 type Answer = { key: string; rows: Suggestion[]; more: boolean; error: boolean };
@@ -98,7 +99,7 @@ export function DeputyCombobox({ locale, size, label }: { locale: MonitorLocale;
       autoHighlight
     >
       <div className="relative">
-        <Search className={cn("pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground", size === "lg" ? "size-5" : "size-4")} aria-hidden />
+        <Search className={cn("pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground", "size-4")} aria-hidden />
         <Combobox.Input
           aria-label={label}
           placeholder={tm(locale, "combobox.placeholder")}
@@ -113,7 +114,7 @@ export function DeputyCombobox({ locale, size, label }: { locale: MonitorLocale;
           }}
           className={cn(
             "w-full min-w-0 rounded-lg border border-input bg-white pr-3 outline-none placeholder:text-muted-foreground focus-visible:border-stone-500 focus-visible:ring-3 focus-visible:ring-stone-500",
-            size === "lg" ? "h-12 pl-10 text-base" : "h-9 pl-9 text-sm",
+            size === "lg" ? "h-10 pl-9 text-base md:text-sm" : "h-9 pl-9 text-sm",
           )}
         />
       </div>
@@ -166,12 +167,7 @@ export function DeputyCombobox({ locale, size, label }: { locale: MonitorLocale;
                   value={m}
                   className="flex cursor-pointer items-center gap-3 px-4 py-2.5 outline-none data-highlighted:bg-muted"
                 >
-                  {m.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- the Câmara's photo, shown as published
-                    <img src={m.photoUrl} alt="" width={32} height={32} referrerPolicy="no-referrer" className="size-8 shrink-0 rounded-full border border-border object-cover" />
-                  ) : (
-                    <span aria-hidden className="size-8 shrink-0 rounded-full border border-border bg-muted" />
-                  )}
+                  <Avatar name={m.name} photoUrl={m.photoUrl} size={32} />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-semibold">{m.name}</span>
                     <span className="truncate text-xs text-muted-foreground">{[m.party, m.uf].filter(Boolean).join(" · ")}</span>

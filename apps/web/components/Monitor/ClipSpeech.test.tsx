@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { clipMinutes, clipSection, monitorClipEnabled, speakerLabel } from "@/lib/monitor/clip";
+import { clipCostText, clipCostUsd, clipMinutes, clipSection, monitorClipEnabled, speakerLabel } from "@/lib/monitor/clip";
 import { SpeechItem } from "./SpeechItem";
 import { SpeechVideoView } from "./SpeechVideo";
 
@@ -61,5 +61,16 @@ describe("Clip this speech", () => {
     expect(monitorClipEnabled({ MONITOR_CLIP_ENABLED: "true" })).toBe(true);
     expect(speakerLabel("Ana", null, null)).toBe("Ana");
     expect(speakerLabel("Ana", "PT", "SP")).toBe("Ana (PT-SP)");
+  });
+});
+
+describe("Clip this speech: the estimated cost", () => {
+  it("prices the part (speech ± 20 s) as transcription, analysis and captions", () => {
+    // 76–414 s → 56–434 s: 378 s at $0.30/h ($0.0315) + the $0.10 captions ceiling.
+    expect(clipCostUsd(row.video)).toBe(0.13);
+  });
+  it("says it in the monitor's language", () => {
+    expect(clipCostText("en", row.video)).toBe("Estimated cost: about $0.13 for transcription and AI analysis, which will be paid. This is an estimate, not a bill.");
+    expect(clipCostText("pt-BR", row.video)).toContain("cerca de US$ 0,13");
   });
 });

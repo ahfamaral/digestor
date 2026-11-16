@@ -16,6 +16,26 @@ export function insideOf(child: Range, parents: Range[]): number | null {
   return best;
 }
 
+/**
+ * The topic a moment starting at `startMs` belongs to: the one whose range holds its start (start inclusive, end
+ * exclusive), else the nearest one (by distance from `startMs` to its range; the earlier topic on a tie), null only
+ * without topics. Used for personal moments (Ask, the journalist), which the AI didn't place in a topic.
+ */
+export function topicForStart<T extends { id: string; startMs: number; endMs: number }>(topics: T[], startMs: number): T | null {
+  const inside = topics.find((t) => t.startMs <= startMs && startMs < t.endMs);
+  if (inside) return inside;
+  let best: T | null = null;
+  let bestDist = Infinity;
+  for (const t of [...topics].sort((a, b) => a.startMs - b.startMs)) {
+    const dist = startMs < t.startMs ? t.startMs - startMs : Math.max(0, startMs - t.endMs);
+    if (dist < bestDist) {
+      best = t;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
 /** Speakers with at least `minShare` of the words spoken in `r`, most talkative first. */
 export function speakersIn(words: Word[], r: Range, minShare = 0.1): string[] {
   const inRange = sliceWords(words, r);

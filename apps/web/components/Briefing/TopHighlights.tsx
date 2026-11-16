@@ -1,6 +1,6 @@
 import { formatLength, formatTimestamp, type HighlightTypeId, type MomentWithHighlights } from "@digestor/core";
 import { HighlightChip, MethodBadge } from "@/components/HighlightChip";
-import type { mostDiscussedCard } from "@/lib/preview";
+import { groupTopHighlights, type mostDiscussedCard } from "@/lib/preview";
 import { labelText, voiceLabel, type NamesData, type Voice } from "@/lib/names";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -8,7 +8,10 @@ import { t } from "@/lib/i18n";
 const CARD =
   "flex min-w-0 flex-col items-start gap-1.5 rounded-xl border border-border bg-white p-2.5 text-left hover:border-stone-300 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 
-/** One card per highlight type with its single best moment, plus the most discussed topic. Cards jump to the moment's row or the topic's card. */
+/**
+ * One card per moment that tops a highlight type (a moment that tops several carries every chip, in type order), plus the
+ * most discussed topic. Cards jump to the moment's row or the topic's card.
+ */
 export function TopHighlights({
   top,
   names,
@@ -31,11 +34,14 @@ export function TopHighlights({
   if (top.length === 0 && !mostDiscussed) return null;
   return (
     <section aria-label={t("preview.topHighlights")} className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {top.map(({ type, moment }) => {
-        const method = moment.highlights.find((h) => h.type === type)?.method ?? "ai";
+      {groupTopHighlights(top).map(({ moment, types }) => {
         return (
-          <button key={type} type="button" className={CARD} onClick={() => onMoment(moment.id)}>
-            <HighlightChip type={type} method={method} card className="max-w-full" />
+          <button key={moment.id} type="button" className={CARD} onClick={() => onMoment(moment.id)}>
+            <span className="flex max-w-full flex-wrap gap-1">
+              {types.map(({ type, method }) => (
+                <HighlightChip key={type} type={type} method={method} card className="max-w-full text-left whitespace-normal" />
+              ))}
+            </span>
             <span lang={language} dir="auto" className="line-clamp-2 text-[13px] leading-snug">
               {moment.title}
             </span>

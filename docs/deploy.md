@@ -108,9 +108,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 Migrations run automatically through the `migrate` service before `web` and `worker` restart. A job interrupted by the restart is retried automatically; one that was mid-run can take up to its 4-hour expiry before it is picked up again, so prefer updating when nothing is processing. Old images can be removed with `docker image prune`.
 
-### Rollout of the capstone-push branch (migrations 0026–0032), in this order
+### Rollout of the capstone-push branch (migrations 0026–0033), in this order
 
-One update brings Ask on LangGraph with approval (0026), word counts (0027), Ask across videos (0028, 0029), the monitor's search by meaning for speeches (0030) and for votes and bills plus party blocs (0031), and "Clip this speech" (0032). Do it the evening before a demo, never on demo day, when nothing is processing, and away from the worker's 09:00 and 10:00 UTC jobs (`monitor.refresh`, `monitor.embed`). First set `C="docker compose -f docker-compose.yml -f docker-compose.prod.yml"` in the shell; the commands below use `$C`.
+One update brings Ask on LangGraph with approval (0026), word counts (0027), Ask across videos (0028, 0029), the monitor's search by meaning for speeches (0030) and for votes and bills plus party blocs (0031), "Clip this speech" (0032) and the main bill of a deputy's opinions, substitutes and amendments (0033). Do it the evening before a demo, never on demo day, when nothing is processing, and away from the worker's 09:00 and 10:00 UTC jobs (`monitor.refresh`, `monitor.embed`). First set `C="docker compose -f docker-compose.yml -f docker-compose.prod.yml"` in the shell; the commands below use `$C`.
 
 1. **Pre-deploy checks.**
    - Disk: `df -h /` shows at least 15 GB free before the build.
@@ -121,12 +121,18 @@ One update brings Ask on LangGraph with approval (0026), word counts (0027), Ask
      ```
 
 2. **Back up the database** (see Backups below): `$C exec -T postgres pg_dump -U digestor -d digestor -Fc > digestor-$(date +%F)-before-capstone-push.dump`, and copy it off the server.
-3. **Update:** merge the branch into `main` on GitHub (or pull the branch), then on the server `git pull` and `$C up -d --build`. The `migrate` service applies 0026–0032.
+3. **Update:** merge the branch into `main` on GitHub (or pull the branch), then on the server `git pull` and `$C up -d --build`. The `migrate` service applies 0026–0033.
 4. **Check the start:** `$C logs migrate` ends without an error, and `$C logs worker | grep "worker ready"` shows `worker ready (… monitor.embed; http :8790)`. At start the worker runs the Ask checkpointer's `setup()`, which creates its tables in the `ask_graph` schema; if that fails the worker stops (and restarts in a loop), so read `$C logs worker` before going on.
 5. **Word counts** ("Words used more than the chamber", 0027): rebuild them once from the stored speeches (no Câmara calls, about 15 s); without it the deputy page says "There isn't enough speech text yet to show which words stand out." until the next 09:00 UTC refresh:
 
    ```bash
    $C exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-backfill.ts --words
+   ```
+
+   **Main bills** (0033: a deputy's "PRL 1 · Parecer da Relatora…" rows become "PRL 1 on PL 1761/2025"): read this year's bills file again and fetch the missing main-bill labels from the Câmara API (about 4,900 calls the first time, 4 in flight; dev took 27 min, with 80 calls answered 504 and left for a rerun or the nightly refresh; no paid calls; safe to stop and rerun, it continues). Without it the nightly refresh fills them 1,000 a night; until then such a row shows "PRL 1" without its main bill:
+
+   ```bash
+   $C exec worker pnpm --filter @digestor/worker exec tsx scripts/monitor-backfill.ts --bill-mains
    ```
 
 6. **Meaning index, one run for 0030 and 0031 together** (speeches, then roll calls and signed bills; local e5 model, no paid calls; safe to stop and rerun, it continues where it stopped). Memory is the constraint on the CX23 (2 vCPU, 4 GB + 4 GB swap): steady state is about 3 GB (the worker about 950 MB with the e5 model resident, Chroma about 1 GB, Postgres about 430 MB), and `exec`-ing the script inside the running worker would load a second model (the worker reached about 2.5 GB in dev). So stop the worker and run the script in a one-off container instead, then start the worker again:
@@ -143,7 +149,7 @@ One update brings Ask on LangGraph with approval (0026), word counts (0027), Ask
 9. **Leave `MONITOR_CLIP_ENABLED` unset** on this server (YouTube blocks its IP; see migration 0032 below). 0028 and 0029 (Ask across videos) need nothing.
 10. **User test:** `docs/capstone/user-test.md` needs this branch deployed *and* the Osang × Merkel interview run on production (upload it there and let it reach `ready` before the test).
 
-**Rollback.** 0026–0032 only add schemas, tables and columns (each new column nullable or with a default), so the previous code runs on the new schema: `git checkout <previous commit>` and `$C up -d --build` (no restore needed). An Ask answer waiting for approval (`waiting`) stays unanswered under the old code. Restore the step-2 dump only if the data itself went wrong.
+**Rollback.** 0026–0033 only add schemas, tables and columns (each new column nullable or with a default), so the previous code runs on the new schema: `git checkout <previous commit>` and `$C up -d --build` (no restore needed). An Ask answer waiting for approval (`waiting`) stays unanswered under the old code. Restore the step-2 dump only if the data itself went wrong.
 
 The sections for 0030, 0031 and 0032 below explain each change; on production follow the order above (step 6 replaces their `exec` commands).
 
@@ -255,6 +261,10 @@ Dev on 2026-11-13 (Colima, 4 CPUs): 126 roll calls in 20 s and 39,646 signed bil
 `up -d --build` runs migration 0032: `sessions.source_start_ms` / `source_end_ms` (the part of the source video a session holds; null = the whole video). Nothing else changes on this server: the monitor's "Clip this speech" (a speech's video moment ± 20 s opened as a Digestor session, `POST /api/monitor/clip`) is on only with `MONITOR_CLIP_ENABLED=true` in `.env` (read by the web container), and **stays unset here** unless the owner decides otherwise: the download is yt-dlp's, and YouTube blocks this server's IP (see video evidence above). Off, opening a speech's video ("Watch the speech") shows under the player "Clipping downloads the video from YouTube, which this server can't do. Open the monitor on your own computer to clip this speech." On a Mac with Colima, start the web app with the flag (`MONITOR_CLIP_ENABLED=true pnpm --filter @digestor/web dev`, or put it in `.env`).
 
 yt-dlp downloads only the part (`--download-sections "*<start>-<end>"`, keyframe-approximate, from the plain https formats only: on an 8-hour plenary stream the HLS format never started; a video without them fails at once). A part may take 4 × its length (at least 10 minutes); past that yt-dlp and its ffmpeg are stopped and the session fails with "YouTube is sending this part too slowly. Please try again later." Parts over 60 minutes are refused before a session is made. Dev on 2026-11-13: a 97 s speech (137 s part, 1080p AV1, 19 MB) downloaded in about 2 min 20 s (YouTube serves it at about playback speed) and reached the context check 7.5 min after the click, with the Câmara record matched.
+
+### Once, when updating to main bills (migration 0033)
+
+`up -d --build` runs migration 0033: `parl_bills.main_bill_id` / `main_bill_label` (nullable). An opinion, substitute or amendment (PRL, SBR, EMC…) is numbered inside its main bill and has year 0 in the Câmara's data; the bulk `proposicoes` file names that bill (`uriPropPrincipal`; the API's `/proposicoes/{id}` of the item answers null), so the refresh stores its id and, when the same file holds the main bill, its label; older main bills are asked from the API (`fillMainBillLabels`, at most 1,000 a night, an unknown id stored as "" and not asked again). The deputy page lists such a row as "PRL 1 on PL 1761/2025" ("PRL 1 sobre o PL 1761/2025"), never "/0", and a row without a summary says "No summary published." Run `monitor-backfill.ts --bill-mains` once (step 5 of the rollout).
 
 ### Once, after updating to speaker names (Plan 3)
 

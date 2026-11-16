@@ -9,6 +9,8 @@ export interface ProgressEvent {
   profile: string | null;
   /** False once the worker found no picture (the Processing screen drops the naming step and may show a notice). */
   hasVideo: boolean;
+  /** The video's length once the worker probed it (the cost estimate on Processing); null before. */
+  durationMs: number | null;
 }
 
 /** After these the pipeline is paused for a human or finished, so the stream ends. */
@@ -64,6 +66,7 @@ export function sessionEventStream(db: Db, id: string, signal: AbortSignal): Rea
             language: s.language,
             profile: s.profile,
             hasVideo: s.hasVideo,
+            durationMs: s.durationMs,
           };
           const payload = JSON.stringify(event);
           if (payload !== last) {

@@ -3,7 +3,9 @@ import {
   createDb, replaceBillAuthors, replaceSpeechWindow, replaceVotes, upsertBills, upsertMembers, upsertRollCalls, type Db,
 } from "@digestor/core/server";
 import { parseLanding, type LandingParams } from "./params";
-import { billMeaning, hybridBills, hybridVotes, runSearch, voteMeaning, type RecordSemantic, type TranslateResult } from "./search";
+import {
+  billMeaning, fuseSpeechKeys, hybridBills, hybridVotes, MEANING_ONLY_MAX, runSearch, voteMeaning, type RecordSemantic, type TranslateResult,
+} from "./search";
 
 /** Landing parameters with a raw query (runSearch cleans it). */
 const L = (q: string, rest: Partial<LandingParams> = {}): LandingParams => ({ ...parseLanding({}), ...rest, q });
@@ -191,6 +193,20 @@ describe("runSearch with search by meaning (hybrid)", () => {
     expect(r.speeches!.rows.every((s) => s.byMeaning)).toBe(true);
   });
 
+  it("no word match and many meaning hits: only the closest ten, one page", async () => {
+    const ids = await upsertMembers(db, [{ house: "camara", externalId: 1, name: "Ana", party: null, uf: null, photoUrl: null }]);
+    await replaceSpeechWindow(db, ids.get(1)!, "2026-02-01", "2026-11-11", Array.from({ length: 14 }, (_, i) => ({
+      startsAt: `2026-03-${String(1 + i).padStart(2, "0")}T10:00`, phase: null, kind: null, summary: "", text: `Hospitais sem médicos ${i}.`, keywords: "",
+    })));
+    const all = await db.execute<{ speech_key: string }>("select speech_key from parl_speeches order by id");
+    const keys = all.rows.map((r) => r.speech_key);
+    const none = async (): Promise<TranslateResult> => ({ terms: ["xqzvbk"], translated: false, failed: false });
+    const r = await runSearch(db, L("xqzvbk"), none, async () => ({ keys, ok: true }));
+    expect(r.speeches!.total).toBe(MEANING_ONLY_MAX);
+    expect(r.speeches!.meaningOnly).toBe(MEANING_ONLY_MAX);
+    expect(words(r)).toEqual(keys.slice(0, MEANING_ONLY_MAX));
+  });
+
   it("exact, newest first and roll-call-only searches stay word-only", async () => {
     await seed();
     const semantic = vi.fn(async () => ({ keys: [], ok: true }));
@@ -294,5 +310,22 @@ describe("a deputy's vote and bill text boxes with search by meaning", () => {
     expect(await hybridBills(db, a, { terms: ["aposentadoria"], type: "PL", meaning, ...page })).toMatchObject({ total: 1, meaningOnly: 0 });
     const down = await hybridBills(db, a, { terms: ["aposentadoria"], meaning: { ok: false, hits: [] }, ...page });
     expect(down).toMatchObject({ meaning: "unavailable", total: 1 });
+  });
+});
+
+describe("fuseSpeechKeys", () => {
+  const many = Array.from({ length: 30 }, (_, i) => `m${i}`);
+  it("no word match: the closest meaning hits only, at most ten", () => {
+    expect(fuseSpeechKeys([], many)).toEqual(many.slice(0, MEANING_ONLY_MAX));
+    expect(fuseSpeechKeys([], ["a", "b"])).toEqual(["a", "b"]);
+  });
+  it("with word matches every meaning hit is fused in (nothing changes)", () => {
+    const list = fuseSpeechKeys(["w1", "w2"], many);
+    expect(list).toHaveLength(32);
+    expect(list.slice(0, 2).sort()).toEqual(["m0", "w1"]);
+  });
+  it("a key in both lists comes first and is listed once", () => {
+    expect(fuseSpeechKeys(["w1", "x"], ["x", "m1"])[0]).toBe("x");
+    expect(fuseSpeechKeys(["w1", "x"], ["x", "m1"])).toHaveLength(3);
   });
 });

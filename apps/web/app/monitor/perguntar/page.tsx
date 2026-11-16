@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import type { Metadata } from "next";
-import { AppBar } from "@/components/AppBar";
+import { MonitorAppBar } from "@/components/Monitor/MonitorAppBar";
 import { AskRecordView } from "@/components/Monitor/AskRecordView";
 import { askRecord } from "@/lib/monitor/askRecord";
 import type { MonitorLocale } from "@/lib/monitor/i18n";
@@ -22,7 +22,7 @@ export async function generateMetadata({ searchParams }: PageProps<"/monitor/per
 export default function AskRecordPage({ searchParams }: PageProps<"/monitor/perguntar">) {
   return (
     <>
-      <AppBar area="monitor" skipTo="content" />
+      <MonitorAppBar />
       <main id="content" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 outline-none sm:px-6">
         <Suspense fallback={null}>
           <AskScreen searchParams={searchParams} />

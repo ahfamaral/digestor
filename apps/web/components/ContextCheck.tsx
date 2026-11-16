@@ -156,7 +156,39 @@ export function ContextCheck({
     <div className="flex flex-col gap-4">
     {noVideoNotice && <WarningNote role="note">{t("upload.audioOnlyWarning")}</WarningNote>}
     <RecordLink sessionId={sessionId} profile={edited.profile} suggestionOnly />
-    <div className={cn("grid grid-cols-1 gap-4", showQuestions && "md:grid-cols-2")}>
+    {/* The questions come first on a phone (and for screen readers); on wider screens they sit right of the form, as tall as their content. */}
+    <div className={cn("grid grid-cols-1 items-start gap-4", showQuestions && "md:grid-cols-2")}>
+      {showQuestions && (
+      <section className="flex flex-col rounded-xl border-2 border-purple-400 bg-white p-5 md:order-last">
+        <h2 className="mb-2 text-base font-bold">
+          {n === 0 ? t("context.noQuestions") : n === 1 ? t("context.questionsOne") : t("context.questionsMany", { n })}
+        </h2>
+        {n === 0 && <p className="text-sm text-muted-foreground">{t("context.allClear")}</p>}
+        {rest.map((q) => (
+          <div key={q.id} className="mb-3 border-b border-border pb-3 last:border-b-0">
+            <div className="text-sm font-semibold">{q.question}</div>
+            <div className="mb-2 text-xs text-muted-foreground">{t("context.why", { why: q.why })}</div>
+            <div className="flex items-center gap-2">
+              <input
+                className={inputCls}
+                aria-label={q.question}
+                value={answers[q.id] ?? ""}
+                onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+              />
+              {q.sampleStartMs !== null && (
+                <button
+                  type="button"
+                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-semibold hover:bg-muted"
+                  onClick={() => hear(q.sampleStartMs as number)}
+                >
+                  {t("context.hear")}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </section>
+      )}
       <section className="rounded-xl border border-border bg-white p-5">
         <h2 className="mb-2 text-base font-bold">{t("context.understood")}</h2>
         <Row
@@ -214,38 +246,6 @@ export function ContextCheck({
           );
         })}
       </section>
-
-      {showQuestions && (
-      <section className="flex flex-col rounded-xl border-2 border-purple-400 bg-white p-5">
-        <h2 className="mb-2 text-base font-bold">
-          {n === 0 ? t("context.noQuestions") : n === 1 ? t("context.questionsOne") : t("context.questionsMany", { n })}
-        </h2>
-        {n === 0 && <p className="text-sm text-muted-foreground">{t("context.allClear")}</p>}
-        {rest.map((q) => (
-          <div key={q.id} className="mb-3 border-b border-border pb-3 last:border-b-0">
-            <div className="text-sm font-semibold">{q.question}</div>
-            <div className="mb-2 text-xs text-muted-foreground">{t("context.why", { why: q.why })}</div>
-            <div className="flex items-center gap-2">
-              <input
-                className={inputCls}
-                aria-label={q.question}
-                value={answers[q.id] ?? ""}
-                onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
-              />
-              {q.sampleStartMs !== null && (
-                <button
-                  type="button"
-                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                  onClick={() => hear(q.sampleStartMs as number)}
-                >
-                  {t("context.hear")}
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </section>
-      )}
     </div>
       <section aria-labelledby="whos-who-title" className="rounded-xl border border-border bg-white p-5">
         <h2 id="whos-who-title" className="mb-1 text-base font-bold">{t("names.whoTitle")}</h2>

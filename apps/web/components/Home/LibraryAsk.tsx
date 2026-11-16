@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { LibraryAskMessage } from "@digestor/core";
 import { ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Textarea } from "@/components/ui/textarea";
 import { Busy, Spinner } from "@/components/ui/spinner";
 import { asToolCalls, isStalePending, verifyResult, type VerifyState } from "@/lib/askText";
-import { linkifyCitations } from "@/lib/libraryAskText";
+import { answerBlocks, glueCitationPunctuation, linkifyCitations, type GluedPart } from "@/lib/libraryAskText";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 const MAX_QUESTION = 500;
 const COUNTER_FROM = 400;
@@ -52,7 +53,7 @@ const working = (m: Message) => m.role === "assistant" && (m.status === "pending
 export function LibraryAsk() {
   const desktop = useDesktop();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const listEnd = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [live, setLive] = useState<ReadonlySet<string>>(new Set());
@@ -103,9 +104,19 @@ export function LibraryAsk() {
     return () => clearInterval(timer);
   }, [open, hasPending, load]);
 
+  // The latest question at the top of the list (its answer below it), never scrolled away under the drawer's header;
+  // an answer arriving later doesn't move it.
+  const lastQuestionId = messages.findLast((m) => m.role === "user")?.id;
   useEffect(() => {
-    listEnd.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, hasPending]);
+    if (!open || !lastQuestionId) return;
+    const frame = requestAnimationFrame(() => {
+      const box = scroller.current;
+      const question = box?.querySelector<HTMLElement>(`[data-question="${lastQuestionId}"]`);
+      if (!box || !question) return;
+      box.scrollTop += question.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, lastQuestionId]);
 
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
@@ -154,7 +165,7 @@ export function LibraryAsk() {
             </DialogDescription>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
             {loadError && (
               <p role="alert" className="mb-2 text-xs text-red-700">
                 {t("ask.loadFailed")}
@@ -166,7 +177,6 @@ export function LibraryAsk() {
                 <MessageItem key={m.id} message={m} live={live} stale={working(m) && !isWaiting(m)} />
               ))}
             </ol>
-            <div ref={listEnd} />
           </div>
 
           <form onSubmit={send} className="border-t border-border bg-white p-3">
@@ -192,8 +202,11 @@ export function LibraryAsk() {
             />
             <div className="mt-2 flex items-center justify-between gap-2">
               <p id="library-ask-hint" className="min-h-4 min-w-0 text-xs text-muted-foreground">
-                {count >= COUNTER_FROM && (
+                {count >= COUNTER_FROM ? (
                   <span className={tooLong ? "font-semibold text-red-700" : undefined}>{t("ask.counter", { n: count, max: MAX_QUESTION })}</span>
+                ) : (
+                  // The pay hint: each question is a paid AI call (an estimate; rates in core cost.ts).
+                  t("cost.libraryQuestion")
                 )}
               </p>
               <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:brightness-90">
@@ -215,7 +228,7 @@ export function LibraryAsk() {
 function MessageItem({ message, live, stale }: { message: Message; live: ReadonlySet<string>; stale: boolean }) {
   if (message.role === "user") {
     return (
-      <li className="ml-6 rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+      <li data-question={message.id} className="ml-6 rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground">
         <span className="sr-only">{t("ask.you")}: </span>
         <p dir="auto" className="whitespace-pre-wrap break-words">
           {message.text}
@@ -245,30 +258,23 @@ function MessageItem({ message, live, stale }: { message: Message; live: Readonl
         </p>
       )}
       {message.status === "done" && (
-        <p dir="auto" className="whitespace-pre-wrap break-words">
-          {linkifyCitations(message.text, sources, live).map((part, i) => {
-            if (part.kind === "text") return part.value;
-            const label = `${part.label} ${part.time}`;
-            if (!part.live || !part.source) {
-              return (
-                <span
-                  key={i}
-                  dir="ltr"
-                  className="whitespace-nowrap rounded bg-stone-100 px-1 font-mono text-xs text-muted-foreground"
-                  title={part.source ? t("libraryAsk.citeGone", { title: part.source.title, time: part.time }) : undefined}
-                >
-                  {label}
-                </span>
-              );
-            }
-            const name = t("libraryAsk.cite", { title: part.source.title, time: part.time });
-            return (
-              <Link key={i} href={`/s/${part.source.sessionId}`} dir="ltr" aria-label={name} title={name} className={CITE}>
-                {label}
-              </Link>
-            );
-          })}
-        </p>
+        <div dir="auto" className="grid gap-2 break-words">
+          {answerBlocks(message.text).map((block, b) =>
+            block.kind === "text" ? (
+              <p key={b} className="whitespace-pre-wrap">
+                <AnswerText text={block.text} sources={sources} live={live} />
+              </p>
+            ) : (
+              <ul key={b} className="grid list-disc gap-1 pl-5 marker:text-muted-foreground">
+                {block.items.map((item, i) => (
+                  <li key={i}>
+                    <AnswerText text={item} sources={sources} live={live} />
+                  </li>
+                ))}
+              </ul>
+            ),
+          )}
+        </div>
       )}
       {verified && <p className="text-xs text-muted-foreground">{verifyLine(verified)}</p>}
       {message.status === "done" && sources.length > 0 && (
@@ -294,4 +300,41 @@ function MessageItem({ message, live, stale }: { message: Message; live: Readonl
       )}
     </li>
   );
+}
+
+/** One paragraph or list item of an answer, its citations as links (plain text when the video is gone). */
+function AnswerText({ text, sources, live }: { text: string; sources: NonNullable<Message["sources"]>; live: ReadonlySet<string> }) {
+  return glueCitationPunctuation(linkifyCitations(text, sources, live)).map((part: GluedPart, i) => {
+    if (part.kind === "text") return part.value;
+    const label = `${part.label} ${part.time}`;
+    const trailing = "trailing" in part ? part.trailing : "";
+    let chip: React.ReactNode;
+    if (!part.live || !part.source) {
+      chip = (
+        <span
+          dir="ltr"
+          className={cn("whitespace-nowrap rounded bg-stone-100 px-1 font-mono text-xs text-muted-foreground", trailing && "pr-0.5")}
+          title={part.source ? t("libraryAsk.citeGone", { title: part.source.title, time: part.time }) : undefined}
+        >
+          {label}
+        </span>
+      );
+    } else {
+      const name = t("libraryAsk.cite", { title: part.source.title, time: part.time });
+      chip = (
+        <Link href={`/s/${part.source.sessionId}`} dir="ltr" aria-label={name} title={name} className={cn(CITE, trailing && "pr-0.5")}>
+          {label}
+        </Link>
+      );
+    }
+    // The punctuation after a citation stays on its line, right after the chip.
+    return trailing ? (
+      <span key={i} className="whitespace-nowrap">
+        {chip}
+        {trailing}
+      </span>
+    ) : (
+      <Fragment key={i}>{chip}</Fragment>
+    );
+  });
 }

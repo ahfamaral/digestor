@@ -20,9 +20,11 @@ import { buildSections, topicIdOf } from "@/lib/preview";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { approvedMomentIds, asClipStatus, asSelection, flattenViews, nextStatus } from "@/lib/review";
 import { StatusQueue } from "@/lib/statusQueue";
+import { displayStatuses, reconcileOverlay, type StatusOverlay } from "@/lib/statusMerge";
 import { useBriefingTranslation } from "@/lib/useBriefingTranslation";
 import { useFindMore } from "@/lib/useFindMore";
 import { languageName, t, type MessageKey } from "@/lib/i18n";
+import { spendingLines } from "@/lib/cost";
 import type { BriefingProps } from "@/lib/briefingPage";
 import { Controls } from "./Controls";
 import { DocActions } from "./DocActions";
@@ -77,12 +79,16 @@ export function Briefing(props: BriefingProps) {
     setFiltersState(next);
     setSticky(new Set());
   };
-  const [statuses, setStatuses] = useState<Record<string, SelectionStatus>>(selections);
+  // The server's statuses (refreshed after Ask, Find more…) with this visit's clicks on top (see lib/statusMerge).
+  const [overlay, setOverlay] = useState<StatusOverlay>({});
+  const statuses = useMemo(() => displayStatuses(selections, overlay), [selections, overlay]);
   const [playing, setPlaying] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [announcement, setAnnouncement] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
+  /** The quiet "Spending" disclosure beside "Analysis v<n>": estimated against recorded cost. */
+  const [spendingOpen, setSpendingOpen] = useState(false);
   const [whoOpen, setWhoOpen] = useState(false);
   const metaWhoRef = useRef<HTMLButtonElement>(null);
   const whoRef = useRef<HTMLButtonElement>(null);
@@ -101,21 +107,33 @@ export function Briefing(props: BriefingProps) {
   }
 
   // Optimistic, per-moment latest-wins selection updates (see lib/statusQueue).
-  const [queue] = useState(
-    () =>
-      new StatusQueue({
-        send: sendSelection,
-        onDisplay: (id, status) =>
-          setStatuses((all) => {
-            const s = asSelection(status);
-            if (s) return { ...all, [id]: s };
-            const next = { ...all };
-            delete next[id];
-            return next;
-          }),
-        onError: (id, message) => setError(id, message),
-      }),
-  );
+  const [queue] = useState(() => {
+    /** The server accepted `status` (or, after a failure, still has it): the click stops being "in flight". */
+    const accepted = (id: string, status: SelectionStatus | null) => {
+      const at = Date.now();
+      setOverlay((o) => (o[id] && o[id].status === status ? { ...o, [id]: { status, confirmedAt: at } } : o));
+    };
+    return new StatusQueue({
+      send: async (id, status) => {
+        await sendSelection(id, status);
+        accepted(id, asSelection(status));
+      },
+      onDisplay: (id, status) => setOverlay((o) => ({ ...o, [id]: { status: asSelection(status), confirmedAt: null } })),
+      onError: (id, message) => {
+        setError(id, message);
+        // A failed write rolled the row back to the last saved status: it counts as accepted, so fresh data can replace it.
+        if (message) setOverlay((o) => (o[id] ? { ...o, [id]: { ...o[id], confirmedAt: Date.now() } } : o));
+      },
+    });
+  });
+
+  // Fresh server data (router.refresh): drop the clicks it already has or that something else changed since
+  // (adjusting state while rendering, React's pattern for "props changed").
+  const [seenSelections, setSeenSelections] = useState(selections);
+  if (seenSelections !== selections) {
+    setSeenSelections(selections);
+    setOverlay((o) => reconcileOverlay(o, selections, Date.now()));
+  }
 
   // Filters live in the URL (defaults omitted) so reloads and back links keep them. history.replaceState updates the
   // address without a new history entry, a scroll jump or a server round trip; Next keeps useSearchParams in sync.
@@ -262,16 +280,32 @@ export function Briefing(props: BriefingProps) {
               {m}
             </span>
           ))}
-          {props.card && <ContextBanner sessionId={session.id} card={props.card} sessionTitle={session.title} language={lang} />}
           {analysis.note ? (
-            <span tabIndex={0} title={analysis.note} className="cursor-help underline decoration-dotted underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
+            <span tabIndex={0} title={analysis.note} className="cursor-help underline decoration-dotted underline-offset-2 outline-none after:ml-1.5 after:inline-block after:content-['·'] last:after:content-none focus-visible:ring-2 focus-visible:ring-brand">
               {t("preview.analysisVersion", { n: analysis.version })}
               <span className="sr-only">. {analysis.note}</span>
             </span>
           ) : (
-            <span>{t("preview.analysisVersion", { n: analysis.version })}</span>
+            <span className="after:ml-1.5 after:content-['·'] last:after:content-none">{t("preview.analysisVersion", { n: analysis.version })}</span>
           )}
+          <span className="after:ml-1.5 after:content-['·'] last:after:content-none">
+            <button
+              type="button"
+              aria-expanded={spendingOpen}
+              aria-controls="session-spending"
+              onClick={() => setSpendingOpen((o) => !o)}
+              className="rounded-sm underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              {t("cost.spendingButton")}
+            </button>
+          </span>
+          {/* Last, so its "Hide" ends the line and never sits next to "Analysis v…". */}
+          {props.card && <ContextBanner sessionId={session.id} card={props.card} sessionTitle={session.title} language={lang} />}
         </p>
+        <div id="session-spending" hidden={!spendingOpen} className="mt-2 max-w-2xl rounded-lg border border-border bg-white px-3 py-2 text-xs">
+          <p className="font-medium">{spendingLines(props.spending).summary}</p>
+          <p className="mt-0.5 text-muted-foreground">{spendingLines(props.spending).detail}</p>
+        </div>
       </header>
 
       {analysis.running && (
@@ -330,6 +364,7 @@ export function Briefing(props: BriefingProps) {
             <DocActions title={session.title} durationMs={session.durationMs} language={session.language} briefing={props.briefing} topics={topics} moments={official} tr={tr} />
             <SomethingOff
               sessionId={session.id}
+              durationMs={session.durationMs}
               profile={analysis.profile}
               targets={targets}
               reanalyzeOpen={reanalyzeOpen}
@@ -380,10 +415,14 @@ export function Briefing(props: BriefingProps) {
 
       <footer className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-          <span className="text-sm font-medium text-muted-foreground">
-            {approved.length === 1 ? t("briefing.approvedOne") : t("briefing.approvedMany", { n: approved.length })}
-            {hiddenApproved > 0 && <> · {t("briefing.hiddenByFilters", { n: hiddenApproved })}</>}
-          </span>
+          {approved.length === 0 ? (
+            <span className="text-sm text-muted-foreground">{t("briefing.approveFirstHint")}</span>
+          ) : (
+            <span className="text-sm font-medium text-muted-foreground">
+              {approved.length === 1 ? t("briefing.approvedOne") : t("briefing.approvedMany", { n: approved.length })}
+              {hiddenApproved > 0 && <> · {t("briefing.hiddenByFilters", { n: hiddenApproved })}</>}
+            </span>
+          )}
           {hiddenApproved > 0 && (
             <button
               type="button"

@@ -10,7 +10,7 @@ import { Busy } from "@/components/ui/spinner";
 /**
  * Asks before a one-click action that changes data or leaves the page. Opening it pauses any playing media (nothing
  * resumes it). Focus starts on Cancel, so Enter cancels; the action must be chosen on purpose. `onConfirm` throws to
- * keep the dialog open with its message shown.
+ * keep the dialog open with its message shown. `estimate` states what a paid action will cost.
  */
 export function ConfirmDialog({
   open,
@@ -20,6 +20,7 @@ export function ConfirmDialog({
   actionLabel,
   busyLabel,
   cancelLabel,
+  estimate,
   onConfirm,
 }: {
   open: boolean;
@@ -30,6 +31,8 @@ export function ConfirmDialog({
   busyLabel?: string;
   /** Default "Cancel" (`t()`); the monitor passes its own language's word. */
   cancelLabel?: string;
+  /** What will be paid, as a sentence ("Estimated cost: about $0.42 …"): its own line inside the description. */
+  estimate?: string;
   onConfirm: () => Promise<void>;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -61,7 +64,14 @@ export function ConfirmDialog({
       <DialogContent showCloseButton={false} initialFocus={cancelRef}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription dir="auto">{description}</DialogDescription>
+          <DialogDescription dir="auto">
+            {description}
+            {estimate && (
+              <span dir="auto" className="mt-2 block font-medium text-foreground">
+                {estimate}
+              </span>
+            )}
+          </DialogDescription>
         </DialogHeader>
         {error && (
           <p role="alert" className="text-xs text-red-700">

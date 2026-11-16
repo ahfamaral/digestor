@@ -1,7 +1,8 @@
 "use client";
 
 import { SearchIcon, XIcon } from "lucide-react";
-import { HIGHLIGHT_TYPES, type Granularity, type HighlightTypeId } from "@digestor/core";
+import { FIND_MORE_USD, HIGHLIGHT_TYPES, type Granularity, type HighlightTypeId } from "@digestor/core";
+import { aboutUsd } from "@/lib/cost";
 import { TONE_CHIP } from "@/components/HighlightChip";
 import { DEFAULT_FILTERS, toSearchParams, type BriefingFilters, type ShowFilter } from "@/lib/briefingFilters";
 import { cn } from "@/lib/utils";
@@ -148,14 +149,20 @@ export function Controls({
                 </button>
               )}
               {findMore && (
-                <button
-                  type="button"
-                  disabled={findMore.busy}
-                  onClick={findMore.onClick}
-                  className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Busy busy={findMore.busy}>{findMore.label}</Busy>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    disabled={findMore.busy}
+                    onClick={findMore.onClick}
+                    aria-describedby="find-more-cost"
+                    className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Busy busy={findMore.busy}>{findMore.label}</Busy>
+                  </button>
+                  <span id="find-more-cost" className="text-xs text-muted-foreground">
+                    {t("cost.findMore", { cost: aboutUsd(FIND_MORE_USD) })}
+                  </span>
+                </>
               )}
             </div>
           </div>

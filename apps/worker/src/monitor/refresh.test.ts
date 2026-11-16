@@ -122,6 +122,20 @@ describe("refreshMonitor", () => {
     expect((await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, { ...window, year: 2019 })).words).toBe(counts.words);
   });
 
+  it("a main bill the Câmara doesn't know is stored as '' (not asked again); a failed call is asked again next run", async () => {
+    const failing = fakeCamaraMonitorFetch({ "/proposicoes/2563226": { status: 500 } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await refreshMonitor({ db, fetch: failing.f }, window)).mainBills).toBe(0);
+    const label = async () => (await db.execute<{ l: string | null }>(sql`select main_bill_label as l from parl_bills where id = 2652548`)).rows[0]!.l;
+    expect(await label()).toBeNull();
+    expect((await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch({ "/proposicoes/2563226": { status: 404 } }).f }, window)).mainBills).toBe(1);
+    warn.mockRestore();
+    expect(await label()).toBe("");
+    const third = fakeCamaraMonitorFetch();
+    await refreshMonitor({ db, fetch: third.f }, window);
+    expect(third.calls.some((u) => u.endsWith("/proposicoes/2563226"))).toBe(false);
+  });
+
   it("a full run stores history, party on the day, profile, guidance, presence and authored bills", async () => {
     const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
     expect(counts).toMatchObject({ history: { ok: 3, failed: 0 }, orientations: 26, sessions: 3, presence: 2, authoredBills: 2 });
@@ -135,6 +149,15 @@ describe("refreshMonitor", () => {
     expect(presence.rows.map((r) => Number(r.session_id))).toEqual([83188, 83243]);
     const bills = await listMemberBills(db, her.id, {});
     expect(bills.rows.map((b) => `${b.type} ${b.number}/${b.year}`)).toEqual(["PL 5330/2026", "RCP 1/2026"]);
+    // EMC-A 2 (`ano` 0) gets its main bill's label from the API (the bills file doesn't hold PL 4700/2025)
+    expect(counts.mainBills).toBe(1);
+    const emc = await db.execute<{ main_bill_id: number; main_bill_label: string }>(sql`select main_bill_id, main_bill_label from parl_bills where id = 2652548`);
+    expect(emc.rows).toEqual([{ main_bill_id: 2563226, main_bill_label: "PL 4700/2025" }]);
+    // a rerun keeps the label and asks nothing again
+    const again = fakeCamaraMonitorFetch();
+    expect((await refreshMonitor({ db, fetch: again.f }, window)).mainBills).toBe(0);
+    expect(again.calls.some((u) => u.endsWith("/proposicoes/2563226"))).toBe(false);
+    expect((await db.execute<{ l: string }>(sql`select main_bill_label as l from parl_bills where id = 2652548`)).rows[0]!.l).toBe("PL 4700/2025");
     // authors and presence of deputies outside the list are skipped, not added as members
     expect(await getMember(db, "camara", 141533)).toBeNull();
     expect(await getMember(db, "camara", 220576)).toBeNull();

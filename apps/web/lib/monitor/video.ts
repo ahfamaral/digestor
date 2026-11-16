@@ -28,3 +28,11 @@ export function watchUrl(v: VideoMoment): string | null {
   if (!VIDEO_ID.test(v.videoId)) return null;
   return `https://www.youtube.com/watch?v=${v.videoId}&t=${whole(v.startS)}s`;
 }
+
+/**
+ * The row of a list whose video button carries the note about YouTube's cookies: the first with a playable video
+ * (-1 when none), so the note shows once per list, above every other play button.
+ */
+export function firstVideoRow(rows: { video?: VideoMoment | null }[]): number {
+  return rows.findIndex((r) => !!r.video && embedUrl(r.video) !== null);
+}

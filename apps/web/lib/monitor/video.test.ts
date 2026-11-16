@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { embedUrl, videoLength, videoPosition, watchUrl } from "./video";
+import { embedUrl, firstVideoRow, videoLength, videoPosition, watchUrl } from "./video";
 
 describe("monitor video helpers", () => {
   const v = { videoId: "NmI46Y25mEU", startS: 76, endS: 414 };
@@ -20,5 +20,14 @@ describe("monitor video helpers", () => {
   it("refuses anything that isn't a YouTube id", () => {
     expect(embedUrl({ ...v, videoId: "x\"><script>" })).toBeNull();
     expect(watchUrl({ ...v, videoId: "../../evil" })).toBeNull();
+  });
+});
+
+describe("firstVideoRow", () => {
+  it("is the first row with a playable video", () => {
+    const v = { videoId: "NmI46Y25mEU", startS: 76, endS: 414 };
+    expect(firstVideoRow([{ video: null }, { video: { ...v, videoId: "bad" } }, { video: v }, { video: v }])).toBe(2);
+    expect(firstVideoRow([{ video: null }, {}])).toBe(-1);
+    expect(firstVideoRow([])).toBe(-1);
   });
 });

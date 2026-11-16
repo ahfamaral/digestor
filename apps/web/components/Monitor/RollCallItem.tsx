@@ -3,6 +3,7 @@ import { formatCount, formatDay, tm, type MonitorLocale } from "@/lib/monitor/i1
 import Link from "next/link";
 import { rollCallHref } from "@/lib/monitor/params";
 import { billUrl } from "@/lib/monitor/search";
+import { snippetCuts } from "@/lib/monitor/snippet";
 import { ExternalLink } from "./ExternalLink";
 import { Highlighted } from "./Highlighted";
 
@@ -12,6 +13,7 @@ import { Highlighted } from "./Highlighted";
  */
 export function RollCallItem({ locale, rollCall: r, back }: { locale: MonitorLocale; rollCall: RollCallHit; back?: string }) {
   const n = (v: number) => formatCount(v, locale);
+  const cuts = snippetCuts(r.snippet, null, r.description);
   return (
     <li className="grid gap-1.5 px-4 py-3 text-sm">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -19,7 +21,7 @@ export function RollCallItem({ locale, rollCall: r, back }: { locale: MonitorLoc
           {r.billLabel ?? tm(locale, "rollCall.noBill")}
         </Link>
         {r.billLabel && r.billId && (
-          <ExternalLink href={billUrl(r.billId)} className="text-xs">
+          <ExternalLink href={billUrl(r.billId)} className="text-xs whitespace-nowrap">
             {tm(locale, "member.officialRecord")}
           </ExternalLink>
         )}
@@ -28,7 +30,9 @@ export function RollCallItem({ locale, rollCall: r, back }: { locale: MonitorLoc
         </time>
       </div>
       <p lang="pt-BR" className="break-words">
-        <Highlighted text={r.snippet} />
+        {cuts.before && "… "}
+        <Highlighted text={r.snippet.replaceAll(" ... ", " … ")} />
+        {cuts.after && " …"}
       </p>
       <p className="font-mono text-xs text-muted-foreground">{tm(locale, "rollCall.totals", { yes: n(r.yes), no: n(r.no), other: n(r.other) })}</p>
     </li>

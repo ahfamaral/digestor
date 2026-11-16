@@ -6,12 +6,12 @@ import { HEAT_LEVELS, heatRow, yearMonths, type HeatLevel } from "@/lib/monitor/
 export const WORDS_SECTION = "words";
 
 /**
- * One neutral ramp (colour is not a judgement here): an empty dashed square for little or no text, an outlined white
- * square for "not used", then three greys getting darker. Every cell also carries its level as text (screen readers, and
+ * One neutral ramp (colour is not a judgement here): a hatched square for little or no text, an outlined white square
+ * for "not used", then three greys getting darker. Every cell also carries its level as text (screen readers, and
  * the hover title), and the key below spells the levels out.
  */
 const CELL: Record<HeatLevel, string> = {
-  none: "border border-dashed border-stone-300",
+  none: "bg-[repeating-linear-gradient(135deg,var(--color-stone-300)_0_1px,transparent_1px_4px)]",
   unused: "border border-stone-400 bg-white",
   about: "bg-stone-400",
   more: "bg-stone-600",
@@ -32,11 +32,12 @@ export function WordHeatLoading({ locale }: { locale: MonitorLocale }) {
  * "Words used more than the chamber": up to 20 words a deputy (or a party's speeches) uses more than the rest of the
  * chamber, each with a month-by-month heat row for `year`. Counting only, no AI; no numbers, scores or comparisons
  * between deputies. Below the minimum of text it says so instead of showing noisy words. `party`: the party view's note.
+ * `today` ("YYYY-MM-DD"): months after it aren't drawn.
  */
 export function WordHeat({
-  locale, result, year, party,
-}: { locale: MonitorLocale; result: { enough: boolean; words: DistinctiveWord[] }; year: number; party?: string }) {
-  const months = yearMonths(year).map((m) => new Date(`${m}-01T00:00:00Z`));
+  locale, result, year, party, today,
+}: { locale: MonitorLocale; result: { enough: boolean; words: DistinctiveWord[] }; year: number; party?: string; today?: string }) {
+  const months = yearMonths(year, today).map((m) => new Date(`${m}-01T00:00:00Z`));
   const monthName = new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" });
   const monthLetter = new Intl.DateTimeFormat(locale, { month: "narrow", timeZone: "UTC" });
   return (
@@ -55,7 +56,7 @@ export function WordHeat({
               <tr>
                 <th scope="col" className="sr-only">{tm(locale, "words.word")}</th>
                 {months.map((d) => (
-                  <th key={d.toISOString()} scope="col" className="w-3.5 p-0 text-center font-mono text-[10px] font-normal text-muted-foreground sm:w-5 sm:text-xs">
+                  <th key={d.toISOString()} scope="col" className="w-3.5 p-0 text-center font-mono text-[10px] font-normal text-muted-foreground sm:w-5 sm:text-xs lg:w-9">
                     <abbr title={monthName.format(d)} className="no-underline">
                       <span aria-hidden>{monthLetter.format(d)}</span>
                       <span className="sr-only">{monthName.format(d)}</span>
@@ -70,11 +71,11 @@ export function WordHeat({
                   <th scope="row" lang="pt-BR" className="max-w-0 truncate pr-2 text-left font-medium sm:max-w-none sm:min-w-48 sm:pr-4" title={w.label}>
                     {w.label}
                   </th>
-                  {heatRow(w.months, year).map((c, i) => {
+                  {heatRow(w.months, year, today).map((c, i) => {
                     const text = tm(locale, "words.cell", { month: monthName.format(months[i]!), level: tm(locale, `words.level.${c.level}`) });
                     return (
                       <td key={c.month} className="p-0" title={text}>
-                        <span aria-hidden className={`block h-3.5 w-3.5 rounded-[3px] sm:h-5 sm:w-5 ${CELL[c.level]}`} />
+                        <span aria-hidden className={`block h-3.5 w-3.5 rounded-[3px] sm:h-5 sm:w-5 lg:h-6 lg:w-9 ${CELL[c.level]}`} />
                         <span className="sr-only">{text}</span>
                       </td>
                     );

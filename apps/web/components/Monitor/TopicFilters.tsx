@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
-import { landingHref, type LandingParams } from "@/lib/monitor/params";
+import { ChevronRight } from "lucide-react";
+import { activeTopicFilters, landingHref, type LandingParams } from "@/lib/monitor/params";
 import { FormSelect } from "./FormSelect";
 
 export type Facets = { parties: string[]; ufs: string[]; phases: string[] };
@@ -11,15 +12,17 @@ const box = "size-4 rounded border-input accent-brand outline-none focus-visible
 /**
  * The topic search's filters, inside its GET form: native inputs and selects, so the form works without JavaScript.
  * Party and state are the speaker's on the day of the speech. Party, state, phase and "in office" apply to speeches
- * only, so they sit in their own group labelled that way.
+ * only, so they sit in their own group labelled that way. `folded` (a search has run): they sit in a closed
+ * "Filters (n)" disclosure (n = the filters in use), so the results start right under the query box; a native
+ * `<details>`, so it works without JavaScript and its fields are sent either way.
  */
-export function TopicFilters({ locale, params, facets }: { locale: MonitorLocale; params: LandingParams; facets: Facets }) {
+export function TopicFilters({ locale, params, facets, folded = false }: { locale: MonitorLocale; params: LandingParams; facets: Facets; folded?: boolean }) {
   const min = `${params.year}-01-01`;
   const max = `${params.year}-12-31`;
   const select = (name: "party" | "uf" | "phase", label: string, options: string[], value: string | null) => (
     <FormSelect name={name} label={label} anyLabel={tm(locale, "filters.any")} options={options} value={value} lang={name === "phase" ? "pt-BR" : undefined} />
   );
-  return (
+  const fields = (
     <fieldset className="grid gap-3">
       <legend className="sr-only">{tm(locale, "filters.legend")}</legend>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
@@ -61,5 +64,16 @@ export function TopicFilters({ locale, params, facets }: { locale: MonitorLocale
         </Link>
       </div>
     </fieldset>
+  );
+  if (!folded) return fields;
+  const n = activeTopicFilters(params);
+  return (
+    <details className="group/filters grid gap-3">
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-stone-500 [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-4 transition-transform group-open/filters:rotate-90 motion-reduce:transition-none" aria-hidden />
+        {n > 0 ? tm(locale, "filters.folded", { n: String(n) }) : tm(locale, "filters.legend")}
+      </summary>
+      <div className="pt-3">{fields}</div>
+    </details>
   );
 }

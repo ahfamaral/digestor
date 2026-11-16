@@ -1,3 +1,6 @@
+import { billLabel } from "@digestor/core";
+import { tm, type MonitorLocale } from "./i18n";
+
 /**
  * Official names of the Câmara's proposition type codes, as published in its open-data reference list
  * (`/referencias/proposicoes/siglaTipo`, read 2026-11-11), for the codes in the 2026 data. Shown in Portuguese, as
@@ -72,3 +75,21 @@ export const BILL_TYPE_NAMES: Record<string, string> = {
 };
 
 export const billTypeName = (code: string): string | null => BILL_TYPE_NAMES[code] ?? null;
+
+/** First words of feminine type names ("a PEC", "a MPV"), for "sobre a …"; everything else reads "sobre o …". */
+const FEMININE = new Set(["Proposta", "Medida", "Emenda", "Subemenda", "Indicação", "Mensagem", "Redação", "Sugestão", "Solicitação", "Representação", "Ata"]);
+
+/** Whether a type code's official name is feminine in Portuguese (an unknown code counts as masculine). */
+export const billTypeFeminine = (code: string): boolean => FEMININE.has(billTypeName(code)?.split(/[\s/]/)[0] ?? "");
+
+/**
+ * A deputy's bill row as listed: "PL 5330/2026"; an item numbered inside its main bill (year 0: an opinion, substitute
+ * or amendment) without the year, and with the main bill when known: "PRL 1 on PL 1761/2025" ("PRL 1 sobre o PL
+ * 1761/2025"). Never "/0".
+ */
+export function billRowLabel(locale: MonitorLocale, b: { type: string; number: number; year: number; mainBillLabel?: string | null }): string {
+  const item = billLabel(b.type, b.number, b.year);
+  const main = b.year > 0 ? null : b.mainBillLabel?.trim();
+  if (!main) return item;
+  return tm(locale, billTypeFeminine(main.split(" ")[0]!) ? "bills.onMainF" : "bills.onMain", { item, main });
+}

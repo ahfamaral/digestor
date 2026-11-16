@@ -595,6 +595,13 @@ export const parlBills = pgTable(
     year: integer("year").notNull(),
     summary: text("summary").notNull().default(""),
     presentedAt: timestamp("presented_at", { mode: "string" }).notNull(),
+    /**
+     * The main bill an attached item belongs to (an opinion, substitute or amendment: PRL, SBR, EMC…, numbered per
+     * main bill, `year` 0): the bulk file's `uriPropPrincipal` id, and its "PL 1761/2025" label once known (from the
+     * same file, else the API; null until then). Migration 0033.
+     */
+    mainBillId: integer("main_bill_id"),
+    mainBillLabel: text("main_bill_label"),
   },
   (t) => [index("parl_bills_presented_at").on(t.presentedAt)],
 );

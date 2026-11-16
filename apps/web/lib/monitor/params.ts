@@ -84,6 +84,14 @@ export function parseLanding(sp: RawParams): LandingParams {
   };
 }
 
+/**
+ * How many of the topic search's filters narrow it (dates, party, state, phase, in office, one group hidden): the
+ * number on the folded "Filters (n)" once a search has run.
+ */
+export function activeTopicFilters(p: LandingParams): number {
+  return [p.from, p.to, p.party, p.uf, p.phase, p.inOffice || null, p.show.speeches && p.show.rollCalls ? null : "show"].filter(Boolean).length;
+}
+
 /** "Ask the record" (`/monitor/perguntar`): the question and the speeches' dates (inside the default year). */
 export type AskParams = { q: string; from: string | null; to: string | null };
 

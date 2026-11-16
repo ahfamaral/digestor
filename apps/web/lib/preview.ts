@@ -1,5 +1,5 @@
 import {
-  PROFILES, ProfileIdSchema, formatMinutes, mostDiscussedTopic, type HighlightMethod, type AnalysisVersion, type BriefingContent, type MomentWithHighlights, type ProfileId,
+  PROFILES, ProfileIdSchema, formatMinutes, mostDiscussedTopic, type HighlightMethod, type HighlightTypeId, type AnalysisVersion, type BriefingContent, type MomentWithHighlights, type ProfileId,
   type Topic,
 } from "@digestor/core";
 import { t } from "./i18n";
@@ -86,4 +86,31 @@ export function latestFailedAfter(versions: Pick<AnalysisVersion, "id" | "versio
   const latest = versions.reduce<(typeof versions)[number] | null>((a, v) => (!a || v.version > a.version ? v : a), null);
   if (!current || !latest || latest.version <= current.version || latest.status !== "failed") return null;
   return latest.version;
+}
+
+export interface TopHighlightCard {
+  moment: MomentWithHighlights;
+  /** Every type this moment tops, in the profile's type order, each with its method (AI or counted). */
+  types: { type: HighlightTypeId; method: HighlightMethod }[];
+}
+
+/**
+ * The top-highlight cards: one per moment, so a moment that tops several types ("News line", "Dodged the question",
+ * "Key point") is one card carrying every chip, never the same moment twice. Cards keep the order of their first type.
+ */
+export function groupTopHighlights(top: { type: HighlightTypeId; moment: MomentWithHighlights }[]): TopHighlightCard[] {
+  const cards: TopHighlightCard[] = [];
+  const byMoment = new Map<string, TopHighlightCard>();
+  for (const { type, moment } of top) {
+    const method = moment.highlights.find((h) => h.type === type)?.method ?? "ai";
+    const card = byMoment.get(moment.id);
+    if (card) {
+      card.types.push({ type, method });
+      continue;
+    }
+    const next = { moment, types: [{ type, method }] };
+    byMoment.set(moment.id, next);
+    cards.push(next);
+  }
+  return cards;
 }

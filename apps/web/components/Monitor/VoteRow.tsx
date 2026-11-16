@@ -1,3 +1,4 @@
+import { differsFromGuidance } from "@digestor/core";
 import type { VoteRow as Vote } from "@digestor/core/server";
 import Link from "next/link";
 import { formatDay, tm, type MonitorLocale } from "@/lib/monitor/i18n";
@@ -13,10 +14,12 @@ import { ByMeaning } from "./MeaningNote";
  * request is marked, since a "Não" on it is not a vote against the bill. The guidance that applied to the party at the
  * vote sits under the vote, as published, with the federation or bloc it came from. `from`: the deputy whose page lists
  * it, so the roll-call page leads back to them. A vote only the search by meaning found is marked "Close in meaning".
+ * The deputy's vote reads "Voted: Não"; when it differs from a directed guidance (the `vdiff` rule,
+ * `differsFromGuidance`), a neutral text tag says so (never colour alone, never a judgement).
  */
 export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote: Vote & { byMeaning?: boolean }; from?: number }) {
   return (
-    <li className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:gap-x-4">
+    <li className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)] sm:gap-x-4">
       <div className="grid min-w-0 gap-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <time dateTime={v.date} className="font-mono text-xs text-muted-foreground">
@@ -26,7 +29,7 @@ export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote
             {v.billLabel ?? tm(locale, "rollCall.noBill")}
           </Link>
           {v.billLabel && v.billId && (
-            <ExternalLink href={billUrl(v.billId)} className="text-xs">
+            <ExternalLink href={billUrl(v.billId)} className="text-xs whitespace-nowrap">
               {tm(locale, "member.officialRecord")}
             </ExternalLink>
           )}
@@ -43,11 +46,19 @@ export function VoteRow({ locale, vote: v, from }: { locale: MonitorLocale; vote
         )}
       </div>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 sm:flex-col sm:items-end">
-        <span lang="pt-BR" className="h-fit w-fit rounded-full border border-border bg-stone-100 px-2.5 py-0.5 text-xs font-semibold text-foreground">{v.vote}</span>
+        <span className="flex items-baseline gap-1.5 text-xs text-muted-foreground">
+          {tm(locale, "votes.voted")}
+          <span lang="pt-BR" title={v.vote === "Artigo 17" ? tm(locale, "rollCallPage.artigo17") : undefined} className="h-fit w-fit rounded-full border border-border bg-stone-100 px-2.5 py-0.5 text-xs font-semibold text-foreground">{v.vote}</span>
+        </span>
         {v.guidance && (
           <span className="text-xs text-muted-foreground sm:text-right">
             {tm(locale, "votes.guidance")} <span lang="pt-BR" className="font-semibold text-foreground">{v.guidance}</span>
             {v.guidanceFrom && <> {tm(locale, /^Fdr\s/i.test(v.guidanceFrom) ? "votes.viaFederation" : "votes.viaBloc", { label: v.guidanceFrom })}</>}
+          </span>
+        )}
+        {differsFromGuidance(v.vote, v.guidance) && (
+          <span className="w-fit rounded border border-stone-400 px-1.5 py-px text-xs font-medium text-foreground">
+            {tm(locale, "votes.differs")}
           </span>
         )}
       </div>

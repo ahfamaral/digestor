@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { MomentWithHighlights } from "../analysisTypes.ts";
 import { saveMoments, type NewMoment } from "./analysis.ts";
+import { topicForStart } from "../moments.ts";
 import type {
   AskActionKind, AskAction, AskMessage, AskMessageStatus, AskMessageWithActions, AskRole, Clip, ClipActor, ClipFormat,
   ClipEvent, ToolApprovalPayload, ToolApprovalResolution, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
@@ -32,11 +33,9 @@ export async function createPersonalMoment(
   db: Db,
   a: { analysisId: string; ownerId: string; startMs: number; endMs: number; title: string; origin: "ask" | "user" },
 ): Promise<MomentWithHighlights> {
-  const [topic] = await db
-    .select({ id: topics.id })
-    .from(topics)
-    .where(and(eq(topics.analysisId, a.analysisId), sql`${topics.startMs} <= ${a.startMs}`, sql`${topics.endMs} > ${a.startMs}`))
-    .limit(1);
+  // The topic holding its start, else the nearest one: never "no topic" (shown apart) while the analysis has topics.
+  const all = await db.select({ id: topics.id, startMs: topics.startMs, endMs: topics.endMs }).from(topics).where(eq(topics.analysisId, a.analysisId));
+  const topic = topicForStart(all, a.startMs);
   const [row] = await db
     .insert(moments)
     .values({

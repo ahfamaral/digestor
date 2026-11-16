@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MIN_BAND_PCT, PIN_PX, TRACK_PX, buildTimeline } from "./timeline";
+import { MAX_PIN_ROWS, MIN_BAND_PCT, PIN_PX, TRACK_PX, buildTimeline, layoutPins, scrollEdges } from "./timeline";
 
 const topic = (id: string, startMs: number, endMs: number) => ({ id, title: id, startMs, endMs });
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -41,9 +41,9 @@ describe("buildTimeline", () => {
     );
     const half = (PIN_PX / 2 / TRACK_PX) * 100; // the end pins are pulled in so they stay whole
     expect(pins).toEqual([
-      { momentId: "m1", type: "heated", leftPct: 25, row: 0 },
-      { momentId: "m2", type: "key_point", leftPct: half, row: 0 },
-      { momentId: "m3", type: "light", leftPct: 100 - half, row: 0 },
+      { momentId: "m1", type: "heated", atPct: 25, leftPct: 25, row: 0 },
+      { momentId: "m2", type: "key_point", atPct: 0, leftPct: half, row: 0 },
+      { momentId: "m3", type: "light", atPct: 100, leftPct: 100 - half, row: 0 },
     ]);
   });
 
@@ -91,3 +91,64 @@ describe("buildTimeline", () => {
   });
 });
 
+describe("layoutPins", () => {
+  /** No two pins in one lane closer than a pin width, and every pin whole inside the track. */
+  const clickable = (out: { leftPct: number; row: number }[], trackPx: number) => {
+    const gap = (PIN_PX / trackPx) * 100;
+    const half = gap / 2;
+    for (const p of out) {
+      expect(p.leftPct).toBeGreaterThanOrEqual(half - 1e-9);
+      expect(p.leftPct).toBeLessThanOrEqual(100 - half + 1e-9);
+      expect(p.row).toBeLessThan(MAX_PIN_ROWS);
+    }
+    for (const a of out) for (const b of out) if (a !== b && a.row === b.row) expect(Math.abs(a.leftPct - b.leftPct)).toBeGreaterThanOrEqual(gap - 1e-9);
+  };
+
+  it("leaves pins that don't touch where they are, in one lane", () => {
+    expect(layoutPins([10, 50, 90], 560)).toEqual([
+      { leftPct: 10, row: 0 },
+      { leftPct: 50, row: 0 },
+      { leftPct: 90, row: 0 },
+    ]);
+  });
+
+  it("spreads a pile of pins at nearly the same time (Merkel 00:28) instead of stacking them", () => {
+    const xs = [3.1, 3.1, 3.2, 3.2, 3.3, 3.3, 3.4];
+    const out = layoutPins(xs, 560);
+    clickable(out, 560);
+    expect(new Set(out.map((p) => p.row)).size).toBe(MAX_PIN_ROWS);
+    // the first of each lane stays at its time; the rest move right just enough
+    expect(out[0]).toEqual({ leftPct: 3.1, row: 0 });
+  });
+
+  it("pins crowding the right end are pushed back inside", () => {
+    const out = layoutPins(Array.from({ length: 9 }, () => 99.9), 560);
+    clickable(out, 560);
+  });
+
+  it("a narrow strip (a phone) spreads further than a wide one, measured in pixels", () => {
+    const xs = [40, 41, 42, 43];
+    clickable(layoutPins(xs, 320), 320);
+    clickable(layoutPins(xs, 1100), 1100);
+    expect(layoutPins(xs, 1100).every((p) => p.row === 0)).toBe(false);
+  });
+
+  it("more pins than a lane can hold share it evenly", () => {
+    const out = layoutPins(Array.from({ length: 40 }, () => 50), 100);
+    expect(out.every((p) => p.leftPct >= 10 - 1e-9 && p.leftPct <= 90 + 1e-9)).toBe(true);
+  });
+});
+
+describe("scrollEdges", () => {
+  it("shows no fade when the strip fits", () => {
+    expect(scrollEdges(0, 300, 300)).toEqual({ left: false, right: false });
+  });
+  it("fades the right side at the start and the left side at the end", () => {
+    expect(scrollEdges(0, 300, 400)).toEqual({ left: false, right: true });
+    expect(scrollEdges(100, 300, 400)).toEqual({ left: true, right: false });
+    expect(scrollEdges(50, 300, 400)).toEqual({ left: true, right: true });
+  });
+  it("allows a pixel of rounding", () => {
+    expect(scrollEdges(99.5, 300, 400)).toEqual({ left: true, right: false });
+  });
+});

@@ -15,7 +15,7 @@ import { BackLink } from "@/components/BackLink";
 import { isExportReady } from "@/lib/exportRows";
 import { debouncedCommit } from "@/lib/debouncedCommit";
 import { addTrack, fetchChecks, fetchTracks, mergeClipsApi, patchClip, requestChecks, undoClip, type ClipChange } from "@/lib/prepareApi";
-import { checksToPoll, clipStatus, withOpen, insideClip, mergePairs, sharedValue, type ClipStatus, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
+import { checksToPoll, clipStatus, withOpen, insideClip, mergePairs, noSubtitlesInVideo, sharedValue, type ClipStatus, type ClipView, type TrackView, type UndoStep } from "@/lib/prepareData";
 import { runForAll } from "@/lib/forAllRun";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -449,6 +449,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
               noCreditNeeded: i.clip.noCreditNeeded,
               languages: i.tracks.map((tr) => tr.language),
               frozen: session.videoRemoved,
+              lengthMs: i.clip.endMs - i.clip.startMs,
             }))}
             originalLanguage={session.language}
             onRun={runForAllClips}
@@ -805,6 +806,7 @@ function ClipCard({
                 clipId={clip.id}
                 items={checklist}
                 protectedAck={clip.protectedAck}
+                noSubtitles={noSubtitlesInVideo(item.tracks)}
                 busy={busy}
                 onProtected={(v) => void onChange({ protectedAck: v })}
               />

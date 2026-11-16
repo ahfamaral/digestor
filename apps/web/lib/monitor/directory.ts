@@ -43,3 +43,14 @@ export function byLetter<M extends DirectoryMember>(members: M[]): { letter: str
   }
   return [...groups].map(([letter, members]) => ({ letter, members }));
 }
+
+/** Name particles that never give an initial ("Adriano do Baldy" is "AB"). */
+const PARTICLES = new Set(["da", "das", "de", "do", "dos", "e"]);
+
+/** Up to two initials for an avatar placeholder: the first and last words that aren't particles ("Acácio Favacho" is "AF"). */
+export function initials(name: string): string {
+  const words = name.split(/\s+/).filter((w) => /\p{L}/u.test(w) && !PARTICLES.has(w.toLowerCase()));
+  if (words.length === 0) return "";
+  const letter = (w: string) => (w.match(/\p{L}/u)?.[0] ?? "").toLocaleUpperCase("pt-BR");
+  return words.length === 1 ? letter(words[0]!) : `${letter(words[0]!)}${letter(words.at(-1)!)}`;
+}

@@ -1,5 +1,7 @@
 // "Clip this speech": a speech's moment in the plenary video opened as a new Digestor session. Client-safe.
 
+import { estimateCostUsd, usdAmount } from "@digestor/core";
+import { tm, type MonitorLocale } from "./i18n";
 import type { VideoMoment } from "./video";
 
 /** Seconds kept before and after the speech's moment (the alignment is approximate; the transcript shows the real start). */
@@ -30,4 +32,17 @@ export function clipMinutes(v: Pick<VideoMoment, "startS" | "endS">): number {
 export function speakerLabel(name: string, party: string | null, uf: string | null): string {
   const tag = [party, uf].filter(Boolean).join("-");
   return tag ? `${name} (${tag})` : name;
+}
+
+/** What opening the part as a session should cost: transcription and analysis of the part, with captions (it has a picture). */
+export function clipCostUsd(v: Pick<VideoMoment, "startS" | "endS">): number {
+  const { startS, endS } = clipSection(v);
+  return estimateCostUsd((endS - startS) * 1000, { captions: true });
+}
+
+/** The confirm dialog's cost line, in the monitor's language ("cerca de US$ 0,12" in Portuguese). */
+export function clipCostText(locale: MonitorLocale, v: Pick<VideoMoment, "startS" | "endS">): string {
+  const a = usdAmount(clipCostUsd(v));
+  const amount = locale === "pt-BR" ? a.amount.replace(".", ",") : a.amount;
+  return tm(locale, "clip.cost", { cost: a.under ? tm(locale, "clip.costUnder") : tm(locale, "clip.costAbout", { amount }) });
 }

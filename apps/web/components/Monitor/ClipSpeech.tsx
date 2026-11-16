@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { Scissors } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { errorMessage } from "@/lib/http";
-import { clipMinutes } from "@/lib/monitor/clip";
+import { clipCostText, clipMinutes } from "@/lib/monitor/clip";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import type { VideoMoment } from "@/lib/monitor/video";
 
 /**
  * "Clip this speech": opens the speech's moment in the plenary video (± 20 s) as a new Digestor session, after a
- * confirm dialog, then goes to it. Shown only with `MONITOR_CLIP_ENABLED=true` (`SpeechVideo` says why otherwise).
+ * confirm dialog that states the estimated cost, then goes to it. Shown only with `MONITOR_CLIP_ENABLED=true` (`SpeechVideo` says why otherwise).
  */
 export function ClipSpeech({ locale, speechKey, video }: { locale: MonitorLocale; speechKey: string; video: VideoMoment }) {
   const router = useRouter();
@@ -44,6 +44,7 @@ export function ClipSpeech({ locale, speechKey, video }: { locale: MonitorLocale
         onOpenChange={setOpen}
         title={tm(locale, "clip.confirmTitle")}
         description={minutes === 1 ? tm(locale, "clip.confirmBodyOne") : tm(locale, "clip.confirmBody", { minutes })}
+        estimate={clipCostText(locale, video)}
         actionLabel={tm(locale, "clip.confirmAction")}
         busyLabel={tm(locale, "clip.starting")}
         cancelLabel={tm(locale, "clip.cancel")}

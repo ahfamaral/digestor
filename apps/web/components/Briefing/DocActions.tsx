@@ -86,7 +86,7 @@ export function DocActions({
             size="sm"
             value={tr.readIn}
             onValueChange={tr.pick}
-            className="w-auto max-w-36"
+            className="w-auto max-w-full shrink-0"
             options={[
               { value: "", label: language ? t("preview.readInOriginal", { language: languageName(language) }) : t("preview.readInOriginalUnknown") },
               ...offered.map((l) => ({ value: l.code as string, label: l.label, lang: l.code as string })),

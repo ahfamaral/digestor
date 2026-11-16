@@ -153,7 +153,7 @@ describe("parseFilters and filtersToQuery", () => {
 describe("clipCellText", () => {
   it("summarises a row's clips", () => {
     expect(clipCellText(row({ stage: "transcribing" }))).toBe("—");
-    expect(clipCellText(row())).toBe("none yet");
+    expect(clipCellText(row())).toBe("—");
     expect(clipCellText(row({ clipCount: 8, renderedClips: 1 }))).toBe("8 · 1 rendered");
     expect(clipCellText(row({ clipCount: 1 }))).toBe("1");
   });

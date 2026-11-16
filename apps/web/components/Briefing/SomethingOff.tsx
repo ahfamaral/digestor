@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { PROFILES, type ProfileId } from "@digestor/core";
+import { PROFILES, estimateReanalysisUsd, type ProfileId } from "@digestor/core";
+import { aboutUsd } from "@/lib/cost";
 import { ReportProblem, type Target } from "@/components/ReportProblem";
 import { Dropdown } from "@/components/Dropdown";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { t } from "@/lib/i18n";
  */
 export function SomethingOff({
   sessionId,
+  durationMs,
   profile,
   targets,
   reanalyzeOpen,
@@ -24,6 +26,8 @@ export function SomethingOff({
   onStarted,
 }: {
   sessionId: string;
+  /** The video's length: the re-analysis estimate. */
+  durationMs: number;
   profile: ProfileId;
   targets: Target[];
   reanalyzeOpen: boolean;
@@ -60,6 +64,7 @@ export function SomethingOff({
         open={reanalyzeOpen}
         onOpenChange={onReanalyzeOpenChange}
         sessionId={sessionId}
+        durationMs={durationMs}
         current={profile}
         onStarted={() => {
           setOffOpen(false);
@@ -80,17 +85,19 @@ export function SomethingOff({
   );
 }
 
-/** "Back to context check": choose the profile and confirm a new AI pass (POST reanalyze). */
+/** "Back to context check": choose the profile and confirm a new AI pass (POST reanalyze), with its estimated cost (analysis only). */
 function ReanalyzeDialog({
   open,
   onOpenChange,
   sessionId,
+  durationMs,
   current,
   onStarted,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sessionId: string;
+  durationMs: number;
   current: ProfileId;
   onStarted: () => void;
 }) {
@@ -130,7 +137,12 @@ function ReanalyzeDialog({
         <form onSubmit={confirm} className="grid gap-3">
           <DialogHeader>
             <DialogTitle>{t("preview.backToContext")}</DialogTitle>
-            <DialogDescription>{t("preview.reanalyzeBody")}</DialogDescription>
+            <DialogDescription>
+              {t("preview.reanalyzeBody")}
+              {durationMs > 0 && (
+                <span className="mt-2 block font-medium text-foreground">{t("cost.reanalyze", { cost: aboutUsd(estimateReanalysisUsd(durationMs)) })}</span>
+              )}
+            </DialogDescription>
           </DialogHeader>
           <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
             {t("preview.reanalyzeProfile")}

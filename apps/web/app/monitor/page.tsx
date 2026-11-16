@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { countInOffice, speechFacets } from "@digestor/core/server";
-import { AppBar } from "@/components/AppBar";
+import { MonitorAppBar } from "@/components/Monitor/MonitorAppBar";
 import { LandingView } from "@/components/Monitor/LandingView";
 import type { Facets } from "@/components/Monitor/TopicFilters";
 import type { MonitorLocale } from "@/lib/monitor/i18n";
@@ -23,7 +23,7 @@ export async function generateMetadata({ searchParams }: PageProps<"/monitor">):
 export default function MonitorPage({ searchParams }: PageProps<"/monitor">) {
   return (
     <>
-      <AppBar area="monitor" skipTo="content" />
+      <MonitorAppBar />
       <main id="content" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 outline-none sm:px-6">
         <Suspense fallback={null}>
           <MonitorSearch searchParams={searchParams} />

@@ -25,3 +25,5 @@ export * from "./monitorText.ts";
 export * from "./monitorTimeline.ts";
 export * from "./monitorVotes.ts";
 export * from "./rrf.ts";
+export * from "./sessionTitle.ts";
+export * from "./monitorBills.ts";

@@ -92,11 +92,27 @@ export async function runSearch(db: Db, p: LandingParams, translate?: Translate,
   return { ...searched, speeches, rollCalls, meaning: !meaning ? "off" : meaning.ok ? "used" : "unavailable" };
 }
 
+/** With no word match at all, at most this many speeches close in meaning are listed (one page, no pager). */
+export const MEANING_ONLY_MAX = 10;
+
+/**
+ * The fused order of the landing's speeches: the top `FUSE_TOP` word matches and meaning hits by RRF, then the
+ * remaining word matches. With no word match the list is the closest `MEANING_ONLY_MAX` meaning hits only: a query no
+ * speech uses (a typo, gibberish) shouldn't page through a hundred rows that may be unrelated.
+ */
+export function fuseSpeechKeys(wordKeys: string[], meaningKeys: string[]): string[] {
+  if (wordKeys.length === 0) return meaningKeys.slice(0, MEANING_ONLY_MAX);
+  const fused = rrf([wordKeys.slice(0, FUSE_TOP), meaningKeys]).map((r) => r.key);
+  const inFused = new Set(fused);
+  return [...fused, ...wordKeys.slice(FUSE_TOP).filter((k) => !inFused.has(k))];
+}
+
 /**
  * Word and meaning results as one list: the top `FUSE_TOP` of each (meaning hits through the same filters) fused by
  * Reciprocal Rank Fusion, then the remaining word matches in word order; paged over that list, so a page never
  * repeats or skips a speech. Rows only the meaning search found are marked `byMeaning` and counted apart
  * (`meaningOnly`): interleaved by RRF (measured better than after the word matches), but never counted as matches.
+ * No word match at all: only the closest `MEANING_ONLY_MAX` (`fuseSpeechKeys`).
  */
 export async function hybridSpeeches(
   db: Db, a: { terms: string[]; phrase?: string; filters: SpeechFilters; meaningKeys: string[]; limit: number; offset: number },
@@ -105,9 +121,7 @@ export async function hybridSpeeches(
     speechKeysByWords(db, { terms: a.terms, phrase: a.phrase, filters: a.filters, limit: ALL_WORD_KEYS }),
     filterSpeechKeys(db, a.meaningKeys.slice(0, FUSE_TOP), a.filters),
   ]);
-  const fused = rrf([words.keys.slice(0, FUSE_TOP), meaning]).map((r) => r.key);
-  const inFused = new Set(fused);
-  const list = [...fused, ...words.keys.slice(FUSE_TOP).filter((k) => !inFused.has(k))];
+  const list = fuseSpeechKeys(words.keys, meaning);
   const pageKeys = list.slice(a.offset, a.offset + a.limit);
   const wordKeys = new Set(words.keys);
   const rows = await speechesByKeys(db, pageKeys, {}, { terms: a.terms });

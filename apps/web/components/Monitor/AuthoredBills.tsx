@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { MemberBill } from "@digestor/core/server";
 import { formatCount, formatDay, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref, keptBy, MAX_QUERY, type DeputyParams } from "@/lib/monitor/params";
-import { billTypeName } from "@/lib/monitor/billTypes";
+import { billRowLabel, billTypeName } from "@/lib/monitor/billTypes";
 import { billUrl, type RecordMeaning, type Searched } from "@/lib/monitor/search";
 import { cn } from "@/lib/utils";
 import { ExactBox } from "./ExactBox";
@@ -18,7 +18,6 @@ import { Section } from "./Section";
 export const BILL_PAGE = 20;
 /** Type filters and page links land on the list's heading instead of the top of the page. */
 const BILLS = "bills";
-const label = (b: MemberBill) => (b.year ? `${b.type} ${b.number}/${b.year}` : `${b.type} ${b.number}`);
 
 /** A type code with its official name on hover (the "What the codes mean" list says it for touch and screen readers). */
 const Code = ({ code }: { code: string }) => {
@@ -147,12 +146,12 @@ export function AuthoredBills({
           {bills.rows.map((b) => (
             <li key={b.id} className="grid gap-1 px-4 py-3 text-sm">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <ExternalLink href={billUrl(b.id)} className="font-semibold">{label(b)}</ExternalLink>
+                <ExternalLink href={billUrl(b.id)} className="font-semibold">{billRowLabel(locale, b)}</ExternalLink>
                 <time dateTime={b.presentedAt} className="font-mono text-xs text-muted-foreground">{formatDay(b.presentedAt.slice(0, 10), locale)}</time>
                 {!b.firstAuthor && <span className="text-xs text-muted-foreground">{tm(locale, "bills.coAuthor")}</span>}
                 {b.byMeaning && <ByMeaning locale={locale} />}
               </div>
-              {b.summary && <p lang="pt-BR" className="break-words">{b.summary}</p>}
+              {b.summary ? <p lang="pt-BR" className="break-words">{b.summary}</p> : <p className="text-muted-foreground">{tm(locale, "bills.noSummary")}</p>}
             </li>
           ))}
         </Section>

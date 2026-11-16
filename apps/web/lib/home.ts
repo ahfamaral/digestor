@@ -174,7 +174,7 @@ export function filterRows(rows: HomeRow[], f: HomeFilters, now: Date): HomeRow[
 
 /** The Clips cell: "—" before the briefing, then "none yet", "1", "8 · 1 rendered". */
 export function clipCellText(row: HomeRow): string {
-  if (row.stage !== "ready") return "—";
-  if (row.clipCount === 0) return t("home.clipsNone");
+  // One empty value whether the session is still on its way or has no clips yet.
+  if (row.stage !== "ready" || row.clipCount === 0) return "—";
   return row.renderedClips > 0 ? t("home.clipsRendered", { n: row.clipCount, r: row.renderedClips }) : String(row.clipCount);
 }

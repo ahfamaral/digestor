@@ -33,19 +33,22 @@ const wordsOf = (stem: string): Word[] =>
   }));
 
 const none = { value: null, source: null, evidence: null };
-function card(profile: "interview" | "trial", summary: string, participants: ContextCard["participants"] = []): ContextCard {
+function card(profile: "interview" | "trial", summary: string, participants: ContextCard["participants"] = [], title: string | null = null): ContextCard {
   return {
-    language: none, profile: { value: profile, confidence: 0.9, evidence: "x" }, title: none, summary, setting: none,
+    language: none, profile: { value: profile, confidence: 0.9, evidence: "x" }, title: title === null ? none : { value: title, source: "video", evidence: title }, summary, setting: none,
     dateOrYear: { value: "2026", source: "video", evidence: "2026" }, participants, sufficient: true, openQuestions: [],
   };
 }
 
-async function video(title: string, opts: { stem?: string; profile?: "interview" | "trial"; summary?: string; participants?: ContextCard["participants"] } = {}) {
+async function video(
+  title: string,
+  opts: { stem?: string; profile?: "interview" | "trial"; summary?: string; participants?: ContextCard["participants"]; cardTitle?: string } = {},
+) {
   const profile = opts.profile ?? "interview";
   const s = await createSession(db, { title, source: "upload" });
   await updateSession(db, s.id, { stage: "ready", language: "en", durationMs: 120_000 });
   await saveTranscript(db, s.id, { language: "en", languageConfidence: 1, durationMs: 120_000, words: wordsOf(opts.stem ?? "w") });
-  await saveContextCard(db, s.id, card(profile, opts.summary ?? `${title} summary.`, opts.participants), 1);
+  await saveContextCard(db, s.id, card(profile, opts.summary ?? `${title} summary.`, opts.participants, opts.cardTitle ?? null), 1);
   const v = await startAnalysisVersion(db, s.id, { profile, reason: "initial", models: {}, promptVersions: {} });
   await completeAnalysisVersion(db, v.id);
   return s;
@@ -201,8 +204,8 @@ describe("runLibraryAsk", () => {
     expect(route.user).toContain("Speaker A testifies.");
 
     const system = llm.calls[0]!.system;
-    expect(system).toContain(`S1: "Debate"`);
-    expect(system).toContain(`S2: "Trial"`);
+    expect(system).toContain(`S1 (cite as [S1 hh:mm:ss]), title: "Debate"`);
+    expect(system).toContain(`S2 (cite as [S2 hh:mm:ss]), title: "Trial"`);
     expect(system).toContain("A = probably Ana Debatedora, not confirmed");
     expect(system).not.toContain("Maria Silva");
     expect(system).not.toContain("Old Card Name");
@@ -221,6 +224,42 @@ describe("runLibraryAsk", () => {
     ];
     expect(stored).toMatchObject({ status: "done", sources });
     expect(stored?.text).toContain("[S1 00:01:01]");
+  });
+
+  it("names videos by a human title, and tells the model to keep labels and speaker letters out of the answer", async () => {
+    const a = await video("globo-debate-lula-flavio", {
+      cardTitle: "Debate na TV Globo entre Lula e Flávio",
+      summary: "A TV debate.",
+      participants: [{ speakerId: "B", name: none, role: { value: "moderator", source: "video", evidence: "x" }, affiliation: none }],
+    });
+    const t = await video("trial_day_3", {
+      profile: "trial",
+      cardTitle: "Maria Silva on trial, day 3",
+      summary: "Day 3 of a trial.",
+      participants: [{ speakerId: "A", name: { value: "Maria Silva", source: "video", evidence: "Maria Silva" }, role: none, affiliation: none }],
+    });
+    const msg = await question("What was said?");
+    const { deps, router, llm } = depsFor({ indexed: [a.id, t.id], picks: [pick(a.id), pick(t.id)], answer: "The moderator asked [S1 00:01:00]." });
+    await runLibraryAsk(deps, msg.id);
+
+    const route = router.calls.find((x) => x.name === "route_question")!;
+    expect(route.user).toContain(`title: "Debate na TV Globo entre Lula e Flávio"`);
+    expect(route.user).not.toContain("globo-debate-lula-flavio");
+    expect(route.user).not.toContain("Maria Silva"); // the sensitive card's title is scrubbed too
+    expect(route.user).toContain(`title: "Speaker A on trial, day 3"`);
+
+    const system = llm.calls[0]!.system;
+    expect(system).toContain(`S1 (cite as [S1 hh:mm:ss]), title: "Debate na TV Globo entre Lula e Flávio"`);
+    expect(system).not.toContain("globo-debate-lula-flavio");
+    expect(system).not.toContain("Maria Silva");
+    expect(system).toContain("B = moderator"); // a role for a speaker without a name
+    expect(system).toMatch(/never write S1, S2, … anywhere else/);
+    expect(system).toMatch(/never mention speaker letters/);
+    expect(system).toContain(`or say "a speaker"`);
+    expect(system).not.toContain(`"Speaker A in S2"`);
+
+    const stored = await getLibraryAskMessage(db, msg.id);
+    expect(stored?.sources?.map((x) => x.title)).toEqual(["Debate na TV Globo entre Lula e Flávio", "Speaker A on trial, day 3"]);
   });
 
   it("verifies each cited session against its own transcript and marks what it couldn't confirm", async () => {
@@ -245,7 +284,8 @@ describe("runLibraryAsk", () => {
     expect(forB.user).toContain("beta140");
     expect(forB.user).not.toContain("alpha");
     const stored = await getLibraryAskMessage(db, msg.id);
-    expect(stored?.text).toContain(`${COULDNT_CONFIRM}Beta denied it [S2 00:01:10].`);
+    expect(stored?.text).toContain(`${COULDNT_CONFIRM}Beta denied it`);
+    expect(stored?.text.split("\n").at(-1)).toBe(`${COULDNT_CONFIRM}Beta denied it`);
     expect(stored?.text).not.toContain(`${COULDNT_CONFIRM}Alpha`);
     expect(stored?.toolCalls).toEqual([
       expect.objectContaining({ name: "verify_answer", ok: false, args: expect.objectContaining({ sessions: 2, unsupported: 1, checked: 1 }) }),
@@ -266,7 +306,7 @@ describe("runLibraryAsk", () => {
       answer: "Nobody said much.",
     });
     await runLibraryAsk(deps, msg.id);
-    expect(llm.calls[0]!.system).toMatch(/S2: "B"[\s\S]*Search isn't available for this video/);
+    expect(llm.calls[0]!.system).toMatch(/S2 \(cite as \[S2 hh:mm:ss\]\), title: "B"[\s\S]*Search isn't available for this video/);
     expect(router.calls.filter((x) => x.name === "verify_claims")).toHaveLength(0);
     expect(await getLibraryAskMessage(db, msg.id)).toMatchObject({ status: "done", text: "Nobody said much.", toolCalls: [] });
   });

@@ -22,8 +22,13 @@ export interface BriefingFilters {
 }
 
 const ALL_LEVELS: Granularity[] = ["exchange", "passage", "punchline"];
+/**
+ * The levels ticked when the URL says nothing: Exchanges and Passages. Punchlines are many (hundreds in a long
+ * interview) and nest inside the passages, so they start unticked; approved punchlines still show (R23).
+ */
+export const DEFAULT_LEVELS: readonly Granularity[] = ["exchange", "passage"];
 
-export const DEFAULT_FILTERS: BriefingFilters = { levels: [...ALL_LEVELS], speaker: null, person: null, minRelevance: 0, types: [], show: "open" };
+export const DEFAULT_FILTERS: BriefingFilters = { levels: [...DEFAULT_LEVELS], speaker: null, person: null, minRelevance: 0, types: [], show: "open" };
 /** "Show hidden": every approved moment, nothing else narrowing the list. */
 export const SHOW_HIDDEN_FILTERS: BriefingFilters = { ...DEFAULT_FILTERS, show: "approved" };
 
@@ -161,7 +166,8 @@ export function groupByTopic<T extends TopicSpan>(views: MomentView[], topics: T
 /** The filters as a query string without `?` (defaults omitted): `lv=passage&s=B&r=40&t=heated,laughter&show=all`. */
 export function toSearchParams(f: BriefingFilters): string {
   const parts: string[] = [];
-  if (ALL_LEVELS.some((l) => !f.levels.includes(l))) parts.push(`lv=${ALL_LEVELS.filter((l) => f.levels.includes(l)).join(",")}`);
+  const levels = ALL_LEVELS.filter((l) => f.levels.includes(l));
+  if (levels.join(",") !== DEFAULT_LEVELS.join(",")) parts.push(`lv=${levels.join(",")}`);
   if (f.speaker !== null) parts.push(`s=${encodeURIComponent(f.speaker)}`);
   if (f.person !== null) parts.push(`p=${encodeURIComponent(f.person)}`);
   if (f.minRelevance !== DEFAULT_FILTERS.minRelevance) parts.push(`r=${f.minRelevance}`);
@@ -188,7 +194,7 @@ export function fromSearchParams(params: { get(name: string): string | null }, k
   ];
   const show = SHOW_FILTERS.find((x) => x === params.get("show"));
   return {
-    levels: lv.length > 0 ? lv : [...ALL_LEVELS],
+    levels: lv.length > 0 ? lv : [...DEFAULT_LEVELS],
     speaker: !person && s && (!known.speakers || known.speakers.includes(s)) ? s : DEFAULT_FILTERS.speaker,
     person,
     minRelevance: relevance >= 0 && relevance <= 100 ? relevance : DEFAULT_FILTERS.minRelevance,

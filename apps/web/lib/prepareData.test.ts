@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MomentChecks } from "@digestor/core";
-import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll, sharedValue, applyToAll, languageTargets, clipStatus, insideClip, withOpen } from "./prepareData";
+import { mergePairs, approvalDismissed, undoStep, checkWarnings, defaultCredit, subtitleLanguages, toClipView, toTrackView, checksStatus, checksToPoll, sharedValue, applyToAll, languageTargets, clipStatus, insideClip, withOpen, noSubtitlesInVideo } from "./prepareData";
 
 const clean: MomentChecks = {
   argumentComplete: true, continuesWith: null, unansweredQuestion: false, contextRisk: null, reportedSpeech: false, interpreter: false,
@@ -238,5 +238,16 @@ describe("withOpen", () => {
   it("opens the card even when it was closed by hand, and leaves the others alone", () => {
     expect(withOpen({ a: false, b: false }, "a")).toEqual({ a: true, b: false });
     expect(withOpen({}, "c")).toEqual({ c: true });
+  });
+});
+
+describe("noSubtitlesInVideo", () => {
+  it("is true with no tracks, or only drafts that aren't burned in", () => {
+    expect(noSubtitlesInVideo([])).toBe(true);
+    expect(noSubtitlesInVideo([{ burnStatus: "none", status: "ready" }])).toBe(true);
+  });
+  it("is false once a language is put in the video, or a track is out of date", () => {
+    expect(noSubtitlesInVideo([{ burnStatus: "none", status: "ready" }, { burnStatus: "queued", status: "ready" }])).toBe(false);
+    expect(noSubtitlesInVideo([{ burnStatus: "none", status: "outdated" }])).toBe(false);
   });
 });

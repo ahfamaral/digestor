@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { LANGUAGES, type ClipFormat } from "@digestor/core";
+import { LANGUAGES, estimateTranslationUsd, type ClipFormat } from "@digestor/core";
+import { aboutUsd } from "@/lib/cost";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { FORMATS } from "./FormatPicker";
 import { applyToAll, languageTargets, sharedValue, subtitleLanguages, type SharedKey } from "@/lib/prepareData";
 import { languageName, t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -15,6 +17,8 @@ export interface ForAllClip {
   languages: string[];
   /** The video was removed (R30): the clip can't change any more. */
   frozen: boolean;
+  /** The clip's length: the translation estimate when a language is added to all clips. */
+  lengthMs?: number;
 }
 
 /** What the strip asks of the list: set one value on these clips, in sequence; resolves how many failed. */
@@ -50,7 +54,11 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
   const options = subtitleLanguages(originalLanguage, []).filter((o) => languageTargets(clips, o.code).length > 0);
   const chosen = options.some((o) => o.code === lang) ? lang : (options[0]?.code ?? "");
 
-  const label = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? languageName(code);
+  // The same names as each clip's Subtitles list: the video's own language reads "English (original)".
+  const label = (code: string) => {
+    const name = LANGUAGES.find((l) => l.code === code)?.label ?? languageName(code);
+    return code === originalLanguage ? t("prepare.original", { language: name }) : name;
+  };
 
   function ask(key: SharedKey | "language", value: string) {
     setSummary("");
@@ -74,6 +82,13 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
     if (pending.kind === "credit") setCreditDraft(null);
   }
 
+  /** Translating a language into these clips: priced by their total length; the video's own language is free. */
+  function languageCost(run: ForAllRun): string {
+    if (run.value === originalLanguage) return t("cost.subtitleOriginal") + ".";
+    const ms = clips.filter((c) => run.ids.includes(c.id)).reduce((sum, c) => sum + (c.lengthMs ?? 0), 0);
+    return t("cost.subtitleTranslateAll", { cost: aboutUsd(estimateTranslationUsd(ms)) });
+  }
+
   const n = pending?.ids.length ?? 0;
   const kept = all - n;
   const keptText = (m: number, one: "prepare.allKeptOne" | "prepare.allConfirmLanguageKeptOne", many: "prepare.allKept" | "prepare.allConfirmLanguageKept") =>
@@ -93,7 +108,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
     <section aria-labelledby="for-all-h" className="mb-4 rounded-xl border border-border bg-white p-3 sm:p-4">
       <h2 id="for-all-h" className="text-[15px] font-bold">{t("prepare.allTitle")}</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">{t("prepare.allHelp")}</p>
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
+      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,3fr)_auto_minmax(0,2fr)]">
         <div>
           <label htmlFor="all-credit" className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             {t("prepare.allCredit")}
@@ -111,7 +126,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
                   if (creditValue.trim() !== (credit.value ?? "")) ask("credit", creditValue);
                 }
               }}
-              className={cn(FIELD, "flex-1")}
+              className={cn(FIELD, "min-w-0 flex-1")}
             />
             <button
               type="button"
@@ -127,20 +142,24 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
         <div>
           <h3 id="all-format-h" className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t("prepare.allFormat")}</h3>
           <div role="group" aria-labelledby="all-format-h" className="inline-flex rounded-lg border border-border bg-white p-0.5">
-            {(["16:9", "9:16"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={format.value === f && format.differs.length === 0}
-                onClick={() => ask("format", f)}
-                className={cn(
-                  "inline-flex h-8 min-w-12 items-center justify-center rounded-md px-2.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                  format.value === f && format.differs.length === 0 ? "bg-foreground text-white" : "text-foreground hover:bg-muted",
-                )}
-              >
-                {f}
-              </button>
-            ))}
+            {FORMATS.map(({ id: f, label, hint }) => {
+              const on = format.value === f && format.differs.length === 0;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => ask("format", f)}
+                  className={cn(
+                    "inline-flex h-8 min-w-12 items-center justify-center gap-1 rounded-md px-2.5 text-xs font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                    on ? "bg-foreground text-white" : "text-foreground hover:bg-muted",
+                  )}
+                >
+                  {t(label)}
+                  <span className={cn("font-normal", on ? "text-white/75" : "text-muted-foreground")}>{t(hint)}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
         <div>
@@ -150,7 +169,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
           <div className="flex gap-2">
             <select id="all-language" value={chosen} disabled={options.length === 0} onChange={(e) => setLang(e.target.value)} className={cn(FIELD, "flex-1")}>
               {options.map((o) => (
-                <option key={o.code} value={o.code}>{o.label}</option>
+                <option key={o.code} value={o.code}>{label(o.code)}</option>
               ))}
             </select>
             <button type="button" aria-label={t("prepare.allAddLabel")} disabled={!chosen} onClick={() => ask("language", chosen)} className={ACT}>
@@ -171,6 +190,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
           }}
           title={n === 1 ? t("prepare.allConfirmTitleOne") : t("prepare.allConfirmTitle", { n })}
           description={description}
+          estimate={pending.kind === "language" && progress === null ? languageCost(pending) : undefined}
           actionLabel={t("prepare.allAction")}
           busyLabel={t(pending.kind === "credit" ? "prepare.allBusyCredit" : pending.kind === "format" ? "prepare.allBusyFormat" : "prepare.adding")}
           onConfirm={confirm}

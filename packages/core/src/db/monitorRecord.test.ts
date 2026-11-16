@@ -6,7 +6,7 @@ import { replaceSpeechWindow, replaceVotes, upsertMembers, upsertRollCalls, type
 import {
   listBlocs, replaceBlocs,
   dropMisfiledSpeeches, fillSpeechParties, getHistory, getPresence, getRollCall, listMemberBills, memberBillIds, membersNeedingProfile, replaceBillAuthors, replaceHistory,
-  replaceOrientations, replacePresence, setProfile, upsertBills, upsertSessions, type HistoryInput,
+  replaceOrientations, replacePresence, setProfile, upsertBills, upsertSessions, mainBillsWithoutLabel, setMainBillLabels, type HistoryInput,
 } from "./monitorRecord.ts";
 
 let db: Db;
@@ -149,6 +149,27 @@ describe("presence, bills and roll calls", () => {
     expect(rcp.total).toBe(1);
     expect(rcp.byType).toHaveLength(2);
     expect(rcp.rows[0]).toMatchObject({ type: "RCP", number: 1, year: 2026, presentedAt: "2026-02-02T09:54" });
+  });
+
+  it("an item numbered inside its main bill carries the main bill's label; a fetched label survives the nightly upsert", async () => {
+    const ids = await upsertMembers(db, [member(204407, "Fernanda Melchionna")]);
+    const f = ids.get(204407)!;
+    const prl = { id: 2651398, type: "PRL", number: 1, year: 0, summary: "Parecer da Relatora", presentedAt: "2026-11-09T10:53", mainBillId: 2636921, mainBillLabel: null };
+    const sbr = { id: 2651653, type: "SBR", number: 2, year: 0, summary: "", presentedAt: "2026-11-09T14:47", mainBillId: 2350914, mainBillLabel: "PL 9/2024" };
+    const pl = { id: 3, type: "PL", number: 9, year: 2026, summary: "x", presentedAt: "2026-11-01T10:00", mainBillId: 2636921, mainBillLabel: null };
+    await upsertBills(db, [prl, sbr, pl]);
+    await replaceBillAuthors(db, [prl.id, sbr.id, pl.id], [prl, sbr, pl].map((b) => ({ billId: b.id, memberId: f, firstAuthor: true })));
+    // Only year-0 items are asked for; a dated bill attached to another keeps its own label.
+    expect(await mainBillsWithoutLabel(db, 10)).toEqual([2636921]);
+    await setMainBillLabels(db, [{ mainBillId: 2636921, label: "PL 1761/2025" }]);
+    expect(await mainBillsWithoutLabel(db, 10)).toEqual([]);
+    await upsertBills(db, [prl]); // the nightly file again, without the label
+    const rows = (await listMemberBills(db, f, {})).rows;
+    expect(rows.map((r) => [r.id, r.mainBillLabel])).toEqual([[2651653, "PL 9/2024"], [2651398, "PL 1761/2025"], [3, null]]);
+    // An id the Câmara doesn't know ("") reads as no label.
+    await upsertBills(db, [{ ...prl, mainBillId: 7 }]);
+    await setMainBillLabels(db, [{ mainBillId: 7, label: "" }]);
+    expect((await listMemberBills(db, f, {})).rows.find((r) => r.id === prl.id)!.mainBillLabel).toBeNull();
   });
 
   it("listMemberBills: words in the summary (accents aside, terms OR-ed) and the year presented, with the type filter", async () => {

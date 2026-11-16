@@ -1,14 +1,16 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { OWNER_ID } from "@digestor/core";
-import { listClipPreviews, listSessionSummaries } from "@digestor/core/server";
+import { OWNER_ID, sessionSpending, totalSpending } from "@digestor/core";
+import { getContextCard, listClipPreviews, listSessionSummaries, listSpendingRows } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { HomeTable, type ClipPreviewView } from "@/components/Home/HomeTable";
 import { LibraryAsk } from "@/components/Home/LibraryAsk";
 import { filtersToQuery, parseFilters, type HomeRow } from "@/lib/home";
+import { displayTitle, looksLikeFileName } from "@/lib/sessionTitle";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
+import { spentSoFarText } from "@/lib/cost";
 
 const SESSION_LIMIT = 200;
 
@@ -42,12 +44,25 @@ async function Sessions({ searchParams }: { searchParams: PageProps<"/">["search
   await connection();
   const { db } = getServer();
   const summaries = await listSessionSummaries(db, OWNER_ID, SESSION_LIMIT);
-  const previews = await listClipPreviews(db, OWNER_ID, summaries.map((s) => s.id));
-  const rows: HomeRow[] = summaries.map((s) => ({ ...s, createdAt: s.createdAt.toISOString(), lastActivityAt: s.lastActivityAt.toISOString() }));
+  const [previews, contextTitles, spending] = await Promise.all([
+    listClipPreviews(db, OWNER_ID, summaries.map((s) => s.id)),
+    // Only rows whose title is a file name ("globo-debate-lula-flavio") read their context check's title.
+    Promise.all(
+      summaries.filter((s) => looksLikeFileName(s.title)).map(async (s) => [s.id, (await getContextCard(db, s.id))?.card.title.value ?? null] as const),
+    ).then((pairs) => new Map(pairs)),
+    // "Spent so far": every session's recorded analysis dollars plus the estimates for what isn't recorded.
+    listSpendingRows(db).then((rows) => totalSpending(rows.map(sessionSpending))),
+  ]);
+  const rows: HomeRow[] = summaries.map((s) => ({
+    ...s,
+    title: displayTitle(s.title, contextTitles.get(s.id)),
+    createdAt: s.createdAt.toISOString(),
+    lastActivityAt: s.lastActivityAt.toISOString(),
+  }));
   const clips: Record<string, ClipPreviewView[]> = {};
   for (const c of previews) {
     (clips[c.sessionId] ??= []).push({ ...c, thumbUrl: c.thumbKey && c.momentId ? `/api/files/${c.sessionId}/thumbs/${c.momentId}.jpg` : null });
   }
   const initial = parseFilters(await searchParams);
-  return <HomeTable key={filtersToQuery(initial)} rows={rows} clips={clips} now={new Date().toISOString()} initial={initial} limit={SESSION_LIMIT} />;
+  return <HomeTable key={filtersToQuery(initial)} rows={rows} clips={clips} now={new Date().toISOString()} initial={initial} limit={SESSION_LIMIT} spent={spending.bestUsd > 0 ? spentSoFarText(spending) : null} />;
 }

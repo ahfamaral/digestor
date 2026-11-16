@@ -30,13 +30,15 @@ const STATUS_CHIPS: { id: StatusFilter; key: Parameters<typeof t>[0] }[] = [
 ];
 
 /** The Sessions table: needs-you strip, type tabs, filters (kept in the URL), and one row per video with its clips. */
-export function HomeTable({ rows, clips, now, initial, limit }: {
+export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
   rows: HomeRow[];
   clips: Record<string, ClipPreviewView[]>;
   now: string;
   initial: HomeFilters;
   /** The most videos the page loads; a list that hits it says so. */
   limit: number;
+  /** "Spent so far" over every session (recorded where stored, estimated elsewhere); null when nothing was spent. */
+  spent?: { total: string; detail: string } | null;
 }) {
   const [f, setF] = useState<HomeFilters>(initial);
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -145,8 +147,14 @@ export function HomeTable({ rows, clips, now, initial, limit }: {
           </button>
         ))}
       </div>
+      {spent && (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          {spent.total} <span aria-hidden>·</span> {spent.detail}
+        </p>
+      )}
 
-      <nav aria-label={t("home.tabsLabel")} className="flex flex-wrap gap-1 border-b border-border text-sm">
+      {/* One row that scrolls sideways on a narrow screen (never wraps); the bottom line is a shadow so the scroll box doesn't clip the active tab's rule. */}
+      <nav aria-label={t("home.tabsLabel")} className="flex gap-1 overflow-x-auto text-sm shadow-[inset_0_-1px_0_var(--border)]">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -154,7 +162,7 @@ export function HomeTable({ rows, clips, now, initial, limit }: {
             aria-pressed={f.type === tab.id}
             onClick={() => update({ type: tab.id })}
             className={cn(
-              "-mb-px border-b-2 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "shrink-0 border-b-2 px-3 py-2 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
               f.type === tab.id ? "border-foreground font-semibold" : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
@@ -211,7 +219,7 @@ export function HomeTable({ rows, clips, now, initial, limit }: {
           {/* Wide screens: a table. It scrolls sideways inside its own box when the page narrows (the Ask across videos panel). */}
           <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-border bg-white md:block">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+            <thead className="bg-muted/40 text-left text-xs whitespace-nowrap text-muted-foreground">
               <tr>
                 <th scope="col" className="w-8 px-2 py-2"><span className="sr-only">{t("home.colToggle")}</span></th>
                 <th scope="col" className="px-2 py-2 font-medium">{t("home.colVideo")}</th>
@@ -228,14 +236,14 @@ export function HomeTable({ rows, clips, now, initial, limit }: {
                   <tr className="border-t border-border align-middle">
                     <td className="px-2 py-2">{toggle(r)}</td>
                     <td className="px-2 py-2">
-                      <div className="max-w-64 truncate lg:max-w-80">{title(r)}</div>
+                      <div className="max-w-56 truncate lg:max-w-64">{title(r)}</div>
                       <div className="text-xs text-muted-foreground">{subLine(r)}</div>
                     </td>
                     <td className="px-2 py-2">
                       {typeLabel(r) && <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs whitespace-nowrap">{typeLabel(r)}</span>}
                     </td>
                     <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{addedDate(r.createdAt)}</td>
-                    <td className="px-2 py-2">{where(r)}</td>
+                    <td className="min-w-32 px-2 py-2">{where(r)}</td>
                     <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{clipCellText(r)}</td>
                     <td className="px-2 py-2">{links(r)}</td>
                   </tr>

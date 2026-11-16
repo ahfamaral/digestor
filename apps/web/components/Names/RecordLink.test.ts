@@ -84,7 +84,7 @@ describe("the suggestion", () => {
 
   it("reads the sitting with its date and offers both buttons", () => {
     const out = html(rec);
-    expect(out).toContain("This looks like the Bundestag sitting of 16/10/2026.");
+    expect(out).toContain("This looks like the Bundestag sitting of 16 Oct 2026.");
     expect(out).toContain(">Use this record<");
     expect(out).toContain(">Not this one<");
   });

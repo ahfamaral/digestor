@@ -48,6 +48,8 @@ export function fakeCamaraMonitorFetch(overrides: Record<string, unknown> = {}) 
     if (bloc) return ok(monitorFixture(`blocos-${bloc[1]}-partidos.recorded.json`));
     if (p === "/api/v2/eventos/82635") return ok(monitorFixture("evento-82635.recorded.json"));
     if (p === "/api/v2/proposicoes/2462009") return ok(monitorFixture("proposicao-2462009.recorded.json"));
+    // PL 4700/2025, the main bill of the bills excerpt's EMC-A 2 (2652548, `ano` 0); recorded 2026-11-16.
+    if (p === "/api/v2/proposicoes/2563226") return ok(monitorFixture("proposicao-2563226.recorded.json"));
     if (p === "/api/v2/proposicoes" && q.get("siglaTipo") === "PL" && q.get("ano") === "2024") {
       const n = q.get("numero");
       if (n === "3880" || n === "2942") return ok(monitorFixture(`proposicoes-PL-${n}-2024.recorded.json`));

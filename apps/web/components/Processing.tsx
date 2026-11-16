@@ -7,8 +7,10 @@ import { buildSteps, type StageName } from "@/lib/processingSteps";
 import { foundNoVideo } from "@/lib/media";
 import { WarningNote } from "@/components/WarningNote";
 import { cn } from "@/lib/utils";
-import { t, type MessageKey } from "@/lib/i18n";
+import { languageName, t, type MessageKey } from "@/lib/i18n";
 import { Busy } from "@/components/ui/spinner";
+import { estimateCostUsd, formatLength } from "@digestor/core";
+import { aboutUsd } from "@/lib/cost";
 
 export interface ProgressState {
   stage: StageName;
@@ -17,6 +19,8 @@ export interface ProgressState {
   profile: string | null;
   /** From the live events: false once the worker found no picture. */
   hasVideo?: boolean;
+  /** The video's length once known (from the live events): the cost estimate shows then. */
+  durationMs?: number | null;
 }
 
 const CLOSING: StageName[] = ["awaiting_context", "ready", "failed"];
@@ -63,6 +67,7 @@ export function Processing({
   const noVideo = foundNoVideo({ hasVideo: liveHasVideo, audioOnlyAck });
   const language = state.language;
   const type = eventLabel(state.profile);
+  const durationMs = state.durationMs ?? null;
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-3">
@@ -88,7 +93,7 @@ export function Processing({
             </div>
             {s.key === "transcribing" && s.state === "done" && language && (
               <div className="text-xs text-muted-foreground">
-                {t("processing.language")} <b className="text-foreground">{language}</b>
+                {t("processing.language")} <b className="text-foreground">{languageName(language)}</b>
               </div>
             )}
             {s.key === "understanding" && s.state !== "waiting" && type && (
@@ -105,6 +110,11 @@ export function Processing({
         </div>
       ))}
     </div>
+    {durationMs !== null && durationMs > 0 && (
+      <p className="text-xs text-muted-foreground">
+        {t("cost.processing", { cost: aboutUsd(estimateCostUsd(durationMs, { captions: liveHasVideo && !audioOnlyAck })), length: formatLength(durationMs) })}
+      </p>
+    )}
     </div>
   );
 }

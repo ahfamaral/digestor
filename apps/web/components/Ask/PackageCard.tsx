@@ -10,6 +10,7 @@ import { Busy } from "@/components/ui/spinner";
 import { draftRange, initialPackageDraft, packageDecision, type PackageDraft } from "@/lib/askText";
 import { subtitleLanguages } from "@/lib/prepareData";
 import { t } from "@/lib/i18n";
+import { aboutUsd, packageCostUsd } from "@/lib/cost";
 
 const SELECT =
   "h-8 w-full min-w-0 rounded-md border border-border bg-white px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground";
@@ -217,6 +218,14 @@ export function PackageCard({
           {editError && (
             <p role="alert" className="text-xs text-red-700">
               {editError}
+            </p>
+          )}
+          {!videoRemoved && picked > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {(() => {
+                const usd = packageCostUsd(draft.clips, call.package.clips, draft.subtitles, lang);
+                return usd > 0 ? t("cost.package", { cost: aboutUsd(usd) }) : t("cost.packageFree");
+              })()}
             </p>
           )}
           <div className="flex flex-wrap gap-2">

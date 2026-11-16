@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { getMember, getRollCall, getRollCallTitle } from "@digestor/core/server";
-import { AppBar } from "@/components/AppBar";
+import { MonitorAppBar } from "@/components/Monitor/MonitorAppBar";
 import { RollCallView } from "@/components/Monitor/RollCallView";
 import { backToSearch, deputyHref, fromDeputy, isRollCallId } from "@/lib/monitor/params";
 import { requestLocale } from "@/lib/monitor/server";
@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: PageProps<"/monitor/votacoes/
 export default function RollCallPage({ params, searchParams }: PageProps<"/monitor/votacoes/[id]">) {
   return (
     <>
-      <AppBar area="monitor" skipTo="content" />
+      <MonitorAppBar />
       <main id="content" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 outline-none sm:px-6">
         <Suspense fallback={null}>
           <RollCall params={params} searchParams={searchParams} />

@@ -1,5 +1,5 @@
 import {
-  HIGHLIGHT_TYPES, OWNER_ID, PROFILES, personAt, speakersIn, type BriefingContent, type ContextCard, type HighlightTypeId,
+  HIGHLIGHT_TYPES, OWNER_ID, PROFILES, personAt, sessionSpending, speakersIn, type BriefingContent, type Spending, type ContextCard, type HighlightTypeId,
   type MomentWithHighlights, type ProfileId, type SelectionStatus, type Topic,
 } from "@digestor/core";
 import {
@@ -11,6 +11,7 @@ import { earlierSelections, focusOptions, momentExcerpt, peopleByMoment } from "
 import { loadNames, namesChangedSince } from "./namesServer";
 import { labelText, namedCount, rangeVoices, voiceLabel, whosWhoRows, type NamesData, type Voice, type WhosWhoRow } from "./names";
 import { asProfile, latestFailedAfter, versionNote } from "./preview";
+import { displayTitle } from "./sessionTitle";
 
 /** What the Briefing page (`components/Briefing/Briefing.tsx`) is rendered with; the client imports it as a type only. */
 export interface BriefingProps {
@@ -50,6 +51,8 @@ export interface BriefingProps {
   types: HighlightTypeId[];
   /** Selections left on an earlier analysis version, or null. */
   earlier: { count: number; version: number } | null;
+  /** What this session has cost: estimates, and the LLM dollars its analysis versions recorded (the "Spending" line). */
+  spending: Spending;
 }
 
 /**
@@ -112,7 +115,8 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
   return {
     session: {
       id,
-      title: session.title,
+      // A file name ("globo-debate-lula-flavio") gives way to the context check's title.
+      title: displayTitle(session.title, context?.card.title.value),
       durationMs,
       language: session.language,
       hasVideo: session.hasVideo,
@@ -142,5 +146,6 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
     people: Object.fromEntries([...peopleByMoment(moments, names, words, sensitive)].map(([mid, set]) => [mid, [...set]])),
     types,
     earlier: earlierSelections(byVersion, analysisId),
+    spending: sessionSpending({ durationMs, hasVideo: session.hasVideo, transcribed: transcript !== null, analyses: versions }),
   };
 }

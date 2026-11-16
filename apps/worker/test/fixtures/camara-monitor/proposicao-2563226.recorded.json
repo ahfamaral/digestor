@@ -1,0 +1,46 @@
+{
+ "dados": {
+  "id": 2563226,
+  "uri": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2563226",
+  "siglaTipo": "PL",
+  "codTipo": 139,
+  "numero": 4700,
+  "ano": 2025,
+  "ementa": "Institui o Cadastro Nacional de Protetores de  Animais e dá outras providências.",
+  "dataApresentacao": "2025-09-22T23:37",
+  "uriOrgaoNumerador": null,
+  "statusProposicao": {
+   "dataHora": "2026-07-01T17:58",
+   "sequencia": 18,
+   "siglaOrgao": "CCJC",
+   "uriOrgao": "https://dadosabertos.camara.leg.br/api/v2/orgaos/2003",
+   "uriUltimoRelator": null,
+   "regime": "Ordinário (Art. 151, III, RICD)",
+   "descricaoTramitacao": "Notificacao para Publicação Intermediária",
+   "codTipoTramitacao": "1050",
+   "descricaoSituacao": null,
+   "codSituacao": null,
+   "despacho": "Designado Relator, Dep. Ricardo Ayres (REPUBLIC-TO), para o PL 3847/2025, ao qual esta proposição está apensada.",
+   "url": null,
+   "ambito": "Regimental",
+   "apreciacao": "Proposição Sujeita à Apreciação Conclusiva pelas Comissões - Art. 24 II"
+  },
+  "uriAutores": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2563226/autores",
+  "descricaoTipo": "Projeto de Lei",
+  "ementaDetalhada": "",
+  "keywords": "Criação, Cadastro Nacional de Protetores de Animais (CNPA), identificação, registro, integração, pessoa física, organização da sociedade civil, Organização não governamental (ONG), atuação, proteção animal, defesa dos direitos animais, cuidado, animal, diretrizes.",
+  "uriPropPrincipal": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2542048",
+  "uriPropAnterior": null,
+  "uriPropPosterior": null,
+  "urlInteiroTeor": "https://www.camara.leg.br/proposicoesWeb/prop_mostrarintegra?codteor=3004734",
+  "urnFinal": null,
+  "texto": null,
+  "justificativa": null
+ },
+ "links": [
+  {
+   "rel": "self",
+   "href": "https://dadosabertos.camara.leg.br/api/v2/proposicoes/2563226"
+  }
+ ]
+}

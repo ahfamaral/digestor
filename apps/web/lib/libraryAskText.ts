@@ -48,3 +48,61 @@ export function linkifyCitations(text: string, sources: LibraryAskSource[], live
   pushText(text.slice(last));
   return parts;
 }
+
+/** A block of an answer: a paragraph (its own line breaks kept) or a list made of lines starting "- ", "* " or "• ". */
+export type AnswerBlock = { kind: "text"; text: string } | { kind: "list"; items: string[] };
+
+const LIST_LINE = /^\s*[-*•]\s+(.*)$/;
+
+/**
+ * The answer's paragraphs and lists: paragraphs are split on blank lines; consecutive list lines (blank lines between
+ * them allowed) make one list. Nothing is dropped or reworded.
+ */
+export function answerBlocks(text: string): AnswerBlock[] {
+  const blocks: AnswerBlock[] = [];
+  let para: string[] = [];
+  const flush = () => {
+    const joined = para.join("\n").trim();
+    if (joined) blocks.push({ kind: "text", text: joined });
+    para = [];
+  };
+  for (const line of text.split(/\r?\n/)) {
+    const item = LIST_LINE.exec(line);
+    if (item) {
+      flush();
+      const last = blocks.at(-1);
+      if (last?.kind === "list") last.items.push(item[1]!.trim());
+      else blocks.push({ kind: "list", items: [item[1]!.trim()] });
+    } else if (line.trim() === "") {
+      flush();
+    } else {
+      para.push(line);
+    }
+  }
+  flush();
+  return blocks;
+}
+
+/** A citation with the punctuation that follows it ("." "," ";" ":" "!" "?" ")"), kept on its line and with no space before it. */
+export type GluedPart = LibraryAskPart | (Extract<LibraryAskPart, { kind: "cite" }> & { trailing: string });
+
+/** Moves the punctuation right after a citation (dropping any space before it) onto the citation, so it never starts a line or floats. */
+export function glueCitationPunctuation(parts: LibraryAskPart[]): GluedPart[] {
+  const out: GluedPart[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!;
+    const next = parts[i + 1];
+    if (part.kind === "cite" && next?.kind === "text") {
+      const m = /^\s*([.,;:!?)]+)/.exec(next.value);
+      if (m) {
+        out.push({ ...part, trailing: m[1]! });
+        const rest = next.value.slice(m[0].length);
+        if (rest) out.push({ kind: "text", value: rest });
+        i++;
+        continue;
+      }
+    }
+    out.push(part);
+  }
+  return out;
+}

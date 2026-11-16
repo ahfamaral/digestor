@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stepDone, stepHref } from "./stepLinks";
+import { pastContext, stepDone, stepHref, stepShownDone } from "./stepLinks";
 
 describe("stepHref", () => {
   it("links Briefing, Prepare and Export of a ready session", () => {
@@ -31,5 +31,24 @@ describe("stepDone", () => {
     expect(stepDone("Export", { hasClips: true, allReadyRendered: false })).toBe(false);
     expect(stepDone("Export", { hasClips: true, allReadyRendered: true })).toBe(true);
     expect(stepDone("Export", { hasClips: false, allReadyRendered: true })).toBe(false);
+  });
+});
+
+describe("Context while Processing (the steps after the context check)", () => {
+  const none = { hasClips: false, allReadyRendered: false };
+  it("knows the stages after the context check", () => {
+    expect(pastContext("indexing")).toBe(true);
+    expect(pastContext("naming_speakers")).toBe(true);
+    expect(pastContext("preparing_preview")).toBe(true);
+    expect(pastContext("transcribing")).toBe(false);
+    expect(pastContext("awaiting_context")).toBe(false);
+    expect(pastContext("ready")).toBe(false);
+  });
+  it("ticks Context after the current Processing step once answered", () => {
+    // STEPS: Upload 0, Processing 1, Context 2.
+    expect(stepShownDone("Context", 2, 1, { ...none, contextDone: true })).toBe(true);
+    expect(stepShownDone("Context", 2, 1, none)).toBe(false);
+    expect(stepShownDone("Upload", 0, 1, none)).toBe(true);
+    expect(stepShownDone("Briefing", 3, 1, { ...none, contextDone: true })).toBe(false);
   });
 });

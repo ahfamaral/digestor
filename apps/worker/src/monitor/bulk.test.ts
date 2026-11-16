@@ -60,7 +60,29 @@ describe("toBills", () => {
       id: 2600034, type: "RCP", number: 1, year: 2026,
       summary: expect.stringMatching(/^Requer a criação de Comissão Parlamentar de Inquérito/),
       presentedAt: "2026-02-02T09:54",
+      mainBillId: null, mainBillLabel: null,
     });
+    // EMC-A 2 (`ano` 0) belongs to PL 4700/2025, which this file doesn't hold: the refresh asks the API for its label.
+    expect(rows[2]).toMatchObject({ type: "EMC-A", number: 2, year: 0, mainBillId: 2563226, mainBillLabel: null });
+  });
+
+  it("labels an item numbered inside its main bill when the file holds that bill; a dated bill keeps only the id", () => {
+    const row = (id: string, type: string, numero: string, ano: string, main = "") => ({
+      id, siglaTipo: type, numero, ano, ementa: "", dataApresentacao: "2026-11-09T10:53:04",
+      uriPropPrincipal: main ? `https://dadosabertos.camara.leg.br/api/v2/proposicoes/${main}` : "",
+    });
+    const rows = toBills([
+      row("2636921", "PL", "1761", "2025"),
+      row("2651398", "PRL", "1", "0", "2636921"),
+      row("2651653", "SBR", "2", "0", "2350914"),
+      row("2700000", "PL", "9", "2026", "2636921"),
+    ]);
+    expect(rows.map((r) => [r.id, r.mainBillId, r.mainBillLabel])).toEqual([
+      [2636921, null, null],
+      [2651398, 2636921, "PL 1761/2025"],
+      [2651653, 2350914, null],
+      [2700000, 2636921, null], // an attached bill keeps its own year and label
+    ]);
   });
 });
 

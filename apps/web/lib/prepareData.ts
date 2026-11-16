@@ -161,6 +161,14 @@ export function toTrackView(t: Jsonish<Track>): TrackView {
   };
 }
 
+/**
+ * Whether a clip puts no subtitles in its video: no track asks for a burn-in and none is out of date. Its checklist then
+ * reads "No subtitles in the video" (neutral), not a green "approved for every language".
+ */
+export function noSubtitlesInVideo(tracks: Pick<TrackView, "burnStatus" | "status">[]): boolean {
+  return tracks.every((t) => t.burnStatus === "none" && t.status !== "outdated");
+}
+
 /** A setting the "For all clips" strip can set. */
 export type SharedKey = "credit" | "format";
 

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { distinctiveWords, listMembers } from "@digestor/core/server";
-import { AppBar } from "@/components/AppBar";
+import { MonitorAppBar } from "@/components/Monitor/MonitorAppBar";
 import { DirectoryView } from "@/components/Monitor/DirectoryView";
 import { WordHeat, WordHeatLoading } from "@/components/Monitor/WordHeat";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function DirectoryPage({ searchParams }: PageProps<"/monitor/deputados">) {
   return (
     <>
-      <AppBar area="monitor" skipTo="content" />
+      <MonitorAppBar />
       <main id="content" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 outline-none sm:px-6">
         <Suspense fallback={null}>
           <Directory searchParams={searchParams} />
@@ -47,5 +47,5 @@ async function Directory({ searchParams }: Pick<PageProps<"/monitor/deputados">,
 async function PartyWords({ locale, party }: { locale: MonitorLocale; party: string }) {
   const year = Math.max(...MONITOR_YEARS);
   const result = await distinctiveWords(getServer().db, { party }, { year });
-  return <WordHeat locale={locale} result={result} year={year} party={party} />;
+  return <WordHeat locale={locale} result={result} year={year} party={party} today={new Date().toISOString().slice(0, 10)} />;
 }

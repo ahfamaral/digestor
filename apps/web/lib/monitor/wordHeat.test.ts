@@ -23,4 +23,11 @@ describe("word heat", () => {
     // cells carry a level, never the number
     expect(Object.keys(row[2]!)).toEqual(["month", "level"]);
   });
+
+  it("months after today's are not drawn", () => {
+    expect(yearMonths(2026, "2026-11-16")).toHaveLength(11);
+    expect(yearMonths(2026, "2026-11-16").at(-1)).toBe("2026-11");
+    expect(yearMonths(2026, "2027-01-02")).toHaveLength(12);
+    expect(heatRow([{ month: "2026-03", share: 7.8 }], 2026, "2026-04-30").map((c) => c.level)).toEqual(["none", "none", "muchMore", "none"]);
+  });
 });

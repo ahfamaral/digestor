@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { personAt, exportChecklist, speakersInRange, type Attribution, type Person, type Word } from "@digestor/core";
-import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, personDetail, unconfirmedAcrossClips, visibleWhoRows, splitSpeakerQuestions, unconfirmedBannerText, type NamesData, type WhosWhoRow } from "./names";
+import { unconfirmedVoices, badgeText, evidenceLine, labelText, momentPeople, rangeVoices, voiceLabel, whosWhoRows, rowRange, confirmBody, anonymousBody, conflictText, rangeFields, scopeFields, voiceConfirmBody, reportTargetId, personDetail, unconfirmedAcrossClips, visibleWhoRows, splitSpeakerQuestions, unconfirmedBannerText, readableRecordDate, type NamesData, type WhosWhoRow } from "./names";
 
 const person = (id: string, displayName: string): Person => ({
   id, displayName, fullName: null, kind: "custom", party: null, state: null, role: null, photoUrl: null, officialIds: {},
@@ -53,6 +53,22 @@ describe("momentPeople", () => {
       ["B", "Beto Lima", 4000],
     ]);
     expect(out[0]!.atMs).toBe(4000);
+  });
+});
+
+describe("rangeVoices order", () => {
+  const names: NamesData = { persons, attributions: [] };
+
+  it("lists voices in the order they first speak in the range, not by speaking time", () => {
+    // B opens the exchange, A then speaks longest, B again, C closes (each at least the 3 s that count).
+    const words = [word("B", 0, 3000), word("A", 3000, 15000), word("B", 15000, 19000), word("C", 19000, 23000)];
+    expect(rangeVoices(names, words, { startMs: 0, endMs: 23000 }, false).map((v) => v.speakerId)).toEqual(["B", "A", "C"]);
+    // Inside a range, "first" means first inside it.
+    expect(rangeVoices(names, words, { startMs: 3000, endMs: 23000 }, false).map((v) => v.speakerId)).toEqual(["A", "B", "C"]);
+  });
+
+  it("a range too short to count any voice lists the fallback by label: A, B, C", () => {
+    expect(rangeVoices(names, [], { startMs: 0, endMs: 1000 }, false, ["B", "A", "B"]).map((v) => v.speakerId)).toEqual(["A", "B"]);
   });
 });
 
@@ -474,5 +490,21 @@ describe("visibleWhoRows", () => {
   });
   it("shows every row when no voice is main", () => {
     expect(visibleWhoRows([r("C", false), r("D", false)], { showAll: false }).map((x) => x.speakerId)).toEqual(["C", "D"]);
+  });
+});
+
+describe("readableRecordDate", () => {
+  it("reads a day-first date with the month's name", () => {
+    expect(readableRecordDate("04/11/2026", "bundestag")).toBe("4 Nov 2026");
+    expect(readableRecordDate("21/10/2026", "senado")).toBe("21 Oct 2026");
+    expect(readableRecordDate("30/06/2026")).toBe("30 Jun 2026");
+  });
+  it("reads the US houses month first", () => {
+    expect(readableRecordDate("10/16/2026", "us_house")).toBe("16 Oct 2026");
+    expect(readableRecordDate("11/04/2026", "us_senate")).toBe("4 Nov 2026");
+  });
+  it("keeps anything else as it is", () => {
+    expect(readableRecordDate("2026-10-16", "bundestag")).toBe("2026-10-16");
+    expect(readableRecordDate("31/13/2026", "camara")).toBe("31/13/2026");
   });
 });

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { eq } from "drizzle-orm";
 import { createDb, type Db } from "./client.ts";
-import { completeAnalysisVersion, saveMoments, startAnalysisVersion } from "./analysis.ts";
+import { completeAnalysisVersion, saveMoments, saveTopics, startAnalysisVersion } from "./analysis.ts";
 import { createSession, updateSession, type Session } from "./repo.ts";
 import { sql } from "drizzle-orm";
 import { clipEvents, clips, subtitleTracks } from "./schema.ts";
@@ -55,6 +55,19 @@ describe("personal moments and selections", () => {
     expect(far.granularity).toBe("exchange");
     expect((await listPersonalMoments(db, OWNER, analysisId)).map((m) => m.title).sort()).toEqual(["Huge", "Mine", "Short"]);
     expect(await listPersonalMoments(db, "someone-else", analysisId)).toEqual([]);
+  });
+
+  it("createPersonalMoment puts the moment in the topic holding its start, else the nearest topic", async () => {
+    const [intro, late] = await saveTopics(db, analysisId, [
+      { idx: 0, startMs: 0, endMs: 600_000, title: "Intro", summary: "s" },
+      { idx: 1, startMs: 4_629_065, endMs: 4_811_330, title: "Putin", summary: "s" },
+    ]);
+    const inside = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 4_766_012, endMs: 4_789_042, title: "Late", origin: "ask" });
+    expect(inside.topicId).toBe(late!.id);
+    const gap = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 700_000, endMs: 720_000, title: "Gap", origin: "user" });
+    expect(gap.topicId).toBe(intro!.id);
+    const after = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 5_900_000, endMs: 5_920_000, title: "After", origin: "user" });
+    expect(after.topicId).toBe(late!.id);
   });
 
   it("setSelection upserts and null deletes", async () => {

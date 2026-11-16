@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { formatCount, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { directoryHref, landingHref, MONITOR_YEARS, type LandingParams } from "@/lib/monitor/params";
 import { MAX_QUERY, SEARCH_PAGE, type LandingResult } from "@/lib/monitor/search";
+import { firstVideoRow } from "@/lib/monitor/video";
 import { AskForm } from "./AskRecordView";
 import { DeputyCombobox } from "./DeputyCombobox";
 import { ExactBox } from "./ExactBox";
@@ -49,6 +50,12 @@ export function LandingView({
       ].filter((c) => !!c)
     : [];
   const plusMeaning = meaningOnly > 0 ? ` · ${tm(locale, "search.meaningCount", { n: formatCount(meaningOnly, locale) })}` : "";
+  // no speech uses the words: the line says so and counts only the (at most ten) rows close in meaning
+  const onlyMeaning = speechWords === 0 && meaningOnly > 0 ? tm(locale, "search.meaningOnlyCount", { n: formatCount(meaningOnly, locale) }) : null;
+  const countLabel = (c: (typeof counts)[number]) =>
+    c.id === "speeches" && onlyMeaning
+      ? `${tm(locale, "landing.noWordMatch")} · ${onlyMeaning}`
+      : `${c.n === 1 ? tm(locale, c.one as "landing.speechesOne") : tm(locale, c.many as "landing.speeches", { n: formatCount(c.n, locale) })}${c.meaningOnly > 0 ? plusMeaning : ""}`;
   const yearHrefs = Object.fromEntries(MONITOR_YEARS.map((y) => [y, landingHref({ ...params, year: y, p: 0, rp: 0 })]));
   return (
     <div lang={locale} className="grid gap-6">
@@ -103,7 +110,7 @@ export function LandingView({
           {askedEmpty && <p role="status" className="-mt-2 text-sm text-muted-foreground">{tm(locale, "landing.noTopic")}</p>}
           <ExactBox locale={locale} checked={params.exact} />
           {params.sort === "new" && <input type="hidden" name="sort" value="new" />}
-          <TopicFilters locale={locale} params={params} facets={facets} />
+          <TopicFilters locale={locale} params={params} facets={facets} folded={!!params.q && !askedEmpty} />
         </GetForm>
       </section>
 
@@ -129,7 +136,7 @@ export function LandingView({
                 <span key={c.id} className="flex items-center gap-2">
                   {i > 0 && <span aria-hidden className="text-muted-foreground">·</span>}
                   <JumpLink id={c.id} className="rounded font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-stone-500">
-                    {`${c.n === 1 ? tm(locale, c.one as "landing.speechesOne") : tm(locale, c.many as "landing.speeches", { n: formatCount(c.n, locale) })}${c.meaningOnly > 0 ? plusMeaning : ""}`}
+                    {countLabel(c)}
                   </JumpLink>
                 </span>
               ))}
@@ -144,12 +151,12 @@ export function LandingView({
           <Section
             id="speeches"
             title={tm(locale, "sections.speeches")}
-            count={result.speeches.total ? `${formatCount(speechWords, locale)}${plusMeaning}` : undefined}
+            count={result.speeches.total ? onlyMeaning ?? `${formatCount(speechWords, locale)}${plusMeaning}` : undefined}
             note={speechNote}
             empty={result.speeches.total ? null : tm(locale, "empty.speeches")}
           >
-            {result.speeches.rows.map((s) => (
-              <SpeechItem key={s.id} locale={locale} speech={s} showMember />
+            {result.speeches.rows.map((s, i, rows) => (
+              <SpeechItem key={s.id} locale={locale} speech={s} showMember videoNote={i === firstVideoRow(rows)} />
             ))}
           </Section>
           <Pager locale={locale} page={params.p} size={SEARCH_PAGE} total={result.speeches.total} href={(p) => landingHref({ ...params, p })} label={tm(locale, "paging.speeches")} />

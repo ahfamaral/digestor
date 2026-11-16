@@ -22,6 +22,15 @@ export type VoteFilter = keyof typeof VOTE_FILTERS;
 /** Guidance a vote can differ from; an empty guidance or "Liberado" (a free vote) never counts. */
 export const DIRECTED_GUIDANCE = ["Sim", "Não", "Obstrução", "Abstenção"] as const;
 
+/**
+ * The vote differs from a directed guidance (Sim / Não / Obstrução / Abstenção) of the party at the vote: the deputy
+ * page's `vdiff` rule (`memberVoteQuery`), for one row. A free vote ("Liberado"), no guidance or the chair's
+ * "Artigo 17" never counts.
+ */
+export function differsFromGuidance(vote: string, guidance: string | null): boolean {
+  return !!guidance && (DIRECTED_GUIDANCE as readonly string[]).includes(guidance) && vote !== "Artigo 17" && vote !== guidance;
+}
+
 /** Accents, case and punctuation aside: "Missão" and "MISSÃO" are one name. */
 const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 

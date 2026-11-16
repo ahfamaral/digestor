@@ -57,6 +57,12 @@ describe("ApprovalCard: clip package (C3)", () => {
     expect(buttons(html)).toContain("Edit times and titles");
   });
 
+  it("states the estimated cost before Make: translating the drafts (100 s of clips into English from Portuguese)", () => {
+    expect(render([pkg], false)).toContain("Estimated cost: under $0.01 for translating the subtitles. Making the videos runs on this server and costs nothing.");
+    expect(render([{ ...pkg, package: { ...pkg.package, subtitles: null } }], false)).toContain("No AI cost: making the videos runs on this server.");
+    expect(render([{ ...pkg, package: { ...pkg.package, subtitles: "pt" } }], false)).toContain("No AI cost: making the videos runs on this server.");
+  });
+
   it("once the video is removed only Reject is offered", () => {
     const html = render([pkg], true);
     expect(buttons(html)).toContain("Reject");

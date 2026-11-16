@@ -56,7 +56,7 @@ Colour is never the only signal: every chip/badge carries text.
 
 - shadcn (style `base-nova`, on **Base UI**, not Radix) in `components/ui/` (badge, button, card, checkbox, dialog, input, progress, tabs, textarea, and the later additions: check `components/ui/`); add new primitives with `pnpm --filter @digestor/web exec shadcn add <name>` and keep `cn()` from `lib/utils.ts`. Icons: `lucide-react`.
 - Screen frame: `AppBar` with the stepper **Upload › Processing › Context › Briefing › Prepare › Export** (current step bold, done steps green with ✓), then `<main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">` with an `h1` title.
-- The Briefing page and Prepare have a sticky bottom bar with the primary action ("Prepare clips", "Export ready clips").
+- The Briefing page and Prepare have a sticky bottom bar with the primary action ("Prepare clips", "Export ready clips"); Export's bar starts rendering with "Make the videos".
 - Primary action = brand button, right/bottom; secondary = text-style link or outline button ("Something's off").
 - Text comes from the typed catalogue `apps/web/messages/en.ts` via `t()` (`lib/i18n.ts`); add strings there, never inline.
 - Pages are server components; interactive parts are `"use client"` components that receive data as props (see `nextjs16-gotchas`).

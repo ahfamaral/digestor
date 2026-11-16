@@ -6,7 +6,7 @@ import {
   distinctiveWords, getHistory, getMember, getPresence, getProfile, listMemberBills, listMemberSpeeches, listMemberVotes, searchSpeeches, speechFacets, type MemberRow,
   type ProfileInput,
 } from "@digestor/core/server";
-import { AppBar } from "@/components/AppBar";
+import { MonitorAppBar } from "@/components/Monitor/MonitorAppBar";
 import { BILL_PAGE } from "@/components/Monitor/AuthoredBills";
 import { DeputyView } from "@/components/Monitor/DeputyView";
 import type { MonitorLocale } from "@/lib/monitor/i18n";
@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: PageProps<"/monitor/deputados
 export default function DeputyPage({ params, searchParams }: PageProps<"/monitor/deputados/[id]">) {
   return (
     <>
-      <AppBar area="monitor" skipTo="content" />
+      <MonitorAppBar />
       <main id="content" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 outline-none sm:px-6">
         <Suspense fallback={null}>
           <Deputy params={params} searchParams={searchParams} />
