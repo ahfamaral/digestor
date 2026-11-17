@@ -9,6 +9,7 @@ import { approvalDismissed } from "@/lib/prepareData";
 import { isUuid } from "@/lib/ids";
 import { asProfile } from "@/lib/preview";
 import { loadNames } from "@/lib/namesServer";
+import { currentSpeakerTitle } from "@/lib/briefingData";
 import { rangeVoices, unconfirmedAcrossClips, whosWhoRows } from "@/lib/names";
 import { getServer } from "@/lib/server";
 
@@ -41,7 +42,7 @@ async function ExportScreen({ params }: { params: Promise<{ id: string }> }) {
         .map((i) => i.id);
       return {
         id: clip.id,
-        title: moment?.title ?? "",
+        title: moment ? currentSpeakerTitle(moment, names, sensitive) : "",
         startMs: clip.startMs,
         endMs: clip.endMs,
         failing,

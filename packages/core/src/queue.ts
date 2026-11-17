@@ -74,7 +74,7 @@ export type LibraryAskJob = z.infer<typeof LibraryAskJobSchema>;
 export const FindMoreJobSchema = z.object({ requestId: z.string().uuid() });
 export type FindMoreJob = z.infer<typeof FindMoreJobSchema>;
 
-/** Match a session's linked official record against its transcript (names from the Senado or Câmara record). */
+/** Match a session's linked official record against its transcript (names from the record of a house in `chambers.ts`). */
 export const NamesJobSchema = z.object({ sessionId: z.string().uuid() });
 export type NamesJob = z.infer<typeof NamesJobSchema>;
 

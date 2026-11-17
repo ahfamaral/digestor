@@ -128,18 +128,6 @@ export async function replaceSessionSpeechVideos(db: Db, sessionId: number, vide
   });
 }
 
-/** The video moment of each speech key that has one. */
-export async function speechVideos(db: Db, keys: string[]): Promise<Map<string, SpeechVideo>> {
-  const out = new Map<string, SpeechVideo>();
-  if (keys.length === 0) return out;
-  const rows = await db
-    .select({ speechKey: parlSpeechVideos.speechKey, videoId: parlSpeechVideos.videoId, startS: parlSpeechVideos.startS, endS: parlSpeechVideos.endS })
-    .from(parlSpeechVideos)
-    .where(inArray(parlSpeechVideos.speechKey, keys));
-  for (const r of rows) out.set(r.speechKey, { videoId: r.videoId, startS: r.startS, endS: r.endS });
-  return out;
-}
-
 /** What clipping one speech needs: its video moment, the plenary (Câmara event id), the video's length and who spoke when. */
 export type SpeechClipSource = SpeechVideo & {
   /** The plenary's Câmara event id (`parl_sessions.id`). */

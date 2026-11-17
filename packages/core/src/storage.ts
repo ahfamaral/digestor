@@ -47,11 +47,18 @@ export class LocalStorage {
     return `${sessionId}/${file}`;
   }
 
+  /** The absolute path of `key`, for writing: its folder is created. Read paths use `pathOf`. */
   resolve(key: string): string {
+    const full = this.pathOf(key);
+    mkdirSync(path.dirname(full), { recursive: true });
+    return full;
+  }
+
+  /** The absolute path of `key` with the same safety checks, creating nothing: for reads (a request never makes a folder). */
+  pathOf(key: string): string {
     assertSafe(key, true);
     const full = path.join(this.root, key);
     if (!full.startsWith(this.root + path.sep)) throw new UnsafePathError(key);
-    mkdirSync(path.dirname(full), { recursive: true });
     return full;
   }
 

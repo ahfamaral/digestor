@@ -80,10 +80,7 @@ export function NamePopover({
   // Typed text searches the people table (2+ characters); people already in this session answer at once.
   useEffect(() => {
     const q = query.trim();
-    if (!changing || q.length < 2) {
-      setFound([]);
-      return;
-    }
+    if (!changing || q.length < 2) return; // `shown` below ignores what was found then
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -101,10 +98,11 @@ export function NamePopover({
   }, [query, changing]);
 
   const typed = query.trim();
+  const shown = changing && typed.length >= 2 ? found : [];
   const options: Option[] = [];
   if (typed.length >= 1) {
     const seen = new Set<string>();
-    for (const p of [...closeMatches(typed, names.persons), ...found]) {
+    for (const p of [...closeMatches(typed, names.persons), ...shown]) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
       options.push({ kind: "person", person: p });

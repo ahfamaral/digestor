@@ -6,6 +6,7 @@ import { authCookieFrom, isAuthorized } from "@/lib/auth";
 import { errorResponse } from "@/lib/http";
 import { readLanguageInput, START_FAILED } from "@/lib/languageInput";
 import { readRecordInput } from "@/lib/recordInput";
+import { readHintInput } from "@/lib/hintInput";
 import { sendStart } from "@/lib/jobs";
 import { getServer } from "@/lib/server";
 
@@ -36,6 +37,8 @@ export async function PUT(req: Request): Promise<Response> {
   if ("error" in record) return record.error;
   const language = readLanguageInput(params.get("language"));
   if ("error" in language) return language.error;
+  const note = readHintInput(params.get("hint"));
+  if ("error" in note) return note.error;
   if (!req.body) return errorResponse(400, "No file was uploaded.");
 
   const gb = maxUploadGb();
@@ -58,7 +61,7 @@ export async function PUT(req: Request): Promise<Response> {
     return errorResponse(400, "That file is empty.");
   }
 
-  const hint = params.get("hint")?.trim() || null;
+  const hint = note.hint;
   try {
     await createSession(db, { id: sessionId, title: filename.slice(0, dot), source: "upload", originalKey, hint, audioOnlyAck: audioOnly, languageOverride: language.code });
     // The session row has to exist before its record can be linked (foreign key), so a link failure can't stop the session

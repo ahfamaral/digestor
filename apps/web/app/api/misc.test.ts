@@ -283,6 +283,19 @@ describe("briefing translations", () => {
     expect(h.send).not.toHaveBeenCalled();
   });
 
+  it("a second POST while one is pending sends no second job and keeps the row, even when it would fail to send", async () => {
+    const { analysisId } = await seedReadySession(h.db);
+    expect((await postTranslation(req({ language: "pt" }), ctx(analysisId))).status).toBe(202);
+    expect(h.send).toHaveBeenCalledTimes(1);
+    h.send.mockClear();
+    h.send.mockRejectedValueOnce(new Error("boom"));
+    const again = await postTranslation(req({ language: "pt" }), ctx(analysisId));
+    expect(again.status).toBe(202);
+    expect(await again.json()).toEqual({ status: "pending" });
+    expect(h.send).not.toHaveBeenCalled();
+    expect(await getTranslation(h.db, analysisId, "pt", "briefing")).toEqual({ status: "pending", content: null, error: null });
+  });
+
   it("a failed translation reports its error and a new POST resets it to pending", async () => {
     const { analysisId } = await seedReadySession(h.db);
     const { failTranslation, requestTranslation } = await import("@digestor/core/server");

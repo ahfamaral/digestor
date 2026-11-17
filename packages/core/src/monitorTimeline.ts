@@ -63,14 +63,3 @@ export function inOfficeSpans(rows: HistoryRow[]): { from: string; to: string | 
   return out;
 }
 
-/** The in-office stretches of a timeline, adjacent bands (a party change) joined. */
-export function inOfficePeriods(bands: TimelineBand[]): { from: string; to: string | null }[] {
-  const out: { from: string; to: string | null }[] = [];
-  for (const b of bands) {
-    if (!b.inOffice) continue;
-    const last = out.at(-1);
-    if (last && last.to === b.from) last.to = b.to;
-    else out.push({ from: b.from, to: b.to });
-  }
-  return out;
-}

@@ -1,5 +1,7 @@
 # Digestor: user test journey
 
+**Status: planned protocol, not run yet.** No tester has gone through it, and the results template at the end is empty on purpose.
+
 A moderated test of about 40 minutes. It shows whether a journalist can go from a long interview to a subtitled clip without help, and whether they trust what the AI writes.
 
 ## Who the tester is
@@ -11,7 +13,7 @@ Language note: the interview is in German. A German-speaking tester can judge th
 ## Setup (facilitator, before the tester arrives)
 
 - Open https://digestor.freitasdoamaral.com in a fresh browser window on a laptop. Give the tester the password in person. Never write it in this document, in notes or in the recording.
-- The Osang x Merkel interview is already analysed. Check that it appears on the Sessions page as ready, and that no clips exist yet from an earlier test (there are no accounts: delete earlier test clips on Prepare first).
+- The Osang x Merkel interview is already analysed. Check that it appears on the Sessions page as ready, and whether clips from an earlier test exist. There are no accounts and clips can't be deleted: undo the earlier tester's approvals on the Briefing page, so their clips show "Approval dismissed" on Prepare and are left out of Export, and tell the tester to work only on their own clips.
 - Prepare a stopwatch, the results table below, and the screen recording.
 - Do not demonstrate anything. Do not hint at button names.
 

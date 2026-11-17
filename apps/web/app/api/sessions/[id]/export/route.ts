@@ -1,11 +1,14 @@
 import { z } from "zod";
-import { JOB_OPTIONS, OWNER_ID, QUEUES, exportChecklist, speakersInRange, type ProfileId } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, exportChecklist, speakersInRange } from "@digestor/core";
 import {
-  claimClipRender, claimTrackBurn, getMoment, getTranscript, listAttributions, listClips, listTracks, setClipRenderStatus, setTrackBurnStatus,
+  claimClipRender, claimTrackBurn, getMoment, getTranscript, listAttributions, listClips, listSelections, listTracks, setClipRenderStatus,
+  setTrackBurnStatus,
 } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { QUEUE_FAILED, VIDEO_REMOVED, readySession, sendMomentCheckQuietly } from "@/lib/personal";
+import { approvalDismissed } from "@/lib/prepareData";
+import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.object({ clipIds: z.array(z.string().uuid()).min(1).max(200) }).strict();
@@ -13,8 +16,8 @@ const BodySchema = z.object({ clipIds: z.array(z.string().uuid()).min(1).max(200
 /**
  * POST /api/sessions/[id]/export — `{ clipIds }`. Renders each clip whose checklist is all ok, and burns each approved
  * track that asked for it. Every render and burn is claimed in the database before its job is sent, so parallel
- * requests queue at most one job each. Clips that fail the checklist are listed in `blocked`; when nothing at all can
- * be exported the answer is 400.
+ * requests queue at most one job each. Clips that fail the checklist, or are dismissed (a moment no longer approved), are
+ * listed in `blocked`; when nothing at all can be exported the answer is 400.
  */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
@@ -37,16 +40,21 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const all = new Map((await listClips(db, OWNER_ID, id)).map((c) => [c.id, c]));
   const wanted = [...new Set(parsed.data.clipIds)].map((cid) => all.get(cid));
   if (wanted.some((c) => c === undefined)) return errorResponse(400, "Choose clips from this video.");
-  const profile = (session.profile ?? "other") as ProfileId;
+  const profile = asProfile(session.profile);
 
-  // attributions and transcript words are read once for all clips
-  const [atts, transcript] = await Promise.all([listAttributions(db, id), getTranscript(db, id)]);
+  // attributions, transcript words and selections are read once for all clips
+  const [atts, transcript, selections] = await Promise.all([listAttributions(db, id), getTranscript(db, id), listSelections(db, OWNER_ID, id)]);
   const words = transcript?.words ?? [];
 
   const blocked: { clipId: string; failing: string[] }[] = [];
   const exportable = [];
   for (const clip of wanted) {
     if (!clip) continue;
+    // a clip whose moment is no longer approved is dismissed: the page never offers it, a stale tab can't render it
+    if (approvalDismissed(clip, selections)) {
+      blocked.push({ clipId: clip.id, failing: ["dismissed"] });
+      continue;
+    }
     const moment = clip.momentId ? await getMoment(db, clip.momentId) : null;
     if (moment && moment.checks === null) await sendMomentCheckQuietly(db, boss, moment.id);
     const tracks = await listTracks(db, clip.id);

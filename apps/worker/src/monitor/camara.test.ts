@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import type { SpeechInput } from "@digestor/core/server";
 import { httpTiming } from "../records/http.js";
 import {
-  fetchBlocs,
+  dropProvisionalCopies, fetchBlocs,
   fetchBill, fetchHistory, fetchInOfficeIds, fetchMembers, fetchProfile, fetchSpeeches, fetchYearCsv, LEGISLATURE_FROM, mergeMandates, MONITOR_FROM,
 } from "./camara.js";
 import { fakeCamaraMonitorFetch, monitorFixture } from "./fakeCamaraMonitor.js";
@@ -86,6 +87,44 @@ describe("Câmara monitor client", () => {
   it("fetchSpeeches: an unknown deputy (404) gives no speeches", async () => {
     const notFound = (async () => new Response("{}", { status: 404 })) as typeof fetch;
     expect(await fetchSpeeches(notFound, 999, "2026-02-01", "2026-11-11")).toEqual([]);
+  });
+
+  it("fetchSpeeches: a 404 after the first page throws instead of returning part of the list", async () => {
+    const page1 = { dados: [{ dataHoraInicio: "2026-04-08T11:28", sumario: "s", transcricao: "t", keywords: "" }], links: [{ rel: "next", href: "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/discursos?pagina=2" }] };
+    const f = (async (input: string | URL | Request) =>
+      String(input).includes("pagina=2") ? new Response("{}", { status: 404 }) : new Response(JSON.stringify(page1), { status: 200 })) as typeof fetch;
+    await expect(fetchSpeeches(f, 204407, "2026-02-01", "2026-11-11")).rejects.toThrow(/404 on page 2/);
+  });
+
+  // 33549/33550 (member 223, 2026-10-13 15:20): the answer lists a provisional copy (no summary, no text page,
+  // unrevised text) beside the final one.
+  const final = "O SR. GERALDO RESENDE (Bloco/UNIÃO - MS. Sem revisão do orador.) - Sr. Presidente, Sras. e Srs. Deputados, venho a esta tribuna para agradecer ao povo de Mato Grosso do Sul pela confiança e pelo apoio recebido nesta caminhada.";
+  const speech = (o: Record<string, unknown>) => ({ dataHoraInicio: "2026-10-13T15:20", tipoDiscurso: "BREVES COMUNICAÇÕES", keywords: "", ...o });
+
+  it("fetchSpeeches drops the provisional copy of a speech listed beside its final one", async () => {
+    const body = { dados: [
+      speech({ sumario: "", transcricao: final.replace("pelo apoio recebido", "pelo apoio que recebi") }),
+      speech({ sumario: "O Deputado agradeceu ao povo de Mato Grosso do Sul.", transcricao: final, urlTexto: "https://imagem.camara.gov.br/dc_20b.asp?x=1" }),
+    ], links: [] };
+    const rows = await fetchSpeeches(fakeCamaraMonitorFetch({ "/deputados/204407/discursos": body }).f, 204407, "2026-02-01", "2026-11-11");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.summary).toMatch(/^O Deputado agradeceu/);
+  });
+
+  it("dropProvisionalCopies: a heading-only or empty provisional copy goes, a different speech in the same minute stays", () => {
+    const heading = "DISCURSO NA ÍNTEGRA ENCAMINHADO PELO SR. DEPUTADO LUIZ LIMA (SEM REGISTRO TAQUIGRÁFICO).";
+    const row = (o: Partial<SpeechInput>): SpeechInput => ({ startsAt: "2026-04-14T21:20", phase: null, kind: "OUTROS", summary: "", text: "", keywords: "", urlText: null, ...o });
+    const finalWritten = row({ summary: "Defesa do esporte.", text: `${heading} Senhor Presidente, subo hoje a esta tribuna para falar do esporte nas escolas públicas.`, urlText: "https://x.camara.leg.br/a" });
+    // 29149/29150: two different written speeches at the same minute, one without a summary yet.
+    const other = row({ text: `${heading} Senhor Presidente, o Governo Federal anunciou cortes na saúde e na segurança pública dos estados.` });
+    expect(dropProvisionalCopies([other, finalWritten])).toEqual([other, finalWritten]);
+    expect(dropProvisionalCopies([row({ text: heading }), finalWritten])).toEqual([finalWritten]);
+    expect(dropProvisionalCopies([row({ text: "" }), finalWritten])).toEqual([finalWritten]);
+    // Another minute or another kind is never a copy; a row with a summary or a text page is never dropped.
+    const later = row({ startsAt: "2026-04-14T21:21", text: heading });
+    const otherKind = row({ kind: "PELA ORDEM", text: heading });
+    const withPage = row({ text: heading, urlText: "https://x.camara.leg.br/b" });
+    expect(dropProvisionalCopies([later, otherKind, withPage, finalWritten])).toEqual([later, otherKind, withPage, finalWritten]);
   });
 
   it("fetchYearCsv downloads the year's bulk file", async () => {

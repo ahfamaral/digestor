@@ -98,7 +98,7 @@ async function plan(id: string, choice: ZipChoice): Promise<{ sources: Source[];
     }),
   );
   const byId = new Map(rows.map((r) => [r.clip.id, r]));
-  const file = (rel: string) => storage.resolve(storage.key(id, rel));
+  const file = (rel: string) => storage.pathOf(storage.key(id, rel));
 
   const sources: Source[] = [];
   for (const e of zipEntries(rows.map((r) => r.zip), choice).entries) {

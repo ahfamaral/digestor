@@ -8,13 +8,19 @@ export type ProxyDeps = { db: Db; storage: LocalStorage; media: Pick<typeof ffmp
 /**
  * Encodes the session's 360p preview copy in its own job, so the pipeline never waits for it. The row goes
  * `pending` → `running` → `done` (with `proxyKey` in the same update); then `settlePreview` closes the join when the
- * analysis already ended, and a now `ready` session loses its `audio.mp3`. No claim means another job has it (or it is done): nothing to do. With `retrying` a
+ * analysis already ended, and a now `ready` session loses its `audio.mp3`. No claim means another job has it (or it is
+ * done): no encode, but the join is still run (a no-op unless the copy is done or failed), since a job that died between
+ * `finishProxy` and `settlePreview` would otherwise leave the session in `preparing_preview` for the sweep. With `retrying` a
  * `running` row is taken over (the crashed or failed earlier attempt left it so). A video that is gone is
  * deterministic: the row is failed (and the join run) without an error. An ffmpeg error is rethrown for the caller.
  */
 export async function runProxy(deps: ProxyDeps, sessionId: string, opts: { retrying?: boolean } = {}): Promise<void> {
   const { db, storage, media } = deps;
-  if (!(await claimProxy(db, sessionId, { takeover: opts.retrying }))) return;
+  if (!(await claimProxy(db, sessionId, { takeover: opts.retrying }))) {
+    await settlePreview(db, sessionId);
+    await releaseAudio({ db, storage }, sessionId);
+    return;
+  }
   const session = await getSession(db, sessionId);
   const original = session?.originalKey && !session.videoDeletedAt ? storage.resolve(session.originalKey) : null;
   if (!session || !original || !(await access(original).then(() => true, () => false))) {

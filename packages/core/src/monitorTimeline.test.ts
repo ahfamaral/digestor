@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inOfficePeriods, partyTimeline, type HistoryRow } from "./monitorTimeline.ts";
+import { partyTimeline, type HistoryRow } from "./monitorTimeline.ts";
 
 const h = (at: string, party: string | null, status: string | null, description = ""): HistoryRow => ({ at, party, uf: "AL", status, description });
 const gaspar = [
@@ -27,7 +27,6 @@ describe("partyTimeline", () => {
       ["2023-02-01", "2025-03-03", true], ["2025-03-03", "2025-04-01", false], ["2025-04-01", null, true],
     ]);
     expect(bands[1]!.description).toBe("Afastamento - Investidura no cargo de Ministro");
-    expect(inOfficePeriods(bands)).toEqual([{ from: "2023-02-01", to: "2025-03-03" }, { from: "2025-04-01", to: null }]);
   });
 
   it("a substitute's wait before taking office has no description (the start row is a placeholder, not an exit)", () => {

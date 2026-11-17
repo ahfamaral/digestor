@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Word } from "./schemas.ts";
-import { cutsMidSentence, endsSentence, findBoundaries, fitChildInParent, freeEdges, overlapRatio, snapEdges, snapRange, type Boundary } from "./snap.ts";
+import { cutsMidSentence, endsSentence, findBoundaries, freeEdges, overlapRatio, snapEdges, snapRange, type Boundary } from "./snap.ts";
 
 const w = (text: string, startMs: number, endMs: number): Word => ({
   text, startMs, endMs, speaker: "A", confidence: 1,
@@ -76,6 +76,38 @@ describe("findBoundaries", () => {
   });
 });
 
+describe("findBoundaries past the given duration", () => {
+  // The transcript's words are clamped to the audio's duration, which can run past the video's (ffprobe).
+  const long: Word[] = [w("One", 0, 400), w("two.", 500, 1000), w("Three", 1500, 2000), w("four.", 2100, 3050)];
+
+  it("ends at the given duration in a clean gap: no boundary lies past it", () => {
+    const b = findBoundaries(long, 3000);
+    expect(b.at(-1)).toEqual({ afterWordEndMs: 3000, beforeWordStartMs: 3000 });
+    for (const x of b) expect(x.afterWordEndMs <= x.beforeWordStartMs && x.beforeWordStartMs <= 3000, JSON.stringify(x)).toBe(true);
+  });
+
+  it("a cut snapped to the end stays within the video and is not mid-sentence", () => {
+    const b = findBoundaries(long, 3000);
+    const r = snapRange(b, { startMs: 1900, endMs: 3000 });
+    expect(r).toEqual({ startMs: 1350, endMs: 3000 });
+    expect(cutsMidSentence(b, r)).toBe(false);
+  });
+
+  it("drops inner boundaries past the given duration and clamps a gap that crosses it", () => {
+    const b = findBoundaries([w("One.", 0, 2900), w("Two.", 3020, 3400), w("Three.", 3500, 3800)], 3000);
+    expect(b).toEqual([
+      { afterWordEndMs: 0, beforeWordStartMs: 0 },
+      { afterWordEndMs: 2900, beforeWordStartMs: 3000 },
+      { afterWordEndMs: 3000, beforeWordStartMs: 3000 },
+    ]);
+  });
+
+  it("changes nothing when the words end within the duration", () => {
+    expect(findBoundaries(long, 3050).at(-1)).toEqual({ afterWordEndMs: 3050, beforeWordStartMs: 3050 });
+    expect(findBoundaries(long, 5000).slice(0, -1)).toEqual(findBoundaries(long, 3050).slice(0, -1));
+  });
+});
+
 describe("snapRange", () => {
   const b = findBoundaries(words, 10_000, 300, 0); // every pause, so these tests reach snapRange's edge cases
   it("never lands mid-word", () => {
@@ -115,12 +147,7 @@ describe("snapRange", () => {
   });
 });
 
-describe("fitChildInParent / overlapRatio", () => {
-  it("clamps into parent, null when too short", () => {
-    expect(fitChildInParent({ startMs: 0, endMs: 20_000 }, { startMs: 5_000, endMs: 60_000 })).toEqual({ startMs: 5_000, endMs: 20_000 });
-    expect(fitChildInParent({ startMs: 0, endMs: 9_000 }, { startMs: 5_000, endMs: 60_000 })).toBeNull();
-    expect(fitChildInParent({ startMs: 100_000, endMs: 120_000 }, { startMs: 5_000, endMs: 60_000 })).toBeNull();
-  });
+describe("overlapRatio", () => {
   it("computes intersection over shorter length", () => {
     expect(overlapRatio({ startMs: 0, endMs: 10 }, { startMs: 5, endMs: 25 })).toBe(0.5);
     expect(overlapRatio({ startMs: 0, endMs: 10 }, { startMs: 20, endMs: 30 })).toBe(0);

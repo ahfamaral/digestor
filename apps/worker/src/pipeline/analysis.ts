@@ -120,13 +120,16 @@ async function prepareTopHighlights(
  */
 export async function runAnalysis(deps: AnalysisDeps, sessionId: string, opts: { profile: ProfileId; reason: string; analysisId?: string }): Promise<void> {
   const { db, llm } = deps;
-  const [session, transcript, stored] = await Promise.all([
+  const [session, loaded, stored] = await Promise.all([
     getSession(db, sessionId),
     getTranscript(db, sessionId),
     getContextCard(db, sessionId),
   ]);
   if (!session) throw new Error(`Session not found: ${sessionId}`);
-  if (!transcript) throw new Error(`Session ${sessionId} has no transcript`);
+  if (!loaded) throw new Error(`Session ${sessionId} has no transcript`);
+  // AssemblyAI rounds its duration up to the next second: never snap or place a moment past the video's own end
+  // (a clip ending there couldn't be trimmed).
+  const transcript = session.durationMs ? { ...loaded, durationMs: Math.min(loaded.durationMs, session.durationMs) } : loaded;
   if (!stored) throw new Error(`Session ${sessionId} has no context card`);
   const initial = session.stage !== "ready";
   const stage = async (s: Stage, progress: number) => {

@@ -287,6 +287,18 @@ describe("a deputy's vote filters", () => {
     ]);
   });
 
+  it("the party's own label wins even when its guidance is empty: a federation's Sim behind it isn't used", async () => {
+    // Pins today's rule (the closest applicable label is picked before its orientation is read); 497 of 1,700 stored
+    // orientations are empty, so this can appear with the next file. Changing it to fall through is a product decision.
+    const { a } = await setup();
+    await upsertRollCalls(db, [rollCall("1-9", "2026-06-15")]);
+    await replaceVotes(db, "1-9", [{ memberId: a, vote: "Não", party: "PT", uf: "SP" }]);
+    await replaceOrientations(db, "1-9", [{ bloc: "PT", orientation: "" }, { bloc: "Fdr PT-PCdoB-PV", orientation: "Sim" }]);
+    const r = await listMemberVotes(db, a, {});
+    expect(r.rows.filter((x) => x.rollCallId === "1-9").map((x) => [x.guidance, x.guidanceFrom])).toEqual([[null, null]]);
+    expect(ids(await listMemberVotes(db, a, { differsFromGuidance: true }))).not.toContain("1-9");
+  });
+
   it("each filter alone", async () => {
     const { a } = await setup();
     expect(ids(await listMemberVotes(db, a, { vote: "Sim" }))).toEqual(["1-5", "1-1"]);

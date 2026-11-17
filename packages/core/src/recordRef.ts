@@ -157,5 +157,8 @@ export function recordInputError(input: string, chamber?: ChamberId, now: Date =
   return null;
 }
 
-/** Where a linked record stands: `pending` (linked, not fetched), `running`, `matched`, `failed` (with a friendly `error`). */
+/**
+ * Where a linked record stands: `suggested` (the YouTube suggester's, awaiting the journalist), `pending` (linked, not
+ * fetched), `running`, `waiting` (not published yet; `records.retry` looks again), `matched`, `failed` (with a friendly `error`).
+ */
 export type RecordStatus = "suggested" | "pending" | "running" | "matched" | "failed" | "waiting";

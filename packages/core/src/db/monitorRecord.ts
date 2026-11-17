@@ -214,13 +214,13 @@ export async function countHistory(db: Db, memberId: number): Promise<number> {
   return r.rows[0]?.n ?? 0;
 }
 
-/** Stored presence, authorship and guidance rows (the refresh keeps them when a bulk file comes back empty or short). */
-export async function monitorRowCounts(db: Db): Promise<{ presence: number; billAuthors: number; orientations: number }> {
-  const r = await db.execute<{ presence: number; bill_authors: number; orientations: number }>(sql`
+/** Stored presence, authorship, guidance and vote rows (the refresh keeps them when a bulk file comes back empty or short). */
+export async function monitorRowCounts(db: Db): Promise<{ presence: number; billAuthors: number; orientations: number; votes: number }> {
+  const r = await db.execute<{ presence: number; bill_authors: number; orientations: number; votes: number }>(sql`
     select (select count(*)::int from parl_presence) as presence, (select count(*)::int from parl_bill_authors) as bill_authors,
-      (select count(*)::int from parl_orientations) as orientations`);
+      (select count(*)::int from parl_orientations) as orientations, (select count(*)::int from parl_votes) as votes`);
   const x = r.rows[0];
-  return { presence: x?.presence ?? 0, billAuthors: x?.bill_authors ?? 0, orientations: x?.orientations ?? 0 };
+  return { presence: x?.presence ?? 0, billAuthors: x?.bill_authors ?? 0, orientations: x?.orientations ?? 0, votes: x?.votes ?? 0 };
 }
 
 // ── Reads ──────────────────────────────────────────────────────────────────────────────────────────────────────────

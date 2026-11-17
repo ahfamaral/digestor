@@ -148,7 +148,7 @@ export interface AskToolCallRecord {
   /** Short result text shown on the chip. */
   result: string;
   ok: boolean;
-  /** set_selection applied directly: each moment's status before the change (null = proposed, no row). */
+  /** set_selection, once approved: each moment's status before the change (null = proposed, no row). */
   undo?: Record<string, SelectionStatus | null>;
   /** propose_clip: the clip it created (undo deletes it). */
   clipId?: string;

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -140,7 +140,7 @@ describe("ytDlpArgs", () => {
       "-o", "/o.%(ext)s", "--", "u",
     ]);
   });
-  it("a section run gets a time limit (4 × its length, at least 10 min) and kills yt-dlp's ffmpeg with it; a whole video none", async () => {
+  it("a section run gets a time limit (4 × its length, at least 10 min) and kills yt-dlp's ffmpeg with it; a whole video 4 h", async () => {
     expect(sectionTimeoutMs({ startS: 0, endS: 137 })).toBe(600_000);
     expect(sectionTimeoutMs({ startS: 100, endS: 100 + 30 * 60 })).toBe(7_200_000);
     runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
@@ -148,7 +148,22 @@ describe("ytDlpArgs", () => {
     expect(runMock.mock.lastCall![2]).toEqual({ timeoutMs: 600_000, killGroup: true });
     runMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
     await downloadYouTube("https://youtu.be/x", path.join(os.tmpdir(), "ytdlp-t2"), {}).catch(() => {});
-    expect(runMock.mock.lastCall![2]).toEqual({});
+    expect(runMock.mock.lastCall![2]).toEqual({ timeoutMs: 4 * 3_600_000, killGroup: true });
+  });
+  it("a whole video that runs out of time fails with the slow-video sentence", async () => {
+    runMock.mockRejectedValueOnce(new FfmpegTimeoutError("yt-dlp", 4 * 3_600_000, "[download] ..."));
+    await expect(downloadYouTube("https://youtu.be/x", path.join(os.tmpdir(), "ytdlp-t4"), {}))
+      .rejects.toThrow(/^YouTube is sending this video too slowly\. Please try again later\.$/);
+  });
+  it("a failed download removes its partial files and keeps the folder's other files", async () => {
+    const dir = path.join(os.tmpdir(), `ytdlp-left-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(dir);
+    for (const f of ["original.mp4.part", "original.f137.mp4", "original.f140.m4a.part", "audio.mp3", "originalx.mp4"]) writeFileSync(path.join(dir, f), "x");
+    runMock.mockRejectedValueOnce(new FfmpegError("yt-dlp", 1, "ERROR: unable to download video data: HTTP Error 403"));
+    await expect(downloadYouTube("https://youtu.be/x", path.join(dir, "original"), {})).rejects.toThrow(/Couldn't download/);
+    for (const f of ["original.mp4.part", "original.f137.mp4", "original.f140.m4a.part"]) expect(existsSync(path.join(dir, f))).toBe(false);
+    expect(existsSync(path.join(dir, "audio.mp3"))).toBe(true);
+    expect(existsSync(path.join(dir, "originalx.mp4"))).toBe(true);
   });
   it("a section that runs out of time fails with the slow-part sentence", async () => {
     runMock.mockRejectedValueOnce(new FfmpegTimeoutError("yt-dlp", 600_000, "[download] ..."));

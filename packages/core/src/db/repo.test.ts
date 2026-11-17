@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { clips, sessionRecords, sessions } from "./schema.ts";
 import { dayRef } from "../recordRef.ts";
 import {
-  createSession, deleteSession, getContextCard, getSession, getTranscript, listExpiredSessions, listSessionsWithAudioToRelease, saveContextCard,
+  createSession, deleteSession, getContextCard, getSession, getTranscript, listSessionsWithAudioToRelease, listSessionsWithExpiredVideo, saveContextCard,
   listSessionSummaries, saveTranscript, setStage, transitionStage, updateSession, type Session,
 } from "./repo.ts";
 
@@ -41,9 +41,9 @@ describe("sessions", () => {
   });
 
   it("lists expired sessions and cascades on delete", async () => {
-    expect(await listExpiredSessions(db, 7)).toHaveLength(0);
+    expect(await listSessionsWithExpiredVideo(db, 7)).toHaveLength(0);
     await updateSession(db, s.id, { createdAt: new Date(Date.now() - 8 * 86_400_000) });
-    expect((await listExpiredSessions(db, 7)).map((x) => x.id)).toEqual([s.id]);
+    expect((await listSessionsWithExpiredVideo(db, 7)).map((x) => x.id)).toEqual([s.id]);
     await deleteSession(db, s.id);
     expect(await getSession(db, s.id)).toBeNull();
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Word } from "@digestor/core";
-import { earlierSelections, focusOptions, insideApproved, momentExcerpt, withCurrentSpeakerNames } from "./briefingData";
+import { currentSpeakerTitle, earlierSelections, focusOptions, insideApproved, momentExcerpt, withCurrentSpeakerNames } from "./briefingData";
 import type { Attribution, Person } from "@digestor/core";
 
 const w = (text: string, startS: number, speaker = "A"): Word => ({
@@ -138,5 +138,11 @@ describe("withCurrentSpeakerNames", () => {
     const ai = { ...counted, origin: "ai", title: "Longest speech: E" } as typeof counted;
     const edited = { ...counted, title: "Gastel on rail" } as typeof counted;
     expect(withCurrentSpeakerNames([ai, edited], names, false)).toEqual([ai, edited]);
+  });
+  it("gives Prepare and Export the same title from a moment loaded without highlights", () => {
+    const names = { persons: [person("P", "Matthias Gastel")], attributions: [att({ speakerId: "E", personId: "P" })] };
+    expect(currentSpeakerTitle(counted, names, false)).toBe("Longest speech: Matthias Gastel");
+    expect(currentSpeakerTitle({ ...counted, title: "Gastel on rail" }, names, false)).toBe("Gastel on rail");
+    expect(currentSpeakerTitle({ ...counted, origin: "ai" }, names, false)).toBe("Longest speech: E");
   });
 });

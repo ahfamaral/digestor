@@ -26,8 +26,7 @@ export const MODEL_IDS: Record<LLMModel, string> = {
   fast: "claude-haiku-5-5",
 };
 
-/** Test seam: route the SDK's HTTP calls through a fake. */
-/** `timeoutMs` per HTTP request (OpenRouter only; tests shorten it). */
+/** Test seam: `fetch` routes the SDK's HTTP calls through a fake; `timeoutMs` per HTTP request (OpenRouter only; tests shorten it). */
 export type ClientOptions = { fetch?: typeof globalThis.fetch; timeoutMs?: number };
 
 /**

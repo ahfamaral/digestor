@@ -286,8 +286,9 @@ async function outdateTracks(tx: Tx, clipId: string, bounds: { startMs: number; 
 }
 
 /**
- * Everything a bounds change invalidates, in the caller's transaction: the render and burns (stale), the tracks
- * (outdated, R27) and the warnings acknowledgement (R28: checks were made for the original cut).
+ * The track and acknowledgement side of a bounds change, in the caller's transaction: the tracks (outdated, R27) and
+ * the warnings acknowledgement (R28: checks were made for the original cut). A finished render and its burns are
+ * staled separately (`staleIfDone`); a burn still queued or rendering is caught by the burn job and `finishTrackBurn`.
  */
 async function afterBoundsChange(tx: Tx, clipId: string, bounds: { startMs: number; endMs: number }): Promise<void> {
   await tx.update(clips).set({ warningsAck: false }).where(eq(clips.id, clipId));
@@ -551,7 +552,10 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
   });
 }
 
-/** Soft delete: the row and its events stay so `undoLastEvent` can restore it. */
+/**
+ * Soft delete: the row and its events stay so `undoLastEvent` can restore it. Test-only today (no route deletes a
+ * clip; merge soft-deletes through `mergeClips`): tests use it to set up a deleted clip and the `delete` undo.
+ */
 export async function deleteClip(db: Db, id: string, actor: ClipActor): Promise<void> {
   await db.transaction(async (tx) => {
     const before = await lockClip(tx, id);
@@ -785,10 +789,6 @@ export async function failTrack(db: Db, id: string, message: string): Promise<bo
   return rows.length > 0;
 }
 
-export async function setTrackFiles(db: Db, id: string, keys: { srtKey: string; vttKey: string }): Promise<void> {
-  await db.update(subtitleTracks).set(keys).where(eq(subtitleTracks.id, id));
-}
-
 /** Clears approval, recomputes `missing`, and outdates a finished burn. */
 export async function editTrackCues(db: Db, id: string, edits: { i: number; text: string }[]): Promise<Track> {
   return db.transaction(async (tx) => {
@@ -855,8 +855,9 @@ export async function setTrackBurnStatus(db: Db, id: string, status: RenderStatu
 }
 
 /**
- * `done` only if the track's cues and the clip's geometry/credit still match the signature the burn was made from;
- * the key is stored either way. Null when the track is missing or its clip was deleted.
+ * `done` only if the track is still `ready` and approved and its cues and the clip's geometry/credit still match the
+ * signature the burn was made from (a trim undone meanwhile restores the bounds but clears the approval); the key is
+ * stored either way. Null when the track is missing or its clip was deleted.
  */
 export async function finishTrackBurn(
   db: Db,
@@ -870,7 +871,8 @@ export async function finishTrackBurn(
     const clip = await lockClip(tx, peek.clipId); // same order as updateClip: clip, then track
     const [track] = await tx.select().from(subtitleTracks).where(eq(subtitleTracks.id, id)).for("update");
     if (!clip || clip.deletedAt || !track) return null;
-    const status = burnSignature(track, clip) === signature ? "done" : "stale";
+    const current = track.status === "ready" && track.approvedAt !== null && burnSignature(track, clip) === signature;
+    const status = current ? "done" : "stale";
     await tx.update(subtitleTracks).set({ burnKey: key, burnStatus: status }).where(eq(subtitleTracks.id, id));
     return status;
   });
@@ -1000,12 +1002,22 @@ export async function resolveToolApproval(db: Db, id: string, resolution: ToolAp
   });
 }
 
-/** Undoes `resolveToolApproval` when its `ask.resume` job could not be queued, so the card can be clicked again. */
+/**
+ * Undoes `resolveToolApproval` when its `ask.resume` job could not be queued, so the card can be clicked again: only
+ * a resolved card whose answer still waits (a send that threw after storing the job may have let the resume run).
+ */
 export async function reopenToolApproval(db: Db, id: string): Promise<void> {
   await db
     .update(askActions)
     .set({ status: "pending", resolution: null })
-    .where(and(eq(askActions.id, id), eq(askActions.kind, "tool_approval")));
+    .where(
+      and(
+        eq(askActions.id, id),
+        eq(askActions.kind, "tool_approval"),
+        inArray(askActions.status, ["confirmed", "dismissed"]),
+        sql`exists (select 1 from ${askMessages} where ${askMessages.id} = ${askActions.messageId} and ${askMessages.status} = 'waiting')`,
+      ),
+    );
 }
 
 /** Whether the LangGraph checkpointer's tables exist here (the worker's `PostgresSaver.setup()` creates them). */
@@ -1015,14 +1027,6 @@ async function hasAskGraphTables(db: Conn): Promise<boolean> {
 }
 
 const ASK_GRAPH_TABLES = ["checkpoint_writes", "checkpoint_blobs", "checkpoints"] as const;
-
-/** Deletes one Ask answer's LangGraph thread (thread id = the assistant message id) from schema `ask_graph`. */
-export async function deleteAskThread(db: Db, messageId: string): Promise<void> {
-  if (!(await hasAskGraphTables(db))) return;
-  for (const table of ASK_GRAPH_TABLES) {
-    await db.execute(sql`delete from ${sql.identifier("ask_graph")}.${sql.identifier(table)} where thread_id = ${messageId}`);
-  }
-}
 
 /** Deletes every Ask thread of a session (retention, session deletion). Run it before the messages go: it finds threads by them. */
 export async function deleteAskThreads(db: Db, sessionId: string): Promise<void> {
@@ -1087,7 +1091,7 @@ export async function confirmBulkSelection(
     const resolved = await tx
       .update(askActions)
       .set({ status: "confirmed" })
-      .where(and(eq(askActions.id, actionId), eq(askActions.status, "pending")))
+      .where(and(eq(askActions.id, actionId), eq(askActions.status, "pending"), eq(askActions.kind, "bulk_selection")))
       .returning({ id: askActions.id });
     if (resolved.length === 0) return false;
     for (const momentId of momentIds) {
@@ -1104,12 +1108,12 @@ export async function confirmBulkSelection(
   });
 }
 
-/** Compare-and-set from `pending`: true only for the caller that resolved it. */
+/** Resolves a `bulk_selection` action: compare-and-set from `pending`, true only for the caller that resolved it. */
 export async function resolveAskAction(db: Db, id: string, status: "confirmed" | "dismissed"): Promise<boolean> {
   const rows = await db
     .update(askActions)
     .set({ status })
-    .where(and(eq(askActions.id, id), eq(askActions.status, "pending")))
+    .where(and(eq(askActions.id, id), eq(askActions.status, "pending"), eq(askActions.kind, "bulk_selection")))
     .returning({ id: askActions.id });
   return rows.length > 0;
 }

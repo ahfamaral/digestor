@@ -58,7 +58,7 @@ export function sessionEventStream(db: Db, id: string, signal: AbortSignal): Rea
         try {
           const s = await getSession(db, id);
           if (stopped) return;
-          if (!s) return stop(); // deleted by the retention job
+          if (!s) return stop(); // the session row was deleted (retention keeps it; only `deleteSession` removes it)
           const event: ProgressEvent = {
             stage: s.stage,
             progress: s.progress,

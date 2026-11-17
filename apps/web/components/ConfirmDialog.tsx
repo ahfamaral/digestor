@@ -39,9 +39,14 @@ export function ConfirmDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // A closed dialog forgets its error (adjusted during render, not in an effect, however the parent closes it).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (!open) setError(null);
+  }
   useEffect(() => {
     if (open) pauseAllMedia();
-    else setError(null);
   }, [open]);
 
   async function confirm() {

@@ -122,6 +122,29 @@ d("clip render jobs", () => {
     expect((await getTrack(db, again.track.id))!.burnStatus).toBe("stale");
   });
 
+  it("a burn whose track went outdated (a trim) between the claim and the job renders nothing and is stale", async () => {
+    const { clip, track } = await seedTrack();
+    await claimTrackBurn(db, track.id);
+    await updateClip(db, clip.id, { endMs: 3500 }, "user");
+    expect(await getTrack(db, track.id)).toMatchObject({ status: "outdated", approvedAt: null, burnStatus: "queued" });
+    const renderClip = fake(() => {});
+    await burnTrack({ db, storage, renderClip }, track.id);
+    expect(renderClip).not.toHaveBeenCalled();
+    expect((await getTrack(db, track.id))!.burnStatus).toBe("stale");
+  });
+
+  it("a trim and a trim back during the burn restore the bounds but not the approval: the burn is stale, not done", async () => {
+    const { clip, track } = await seedTrack();
+    await claimTrackBurn(db, track.id);
+    const renderClip = fake(async () => {
+      await updateClip(db, clip.id, { endMs: 3500 }, "user");
+      await updateClip(db, clip.id, { endMs: 3000 }, "user");
+    });
+    await burnTrack({ db, storage, renderClip }, track.id);
+    expect((await getClip(db, clip.id))!.endMs).toBe(3000); // same signature as at the claim
+    expect(await getTrack(db, track.id)).toMatchObject({ approvedAt: null, burnStatus: "stale" });
+  });
+
   describe("handlers", () => {
     it("VideoRemovedError marks failed and completes; other errors fail only on the final attempt", async () => {
       const spy = vi.spyOn(console, "error").mockImplementation(() => {});

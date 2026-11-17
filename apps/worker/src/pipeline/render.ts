@@ -61,6 +61,13 @@ export async function burnTrack(deps: RenderDeps, trackId: string): Promise<void
     console.log(`Ignoring burn of track ${trackId}: it is ${track.burnStatus}, not waiting for a burn`);
     return;
   }
+  // A trim after the claim outdated the track (cues are clip-relative) and cleared its approval: burning now would put
+  // the old range's text on the new cut. Stale, like a burn whose inputs changed; the journalist approves the rebuilt track.
+  if (track.status !== "ready" || !track.approvedAt) {
+    console.log(`Ignoring burn of track ${trackId}: it is ${track.approvedAt ? track.status : "not approved"} now`);
+    await setTrackBurnStatus(deps.db, trackId, "stale");
+    return;
+  }
   const src = await sourceOf(deps, clip);
   if (!src) return;
   // The signature is taken from the rows we render with; finishTrackBurn compares it with the rows at the end.

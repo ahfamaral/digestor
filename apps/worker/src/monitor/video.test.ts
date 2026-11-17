@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
-import { createDb, replaceSpeechWindow, speechVideos, upsertMembers, upsertSessions, type Db } from "@digestor/core/server";
+import { createDb, replaceSpeechWindow, upsertMembers, upsertSessions, type Db } from "@digestor/core/server";
 import { captionInfo, type Captions } from "../youtube/captions.js";
 import { YouTubeDownloadError } from "../youtube/ytdlp.js";
 import { fakeCamaraMonitorFetch } from "./fakeCamaraMonitor.js";
@@ -71,10 +71,11 @@ describe("monitor.video", () => {
     expect(await sessionRow()).toMatchObject({
       status: "done", video_id: "NmI46Y25mEU", stream_start: "2026-06-30 14:24:31", spoken: 4, matched: 3, error: null, retry_at: null,
     });
-    const keys = (await db.execute<{ speech_key: string }>(sql`select speech_key from parl_speeches order by starts_at, id`)).rows.map((r) => r.speech_key);
-    const v = await speechVideos(db, keys);
-    expect(v.size).toBe(3);
-    expect([...v.values()].every((x) => x.videoId === "NmI46Y25mEU" && x.endS > x.startS)).toBe(true);
+    const v = (await db.execute<{ video_id: string; start_s: number; end_s: number }>(
+      sql`select v.video_id, v.start_s, v.end_s from parl_speech_videos v join parl_speeches s on s.speech_key = v.speech_key`,
+    )).rows;
+    expect(v).toHaveLength(3);
+    expect(v.every((x) => x.video_id === "NmI46Y25mEU" && x.end_s > x.start_s)).toBe(true);
     // nothing new: the next run claims nothing
     expect((await runSessionVideos({ db, fetch: f, captions })).results).toEqual([]);
   });

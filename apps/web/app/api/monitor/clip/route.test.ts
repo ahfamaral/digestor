@@ -69,6 +69,13 @@ describe("POST /api/monitor/clip", () => {
     expect(h.send).not.toHaveBeenCalled();
   });
 
+  it("a malformed language cookie is ignored, never a 500", async () => {
+    vi.stubEnv("MONITOR_CLIP_ENABLED", "false");
+    const res = await post({ speechKey: "x" }, { cookie: "monitor_lang=%E0" });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: DISABLED });
+  });
+
   it("a speech with no video moment (or no such speech) answers 404", async () => {
     vi.stubEnv("MONITOR_CLIP_ENABLED", "true");
     await seed();

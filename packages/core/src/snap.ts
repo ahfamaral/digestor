@@ -21,6 +21,8 @@ export const PAUSE_REACH_MS = 10_000;
 /**
  * Where a cut may fall: the video edges, every sentence end, and pauses of at least `minPauseMs` inside sentences
  * longer than `pauseReachMs` (speakers pause mid-sentence, so a pause near a sentence end is not a boundary).
+ * Nothing lies past `durationMs`: words can run past it (they are clamped to the audio's length, the video's may be
+ * shorter), so later boundaries are dropped, a gap crossing it ends at it, and the end edge is a clean gap at it.
  */
 export function findBoundaries(words: Word[], durationMs: number, minPauseMs = 300, pauseReachMs = PAUSE_REACH_MS): Boundary[] {
   if (words.length === 0) return [];
@@ -30,11 +32,12 @@ export function findBoundaries(words: Word[], durationMs: number, minPauseMs = 3
     const next = words[i + 1]!;
     const gap = next.startMs - cur.endMs;
     const sentence = endsSentence(cur.text);
+    if (cur.endMs >= durationMs) break;
     if (gap >= 0 && (gap >= minPauseMs || sentence)) {
-      all.push({ afterWordEndMs: cur.endMs, beforeWordStartMs: next.startMs, sentence });
+      all.push({ afterWordEndMs: cur.endMs, beforeWordStartMs: Math.min(next.startMs, durationMs), sentence });
     }
   }
-  all.push({ afterWordEndMs: words[words.length - 1]!.endMs, beforeWordStartMs: durationMs, sentence: true });
+  all.push({ afterWordEndMs: Math.min(words[words.length - 1]!.endMs, durationMs), beforeWordStartMs: durationMs, sentence: true });
 
   const nearSentence = all.map(() => false);
   let prev = -Infinity;
@@ -122,12 +125,6 @@ export function freeEdges(current: Range, requested: Range, toleranceMs = 100): 
     startMs: untouched(requested.startMs, current.startMs, toleranceMs) ? current.startMs : requested.startMs,
     endMs: untouched(requested.endMs, current.endMs, toleranceMs) ? current.endMs : requested.endMs,
   };
-}
-
-export function fitChildInParent(child: Range, parent: Range, minMs = 8000): Range | null {
-  const startMs = Math.max(child.startMs, parent.startMs);
-  const endMs = Math.min(child.endMs, parent.endMs);
-  return endMs - startMs < minMs ? null : { startMs, endMs };
 }
 
 export function overlapRatio(a: Range, b: Range): number {

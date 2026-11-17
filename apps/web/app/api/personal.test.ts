@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
 import {
-  createCustomPerson, failFindMore, getFindMore, replaceAiAttributions, setHumanAttribution, claimFindMore,
+  createCustomPerson, getFindMore, replaceAiAttributions, setHumanAttribution, claimFindMore,
   createClip, createTrack, deleteClip, failTrack, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
   approveTrack, updateClip, setSelection, confirmClips,
 } from "@digestor/core/server";
@@ -451,6 +451,11 @@ describe("kept clips are frozen once the video is removed (R30)", () => {
     }
     expect(await getClip(h.db, clip.id)).toMatchObject({ startMs: before!.startMs, endMs: before!.endMs, format: before!.format, credit: before!.credit });
     expect(await getTrack(h.db, tr.id)).toMatchObject({ approvedAt: null, burnStatus: "none" });
+    h.send.mockClear();
+    const added = await postTrack(req({ language: "de" }), ctx(clip.id)); // no new paid draft after removal
+    expect(added.status).toBe(409);
+    expect(await added.json()).toEqual(REMOVED);
+    expect(h.send).not.toHaveBeenCalled();
 
     expect((await patchClip(req({ warningsAck: true }, "PATCH"), ctx(clip.id))).status).toBe(200);
     expect((await patchClip(req({ protectedAck: true }, "PATCH"), ctx(clip.id))).status).toBe(200);

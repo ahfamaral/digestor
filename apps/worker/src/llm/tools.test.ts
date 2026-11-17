@@ -103,5 +103,13 @@ describe("Anthropic tool LLM (Ask) on the wire", () => {
     expect(assistant.role).toBe("assistant");
     expect(assistant.content).toEqual([thinking, toolUse]);
     expect(sent[1]!.body.messages[2].content[0]).toMatchObject({ type: "tool_result", tool_use_id: "toolu_1" });
+    expect(sent[0]!.body.max_tokens).toBe(16000); // thinking counts against it: as much room as the structured calls
+    expect(second.cutOff).toBeUndefined();
+  });
+
+  it("marks a reply cut off by the token limit (stop_reason max_tokens)", async () => {
+    const { fetch } = fakeFetch([{ body: reply([thinking, { type: "text", text: "Housing came up at [00:01" }], "max_tokens") }]);
+    const step = await createAnthropicToolLLM("k", { fetch }).step({ system: "s", messages: [{ role: "user", text: "Housing?" }], tools: [spec] });
+    expect(step).toMatchObject({ text: "Housing came up at [00:01", toolCalls: [], cutOff: true });
   });
 });

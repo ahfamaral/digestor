@@ -322,16 +322,21 @@ export async function saveTranslation(db: Db, analysisId: string, language: stri
     .onConflictDoUpdate({ target: translationKey, set: { content, status: "ready", error: null, updatedAt: new Date() } });
 }
 
-/** Marks the translation `pending` (clearing any error), unless it is already `ready`. */
-export async function requestTranslation(db: Db, analysisId: string, language: string, kind: "briefing"): Promise<void> {
-  await db
+/**
+ * Claims the translation: a new row, or a `failed` one, becomes `pending` (error cleared). True only for the caller
+ * that claimed it, who then sends the job; a row already `pending` (its job is on the way) or `ready` is left alone.
+ */
+export async function requestTranslation(db: Db, analysisId: string, language: string, kind: "briefing"): Promise<boolean> {
+  const rows = await db
     .insert(translations)
     .values({ analysisId, language, kind, content: null, status: "pending", error: null })
     .onConflictDoUpdate({
       target: translationKey,
       set: { content: null, status: "pending", error: null, updatedAt: new Date() },
-      setWhere: ne(translations.status, "ready"),
-    });
+      setWhere: eq(translations.status, "failed"),
+    })
+    .returning({ status: translations.status });
+  return rows.length > 0;
 }
 
 /** Marks a `pending` translation failed with a user-facing message; a ready one is left alone. */

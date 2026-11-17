@@ -53,7 +53,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const existing = await getTranslation(db, id, language, "briefing");
   if (existing?.status === "ready") return Response.json({ status: "ready", content: existing.content });
 
-  await requestTranslation(db, id, language, "briefing");
+  // Claim first, then send: a second request while one is pending (a double click, another tab) sends nothing, and
+  // never rolls back the first request's row. A pending row whose job died is failed by the sweep, then claimable again.
+  if (!(await requestTranslation(db, id, language, "briefing"))) {
+    const now = await getTranslation(db, id, language, "briefing");
+    if (now?.status === "ready") return Response.json({ status: "ready", content: now.content });
+    return Response.json({ status: "pending" }, { status: 202 });
+  }
   try {
     await boss.send(QUEUES.translateBriefing, { analysisId: id, language }, JOB_OPTIONS);
   } catch (err) {

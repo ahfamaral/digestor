@@ -231,6 +231,19 @@ describe("translation lifecycle", () => {
   });
 });
 
+describe("requestTranslation is a claim", () => {
+  it("true only for a new row or a failed one: a second request while pending, or a ready row, claims nothing", async () => {
+    const v = await startAnalysisVersion(db, s.id, META);
+    expect(await requestTranslation(db, v.id, "pt", "briefing")).toBe(true);
+    expect(await requestTranslation(db, v.id, "pt", "briefing")).toBe(false); // a double click or a second tab
+    await failTranslation(db, v.id, "pt", "briefing", "nope");
+    expect(await requestTranslation(db, v.id, "pt", "briefing")).toBe(true);
+    await saveTranslation(db, v.id, "pt", "briefing", { ok: 1 });
+    expect(await requestTranslation(db, v.id, "pt", "briefing")).toBe(false);
+    expect(await getTranslation(db, v.id, "pt", "briefing")).toEqual({ status: "ready", content: { ok: 1 }, error: null });
+  });
+});
+
 describe("session v2 columns", () => {
   it("has defaults for owner, video flags and updatedAt", async () => {
     expect(s).toMatchObject({ ownerId: "owner", hasVideo: true, audioOnlyAck: false, videoDeletedAt: null, profile: null });

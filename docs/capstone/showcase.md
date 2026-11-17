@@ -1,5 +1,7 @@
 # Digestor showcase
 
+**Status: optional, not uploaded yet.** The showcase entry and video have not been made; this page is the plan for them. The screenshot list below is also the fallback for the presentation's demo.
+
 Text and shot list for the optional Turing College showcase (a short video plus a link in the README). Audience: reviewers and journalists.
 
 ## Description (about 125 words)

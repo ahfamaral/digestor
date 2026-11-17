@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  asToolCalls, awaitsApproval, formatToolCall, isChange, packageOutcome, parseApprovalPayload, isStalePending, isWorkingOn, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
+  asToolCalls, awaitsApproval, formatToolCall, isChange, packageOutcome, parseApprovalPayload, isStalePending, isWorkingOn, askPollMs, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
 } from "@/lib/askText";
 import { ApprovalCard } from "./ApprovalCard";
 import { errorMessage } from "@/lib/http";
@@ -20,7 +20,6 @@ import { Busy, Spinner } from "@/components/ui/spinner";
 const MAX_QUESTION = 500;
 /** The counter appears this close to the limit. */
 const COUNTER_FROM = 400;
-const POLL_MS = 2000;
 const CHIP = "inline-flex h-6 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 /** From this width the drawer is a side panel beside the Briefing (Tailwind `lg`); below it a modal sheet. */
@@ -135,14 +134,16 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
   // "Taking too long" counts from the last status change: an answer resumed after an approval is fresh again.
   const isWaiting = (m: Message) => m.role === "assistant" && isWorkingOn(m) && !isStalePending(m.updatedAt ?? m.createdAt, now);
   const hasPending = messages.some(isWaiting);
+  // A slow answer keeps being polled (slowly), so it still shows up when the worker finishes it.
+  const pollMs = askPollMs(messages.filter((m) => m.role === "assistant" && isWorkingOn(m)).map((m) => m.updatedAt ?? m.createdAt), now);
   useEffect(() => {
-    if (!open || !hasPending) return;
+    if (!open || pollMs === null) return;
     const timer = setInterval(() => {
       setNow(Date.now());
       void load(true);
-    }, POLL_MS);
+    }, pollMs);
     return () => clearInterval(timer);
-  }, [open, hasPending, load]);
+  }, [open, pollMs, load]);
 
   useEffect(() => {
     listEnd.current?.scrollIntoView({ block: "end" });
@@ -415,7 +416,7 @@ function MessageItem({
       {isWorkingOn(message) && !stale && <p className="inline-flex items-center gap-1.5 text-muted-foreground"><Spinner />{t("ask.thinking")}</p>}
       {awaitsApproval(message) && <p className="text-muted-foreground">{t("ask.approval.waiting")}</p>}
       {isWorkingOn(message) && stale && (
-        <p role="alert" className="text-red-700">
+        <p role="status" className="text-muted-foreground">
           {t("ask.tooSlow")}
         </p>
       )}

@@ -8,7 +8,8 @@
  * session id may also be given as `sessionId` in the golden file ("" as the first argument then). Without `--version`
  * it reads the current version. Moment checks only run on demand, so trap results count only checked moments:
  * `--run-checks` first checks every unchecked moment that overlaps a trap, with the model that version recorded for
- * checks, and stores the result as the app would. Without it the script never calls the LLM.
+ * checks (a plain Anthropic id runs today's fast model, with a warning when they differ), and stores the result as
+ * the app would. Without it the script never calls the LLM.
  * The cost rows come from the version's recorded LLM usage (tokens and US$ per served model, since 2026-11-10) and,
  * with `--run-checks`, from the checks this run made.
  */
@@ -18,7 +19,7 @@ import { createDb, getAnalysisByVersion, getAnalysisVersion, getContextCard, get
 import { checkMoment } from "../src/agents/checks.js";
 import { attributionScore, highlightTypeRecall, momentRecall, topicBoundaryError, trapHits, uncheckedOnTraps, usageRows, type Golden } from "../src/eval/metrics.js";
 import { createOpenRouterLLM } from "../src/llm/openrouter.js";
-import { createAnthropicLLM, type StructuredLLM } from "../src/llm/structured.js";
+import { MODEL_IDS, createAnthropicLLM, type StructuredLLM } from "../src/llm/structured.js";
 import { UsageMeter, withUsageMeter } from "../src/llm/usage.js";
 import { withProfile } from "../src/pipeline/analysis.js";
 import { promptCard } from "../src/pipeline/naming.js";
@@ -39,11 +40,17 @@ if (!sessionId) {
   process.exit(1);
 }
 
-/** The client for a recorded model id: `openrouter:<id>` or a plain Anthropic id. */
+/**
+ * The client for a recorded model id: `openrouter:<id>` or a plain Anthropic id. The Anthropic client always runs
+ * today's fast model (checks use it), so an older recorded id gets a warning instead of being silently replaced.
+ */
 function llmFor(recorded: string): StructuredLLM {
   if (recorded.startsWith("openrouter:")) {
     const id = recorded.slice("openrouter:".length);
     return createOpenRouterLLM(process.env.OPENROUTER_API_KEY ?? "", { reasoning: id, fast: id });
+  }
+  if (recorded !== MODEL_IDS.fast) {
+    console.error(`Warning: this version recorded checks model ${recorded}; the checks run with today's ${MODEL_IDS.fast}.`);
   }
   return createAnthropicLLM(process.env.ANTHROPIC_API_KEY ?? "");
 }

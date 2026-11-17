@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, initialPackageDraft, isChange, packageDecision, packageOutcome,
-  sourceLines, isAnswering, isStalePending, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, verifyResult,
+  sourceLines, isAnswering, isStalePending, askPollMs, ASK_POLL_MS, ASK_SLOW_POLL_MS, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, verifyResult,
 } from "./askText";
 
 describe("linkifyTimestamps", () => {
@@ -143,6 +143,17 @@ describe("isStalePending", () => {
     expect(isStalePending(created.toISOString(), created.getTime() + ASK_PENDING_LIMIT_MS - 1)).toBe(false);
     expect(isStalePending(created.toISOString(), created.getTime() + ASK_PENDING_LIMIT_MS + 1)).toBe(true);
     expect(isStalePending("not a date", Date.now())).toBe(false);
+  });
+});
+
+describe("askPollMs", () => {
+  const created = new Date("2026-10-30T10:00:00Z");
+  const t0 = created.getTime();
+  it("polls fast while an answer is fresh, slowly once it is past the limit, and stops with none working", () => {
+    expect(askPollMs([created], t0 + 1000)).toBe(ASK_POLL_MS);
+    expect(askPollMs([created], t0 + ASK_PENDING_LIMIT_MS + 1)).toBe(ASK_SLOW_POLL_MS);
+    expect(askPollMs([created, new Date(t0 + ASK_PENDING_LIMIT_MS)], t0 + ASK_PENDING_LIMIT_MS + 1)).toBe(ASK_POLL_MS);
+    expect(askPollMs([], t0)).toBeNull();
   });
 });
 

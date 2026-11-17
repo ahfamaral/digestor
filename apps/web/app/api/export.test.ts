@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
 import {
   approveTrack, createClip, createTrack, createCustomPerson, getClip, getTrack, replaceAiAttributions, requestTrackBurn, setHumanAttribution,
-  setMomentChecks, setTrackCues, updateClip, updateSession,
+  setMomentChecks, setSelection, setTrackCues, updateClip, updateSession,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
@@ -30,6 +30,8 @@ async function twoClips(voiceNamed = true) {
     createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: moments[i]!.id, startMs: 10_000 + i * 30_000, endMs: 30_000 + i * 30_000, actor: "user" });
   // the one voice of the transcript is marked "no name", so the speaker item passes unless a test changes that
   if (voiceNamed) await setHumanAttribution(h.db, { sessionId, speakerId: "A", startMs: null, endMs: null, personId: null, ownerId: OWNER_ID });
+  // both moments approved on the Briefing page: a clip whose moment isn't approved is dismissed
+  for (const m of moments) await setSelection(h.db, OWNER_ID, m.id, "approved");
   const good = await mk(0);
   const bad = await mk(1);
   await setMomentChecks(h.db, moments[0]!.id, clean);
@@ -50,6 +52,16 @@ describe("POST /api/sessions/[id]/export", () => {
     expect(sends(QUEUES.checkMoment)).toEqual([[QUEUES.checkMoment, { momentId: moments[1]!.id }, JOB_OPTIONS]]);
     expect((await getClip(h.db, good.id))?.renderStatus).toBe("queued");
     expect((await getClip(h.db, bad.id))?.renderStatus).toBe("none");
+  });
+
+  it("a dismissed clip (its moment no longer approved) is blocked, as on the page", async () => {
+    const { sessionId, moments, good } = await twoClips();
+    await setSelection(h.db, OWNER_ID, moments[0]!.id, "rejected");
+    const res = await post(sessionId, { clipIds: [good.id] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).blocked).toEqual([{ clipId: good.id, failing: ["dismissed"] }]);
+    expect(sends(QUEUES.renderClip)).toHaveLength(0);
+    expect((await getClip(h.db, good.id))?.renderStatus).toBe("none");
   });
 
   it("answers 400 listing the failing items when nothing can be exported", async () => {

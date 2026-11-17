@@ -113,6 +113,31 @@ describe("settlePreview", () => {
     expect(PREVIEW_FAILED).toBe("The video preview couldn't be prepared. Please try again.");
   });
 
+  it("a stage changed between its read and its write (the sweep takes no advisory lock) is not overwritten", async () => {
+    await waiting({ proxyStatus: "done", proxyKey: "k" });
+    const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 2 });
+    const other = await pool.connect();
+    try {
+      await other.query("begin");
+      await other.query("select id from sessions where id = $1 for update", [s.id]);
+      const settling = settlePreview(db, s.id); // reads preparing_preview, then waits on the row lock to write
+      for (let i = 0; i < 100; i++) {
+        const { rows } = await pool.query(
+          "select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and query like 'update \"sessions\"%'",
+        );
+        if (rows[0].n > 0) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await other.query("update sessions set stage = 'failed', error = 'swept' where id = $1", [s.id]);
+      await other.query("commit");
+      await settling;
+    } finally {
+      other.release();
+      await pool.end();
+    }
+    expect(await getSession(db, s.id)).toMatchObject({ stage: "failed", error: "swept" });
+  });
+
   it("any other stage is never touched", async () => {
     for (const stage of ["transcribing", "awaiting_context", "ready", "failed"] as const) {
       await setStage(db, s.id, stage, 50);

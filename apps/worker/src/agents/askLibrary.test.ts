@@ -10,7 +10,8 @@ import { FakeLLM, type FakeCall } from "../llm/structured.js";
 import { FakeToolLLM, type ToolStepCall } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
 import { COULDNT_CONFIRM } from "./verify.js";
-import { LIBRARY_ASK_FAILED, MAX_PICKED, NOT_IN_LIBRARY, noIndexedReply, runLibraryAsk, splitBySession, type LibraryAskDeps } from "./askLibrary.js";
+import { ANSWER_TOO_LONG } from "./ask.js";
+import { LIBRARY_ASK_FAILED, LIBRARY_SEARCH_DOWN, MAX_PICKED, NOT_IN_LIBRARY, noIndexedReply, runLibraryAsk, splitBySession, type LibraryAskDeps } from "./askLibrary.js";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -413,11 +414,33 @@ describe("handleLibraryAsk", () => {
   it("puts the answer back to pending and rethrows on an early attempt, fails it on the last", async () => {
     const a = await video("A");
     const msg = await question("Q?");
-    const broken: LibraryAskDeps = { ...depsFor({ indexed: [a.id] }).deps, indexed: async () => { throw new Error("chroma down"); } };
-    await expect(handleLibraryAsk(broken, { messageId: msg.id }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow("chroma down");
+    const broken: LibraryAskDeps = { ...depsFor({ indexed: [a.id] }).deps, llm: new FakeToolLLM([() => { throw new Error("model down"); }, () => { throw new Error("model down"); }]) };
+    await expect(handleLibraryAsk(broken, { messageId: msg.id }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow("model down");
     expect((await getLibraryAskMessage(db, msg.id))?.status).toBe("pending");
-    await expect(handleLibraryAsk(broken, { messageId: msg.id }, { retryCount: 2, retryLimit: 2 })).rejects.toThrow("chroma down");
+    await expect(handleLibraryAsk(broken, { messageId: msg.id }, { retryCount: 2, retryLimit: 2 })).rejects.toThrow("model down");
     expect(await getLibraryAskMessage(db, msg.id)).toMatchObject({ status: "failed", text: LIBRARY_ASK_FAILED });
+  });
+
+  it("search down (the index check or every search): retried, and the last attempt says search is unavailable", async () => {
+    const a = await video("A");
+    const msg = await question("Q?");
+    const chromaDown = async () => { throw new Error("chroma down"); };
+    const broken: LibraryAskDeps = { ...depsFor({ indexed: [a.id] }).deps, indexed: chromaDown };
+    await expect(handleLibraryAsk(broken, { messageId: msg.id }, { retryCount: 0, retryLimit: 2 })).rejects.toThrow(LIBRARY_SEARCH_DOWN);
+    expect((await getLibraryAskMessage(db, msg.id))?.status).toBe("pending");
+    const noSearch: LibraryAskDeps = { ...depsFor({ indexed: [a.id] }).deps, search: chromaDown };
+    await expect(handleLibraryAsk(noSearch, { messageId: msg.id }, { retryCount: 2, retryLimit: 2 })).rejects.toThrow(LIBRARY_SEARCH_DOWN);
+    expect(await getLibraryAskMessage(db, msg.id)).toMatchObject({ status: "failed", text: LIBRARY_SEARCH_DOWN });
+  });
+
+  it("an answer cut off by the token limit is not stored half-written", async () => {
+    const a = await video("A");
+    const msg = await question("Q?");
+    const { deps, router } = depsFor({ indexed: [a.id] });
+    deps.llm = new FakeToolLLM([{ text: "Alpha said [S1 00:0", toolCalls: [], cutOff: true }]);
+    await runLibraryAsk(deps, msg.id);
+    expect(await getLibraryAskMessage(db, msg.id)).toMatchObject({ status: "done", text: ANSWER_TOO_LONG });
+    expect(router.calls.filter((x) => x.name === "verify_claims")).toHaveLength(0);
   });
 
   it("a retry that finds the answer running (the attempt died) answers it again: nothing was changed", async () => {

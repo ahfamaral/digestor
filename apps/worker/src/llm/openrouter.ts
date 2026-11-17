@@ -1,7 +1,7 @@
 import { SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAICompletions } from "@langchain/openai";
 import { invokeWithOneRetry, isParseError, llmJsonSchema, validated, type ClientOptions, type GenerateArgs, type LLMModel, type StructuredLLM } from "./structured.js";
-import { fromAIMessage, toLangChainMessages, type ToolLLM } from "./tools.js";
+import { TOOL_MAX_TOKENS, fromAIMessage, toLangChainMessages, type ToolLLM } from "./tools.js";
 import { usageCallbacks } from "./usage.js";
 
 /** OpenAI-compatible Chat Completions API: https://openrouter.ai/docs/api-reference/overview */
@@ -83,7 +83,7 @@ export function createOpenRouterLLM(apiKey: string, models: Record<LLMModel, str
 export function createOpenRouterToolLLM(apiKey: string, models: Record<LLMModel, string>, opts: ClientOptions = {}): ToolLLM {
   return {
     async step(a) {
-      const chat = openRouterChat(apiKey, models.reasoning, 4096, opts);
+      const chat = openRouterChat(apiKey, models.reasoning, TOOL_MAX_TOKENS, opts);
       const model = a.tools.length > 0 ? chat.bindTools(a.tools) : chat;
       const res = await model.invoke([new SystemMessage(a.system), ...toLangChainMessages(a.messages)], { callbacks: usageCallbacks(models.reasoning) });
       return fromAIMessage(res);

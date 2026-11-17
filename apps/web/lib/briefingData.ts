@@ -113,9 +113,24 @@ export function insideApproved(
 export function withCurrentSpeakerNames<M extends MomentWithHighlights>(moments: M[], names: NamesData, sensitive: boolean): M[] {
   return moments.map((m) => {
     const speaker = m.speakers[0];
-    if (m.origin !== "counted" || m.speakers.length !== 1 || !m.highlights.some((h) => h.type === "longest_speech")) return m;
-    if (m.title !== `Longest speech: ${speaker}`) return m;
+    if (!m.highlights.some((h) => h.type === "longest_speech")) return m;
+    const title = currentSpeakerTitle(m, names, sensitive);
+    if (title === m.title) return m;
     const label = voiceLabel(names, speaker, m.startMs, sensitive).text;
-    return { ...m, title: `Longest speech: ${label}`, why: m.why.replace(`by ${speaker},`, `by ${label},`) };
+    return { ...m, title, why: m.why.replace(`by ${speaker},`, `by ${label},`) };
   });
+}
+
+/**
+ * A moment's title as `withCurrentSpeakerNames` shows it, for screens that load the moment without its highlights
+ * (Prepare, Export): only the counted moment whose title is still "Longest speech: <speaker id>" is renamed.
+ */
+export function currentSpeakerTitle(
+  m: { origin: string; speakers: string[]; title: string; startMs: number },
+  names: NamesData,
+  sensitive: boolean,
+): string {
+  const speaker = m.speakers[0];
+  if (m.origin !== "counted" || m.speakers.length !== 1 || m.title !== `Longest speech: ${speaker}`) return m.title;
+  return `Longest speech: ${voiceLabel(names, speaker, m.startMs, sensitive).text}`;
 }

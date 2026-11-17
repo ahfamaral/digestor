@@ -18,13 +18,6 @@ export function checksForClip(clip: ClipBounds, moment: MomentForChecks | null):
   return { checks: moment.checks, originalCut: false };
 }
 
-/**
- * What must hold before a clip is exported. `argument`, `context` and `flags` are ok when the moment's checks say
- * so, or when the user acknowledged the warnings; with no checks for this cut (they couldn't run, or the clip was
- * trimmed away from its moment's bounds) only the acknowledgement lets the clip through. `subtitles`: no track is
- * outdated, and every track with a burn request is approved. `speaker`: every voice in the clip (`speakersInRange`)
- * is a confirmed name or marked "no name"; it ignores `warningsAck`. `protected` exists for the trial profile only.
- */
 export type ClipSpeaker = { speakerId: string; resolution: Resolution; ms: number };
 
 /** The voices of a clip that still need a confirmed name (or "no name"). */
@@ -32,6 +25,13 @@ export function unconfirmedSpeakers<T extends Pick<ClipSpeaker, "resolution">>(s
   return speakers.filter(({ resolution: r }) => !(r.kind === "anonymous" || (r.kind === "named" && r.confirmed)));
 }
 
+/**
+ * What must hold before a clip is exported. `argument`, `context` and `flags` are ok when the moment's checks say
+ * so, or when the user acknowledged the warnings; with no checks for this cut (they couldn't run, or the clip was
+ * trimmed away from its moment's bounds) only the acknowledgement lets the clip through. `subtitles`: no track is
+ * outdated, and every track with a burn request is approved. `speaker`: every voice in the clip (`speakersInRange`)
+ * is a confirmed name or marked "no name"; it ignores `warningsAck`. `protected` exists for the trial profile only.
+ */
 export function exportChecklist(a: {
   clip: Pick<Clip, "credit" | "noCreditNeeded" | "warningsAck" | "protectedAck" | "startMs" | "endMs">;
   moment: MomentForChecks | null;

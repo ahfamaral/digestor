@@ -12,7 +12,7 @@ export type Chamber = {
   defaultLanguage: "pt" | "de" | "en";
   /** Days after a sitting the house usually needs to publish its record. */
   publishWindowDays: number;
-  /** Leading titles that are no part of the name an official is known by (lower-case matching, no trailing dot). */
+  /** Leading titles that are no part of the name an official is known by (matched ignoring case and a trailing dot). */
   titles: string[];
   /** A house whose name matching has been measured against a golden set; others only propose names. */
   evaluated: boolean;

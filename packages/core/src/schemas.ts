@@ -18,12 +18,7 @@ export const TranscriptSchema = z.object({
 });
 export type Transcript = z.infer<typeof TranscriptSchema>;
 
-export const ClipLabelSchema = z.enum(["heated", "key_point", "light"]);
-export type ClipLabel = z.infer<typeof ClipLabelSchema>;
-export const ClipStatusSchema = z.enum(["proposed", "approved", "rejected"]);
-export type ClipStatus = z.infer<typeof ClipStatusSchema>;
-export const ClipOriginSchema = z.enum(["ai", "user", "copilot"]);
-export type ClipOrigin = z.infer<typeof ClipOriginSchema>;
+export type ClipStatus = "proposed" | "approved" | "rejected";
 export const FactSourceSchema = z.enum(["video", "metadata", "human"]);
 export type FactSource = z.infer<typeof FactSourceSchema>;
 
@@ -69,20 +64,6 @@ export const ContextCardSchema = z.object({
 });
 export type ContextCard = z.infer<typeof ContextCardSchema>;
 
-const timestamp = z.string().regex(/^\d{2}:\d{2}:\d{2}$/, "expected hh:mm:ss");
-
-// Key order matters: reason comes before label/score so the model reasons first.
-export const CandidateSchema = z.object({
-  title: z.string(),
-  reason: z.string(),
-  label: ClipLabelSchema,
-  score: z.number().int().min(0).max(100),
-  start: timestamp,
-  end: timestamp,
-  evidence: z.array(z.string()),
-});
-export type Candidate = z.infer<typeof CandidateSchema>;
-
 /** Card fields the journalist changed on the context check (sent with Continue or Skip). */
 const CardEditsSchema = z.object({
   title: z.string().optional(),
@@ -110,16 +91,6 @@ export const ResumePayloadSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("skip"), cardEdits: CardEditsSchema.optional() }),
 ]);
 export type ResumePayload = z.infer<typeof ResumePayloadSchema>;
-
-export type ProposedClip = {
-  title: string;
-  reason: string;
-  label: ClipLabel;
-  score: number;
-  startMs: number;
-  endMs: number;
-  children: Omit<ProposedClip, "children">[];
-};
 
 /** Pipeline stage as stored in sessions.stage (client-safe: the DB column type lives in db/schema.ts). */
 export type Stage =

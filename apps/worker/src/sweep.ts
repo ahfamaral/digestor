@@ -91,6 +91,9 @@ export async function sweepStaleSessions(db: Db, now: Date = new Date(), staleMi
  *   are not job-owned and are never swept;
  * - an answer across videos (`library_ask_messages`) `pending`/`running` → `failed` with STUCK_MESSAGE as its text
  *   (asking again sends a new question);
+ * - a session's Ask answer (`ask_messages`) `pending`/`running` with no live `ask.run` job for it and no live
+ *   `ask.resume` job for one of its actions → `failed` with STUCK_MESSAGE as its text; `waiting` (an approval card the
+ *   journalist hasn't answered) is not job-owned and is never swept. Its thread in `ask_graph` goes at retention;
  * - a session's preview copy `pending`/`running` → `failed`, then the join runs: a session waiting in `preparing_preview`
  *   fails with its friendly line (one still analysing fails when its analysis ends).
  * Returns how many rows of each kind were failed.
@@ -99,7 +102,10 @@ export async function sweepStaleJobRows(
   db: Db,
   now: Date = new Date(),
   staleMinutes = 30,
-): Promise<{ translations: number; tracks: number; renders: number; burns: number; findMore: number; records: number; libraryAsk: number; proxies: number }> {
+): Promise<{
+  translations: number; tracks: number; renders: number; burns: number; findMore: number; records: number; libraryAsk: number; ask: number;
+  proxies: number;
+}> {
   const cutoff = sql`${new Date(now.getTime() - staleMinutes * 60_000).toISOString()}::timestamptz`;
 
   const translations = await db.execute(sql`
@@ -141,6 +147,15 @@ export async function sweepStaleJobRows(
     where m.role = 'assistant' and m.status in ('pending', 'running') and m.updated_at < ${cutoff}
       and not ${hasLiveJobFor(QUEUES.askLibrary, { messageId: "m.id" })}
   `);
+  const ask = await db.execute(sql`
+    update ask_messages m set status = 'failed', text = ${STUCK_MESSAGE}, updated_at = now()
+    where m.role = 'assistant' and m.status in ('pending', 'running') and m.updated_at < ${cutoff}
+      and not ${hasLiveJobFor(QUEUES.ask, { messageId: "m.id" })}
+      and not exists (
+        select 1 from pgboss.job j join ask_actions a on j.data->>'actionId' = a.id::text
+        where j.name = ${QUEUES.askResume} and j.state in ('created', 'retry', 'active') and a.message_id = m.id
+      )
+  `);
   // No `updated_at` bump: that clock is the session's own 120-minute rule, which this must not restart.
   const stuckProxies = await db.execute<{ id: string }>(sql`
     update sessions s set proxy_status = 'failed'
@@ -157,6 +172,7 @@ export async function sweepStaleJobRows(
     findMore: findMore.rowCount ?? 0,
     records: records.rowCount ?? 0,
     libraryAsk: libraryAsk.rowCount ?? 0,
+    ask: ask.rowCount ?? 0,
     proxies: stuckProxies.rows.length,
   };
 }

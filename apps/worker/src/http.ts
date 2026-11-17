@@ -22,6 +22,8 @@ const MAX_Q = 500;
 const DEFAULT_K = 100;
 const MAX_K = 200;
 const MAX_KEYS = 50;
+/** A stored speech key (`speechKey()` in core: deputy, start minute, 10 hex characters; ":n" for a repeated text). */
+const SPEECH_KEY = /^\d{1,12}:\d{4}-\d\d-\d\dT\d\d:\d\d:[0-9a-f]{10}(?::\d{1,4})?$/;
 const DEFAULT_PER_SPEECH = 3;
 const MAX_PER_SPEECH = 10;
 /**
@@ -102,7 +104,7 @@ export function createHttpHandler(deps: HttpDeps): (req: IncomingMessage, res: S
       const body = await readJson(req);
       const q = query(body);
       const keys = body.speechKeys;
-      if (!Array.isArray(keys) || !keys.every((k) => typeof k === "string") || keys.length > MAX_KEYS) {
+      if (!Array.isArray(keys) || keys.length > MAX_KEYS || !keys.every((k) => typeof k === "string" && SPEECH_KEY.test(k))) {
         throw new HttpError(400, `speechKeys must be a list of at most ${MAX_KEYS} speech keys.`);
       }
       const passages = await deps.passages(q, keys as string[], bounded(body.perSpeech, DEFAULT_PER_SPEECH, MAX_PER_SPEECH));

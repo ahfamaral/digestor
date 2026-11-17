@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { TranscriptSchema, type Transcript } from "@digestor/core";
-import { FakeTranscriber, buildTranscribeParams, deferredTranscriber, mapAssemblyAI, TranscriptionError, throwIfError, type Transcriber } from "./assemblyai.js";
+import { AssemblyAITranscriber, FakeTranscriber, buildTranscribeParams, pollingTimeoutMs, deferredTranscriber, mapAssemblyAI, TranscriptionError, throwIfError, type Transcriber } from "./assemblyai.js";
 
 const raw = JSON.parse(
   readFileSync(new URL("../../test/fixtures/assemblyai-raw.json", import.meta.url), "utf8"),
@@ -149,5 +149,21 @@ describe("deferredTranscriber", () => {
     const t = deferredTranscriber(get);
     expect(get).not.toHaveBeenCalled();
     await expect(t.transcribe("/a.mp3")).rejects.toThrow("ASSEMBLYAI_API_KEY");
+  });
+});
+
+describe("polling timeout", () => {
+  it("waits 3 × the recording, at least an hour", () => {
+    expect(pollingTimeoutMs(undefined)).toBe(3_600_000);
+    expect(pollingTimeoutMs(10 * 60_000)).toBe(3_600_000);
+    expect(pollingTimeoutMs(2 * 3_600_000)).toBe(6 * 3_600_000);
+  });
+
+  it("passes the limit to the SDK, so a transcript stuck at the vendor can't poll forever", async () => {
+    const t = new AssemblyAITranscriber("key");
+    const transcribe = vi.fn().mockResolvedValue({ status: "completed", audio_duration: 1, words: [] });
+    (t as unknown as { client: { transcripts: { transcribe: typeof transcribe } } }).client = { transcripts: { transcribe } };
+    await t.transcribe("/a.mp3", 2 * 3_600_000);
+    expect(transcribe.mock.lastCall![1]).toEqual({ pollingTimeout: 6 * 3_600_000 });
   });
 });

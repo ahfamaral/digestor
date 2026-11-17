@@ -75,6 +75,35 @@ describe("refreshMonitor", () => {
     warn.mockRestore();
   });
 
+  it("keeps speeches when a later page of the answer is missing (404 on page 2): the deputy is skipped, not truncated", async () => {
+    await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const page1 = {
+      dados: [{ dataHoraInicio: "2026-03-10T19:40", sumario: "s", transcricao: "Só a primeira página.", keywords: "" }],
+      links: [{ rel: "next", href: "https://dadosabertos.camara.leg.br/api/v2/deputados/204407/discursos?pagina=2" }],
+    };
+    const { f } = fakeCamaraMonitorFetch({ "/deputados/204407/discursos?pagina=2": { status: 404 }, "/deputados/204407/discursos": page1 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const counts = await refreshMonitor({ db, fetch: f }, window);
+    warn.mockRestore();
+    expect(counts.speeches).toMatchObject({ failed: 1 });
+    const her = (await getMember(db, "camara", 204407))!;
+    expect((await listMemberSpeeches(db, her.id, {})).total).toBe(4);
+  });
+
+  it("stores one speech when the answer lists a provisional copy beside the final one", async () => {
+    const final = "O SR. GERALDO RESENDE (Bloco/UNIÃO - MS. Sem revisão do orador.) - Sr. Presidente, venho a esta tribuna para agradecer ao povo de Mato Grosso do Sul pela confiança e pelo apoio recebido.";
+    const body = { dados: [
+      { dataHoraInicio: "2026-10-13T15:20", tipoDiscurso: "BREVES COMUNICAÇÕES", sumario: "", transcricao: final.replace("recebido", "que recebi"), keywords: "" },
+      { dataHoraInicio: "2026-10-13T15:20", tipoDiscurso: "BREVES COMUNICAÇÕES", sumario: "O Deputado agradeceu.", transcricao: final, keywords: "", urlTexto: "https://imagem.camara.gov.br/dc_20b.asp?x=1" },
+    ], links: [] };
+    const counts = await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch({ "/deputados/204407/discursos": body }).f }, window);
+    expect(counts.speeches).toMatchObject({ inserted: 1 });
+    const her = (await getMember(db, "camara", 204407))!;
+    const rows = (await listMemberSpeeches(db, her.id, {})).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.summary).toBe("O Deputado agradeceu.");
+  });
+
   it("keeps the in-office flags when the Câmara answers an empty in-office list", async () => {
     await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -258,10 +287,13 @@ describe("refreshMonitor", () => {
     expect((await getProfile(db, her.id)).profession).toBe("Bibliotecária");
   });
 
-  it("empty presence, authors and guidance files keep the stored rows", async () => {
+  it("empty votes, presence, authors and guidance files keep the stored rows", async () => {
     await refreshMonitor({ db, fetch: fakeCamaraMonitorFetch().f }, window);
+    const votesBefore = await db.execute<{ n: number }>(sql`select count(*)::int as n from parl_votes`);
+    expect(votesBefore.rows[0]!.n).toBeGreaterThan(0);
     const header = (kind: string) => monitorFixture(`${kind}-2026.excerpt.csv`).split("\n")[0] + "\n";
     const { f } = fakeCamaraMonitorFetch({
+      "/arquivos/votacoesVotos/": header("votacoesVotos"),
       "/arquivos/eventosPresencaDeputados/": header("eventosPresencaDeputados"),
       "/arquivos/proposicoesAutores/": header("proposicoesAutores"),
       "/arquivos/votacoesOrientacoes/": header("votacoesOrientacoes"),
@@ -269,7 +301,10 @@ describe("refreshMonitor", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await refreshMonitor({ db, fetch: f }, window);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/presence/));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/votes/));
     warn.mockRestore();
+    const votesAfter = await db.execute<{ n: number }>(sql`select count(*)::int as n from parl_votes`);
+    expect(votesAfter.rows[0]!.n).toBe(votesBefore.rows[0]!.n);
     const her = (await getMember(db, "camara", 204407))!;
     const presence = await db.execute<{ n: number }>(sql`select count(*)::int as n from parl_presence where member_id = ${her.id}`);
     expect(presence.rows[0]!.n).toBe(2);

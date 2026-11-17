@@ -7,7 +7,7 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { emptyCheckpoint } from "@langchain/langgraph";
 import { sql } from "drizzle-orm";
 import { OWNER_ID } from "@digestor/core";
-import { LocalStorage, addAskMessage, createDb, createSession, deleteAskThread, deleteSession, ensurePipelineRun, getPipelineRun, getSession, pipelineRuns, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
+import { LocalStorage, addAskMessage, createDb, createSession, deleteSession, ensurePipelineRun, getPipelineRun, getSession, pipelineRuns, startAnalysisVersion, updateSession, type Db, type Stage } from "@digestor/core/server";
 import type { ChromaClient } from "chromadb";
 import { collectionName } from "./search/index.js";
 import { runDailyCleanup, runVideoRetention, videoRetentionDays, type DailyCleanupDeps } from "./cleanup.js";
@@ -130,7 +130,7 @@ d("runVideoRetention", () => {
     expect(await hasRunRow(old.id)).toBe(false); // it holds the journalist's answers
   });
 
-  it("deletes the session's search collection, and a Chroma failure does not block the retention", async () => {
+  it("deletes the session's search collection; a Chroma failure leaves videoDeletedAt unset so the next run deletes it", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const old = await seed(16, "ready");
@@ -141,9 +141,14 @@ d("runVideoRetention", () => {
 
       const other = await seed(17, "ready");
       const down = { deleteCollection: async () => Promise.reject(new Error("chroma down")) } as unknown as ChromaClient;
-      expect((await runVideoRetention({ ...deps(), chroma: down }, 14)).removed).toBe(1);
-      expect((await getSession(db, other.id))?.videoDeletedAt).toBeInstanceOf(Date);
+      expect((await runVideoRetention({ ...deps(), chroma: down }, 14)).removed).toBe(0);
+      expect(other.at("original.mp4")).toBe(false); // the files still go
+      expect((await getSession(db, other.id))?.videoDeletedAt).toBeNull();
       expect(log).toHaveBeenCalled();
+      deleted.length = 0;
+      expect((await runVideoRetention({ ...deps(), chroma }, 14)).removed).toBe(1); // Chroma back: the next night finishes
+      expect(deleted).toEqual([collectionName(other.id)]);
+      expect((await getSession(db, other.id))?.videoDeletedAt).toBeInstanceOf(Date);
     } finally {
       log.mockRestore();
     }
@@ -170,10 +175,6 @@ d("runVideoRetention", () => {
       expect(Number(await rows(oldThread))).toBe(2);
       expect((await runVideoRetention(deps(), 14)).removed).toBe(1);
       expect(Number(await rows(oldThread))).toBe(0);
-      expect(Number(await rows(recentThread))).toBe(2);
-      const another = await thread(recent.id);
-      await deleteAskThread(db, another); // one answer's thread, when it ends
-      expect(Number(await rows(another))).toBe(0);
       expect(Number(await rows(recentThread))).toBe(2);
       await deleteSession(db, recent.id);
       expect(Number(await rows(recentThread))).toBe(0);

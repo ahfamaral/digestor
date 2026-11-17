@@ -54,7 +54,9 @@ export async function settlePreview(db: Db, sessionId: string): Promise<void> {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sessionId}))`);
     const [s] = await tx.select().from(sessions).where(eq(sessions.id, sessionId));
     if (!s || s.stage !== "preparing_preview") return;
-    if (isProxyReady(s)) await tx.update(sessions).set({ stage: "ready", progress: 100, error: null, updatedAt: sql`now()` }).where(eq(sessions.id, sessionId));
-    else if (s.proxyStatus === "failed") await tx.update(sessions).set({ stage: "failed", error: PREVIEW_FAILED, updatedAt: sql`now()` }).where(eq(sessions.id, sessionId));
+    // The stage guard again in the write: the sweep and `setStage` don't take the advisory lock.
+    const still = and(eq(sessions.id, sessionId), eq(sessions.stage, "preparing_preview"));
+    if (isProxyReady(s)) await tx.update(sessions).set({ stage: "ready", progress: 100, error: null, updatedAt: sql`now()` }).where(still);
+    else if (s.proxyStatus === "failed") await tx.update(sessions).set({ stage: "failed", error: PREVIEW_FAILED, updatedAt: sql`now()` }).where(still);
   });
 }

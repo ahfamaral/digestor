@@ -27,6 +27,16 @@ describe("GET /monitor/lang", () => {
     expect(res.headers.get("location")).toBe("/monitor?q=x");
   });
 
+  it("a back link the Location header can't carry (non-ASCII, a newline) never answers 500", async () => {
+    const wide = await call(`to=en&back=${encodeURIComponent("/monitor?q=中国 — x")}`);
+    expect(wide.status).toBe(303);
+    expect(wide.headers.get("location")).toBe("/monitor?q=%E4%B8%AD%E5%9B%BD%20%E2%80%94%20x");
+    const newline = await call(`to=en&back=${encodeURIComponent("/monitor/\nx")}`);
+    expect(newline.status).toBe(303);
+    expect(newline.headers.get("location")).toMatch(/^\/monitor/);
+    expect(newline.headers.get("location")).not.toMatch(/[\r\n]/);
+  });
+
   it("ignores an unknown language", async () => {
     const res = await call("to=xx&back=/monitor");
     expect(res.status).toBe(303);

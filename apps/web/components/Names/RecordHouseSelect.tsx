@@ -38,6 +38,7 @@ export function useRecordHouse(): [RecordHouse, (house: RecordHouse) => void, (h
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read after hydration on purpose (a lazy initial state would mismatch the server HTML)
       if (saved && (CHAMBER_IDS as string[]).includes(saved)) setHouse(saved as RecordHouse);
     } catch {
       // storage blocked: the select starts on "Detect from the link"

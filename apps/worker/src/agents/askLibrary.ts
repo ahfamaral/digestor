@@ -12,7 +12,7 @@ import type { ToolLLM } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
 import { promptCard } from "../pipeline/naming.js";
 import { withProfile } from "../pipeline/analysis.js";
-import { ASK_FAILED, SEARCH_UNAVAILABLE, evidence, loadSessionNames, participantLines, roleLines } from "./ask.js";
+import { ANSWER_TOO_LONG, ASK_FAILED, SEARCH_UNAVAILABLE, evidence, loadSessionNames, participantLines, roleLines } from "./ask.js";
 import { citedSentences, splitCouldntConfirm, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
 
 /**
@@ -44,6 +44,16 @@ const EARLIER_WINDOW_MS = 60 * 60_000;
 
 export const NOT_IN_LIBRARY = "That isn't in your videos' data.";
 export const LIBRARY_ASK_FAILED = ASK_FAILED;
+/** What a failed answer says when search itself (Chroma) was down on the last attempt. */
+export const LIBRARY_SEARCH_DOWN = "Your videos can't be searched right now. Please try again in a few minutes.";
+
+/** Search (Chroma) is down: the job retries it, and the last attempt stores this error's friendly message. */
+export class LibrarySearchDownError extends Error {
+  constructor(cause: unknown) {
+    super(LIBRARY_SEARCH_DOWN, { cause });
+    this.name = "LibrarySearchDownError";
+  }
+}
 export const noIndexedReply = (retentionDays: number) =>
   `None of your videos can be searched right now (search works for ${retentionDays} days after upload).`;
 
@@ -178,11 +188,11 @@ type Loaded = { transcript: Transcript | null; analysis: AnalysisBundle | null }
 
 async function sessionBlock(db: Db, pick: Pick, found: Found | undefined, loaded: Loaded): Promise<string> {
   const { transcript, analysis } = loaded;
-  const { card, names } = await loadSessionNames(db, pick.sessionId, transcript, analysis);
+  const { card, names, withheld } = await loadSessionNames(db, pick.sessionId, transcript, analysis);
   const profile = ProfileIdSchema.safeParse(analysis?.version.profile ?? card?.profile.value);
   const speakers = [...new Set((transcript?.words ?? []).map((w) => w.speaker))];
-  const known = participantLines(card, names);
-  const roles = roleLines(card);
+  const known = participantLines(card, names, withheld);
+  const roles = roleLines(card, withheld);
   const hits = found?.hits;
   const passages =
     hits === null || hits === undefined
@@ -285,7 +295,12 @@ export function buildLibraryGraph(deps: LibraryAskDeps) {
 
   async function route(state: LibraryStateValue): Promise<typeof LibraryState.Update> {
     const rows = await listLibraryCandidates(db, state.ownerId, MAX_CANDIDATES);
-    const indexed = rows.length > 0 ? await deps.indexed(rows.map((r) => r.id)) : new Set<string>();
+    let indexed = new Set<string>();
+    try {
+      if (rows.length > 0) indexed = await deps.indexed(rows.map((r) => r.id));
+    } catch (err) {
+      throw new LibrarySearchDownError(err); // a retry may find the index back
+    }
     const usable = rows.filter((r) => indexed.has(r.id));
     if (usable.length === 0) return { final: noIndexedReply(deps.retentionDays ?? 14), fixed: true };
     const candidates = await Promise.all(usable.map((r) => toCandidate(db, r)));
@@ -317,12 +332,13 @@ export function buildLibraryGraph(deps: LibraryAskDeps) {
   }
 
   async function answer(state: LibraryStateValue): Promise<typeof LibraryState.Update> {
-    if (state.found.every((f) => f.hits === null)) throw new Error("Every search failed"); // a retry may find the index back
+    if (state.found.every((f) => f.hits === null)) throw new LibrarySearchDownError(new Error("Every search failed")); // a retry may find the index back
     if (state.found.every((f) => f.hits === null || f.hits.length === 0)) return { final: NOT_IN_LIBRARY, fixed: true };
     const blocks = await Promise.all(
       state.picks.map(async (pick) => sessionBlock(db, pick, state.found.find((f) => f.label === pick.label), await load(pick.sessionId))),
     );
     const res = await llm.step({ system: libraryAnswerSystem(blocks, state.earlier), messages: [{ role: "user", text: state.question }], tools: [] });
+    if (res.cutOff) return { final: ANSWER_TOO_LONG, fixed: true }; // never half an answer
     const text = plain(res.text).trim();
     return text && text !== NOT_IN_LIBRARY ? { final: text } : { final: NOT_IN_LIBRARY, fixed: true };
   }

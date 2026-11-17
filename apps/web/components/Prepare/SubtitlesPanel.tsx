@@ -126,7 +126,7 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, on
           />
         ))}
       </ul>
-      {options.length > 0 && (
+      {options.length > 0 && !frozen && (
         <div className="mt-2 flex flex-wrap items-end gap-2">
           <label className="grid min-w-0 gap-0.5 text-xs font-semibold text-muted-foreground">
             {t("prepare.addLanguage")}
@@ -268,15 +268,17 @@ function TrackRow({
           <p role="alert" className="text-xs text-red-700">
             {track.error ?? t("prepare.trackFailed")}
           </p>
-          <button
-            type="button"
-            className={ACT}
-            disabled={retrying}
-            onClick={onRetry}
-            aria-label={t("prepare.retryLabel", { language: label })}
-          >
-            <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.retry")}</Busy>
-          </button>
+          {!frozen && (
+            <button
+              type="button"
+              className={ACT}
+              disabled={retrying}
+              onClick={onRetry}
+              aria-label={t("prepare.retryLabel", { language: label })}
+            >
+              <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.retry")}</Busy>
+            </button>
+          )}
         </div>
       )}
       {track.status === "outdated" && (
@@ -285,15 +287,17 @@ function TrackRow({
             <WarningIcon className="size-3.5" />
             {t("prepare.trackOutdated")}
           </p>
-          <button
-            type="button"
-            className={ACT}
-            disabled={retrying || making}
-            onClick={onRetry}
-            aria-label={t("prepare.rebuildLabel", { language: label })}
-          >
-            <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.rebuild")}</Busy>
-          </button>
+          {!frozen && (
+            <button
+              type="button"
+              className={ACT}
+              disabled={retrying || making}
+              onClick={onRetry}
+              aria-label={t("prepare.rebuildLabel", { language: label })}
+            >
+              <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.rebuild")}</Busy>
+            </button>
+          )}
         </div>
       )}
       {ready && (

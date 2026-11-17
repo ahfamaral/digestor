@@ -36,7 +36,7 @@ Architecture reminder: the web app only reads/writes Postgres and **enqueues** j
 14. **SSE** (`api/sessions/[id]/events`): return `new Response(readableStream)` with `text/event-stream`, `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no` (stops proxies buffering), and stop work on `request.signal` abort. Terminal stages end the stream.
 15. **File serving with Range** (`api/files/[id]/[...file]`): Safari won't play and scrubbing breaks without `206 Partial Content`; support suffix and open-ended ranges and answer 416 with `Content-Range: bytes */size`. Build the `ReadableStream` yourself with a `cancel()` that closes the file — `Readable.toWeb` throws "Controller is already closed" when the client aborts a seek.
 16. **Catch-all segments for nested keys**: a single `[file]` segment can't carry `thumbs/<id>.jpg` without an encoded slash; use `[...file]` and validate the joined path against an allow-list *after* decoding.
-17. `Content-Disposition` with non-ASCII titles needs `filename*=UTF-8''…` (Plan 2 backlog — today they fall back to `clip.mp4`).
+17. `Content-Disposition` with non-ASCII titles needs `filename*=UTF-8''…` (done: `contentDisposition` in `lib/subtitleFiles.ts`; `safeBaseName` cuts by grapheme so the encoding never throws).
 
 ## Turbopack, config and env
 

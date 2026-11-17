@@ -21,7 +21,7 @@ d("sweepStaleSessions", () => {
     const boss = new PgBoss(url!);
     boss.on("error", () => {});
     await boss.start();
-    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore, QUEUES.names, QUEUES.proxy, QUEUES.askLibrary]) {
+    for (const q of [QUEUES.start, QUEUES.resume, QUEUES.reanalyze, QUEUES.translateBriefing, QUEUES.prepareTrack, QUEUES.renderClip, QUEUES.burnTrack, QUEUES.findMore, QUEUES.names, QUEUES.proxy, QUEUES.askLibrary, QUEUES.ask, QUEUES.askResume]) {
       await boss.createQueue(q);
     }
     await boss.stop({ graceful: false });
@@ -251,6 +251,35 @@ d("sweepStaleJobRows (R32)", () => {
     }
     expect(await sweepStaleJobRows(db)).toMatchObject({ records: 0 });
     expect([(await getSessionRecord(db, ids[0]!))?.status, (await getSessionRecord(db, ids[1]!))?.status]).toEqual(["waiting", "suggested"]);
+  });
+
+  it("sweep fails a stuck Ask answer (pending or running, 30 min, no live ask.run job nor ask.resume job for its actions)", async () => {
+    const { addAskMessage, claimAskMessage, createToolApproval, getAskMessage } = await import("@digestor/core/server");
+    const s = await createSession(db, { source: "upload", title: "ask stuck" });
+    await updateSession(db, s.id, { stage: "ready" });
+    const add = () => addAskMessage(db, { sessionId: s.id, ownerId: "owner", role: "assistant", text: "", status: "pending" });
+    const pending = await add();
+    const running = await add();
+    await claimAskMessage(db, running.id);
+    const liveRun = await add();
+    const resumed = await add(); // approved: ask.resume claimed it waiting → running
+    const action = await createToolApproval(db, resumed.id, { step: 1, calls: [{ id: "c1", name: "propose_clip", args: {}, summary: "Make a clip" }] });
+    await db.execute(sql`update ask_messages set status = 'running' where id = ${resumed.id}`);
+    const fresh = await add();
+    const done = await addAskMessage(db, { sessionId: s.id, ownerId: "owner", role: "assistant", text: "Old answer." });
+    const old = [pending.id, running.id, liveRun.id, resumed.id, done.id];
+    await db.execute(sql`update ask_messages set updated_at = ${ago(45)}::timestamptz where id in (${sql.join(old.map((id) => sql`${id}`), sql`, `)})`);
+    await jobWith(QUEUES.ask, { messageId: liveRun.id }, "active");
+    await jobWith(QUEUES.askResume, { actionId: action.id }, "retry");
+
+    expect(await sweepStaleJobRows(db)).toMatchObject({ ask: 2 });
+    const status = async (id: string) => (await getAskMessage(db, id))?.status;
+    expect(await getAskMessage(db, pending.id)).toMatchObject({ status: "failed", text: STUCK_MESSAGE });
+    expect(await status(running.id)).toBe("failed");
+    expect(await status(liveRun.id)).toBe("pending");
+    expect(await status(resumed.id)).toBe("running");
+    expect(await status(fresh.id)).toBe("pending");
+    expect(await getAskMessage(db, done.id)).toMatchObject({ status: "done", text: "Old answer." });
   });
 
   it("an Ask answer waiting for approval is not job-owned: the sweep leaves it and its action alone however old", async () => {

@@ -143,7 +143,7 @@ export function RecordLink({
     };
     window.addEventListener(CHANGED, onChanged);
     return () => window.removeEventListener(CHANGED, onChanged);
-  }, [sessionId, suggestionOnly]);
+  }, [sessionId, suggestionOnly, id]);
   // Focus follows the answer: the opened field after "Not this one", the status line after "Use this record".
   useEffect(() => {
     if (!wantFocus) return;
@@ -155,10 +155,11 @@ export function RecordLink({
 
   const working = record?.status === "pending" || record?.status === "running";
   const polling = working || record?.status === "waiting"; // a waiting row turns pending when its retry is due
+  const pollMs = recordPollMs(record?.status);
   useEffect(() => {
     if (!polling) return;
-    return startRefreshLoop(() => void load(), recordPollMs(record?.status));
-  }, [polling, working, sessionId]);
+    return startRefreshLoop(() => void load(), pollMs);
+  }, [polling, pollMs, sessionId]);
 
   async function link() {
     if (busy) return;

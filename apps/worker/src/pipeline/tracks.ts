@@ -13,7 +13,7 @@ export type TrackDeps = { db: Db; llm: StructuredLLM };
  (SRT/VTT are rendered from the cues on download, so edits always show). Does nothing unless the
  * track is still `preparing`, so a duplicate job never wipes edits. The clip range the cues were built for is stored
  * with them. Throws on failure: the job handler decides between retry and marking it failed.
- * Idempotent: a retry rebuilds the same rows and files.
+ * Idempotent: a retry rebuilds the same rows.
  */
 export async function prepareTrack(deps: TrackDeps, trackId: string): Promise<void> {
   const { db, llm } = deps;

@@ -10,6 +10,7 @@ import { approvalDismissed, undoStep, defaultCredit, toClipView, toTrackView } f
 import { asProfile } from "@/lib/preview";
 import { getServer } from "@/lib/server";
 import { loadNames } from "@/lib/namesServer";
+import { currentSpeakerTitle } from "@/lib/briefingData";
 import { rangeVoices, whosWhoRows } from "@/lib/names";
 import { cutPoints, trimView } from "@/lib/trim";
 import { t } from "@/lib/i18n";
@@ -66,7 +67,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
       const view = trimView(clip, durationMs);
       return {
         clip: toClipView({ ...clip, midSentence: boundaries.length >= 2 && cutsMidSentence(boundaries, clip) }),
-        title: moment?.title ?? "",
+        title: moment ? currentSpeakerTitle(moment, names, sensitive) : "",
         checks: moment?.checks ?? null,
         momentRange: moment ? { startMs: moment.startMs, endMs: moment.endMs } : null,
         tracks: tracks.map(toTrackView),

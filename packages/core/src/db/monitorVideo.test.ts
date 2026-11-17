@@ -5,7 +5,7 @@ import { createDb, type Db } from "./client.ts";
 import { replaceSpeechWindow, upsertMembers, type SpeechInput } from "./monitor.ts";
 import { upsertSessions } from "./monitorRecord.ts";
 import {
-  claimSessionVideo, finishSessionVideo, queueSessionVideos, replaceSessionSpeechVideos, speechesInRange, speechVideos,
+  claimSessionVideo, finishSessionVideo, queueSessionVideos, replaceSessionSpeechVideos, speechesInRange,
 } from "./monitorVideo.ts";
 
 let db: Db;
@@ -92,10 +92,13 @@ describe("monitor videos", () => {
     await replaceSessionSpeechVideos(db, 1, "morning", [{ speechKey: k1!, startS: 100, endS: 200, score: 0.7 }]);
     await replaceSessionSpeechVideos(db, 2, "afternoon", [{ speechKey: k1!, startS: 5, endS: 60, score: 0.9 }, { speechKey: k2!, startS: 300, endS: 400, score: 0.8 }]);
     await replaceSessionSpeechVideos(db, 1, "morning", [{ speechKey: k1!, startS: 100, endS: 200, score: 0.7 }]); // rerun: worse score loses
-    const v = await speechVideos(db, [k1!, k2!, "missing"]);
-    expect(v.get(k1!)).toEqual({ videoId: "afternoon", startS: 5, endS: 60 });
-    expect(v.get(k2!)).toEqual({ videoId: "afternoon", startS: 300, endS: 400 });
-    expect(v.has("missing")).toBe(false);
+    const stored = await db.execute<{ speech_key: string; video_id: string; start_s: number; end_s: number }>(
+      sql`select speech_key, video_id, start_s, end_s from parl_speech_videos order by start_s`,
+    );
+    expect(stored.rows).toEqual([
+      { speech_key: k1!, video_id: "afternoon", start_s: 5, end_s: 60 },
+      { speech_key: k2!, video_id: "afternoon", start_s: 300, end_s: 400 },
+    ]);
 
     await replaceSessionSpeechVideos(db, 2, "afternoon", []); // a rerun that matched nothing clears that session's rows
     const left = await db.execute<{ n: number }>(sql`select count(*)::int as n from parl_speech_videos`);

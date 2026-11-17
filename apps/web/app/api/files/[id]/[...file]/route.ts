@@ -9,7 +9,10 @@ import { getClip, getMoment, listTracks } from "@digestor/core/server";
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const LANG = "[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*";
 type Kind = "proxy" | "audio" | "frame" | "thumb" | "render" | "burned" | "subtitle";
-/** Allow-list of servable files. Groups, in order: clip id (if any), track language (if any), extension. */
+/**
+ * Allow-list of servable files. Groups, in order: clip id (if any; for `thumbs/` it is the moment id), track language (if
+ * any), extension.
+ */
 const ALLOWED: { re: RegExp; kind: Kind }[] = [
   { re: /^proxy\.(mp4)$/, kind: "proxy" },
   { re: /^audio\.(mp3)$/, kind: "audio" },
@@ -134,7 +137,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; fil
   if (match.kind === "subtitle") return subtitleResponse(id, match, download);
 
   const { storage } = getServer();
-  const fullPath = storage.resolve(storage.key(id, match.file));
+  const fullPath = storage.pathOf(storage.key(id, match.file));
   let size: number;
   try {
     const st = await stat(fullPath);

@@ -7,6 +7,7 @@ import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
 import { PROCESSING_USD_PER_HOUR, SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { aboutUsd } from "@/lib/cost";
+import { HINT_MAX_CHARS } from "@/lib/hintInput";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -378,6 +379,7 @@ export function UploadForm() {
           value={hint}
           disabled={busy}
           onChange={(e) => setHint(e.target.value)}
+          maxLength={HINT_MAX_CHARS}
           placeholder={t("upload.hintPlaceholder")}
         />
         <button

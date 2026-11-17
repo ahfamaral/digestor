@@ -22,21 +22,6 @@ export function formatDateTime(d: Date | string, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(d));
 }
 
-export function formatNumber(n: number, locale?: string): string {
-  return new Intl.NumberFormat(locale).format(n);
-}
-
-/** First language of `Accept-Language` (e.g. "pt-BR,pt;q=0.9" → "pt-BR"); "en" when absent or malformed. Pure: server components pass `await headers()`. */
-export function localeFromHeaders(h: Headers): string {
-  const first = (h.get("accept-language") ?? "").split(",")[0]?.split(";")[0]?.trim();
-  if (!first || first === "*") return "en";
-  try {
-    return Intl.getCanonicalLocales(first)[0] ?? "en";
-  } catch {
-    return "en";
-  }
-}
-
 /** English name of a BCP-47 language code ("pt" → "Portuguese"); the code itself when unknown. */
 export function languageName(code: string): string {
   try {

@@ -10,10 +10,16 @@ import { getServer } from "@/lib/server";
 
 const BodySchema = z.object({ speechKey: z.string().trim().min(1).max(200) });
 
+/** A cookie's value; one that isn't valid percent-encoding (a tampered cookie) reads as absent, never a 500. */
 function cookieValue(req: Request, name: string): string | undefined {
   for (const part of (req.headers.get("cookie") ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === name) return decodeURIComponent(v.join("="));
+    if (k !== name) continue;
+    try {
+      return decodeURIComponent(v.join("="));
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }

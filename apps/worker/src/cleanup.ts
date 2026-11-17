@@ -30,8 +30,8 @@ export type CleanupDeps = {
 
 /**
  * Removes the source video (`original.*`, `audio.mp3`, `proxy.mp4`) of sessions older than `days`, then their pipeline
- * run row (it holds the journalist's context answers), their Ask threads (schema `ask_graph`) and search index (best
- * effort), then sets `videoDeletedAt`. Rows, thumbnails and rendered `clips/` stay. `videoDeletedAt` goes last, so a
+ * run row (it holds the journalist's context answers), their Ask threads (schema `ask_graph`) and search index, then
+ * sets `videoDeletedAt`. Rows, thumbnails and rendered `clips/` stay. `videoDeletedAt` goes last, so a
  * failed step leaves the session a candidate for the next run.
  */
 export async function runVideoRetention(deps: CleanupDeps, days: number): Promise<{ removed: number }> {
@@ -49,7 +49,9 @@ export async function runVideoRetention(deps: CleanupDeps, days: number): Promis
         try {
           await deleteSessionIndex(deps.chroma, session.id);
         } catch (err) {
-          console.error(`cleanup: could not delete the search index of session ${session.id}`, err);
+          // Chroma down: leave `videoDeletedAt` unset so the next run deletes the index (the steps above are idempotent).
+          console.error(`cleanup: could not delete the search index of session ${session.id}; the next run tries again`, err);
+          continue;
         }
       }
       await updateSession(deps.db, session.id, { videoDeletedAt: new Date() });

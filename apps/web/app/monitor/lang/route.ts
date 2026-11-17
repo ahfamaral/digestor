@@ -1,9 +1,21 @@
 import { isMonitorLocale, MONITOR_LANG_COOKIE } from "@/lib/monitor/i18n";
 
-/** Only monitor paths on this site: "/monitor" or "/monitor/…" or "/monitor?…", never "//host" or a backslash trick. */
+const MONITOR_PATH = /^\/monitor(?:[/?#]|$)/;
+
+/**
+ * Only monitor paths on this site: "/monitor" or "/monitor/…" or "/monitor?…", never "//host" or a backslash trick.
+ * Re-serialised through `URL`, so the Location header only carries ASCII (non-ASCII percent-encoded, tabs and newlines
+ * dropped); anything that doesn't survive that is "/monitor", never a 500.
+ */
 function safeBack(back: string | null): string {
-  if (!back || !/^\/monitor(?:[/?#]|$)/.test(back) || back.includes("\\")) return "/monitor";
-  return back;
+  if (!back || !MONITOR_PATH.test(back) || back.includes("\\")) return "/monitor";
+  try {
+    const u = new URL(back, "http://monitor.invalid");
+    const path = u.pathname + u.search + u.hash;
+    return u.host === "monitor.invalid" && MONITOR_PATH.test(path) && /^[\x21-\x7e]*$/.test(path) ? path : "/monitor";
+  } catch {
+    return "/monitor";
+  }
 }
 
 /**

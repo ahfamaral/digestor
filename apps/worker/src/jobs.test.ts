@@ -11,13 +11,13 @@ import {
   LocalStorage, sessionRecords, claimRecordFetch, replaceAiAttributions, getPersons, getSessionRecord, linkRecord, listAttributions,
   claimFindMore, completeAnalysisVersion, createCustomPerson, createDb, createSession, getFindMore, listPersonalMoments, requestFindMore,
   saveContextCard, saveMoments, saveTopics, saveTranscript, setHumanAttribution, getSession, getTranslation, requestTranslation, saveBriefing, saveTranslation,
-  setStage, startAnalysisVersion, claimProxy, requestProxy, updateSession, type Db,
+  setStage, startAnalysisVersion, claimProxy, finishProxy, requestProxy, updateSession, type Db,
 } from "@digestor/core/server";
 import { FIXTURE_EVENT_ID, fakeCamaraFetch, fixtureDiscursos as camaraDiscursos, transcriptOfDeputies } from "./records/fakeCamara.js";
 import { FIXTURE_DATE, fakeSenadoFetch, fixtureDiscursos, fixtureTexts, transcriptOfSpeeches } from "./records/fakeSenado.js";
 import { FakeLLM } from "./llm/structured.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
-import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, handleNames, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, notImplemented, processJobs, handleStart, handleProxy, type JobContext } from "./jobs.js";
+import { MissingApiKeyError, failureMessage, handleResume, handleFindMore, handleNames, FIND_MORE_FAILED, handleTranslateBriefing, TRANSLATE_FAILED, processJobs, handleStart, handleProxy, type JobContext } from "./jobs.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -301,14 +301,6 @@ d("handleFindMore", () => {
   });
 });
 
-describe("queues without a consumer yet", () => {
-  it("complete their jobs with a log line instead of retrying", async () => {
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    await expect(notImplemented("track.burn")({ trackId: "x" }, FIRST)).resolves.toBeUndefined();
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("track.burn: not implemented yet"));
-    log.mockRestore();
-  });
-});
 
 d("handleNames", () => {
   let db: Db;
@@ -697,6 +689,19 @@ d("handleProxy (the preview copy job)", () => {
     await claimProxy(db, other);
     await handleProxy({ db, storage, media: again }, { sessionId: other }, FIRST);
     expect(again.makeProxy).not.toHaveBeenCalled();
+  });
+
+  it("a retry after a crash between finishing the copy and the join still closes the join and releases the audio", async () => {
+    const id = await seed();
+    await withAudio(id);
+    await claimProxy(db, id);
+    await finishProxy(db, id, `${id}/proxy.mp4`); // ... and the worker died before settlePreview
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", stage: "preparing_preview" });
+    const media = fakeMedia();
+    await handleProxy({ db, storage, media }, { sessionId: id }, { retryCount: 1, retryLimit: 2 });
+    expect(media.makeProxy).not.toHaveBeenCalled();
+    expect(await getSession(db, id)).toMatchObject({ proxyStatus: "done", stage: "ready", audioKey: null });
+    expect(await hasAudioFile(id)).toBe(false);
   });
 
   it("a transient ffmpeg error rethrows and keeps the claim; a retry takes it over", async () => {

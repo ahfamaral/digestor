@@ -7,6 +7,8 @@
  * and MRR. `--answers` also runs `runAsk` for every question as owner `eval` (one question at a time, no history), parses
  * the `[hh:mm:ss]` citations and the quoted text, checks every quote against the transcript, prints the scores, what the
  * verify step did (from its `verify_answer` chip) and the LLM cost from the usage meter, and deletes its `eval` rows. The golden path is relative to `apps/worker`.
+ * A question whose answer paused for approval (the model called a tool that changes something) changes nothing (no
+ * approval comes) and is left out of the scores, listed as paused.
  */
 import { readFileSync } from "node:fs";
 import { ChromaClient } from "chromadb";
@@ -105,7 +107,7 @@ try {
     const judge = config.provider === "openrouter" ? createOpenRouterLLM(key, config.models) : createAnthropicLLM(key);
     const meter = new UsageMeter();
     const rows: Parameters<typeof answerScores>[0] = [];
-    const verify = { sentBack: 0, couldntConfirm: 0, unchecked: 0, outOfSteps: 0 };
+    const verify = { sentBack: 0, couldntConfirm: 0, unchecked: 0, outOfSteps: 0, paused: 0 };
     const detail: string[] = [];
     const started = Date.now();
     await withUsageMeter(meter, async () => {
@@ -115,6 +117,14 @@ try {
         try {
           await runAsk({ db, llm, judge, search }, pending.id);
           const done = await getAskMessage(db, pending.id);
+          if (done?.status === "waiting") {
+            // Paused for approval: no answer to score (nothing was changed).
+            verify.paused += 1;
+            const asked = (Array.isArray(done.toolCalls) ? (done.toolCalls as { name: string }[]) : []).map((c) => c.name);
+            detail.push(`${q.id} [paused for approval, not scored] tools so far: ${asked.join(", ") || "none"}`);
+            console.error(`paused ${q.id}: waiting for approval`);
+            continue;
+          }
           const answer = done?.text ?? "";
           const { citedMs, quotes } = parseCitations(answer);
           const chip = (Array.isArray(done?.toolCalls) ? (done.toolCalls as { name: string; args: unknown; result: string }[]) : []).find((c) => c.name === "verify_answer");
@@ -136,6 +146,7 @@ try {
     console.log("| Metric | Result |\n| --- | --- |");
     console.log(`| Citation hit (answerable) | ${pct(s.citationHit)} |\n| Quote exact | ${pct(s.quoteExact)} |\n| Refusal correct (unanswerable) | ${pct(s.refusalCorrect)} |`);
     console.log(`| Answers sent back by verify | ${verify.sentBack} of ${s.n} |\n| Answers ending "I couldn't confirm" | ${verify.couldntConfirm} of ${s.n} |\n| Answers with parts not checked | ${verify.unchecked} of ${s.n} |\n| Gave up on the step limit | ${verify.outOfSteps} of ${s.n} |`);
+    if (verify.paused > 0) console.log(`| Paused for approval (not scored) | ${verify.paused} of ${golden.questions.length} |`);
     for (const [kk, v] of usageRows("Ask run", meter.report(), null)) console.log(`| ${kk} | ${v} |`);
     console.log("\nPer question:");
     for (const d of detail) console.log(d);

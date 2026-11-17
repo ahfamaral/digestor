@@ -5,7 +5,7 @@ import type { AskToolCallRecord, ToolApprovalCall, ToolApprovalResolution } from
 import { createToolApproval, getAskMessage, getToolApproval } from "@digestor/core/server";
 import type { ToolCallRequest, ToolMessage } from "../llm/tools.js";
 import {
-  AskRunError, DECLINED, EDITED, readResolution, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
+  ANSWER_TOO_LONG, AskRunError, DECLINED, EDITED, readResolution, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
   type AskDeps, type AskRun, type ToolResult,
 } from "./ask.js";
 import { VERIFY_RETRIES, splitCouldntConfirm, verificationFeedback, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
@@ -27,7 +27,7 @@ export const AskState = Annotation.Root({
   final: Annotation<string | null>({ reducer: keep, default: () => null }),
   /** Model turns so far (at most MAX_ASK_STEPS). */
   steps: Annotation<number>({ reducer: keep, default: () => 0 }),
-  /** Changes applied without the bulk confirmation in this answer (R31: at most 3). */
+  /** Approved changes in this answer, as MAX_DIRECT_CHANGES counts them (R31: at most 3; beyond, the bulk confirmation). */
   directChanges: Annotation<number>({ reducer: keep, default: () => 0 }),
   /** Something was written: a failure from here on fails the answer instead of retrying it. */
   wrote: Annotation<boolean>({ reducer: keep, default: () => false }),
@@ -107,8 +107,8 @@ function knownTitles(ctx: AskRun["ctx"], records: AskToolCallRecord[]): string[]
   return titles;
 }
 
-/** Answers that are never verified: the fixed refusal and the step-limit line. */
-const unverifiable = (text: string) => text === NOT_IN_DATA || text === OUT_OF_STEPS;
+/** Answers that are never verified: the fixed refusal, the step-limit line and the too-long line. */
+const unverifiable = (text: string) => text === NOT_IN_DATA || text === OUT_OF_STEPS || text === ANSWER_TOO_LONG;
 
 /**
  * The Ask agent as a LangGraph graph: `START → agent → route`. `route` sends a final answer to `verify` (or ends on
@@ -144,15 +144,19 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
     try {
       const { system } = await load(config);
       const res = await llm.step({ system, messages: state.messages, tools: TOOL_SPECS });
-      if (res.toolCalls.length === 0) return { steps, final: res.text.trim() || NOT_IN_DATA, finalRaw: res.raw };
-      if (steps >= MAX_ASK_STEPS) {
-        // The model could never read these results. A retry after verification keeps the answer it corrects.
+      // Giving up: a retry after verification keeps the answer it corrects, else the fixed line.
+      const giveUp = (line: string): typeof AskState.Update => {
         const last = state.lastCheck;
         if (last) {
           return { steps, final: withCouldntConfirm(last.text, last.result.unsupported), records: [...state.records, ...verifyRecord(last.result, state.verifyRounds)], settled: true };
         }
-        return { steps, final: OUT_OF_STEPS, settled: true };
-      }
+        return { steps, final: line, settled: true };
+      };
+      // A final reply cut off by the token limit is never stored half-written (a turn with tool calls goes on: a cut
+      // call's arguments fail validation and the model reads the error).
+      if (res.toolCalls.length === 0 && res.cutOff) return giveUp(ANSWER_TOO_LONG);
+      if (res.toolCalls.length === 0) return { steps, final: res.text.trim() || NOT_IN_DATA, finalRaw: res.raw };
+      if (steps >= MAX_ASK_STEPS) return giveUp(OUT_OF_STEPS); // the model could never read these results
       return { steps, messages: [...state.messages, { role: "assistant", text: res.text, toolCalls: res.toolCalls, raw: res.raw }] };
     } catch (err) {
       throw new AskRunError(err, state.records, state.wrote);

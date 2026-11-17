@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
+import path from "node:path";
 import { FfmpegError, FfmpegTimeoutError, run } from "../media/ffmpeg.js";
 import { withYouTubeCookies } from "./cookieJar.js";
 
@@ -41,6 +42,15 @@ export const SLOW_SECTION_MESSAGE = "YouTube is sending this part too slowly. Pl
 export function sectionTimeoutMs(section: VideoSection): number {
   return Math.max(10 * 60_000, 4 * (section.endS - section.startS) * 1000);
 }
+
+/**
+ * A whole video may take 4 hours. The size cap bounds what is fetched, and YouTube usually serves a whole video faster
+ * than playback; the limit only stops a run that stalls, since it holds the process's one YouTube slot meanwhile.
+ */
+export const WHOLE_VIDEO_TIMEOUT_MS = 4 * 60 * 60_000;
+
+/** A whole video that runs past `WHOLE_VIDEO_TIMEOUT_MS`. */
+export const SLOW_VIDEO_MESSAGE = "YouTube is sending this video too slowly. Please try again later.";
 
 const LIVE_MESSAGE = "Live streams can't be processed. Try again after the stream has ended.";
 
@@ -92,6 +102,14 @@ export function ytDlpArgs(
   ];
 }
 
+/** Removes what a failed run left beside `outPathNoExt` (`original.mp4.part`, `original.f137.mp4`, ...), up to the size cap. */
+async function removeLeftovers(outPathNoExt: string): Promise<void> {
+  const dir = path.dirname(outPathNoExt);
+  const prefix = `${path.basename(outPathNoExt)}.`;
+  const names = await readdir(dir).catch(() => [] as string[]);
+  await Promise.all(names.filter((n) => n.startsWith(prefix)).map((n) => rm(path.join(dir, n), { force: true, recursive: true }).catch(() => {})));
+}
+
 export async function downloadYouTube(
   url: string,
   outPathNoExt: string,
@@ -100,32 +118,38 @@ export async function downloadYouTube(
 ): Promise<{ videoPath: string; metadata: YouTubeMetadata }> {
   const infoPath = `${outPathNoExt}.info.json`;
   let output = "";
-  // The live cookie jar (`cookieJar.ts`): yt-dlp keeps YouTube's refreshed cookies in it, one run at a time.
-  await withYouTubeCookies(env, async (cookies) => {
-    try {
-      // A whole video has no limit (hours of 1080p are legitimate); a section that stalls must not hold the slot forever.
-      const { stdout, stderr } = await run(
-        "yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies, section), section ? { timeoutMs: sectionTimeoutMs(section), killGroup: true } : {},
-      );
-      output = `${stdout}\n${stderr}`;
-    } catch (err) {
-      // Verified against yt-dlp 2026.10.26: --break-match-filters rejecting a live stream exits 101 with the
-      // "does not pass filter" text on stdout (which run() does not keep in the error), so the exit code is the signal.
-      if (err instanceof FfmpegTimeoutError) throw new YouTubeDownloadError(SLOW_SECTION_MESSAGE, err.stderrTail);
-      if (err instanceof FfmpegError && err.code === 101) throw new YouTubeDownloadError(LIVE_MESSAGE, err.stderrTail);
-      const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
-      if (cookies && /Sign in to confirm|not a bot/i.test(stderr)) {
-        console.warn("[youtube] blocked even with YTDLP_COOKIES_FILE: the cookies may have expired; export fresh ones (docs/deploy.md).");
-      }
-      throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
-    }
-  });
   try {
+    // The live cookie jar (`cookieJar.ts`): yt-dlp keeps YouTube's refreshed cookies in it, one run at a time.
+    await withYouTubeCookies(env, async (cookies) => {
+      try {
+        // Either run has a time limit that kills yt-dlp's process group (its ffmpeg child too): a stalled run must not
+        // hold the slot forever. A section gets 4 × its length; a whole video a generous fixed limit.
+        const { stdout, stderr } = await run(
+          "yt-dlp", ytDlpArgs(url, outPathNoExt, env, cookies, section),
+          { timeoutMs: section ? sectionTimeoutMs(section) : WHOLE_VIDEO_TIMEOUT_MS, killGroup: true },
+        );
+        output = `${stdout}\n${stderr}`;
+      } catch (err) {
+        // Verified against yt-dlp 2026.10.26: --break-match-filters rejecting a live stream exits 101 with the
+        // "does not pass filter" text on stdout (which run() does not keep in the error), so the exit code is the signal.
+        if (err instanceof FfmpegTimeoutError) throw new YouTubeDownloadError(section ? SLOW_SECTION_MESSAGE : SLOW_VIDEO_MESSAGE, err.stderrTail);
+        if (err instanceof FfmpegError && err.code === 101) throw new YouTubeDownloadError(LIVE_MESSAGE, err.stderrTail);
+        const stderr = err instanceof FfmpegError ? err.stderrTail : String(err);
+        if (cookies && /Sign in to confirm|not a bot/i.test(stderr)) {
+          console.warn("[youtube] blocked even with YTDLP_COOKIES_FILE: the cookies may have expired; export fresh ones (docs/deploy.md).");
+        }
+        throw new YouTubeDownloadError(mapYtDlpError(stderr), stderr);
+      }
+    });
     // An over-size file is a *skip*: yt-dlp exits 0, prints "File is larger than max-filesize" on stdout and writes
     // only the info json.
     if (!existsSync(`${outPathNoExt}.mp4`)) throw new YouTubeDownloadError(mapYtDlpError(output), output.slice(-2000));
     const metadata = mapInfoJson(JSON.parse(await readFile(infoPath, "utf8")));
     return { videoPath: `${outPathNoExt}.mp4`, metadata };
+  } catch (err) {
+    // The session fails here (the step stops): partial files would otherwise wait for retention, 14 days.
+    await removeLeftovers(outPathNoExt);
+    throw err;
   } finally {
     await rm(infoPath, { force: true });
   }

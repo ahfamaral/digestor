@@ -43,7 +43,7 @@ import {
 } from "@digestor/core/server";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { ASK_FAILED, AskRunError, deleteThread, resumeAsk, runAsk, type AskDeps } from "./agents/ask.js";
-import { LIBRARY_ASK_FAILED, runLibraryAsk, type LibraryAskDeps } from "./agents/askLibrary.js";
+import { LIBRARY_ASK_FAILED, LibrarySearchDownError, runLibraryAsk, type LibraryAskDeps } from "./agents/askLibrary.js";
 import { findMoreMoments, personConfirmed, personTurnRanges } from "./agents/findMore.js";
 import { translateBriefing } from "./agents/translateBriefing.js";
 import type { StructuredLLM } from "./llm/structured.js";
@@ -330,7 +330,9 @@ export async function handleLibraryAsk(deps: LibraryAskDeps, job: LibraryAskJob,
       console.error(`[jobs] ask-library ${job.messageId} failed:`, err);
       const msg = await getLibraryAskMessage(deps.db, job.messageId);
       if (msg?.status === "pending" || msg?.status === "running") {
-        await finishLibraryAskMessage(deps.db, job.messageId, { text: deterministic ? err.message : LIBRARY_ASK_FAILED, status: "failed" });
+        // A missing key, or search being down, says so; anything else gets the generic line.
+        const text = deterministic || err instanceof LibrarySearchDownError ? err.message : LIBRARY_ASK_FAILED;
+        await finishLibraryAskMessage(deps.db, job.messageId, { text, status: "failed" });
       }
       if (deterministic) return;
     } else {
@@ -484,13 +486,6 @@ export async function handleProxy(deps: ProxyDeps, job: ProxyJob, attempt: Attem
     throw err;
   }
 }
-
-/** Placeholder consumer for a queue whose task hasn't landed yet: completes the job so nothing retries. */
-export const notImplemented =
-  (queue: string) =>
-  async (_job: unknown, _attempt: Attempt): Promise<void> => {
-    console.log(`[jobs] ${queue}: not implemented yet; completing the job`);
-  };
 
 /**
  * Validate and handle a pg-boss batch (fetched with includeMetadata, so each job carries its attempt).

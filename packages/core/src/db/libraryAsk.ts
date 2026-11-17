@@ -7,6 +7,7 @@ import { analysisVersions, contextCards, libraryAskMessages, sessions } from "./
 // Ask across videos (`library_ask_messages`): the owner's conversation over every searchable video. Read-only, so
 // unlike `ask_messages` there are no actions and no `waiting`.
 
+/** One row as given. Test-only today: the route uses `addLibraryQuestion` (question and answer together). */
 export async function addLibraryAskMessage(
   db: Db,
   a: { ownerId: string; role: AskRole; text: string; status?: LibraryAskStatus; questionId?: string },

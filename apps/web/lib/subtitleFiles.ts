@@ -15,10 +15,17 @@ export function subtitleText(
   return ext === "srt" ? buildSrt(cues) : buildVtt(cues);
 }
 
-/** A download name from a clip title: no path or reserved characters, no control characters, bounded length. */
+const NAME_GRAPHEMES = 100;
+
+/**
+ * A download name from a clip title: no path or reserved characters, no control characters, bounded length. Cut by
+ * graphemes, never inside a character: a lone surrogate makes `encodeURIComponent` throw in `contentDisposition`.
+ */
 export function safeBaseName(title: string): string {
-  const cleaned = title.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100).trim();
-  return cleaned === "" ? "clip" : cleaned;
+  const cleaned = title.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
+  const graphemes = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(cleaned), (s) => s.segment);
+  const cut = graphemes.slice(0, NAME_GRAPHEMES).join("").trim();
+  return cut === "" ? "clip" : cut;
 }
 
 /** RFC 5987 `filename*` plus a plain-ASCII `filename` fallback (non-ASCII replaced, quotes and backslashes dropped). */

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Busy, Spinner } from "@/components/ui/spinner";
-import { asToolCalls, isStalePending, verifyResult, type VerifyState } from "@/lib/askText";
+import { askPollMs, asToolCalls, isStalePending, verifyResult, type VerifyState } from "@/lib/askText";
 import { answerBlocks, glueCitationPunctuation, linkifyCitations, type GluedPart } from "@/lib/libraryAskText";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 
 const MAX_QUESTION = 500;
 const COUNTER_FROM = 400;
-const POLL_MS = 2000;
 const CITE =
   "whitespace-nowrap rounded bg-stone-100 px-1 font-mono text-xs font-medium text-foreground underline decoration-dotted underline-offset-2 outline-none hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-brand";
 
@@ -94,15 +93,16 @@ export function LibraryAsk() {
   }
 
   const isWaiting = (m: Message) => working(m) && !isStalePending(m.updatedAt ?? m.createdAt, now);
-  const hasPending = messages.some(isWaiting);
+  // A slow answer keeps being polled (slowly), so it still shows up when the worker finishes it.
+  const pollMs = askPollMs(messages.filter(working).map((m) => m.updatedAt ?? m.createdAt), now);
   useEffect(() => {
-    if (!open || !hasPending) return;
+    if (!open || pollMs === null) return;
     const timer = setInterval(() => {
       setNow(Date.now());
       void load(true);
-    }, POLL_MS);
+    }, pollMs);
     return () => clearInterval(timer);
-  }, [open, hasPending, load]);
+  }, [open, pollMs, load]);
 
   // The latest question at the top of the list (its answer below it), never scrolled away under the drawer's header;
   // an answer arriving later doesn't move it.
@@ -248,7 +248,7 @@ function MessageItem({ message, live, stale }: { message: Message; live: Readonl
         </p>
       )}
       {working(message) && stale && (
-        <p role="alert" className="text-red-700">
+        <p role="status" className="text-muted-foreground">
           {t("ask.tooSlow")}
         </p>
       )}

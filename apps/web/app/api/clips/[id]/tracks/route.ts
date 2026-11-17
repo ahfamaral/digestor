@@ -3,7 +3,7 @@ import { JOB_OPTIONS, LANGUAGES, QUEUES } from "@digestor/core";
 import { createTrack, deleteFailedTrack, deleteTrack, listTracks, type Db, type Track } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
-import { QUEUE_FAILED, readyClip } from "@/lib/personal";
+import { QUEUE_FAILED, frozenError, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
 const BodySchema = z.object({ language: z.string().min(2).max(35) }).strict();
@@ -21,7 +21,10 @@ async function createOrRetry(db: Db, clipId: string, language: string): Promise<
   return createTrack(db, clipId, language); // null if a parallel retry got there first
 }
 
-/** POST /api/clips/[id]/tracks — `{ language }`: starts a subtitle track (one per clip and language), or rebuilds a failed or outdated one. */
+/**
+ * POST /api/clips/[id]/tracks — `{ language }`: starts a subtitle track (one per clip and language), or rebuilds a failed or
+ * outdated one. 409 `VIDEO_REMOVED` once the session's video is removed (R30).
+ */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   if (!isUuid(id)) return errorResponse(404, "Clip not found.");
@@ -39,6 +42,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const found = await readyClip(db, id);
   if ("error" in found) return found.error;
   const { session } = found;
+  const frozen = frozenError(session); // R30: no new or rebuilt draft once the video is removed
+  if (frozen) return frozen;
 
   const known = LANGUAGES.some((l) => l.code === language) || (session.language !== null && session.language === language);
   if (!known) return errorResponse(400, "That subtitle language isn't available.");

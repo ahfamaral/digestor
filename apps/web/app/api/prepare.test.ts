@@ -78,7 +78,7 @@ describe("checks are asked for quietly, once per claim (R29)", () => {
   });
 
   it("Check again answers 503 and frees the claim when the job can't be queued", async () => {
-    const { moment, clip } = await clipOf();
+    const { clip } = await clipOf();
     h.send.mockRejectedValueOnce(new Error("boom"));
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await checkAgain(post(), ctx(clip.id));

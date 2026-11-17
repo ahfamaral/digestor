@@ -253,12 +253,24 @@ export function isAnswering(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
-/** A pending answer older than this is given up on (the worker is down or the job was lost). */
+/** A pending answer older than this reads "taking longer than usual" (the worker may be slow, down or the job lost). */
 export const ASK_PENDING_LIMIT_MS = 3 * 60 * 1000;
 
 export function isStalePending(createdAt: string | Date, now: number): boolean {
   const created = new Date(createdAt).getTime();
   return Number.isFinite(created) && now - created > ASK_PENDING_LIMIT_MS;
+}
+
+export const ASK_POLL_MS = 2000;
+export const ASK_SLOW_POLL_MS = 10_000;
+
+/**
+ * How often to reload while answers are being worked on (their last status change times): fast while one is fresh,
+ * slowly once all are past the limit (a slow answer still shows up when it finishes), null when none is working.
+ */
+export function askPollMs(working: readonly (string | Date)[], now: number): number | null {
+  if (working.length === 0) return null;
+  return working.some((since) => !isStalePending(since, now)) ? ASK_POLL_MS : ASK_SLOW_POLL_MS;
 }
 
 type WithActions = { status: string; actions: { kind: string; status: string }[] };

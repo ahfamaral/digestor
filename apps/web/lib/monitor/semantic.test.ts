@@ -60,6 +60,26 @@ describe("semanticSearch", () => {
     expect(garbage).toHaveBeenCalledTimes(1);
   });
 
+  it("a timeout, a 404 or an odd body fails this search only; a refused connection or a 5xx pauses the worker 30 s", async () => {
+    const slow = vi.fn(
+      (_u: string, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason))),
+    );
+    expect(await semanticSearch("slow", { fetch: slow as unknown as typeof fetch, timeoutMs: 20 })).toEqual({ keys: [], ok: false });
+    expect(await semanticSearch("missing", { fetch: vi.fn(async () => new Response("{}", { status: 404 })) })).toEqual({ keys: [], ok: false });
+    expect(await semanticSearch("odd", { fetch: vi.fn(async () => new Response("{}", { status: 200 })) })).toEqual({ keys: [], ok: false });
+    const good = ok([{ speechKey: "a", score: 0.9 }]);
+    expect(await semanticSearch("after", { fetch: good })).toEqual({ keys: ["a"], ok: true });
+    expect(await speechPassages("q", ["a"], 1, { fetch: vi.fn(async () => new Response(JSON.stringify({ passages: [] }), { status: 200 })) })).toEqual({ ok: true, passages: [] });
+
+    const refused = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    expect(await semanticSearch("refused", { fetch: refused })).toEqual({ keys: [], ok: false });
+    expect(await semanticSearch("next", { fetch: good })).toEqual({ keys: [], ok: false });
+    expect(good).toHaveBeenCalledTimes(1);
+  });
+
   it("an empty query asks nothing", async () => {
     const f = ok([]);
     expect(await semanticSearch("  ", { fetch: f })).toEqual({ keys: [], ok: true });

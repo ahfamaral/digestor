@@ -9,7 +9,10 @@ export const AUDIO_ONLY_CHECKBOX = "I understand clips from this file will have 
 export const isAudioExtension = (ext: string): boolean => (AUDIO_EXTENSIONS as readonly string[]).includes(ext);
 export const isUploadExtension = (ext: string): boolean => isAudioExtension(ext) || (VIDEO_EXTENSIONS as readonly string[]).includes(ext);
 
-/** Shown wherever a clip would need the source video after retention removed it (API 409s, disabled Play). */
+/**
+ * Shown wherever a clip would need the source video after retention removed it (API 409s, disabled Play). The copy
+ * assumes the default `VIDEO_RETENTION_DAYS` (14); change it with that setting.
+ */
 export const VIDEO_REMOVED = "The video was removed after 14 days. Re-upload it to make new clips.";
 
 /** Spoken-language overrides offered at upload (AssemblyAI `language_code`); empty = detect automatically. Labels live in the web catalogue. */

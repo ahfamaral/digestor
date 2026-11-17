@@ -21,8 +21,17 @@ export type ToolMessage =
   | { role: "assistant"; text: string; toolCalls?: ToolCallRequest[]; raw?: unknown }
   | { role: "tool"; toolCallId: string; content: string };
 
-/** `raw` is the provider's reply content, replayed as-is on the next step (it carries thinking blocks). */
-export type ToolStep = { text: string; toolCalls: ToolCallRequest[]; raw?: unknown };
+/**
+ * `raw` is the provider's reply content, replayed as-is on the next step (it carries thinking blocks). `cutOff`: the
+ * reply stopped at the output token limit, so its text (or last tool call) is unfinished.
+ */
+export type ToolStep = { text: string; toolCalls: ToolCallRequest[]; raw?: unknown; cutOff?: boolean };
+
+/**
+ * Output token limit of an Ask turn. Claude 5.5 thinks by default and thinking counts against it, so it gets the
+ * structured calls' room (billed by use, not by the limit).
+ */
+export const TOOL_MAX_TOKENS = 16000;
 export type ToolStepCall = { system: string; messages: ToolMessage[]; tools: ToolSpec[] };
 
 /** One model turn with tools bound: text and/or tool calls. The caller runs the tools and loops. */
@@ -48,11 +57,17 @@ export function toLangChainMessages(messages: ToolMessage[]): BaseMessage[] {
   });
 }
 
-/** The model's reply → text + tool calls. Calls whose JSON didn't parse are kept so the tool can answer with an error. */
+/**
+ * The model's reply → text + tool calls. Calls whose JSON didn't parse are kept so the tool can answer with an error.
+ * A reply stopped by the token limit (Anthropic `stop_reason: "max_tokens"`, OpenAI-compatible `finish_reason:
+ * "length"`) is marked `cutOff`.
+ */
 export function fromAIMessage(msg: AIMessage | AIMessageChunk): ToolStep {
   const ok = (msg.tool_calls ?? []).map((c) => ({ id: c.id ?? randomUUID(), name: c.name, args: c.args as unknown }));
   const bad = (msg.invalid_tool_calls ?? []).map((c) => ({ id: c.id ?? randomUUID(), name: c.name ?? "", args: c.args as unknown }));
-  return { text: msg.text.trim(), toolCalls: [...ok, ...bad], raw: msg.content };
+  const meta = (msg.response_metadata ?? {}) as { stop_reason?: unknown; finish_reason?: unknown };
+  const cutOff = meta.stop_reason === "max_tokens" || meta.finish_reason === "length";
+  return { text: msg.text.trim(), toolCalls: [...ok, ...bad], raw: msg.content, ...(cutOff ? { cutOff } : {}) };
 }
 
 /**
@@ -63,7 +78,7 @@ export function createAnthropicToolLLM(apiKey: string, opts: ClientOptions = {})
   const chat = new ChatAnthropic({
     apiKey,
     model: MODEL_IDS.reasoning,
-    maxTokens: 4096,
+    maxTokens: TOOL_MAX_TOKENS,
     ...(opts.fetch ? { clientOptions: { fetch: opts.fetch } } : {}),
   });
   return {

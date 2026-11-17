@@ -1,8 +1,8 @@
 # Capstone presentation outline
 
-Ten minutes plus five minutes of questions, for the Turing College capstone review (Wed/Thu 18–19 Nov 2026). Structure: SCR (situation, complication, resolution) across the six required points: problem, solution, data, evaluation, challenges, what's next. Digestor is the capstone; the Câmara monitor is shown as the extension and the next step.
+Ten minutes plus five minutes of questions, for the Turing College capstone review. Structure: SCR (situation, complication, resolution) across the six required points: problem, solution, data, evaluation, challenges, what's next. Digestor is the capstone; the Câmara monitor is shown as the extension and the next step.
 
-Every number below comes from `docs/capstone/evaluation.md`, the README's Evaluation and Ethical considerations sections, or the monitor roadmap (`reports/src/report-en.html`, local). Where a number is not there yet, the slide has a marked placeholder.
+Every number below comes from `docs/capstone/evaluation.md` or the README's Evaluation and Ethical considerations sections. The dates on slide 11 come from the owner's own monitor roadmap, a private planning note that is not in this repository. Where a number is not there yet, the slide has a marked placeholder.
 
 ## Timing
 
@@ -12,23 +12,24 @@ Every number below comes from `docs/capstone/evaluation.md`, the README's Evalua
 | 1 | Hours of video, minutes of news | Situation | Problem | 0:45 | 1:00 |
 | 2 | Why a summary isn't enough | Complication | Problem | 0:45 | 1:45 |
 | 3 | The AI proposes, the journalist decides | Resolution | Solution | 0:45 | 2:30 |
-| 4 | Demo: one interview to one clip | Resolution | Solution | 1:30 | 4:00 |
-| 5 | How the AI is built | Resolution | Solution (learning application) | 1:00 | 5:00 |
-| 6 | The data | | Data | 0:45 | 5:45 |
-| 7 | Evaluation: the analysis and the names | | Evaluation | 1:00 | 6:45 |
-| 8 | Evaluation: Ask and search | | Evaluation | 1:00 | 7:45 |
-| 9 | Risks and safeguards | | Ethics | 0:45 | 8:30 |
-| 10 | What was hard | | Challenges | 0:45 | 9:15 |
+| 4 | Demo: one interview to one clip | Resolution | Solution | 1:15 | 3:45 |
+| 5 | How the AI is built | Resolution | Solution (learning application) | 1:00 | 4:45 |
+| 6 | The data | | Data | 0:45 | 5:30 |
+| 7 | Evaluation: the analysis and the names | | Evaluation | 0:45 | 6:15 |
+| 7b | Evaluation: which model? | | Evaluation (learning application) | 0:45 | 7:00 |
+| 8 | Evaluation: Ask and search | | Evaluation | 1:00 | 8:00 |
+| 9 | Risks and safeguards | | Ethics | 0:45 | 8:45 |
+| 10 | What was hard | | Challenges | 0:30 | 9:15 |
 | 11 | What's next | | What's next (SMART) | 0:45 | 10:00 |
 
-If the clock runs over, shorten slide 4 (show three screens instead of six) and slide 10 (one challenge instead of three).
+If the clock runs over, shorten slide 4 (show three screens instead of six), slide 7b (read only the Luna card) and slide 10 (one challenge instead of three).
 
 ---
 
 ## Slide 0. Title
 
 - **Message:** Digestor: long public-interest videos to checked, subtitled clips.
-- **Visual:** project name, one line "Debates, hearings, parliaments and interviews, cut into clips a journalist can stand behind", your name, the showcase link.
+- **Visual:** project name, one line "Debates, hearings, parliaments and interviews, cut into clips a journalist can stand behind", your name, the live link (https://digestor.freitasdoamaral.com).
 - **Speaker notes (15 s):** "I built Digestor, a tool for journalists who have to turn a two-hour debate or interview into a few clips they can publish. I'll show the problem, the product, how I measured it, what went wrong, and where it goes next."
 
 ## Slide 1. Situation: hours of video, minutes of news
@@ -55,7 +56,7 @@ If the clock runs over, shorten slide 4 (show three screens instead of six) and 
 ## Slide 4. Demo: one interview to one clip
 
 - **Message:** the full flow on a real video in about 90 seconds.
-- **Visual:** live on https://digestor.freitasdoamaral.com, or the showcase video as fallback. Screens in order (showcase shot list numbers): Sessions (1), Briefing top (5), topic card with moment tree (6), Ask answer (8) and approval card (9), Prepare (10), Export (12). Use the Osang × Merkel interview (German) or the Globo debate.
+- **Visual:** live on https://digestor.freitasdoamaral.com, or screenshots as a fallback. Screens in order (numbers from the screenshot list in `showcase.md`): Sessions (1), Briefing top (5), topic card with moment tree (6), Ask answer (8) and approval card (9), Prepare (10), Export (12). Use the Osang × Merkel interview (German) or the Globo debate.
 - **Numbers:** none; let the screens speak.
 - **Speaker notes (1:30):**
   - "This is the Sessions page: each video and where it is."
@@ -64,7 +65,7 @@ If the clock runs over, shorten slide 4 (show three screens instead of six) and 
   - "Ask, opened with the slash key, answers from the video's own transcript and cites times. When I ask it to change something, it asks me first: it shows a card, and I approve, edit or reject."
   - "Prepare: the trim strip snaps to sentence ends; a free cut is possible with Alt but carries a warning. Checks say if the argument continues or the speaker is quoting someone else. A German-to-English subtitle track, editable, approved per language."
   - "Export: MP4 with burned-in subtitles, or the files. The checklist blocks export until checks, credit and speaker names are settled."
-- **Fallback:** if the network or the server is slow, switch to the showcase video right away; don't wait for a page.
+- **Fallback:** if the network or the server is slow, switch to the screenshots right away; don't wait for a page.
 
 ## Slide 5. How the AI is built
 
@@ -120,20 +121,39 @@ Speaker names, attribution score `(correct − 5 × wrong) / total`: debate 0.99
 
 - **Speaker notes (1:00):** "Topic boundaries land within 14 seconds on the debate and about half a minute on the interview. The quoted-opponent check fired on every trap, and it is not just warning on everything: on control moments far from any trap it fired 3 times in 19, against 10 in 13 on trap moments. The mid-argument check is weaker: 2 of 4 on the debate with Haiku. On the interview it caught 4 of 4, but that golden isn't reviewed yet. Passage recall on the interview is 0 of 3, mostly a granularity mismatch: the golden passages are whole two-minute answers. For names, a wrong second costs five times a right one; after fixing how the Senate record is matched the score went from 0.84 to 0.93 with no wrong names. An analysis costs about 9 cents of LLM per hour of video."
 
+## Slide 7b. Evaluation: which model?
+
+- **Message:** I chose the model by measuring quality, cost and time, not by name; no model wins everywhere, and the cheapest isn't the safest.
+- **Visual:** one table (Globo debate, 5 models via OpenRouter, 3 fresh analyses each, each model used for every step; ranges over the 3 runs) and two cards.
+
+| Globo debate | Exchanges | Passages | Punchlines | Cost / run | Time |
+|---|---|---|---|---|---|
+| Gemini 3.8 Flash | 100% | 81–90% | 88–92% | $0.55 | 8 min |
+| Jev Router | 86–93% | 81–84% | 77–85% | $0.35 | 21 min |
+| GPT-6 Luna | 86–100% | 74–90% | 73% | $0.07 | 6 min |
+| Claude Haiku 5.5 | 57–79% | 68–74% | 77–85% | $0.14 | 6 min |
+| MiniMax M3.1 Flash | 0–7% | 58–65% | 65–81% | $0.07 | 7 min |
+
+- **Cards:** "Cheapest isn't safest: Luna's mid-argument check caught 0 of 3 Bundestag traps, one reason it isn't the default despite being the cheapest." and "No model wins everywhere: Gemini finds the most, at about 4× Haiku's cost; Haiku's own runs found 57–79% of exchanges."
+- **Speaker notes (45 s):** "I didn't pick a model by name. I ran five models through OpenRouter, three fresh analyses each, on the debate, scored against the golden file I reviewed, with cost and time. No model wins everywhere. Gemini finds the most moments, at about four times Haiku's cost. GPT-6 Luna is the cheapest and finds whole exchanges well, but on the Bundestag video its 'argument continues' check caught 0 of 3 traps, and that check is what stops a clip cut before the 'but'. That is one reason it isn't the default despite being the cheapest. MiniMax misses almost every exchange. And one model's runs differ a lot, which is why I report ranges. The Bundestag golden file isn't reviewed yet, so I lead with the debate."
+- **Source:** `docs/capstone/evaluation.md`, "Comparing models".
+
 ## Slide 8. Evaluation: Ask and search
 
 - **Message:** Ask finds and cites the right passages most of the time; the verify step makes it safer, but on 12 questions per video I can't show it makes it better.
-- **Visual:** the before/after table (Haiku 5.5 via OpenRouter, 13 Nov), plus a third box for the monitor search.
+- **Visual:** the before/after table (Haiku 5.5 via OpenRouter; "before" is 13 Nov, "after" is the same code run twice, 13 Nov / 16 Nov), plus a third box for the monitor search.
 
-| Metric | Globo before | Globo after | Osang before | Osang after |
+| Metric | Globo before | Globo after (13 / 16 Nov) | Osang before | Osang after (13 / 16 Nov) |
 |---|---|---|---|---|
-| Retrieval recall@6 | 0.80 | 0.80 | 0.70 | 0.70 |
-| Retrieval MRR | 0.75 | 0.75 | 0.70 | 0.70 |
-| Citation hit | 80% | 90% | 100% | 80% |
-| Quote exact | 100% | 100% | 71% | 100% |
-| Refusal correct (2 questions) | 50% | 100% | 100% | 50% |
-| Gave up on the step limit | 3 of 12 | 1 of 12 | 0 of 12 | 1 of 12 |
-| Sent back by verify | – | 1 of 12 | – | 1 of 12 |
+| Retrieval recall@6 | 0.80 | 0.80 / 0.80 | 0.70 | 0.70 / 0.70 |
+| Retrieval MRR | 0.75 | 0.75 / 0.75 | 0.70 | 0.70 / 0.70 |
+| Citation hit | 80% | 90% / 80% | 100% | 80% / 100% |
+| Quote exact | 100% | 100% / 100% | 71% | 100% / 63% |
+| Refusal correct (2 questions) | 50% | 100% / 50% | 100% | 50% / 100% |
+| Gave up on the step limit | 3 of 12 | 1 / 2 of 12 | 0 of 12 | 1 / 0 of 12 |
+| Sent back by verify | – | 1 / 0 of 12 | – | 1 / 1 of 12 |
+
+One line under the table: "Same code, two days, different numbers: with 12 questions one question moves a rate by 8–10 points, so the before/after differences are run-to-run noise."
 
 Monitor search (extension), 20 queries over 7,899 speeches of 2026 (14 Portuguese, 6 English); golden labelled by the coding agent (Claude), my review pending:
 
@@ -144,7 +164,7 @@ Monitor search (extension), 20 queries over 7,899 speeches of 2026 (14 Portugues
 
 Hybrid vs words on recall@10: better on 12 queries, equal on 6, worse on 2.
 
-- **Speaker notes (1:00):** "'Before' is the plain tool loop; 'after' is the LangGraph version with approval and verify. Retrieval misses 5 of 20 answerable questions; those are figures and names that the question's words don't resemble. The agent still finds most of them because it reads transcript ranges and searches again, which is why citation hit is higher than recall. Verify sent one answer back per video and both corrections passed. The debate got better and the interview got worse, but with 12 questions one question moves a rate by 8 to 10 points, so both changes are inside the noise. I would not claim more than that. For the monitor, search by meaning is fused with word search by reciprocal rank fusion. Over 20 queries, recall at 10 goes from 0.41 with words to 0.61 hybrid, and MRR from 0.66 to 0.87; hybrid is better on 12 queries and worse on 2, broad cost-of-living ones where meaning pulls in fuel prices. The queries were labelled by the coding agent and I still have to review them."
+- **Speaker notes (1:00):** "'Before' is the plain tool loop; 'after' is the LangGraph version with approval and verify. Retrieval misses 5 of 20 answerable questions; those are figures and names that the question's words don't resemble. The agent still finds most of them because it reads transcript ranges and searches again, which is why citation hit is higher than recall. I ran the new version twice, three days apart, with the same code and model. On the first run the debate looked better and the interview worse; on the second, citation hit and refusals went the other way. Quote exact on the interview fell to 63% on the second run, but those were translated quotes, which verify checks as claims, and they passed. With 12 questions one question moves a rate by 8 to 10 points, so these are run-to-run noise. I would not claim more than that: verify is a safety net, not a score booster. For the monitor, search by meaning is fused with word search by reciprocal rank fusion. Over 20 queries, recall at 10 goes from 0.41 with words to 0.61 hybrid, and MRR from 0.66 to 0.87; hybrid is better on 12 queries and worse on 2, broad cost-of-living ones where meaning pulls in fuel prices. The queries were labelled by the coding agent and I still have to review them."
 - **If short of time:** read only the citation-hit and refusal rows.
 
 ## Slide 9. Risks and safeguards
@@ -176,14 +196,14 @@ Hybrid vs words on recall@10: better on 12 queries, equal on 6, worse on 2.
 ## Slide 11. What's next
 
 - **Message:** the next step is the Câmara monitor in front of a real journalist on 1 Dec, then accounts and more history.
-- **Visual:** a timeline from 17 Nov to 1 Feb 2027 with the four goals below; already built this round shown as ticks: video moment per speech, words used more than the chamber (counted, no AI), vote and bill filters with party guidance and by meaning (D6, both parts), search by meaning (hybrid with word search), "Ask the record" (passages quoted from the official speeches, nothing written by AI; D3), "Clip this speech" into a Digestor session (D2, local only: off on production, whose IP YouTube blocks) and audio-only uploads end to end (D7). The D4 and 2023–25 boxes carry the tag "proposal to confirm" on the slide.
-- **SMART goals** (dates from the monitor roadmap where it has them; the D4 and 2023–25 rows are proposals to confirm, and say so on the slide):
+- **Visual:** a timeline from 17 Nov to 1 Feb 2027 with the four goals below; already built for the capstone shown as ticks: video moment per speech, words used more than the chamber (counted, no AI), vote and bill filters with party guidance and by meaning, search by meaning (hybrid with word search), "Ask the record" (passages quoted from the official speeches, nothing written by AI), "Clip this speech" into a Digestor session (local only: off on production, whose IP YouTube blocks) and audio-only uploads end to end. The topic-label and 2023–25 boxes carry the tag "proposal to confirm" on the slide.
+- **SMART goals** (dates from the monitor roadmap where it has them; the topic-label and 2023–25 rows are proposals to confirm, and say so on the slide):
 
 | Goal | Specific | Measurable | Achievable | Relevant | Time-bound |
 |---|---|---|---|---|---|
 | Câmara monitor demo | A Brazilian journalist uses the monitor on production: find a deputy, search a topic, open a speech at its video moment, read a roll call | 4 tasks (find a deputy, search a topic, open a speech at its video moment, read a roll call); at least 3 of 4 done without help; time per task noted with the user-test checklist | the monitor preview, video moments per speech and the word heat map are built and reviewed | journalists are the target users of both products | feature cut-off Fri 27 Nov, production frozen Mon 30 Nov, demo Tue 1 Dec 2026 |
 | Sign-in and registration | email and password with verification and reset; real user ids replace the single owner on selections, clips and subtitle tracks | a new user registers, verifies the email and resets the password by email in under 5 minutes; 0 rows lost from the existing owner's selections, clips and subtitle tracks; all test suites green | proven auth library, sessions in Postgres | the journalist must be able to use it alone after the demo | built 23–25 Nov, live for the 1 Dec demo; if sign-in slips, the 1 Dec demo runs on the shared password |
-| D4 topic labels (proposal to confirm) | AI labels speeches with topics from a fixed list; labels only, never text about a person | provisional target: at least 80% agreement with a hand-labelled set of 50 speeches | same pattern as the word heat map, plus one fast-model call per speech | journalists search themes, not exact words | decide in the week of 23 Nov; if agreed, labelled set and first run by Fri 11 Dec 2026 |
+| Topic labels (proposal to confirm) | AI labels speeches with topics from a fixed list; labels only, never text about a person | provisional target: at least 80% agreement with a hand-labelled set of 50 speeches | same pattern as the word heat map, plus one fast-model call per speech | journalists search themes, not exact words | decide in the week of 23 Nov; if agreed, labelled set and first run by Fri 11 Dec 2026 |
 | 2023–25 history (proposal to confirm) | load the legislature's earlier years (from 1 Feb 2023) of speeches, roll calls and votes; years selectable on every page | per-year counts of speeches, roll calls and votes within 1% of the Câmara API's per-year totals | the backfill script and bulk-file parsers exist; the year list (`MONITOR_YEARS`) holds only 2026 today | a deputy's record since the start of the mandate is what journalists ask for | by 31 Dec 2026, before the public beta on 1 Feb 2027 |
 
 - **Speaker notes (45 s):** "Digestor is the capstone; the Câmara monitor is where it goes next. It applies the same rule to official records: the AI finds and labels, it never writes about a person. This round added the video moment for each speech, the words a deputy uses more than the rest of the chamber, counted with log-odds and no AI, vote and bill filters against the party's guidance, search by meaning fused with word search, and 'Ask the record', which answers a question only with passages quoted from the official speeches, each the speaking deputy's own words. 'Clip this speech' sends a speech's video moment into Digestor for subtitled clips; it runs locally for now, because YouTube blocks the production server. On 1 December a Brazilian journalist tries it on production. Before that: sign-in, so she can use it alone afterwards. In December: topic labels if we agree on them, and the history back to 2023, before the new legislature starts in February."
@@ -193,14 +213,14 @@ Hybrid vs words on recall@10: better on 12 queries, equal on 6, worse on 2.
 
 ## Likely questions (5 minutes)
 
-1. **The brief asks for LangGraph. Why isn't the upload pipeline on LangGraph?**
-   It was, from 29 October to 9 November. It left when the pipeline became a straight line of ten steps with one pause: the checkpointer saved four small fields, held the journalist's answers in extra tables that retention had to clean, and a wrong resume could re-run paid transcription. The replacement is one Postgres row per session moved by compare-and-set, with the pause written in the same transaction as the stage. It was a tidy-up, not a saving. LangChain stayed for every model call, and LangGraph now runs Ask, where the model picks the tools and the graph pauses for approval. Full answer and diagrams: `reports/langgraph-why-not.pdf` (section 9 has the follow-up questions).
+1. **Why isn't the upload pipeline on LangGraph?**
+   It was, from 29 October to 9 November. It left when the pipeline became a straight line of ten steps with one pause: the checkpointer saved four small fields, held the journalist's answers in extra tables that retention had to clean, and a wrong resume could re-run paid transcription. The replacement is one Postgres row per session moved by compare-and-set, with the pause written in the same transaction as the stage. It was a tidy-up, not a saving. LangChain stayed for every model call. LangGraph is used where the model controls the flow: Ask is a LangGraph graph that pauses for my approval with `interrupt()` and keeps its state in Postgres with `PostgresSaver`, so a paused answer survives a restart; Ask across videos uses `Send` to search each chosen video in parallel.
 
 2. **Claude drafted your golden files. Isn't the evaluation grading itself?**
    Partly, and I say so. The Globo debate and Senado goldens I reviewed and accepted; the interview, Ask, Bundestag and US House goldens are not reviewed yet. The traps are scored against control moments so "warn on everything" can't pass, and the names are checked against official records. The samples are small: 12 Ask questions per video, where one question moves a rate by 8 to 10 points.
 
 3. **The verify step didn't clearly improve Ask. Why keep it?**
-   It is a safety net, not a score booster. It catches misquotes and unsupported claims before the answer is stored: it sent one answer per video back, and both corrections passed. A wrong quote in a journalist's hands costs much more than a slower answer. The two "after" runs cost $0.038 and $0.035 for 12 questions each, judge calls included.
+   It is a safety net, not a score booster. It catches misquotes and unsupported claims before the answer is stored: on 13 Nov it sent one answer per video back, and both corrections passed; on 16 Nov it sent back none on the debate and one on the interview. A wrong quote in a journalist's hands costs much more than a slower answer. A run of 12 questions cost $0.033 to $0.041, judge calls included.
 
 4. **What does one video cost?**
    On the interview the LLM analysis was $0.145, about $0.088 per hour of video, and the checks $0.015 (Haiku 5.5 via OpenRouter). Transcription is the larger part: about $0.23 an hour with AssemblyAI's Universal-3.5 Pro plus speaker labels (from the debate run). The app's default reasoning model is Sonnet 5.5, which costs more; the measured runs used Haiku 5.5 for every step.

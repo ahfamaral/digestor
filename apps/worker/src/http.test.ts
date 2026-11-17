@@ -5,6 +5,9 @@ import { startHttpServer, type HttpDeps } from "./http.js";
 import { MeaningIndexMissingError } from "./monitor/embedSpeeches.js";
 
 let server: Server | undefined;
+/** Speech keys as `speechKey()` stores them (deputy, start minute, 10 hex characters; ":n" for a repeated text). */
+const K1 = "204407:2026-02-24T19:08:3f1a9c0b2e";
+const K2 = "204407:2026-03-10T19:40:0123456789";
 afterEach(async () => {
   await new Promise<void>((r) => (server ? server.close(() => r()) : r()));
   server = undefined;
@@ -71,18 +74,28 @@ describe("worker HTTP", () => {
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error: string };
     expect(body.error).not.toMatch(/ECONNREFUSED/);
-    expect((await post("/monitor/passages", { q: "saúde", speechKeys: ["a"] })).status).toBe(503);
+    expect((await post("/monitor/passages", { q: "saúde", speechKeys: [K1] })).status).toBe(503);
     expect((await fetch(`${base}/health`)).status).toBe(200);
   });
 
   it("POST /monitor/passages: perSpeech defaults to 3", async () => {
     const { deps, post } = await start();
-    const res = await post("/monitor/passages", { q: "saúde", speechKeys: ["a", "b"] });
+    const res = await post("/monitor/passages", { q: "saúde", speechKeys: [K1, K2] });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ passages: [{ speechKey: "1:2026-03-01T10:00:abc", sentences: ["Uma frase."], score: 0.8 }] });
-    expect(deps.passages).toHaveBeenLastCalledWith("saúde", ["a", "b"], 3);
-    await post("/monitor/passages", { q: "saúde", speechKeys: ["a"], perSpeech: 99 });
-    expect(deps.passages).toHaveBeenLastCalledWith("saúde", ["a"], 10);
+    expect(deps.passages).toHaveBeenLastCalledWith("saúde", [K1, K2], 3);
+    await post("/monitor/passages", { q: "saúde", speechKeys: [K1], perSpeech: 99 });
+    expect(deps.passages).toHaveBeenLastCalledWith("saúde", [K1], 10);
+  });
+
+  it("POST /monitor/passages: each speech key must have the stored key's shape, else 400", async () => {
+    const { deps, post } = await start();
+    for (const bad of ["a", "", "x".repeat(60_000), "204407:2026-02-24T19:08", "204407:2026-02-24T19:08:ABCDEF0123", `${K1}:x`, `${K1}\n`, 7]) {
+      const res = await post("/monitor/passages", { q: "saúde", speechKeys: [K1, bad] });
+      expect(res.status).toBe(400);
+    }
+    expect(deps.passages).not.toHaveBeenCalled();
+    expect((await post("/monitor/passages", { q: "saúde", speechKeys: [`${K1}:2`] })).status).toBe(200);
   });
 
   it("POST /monitor/search with kind rollCalls / bills: scores the given ids only", async () => {

@@ -230,7 +230,15 @@ describe("OpenRouter tool LLM (Ask)", () => {
     const { fetch, sent } = fakeFetch([{ body: completion({ content: "  Housing came up twice.  " }, "stop") }]);
     const step = await createOpenRouterToolLLM("k", MODELS, { fetch }).step({ system: "s", tools: [], messages: [{ role: "user", text: "q" }] });
     expect(step).toMatchObject({ text: "Housing came up twice.", toolCalls: [] });
+    expect(step.cutOff).toBeUndefined();
     expect(sent[0]!.body.tools).toBeUndefined();
+    expect(sent[0]!.body.max_tokens).toBe(16000); // thinking counts against it: as much room as the structured calls
+  });
+
+  it("marks a reply cut off by the token limit (finish_reason length)", async () => {
+    const { fetch } = fakeFetch([{ body: completion({ content: "Housing came up at [00:01" }, "length") }]);
+    const step = await createOpenRouterToolLLM("k", MODELS, { fetch }).step({ system: "s", tools: [], messages: [{ role: "user", text: "q" }] });
+    expect(step).toMatchObject({ text: "Housing came up at [00:01", toolCalls: [], cutOff: true });
   });
 });
 

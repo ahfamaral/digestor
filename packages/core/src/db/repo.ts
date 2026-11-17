@@ -40,11 +40,6 @@ export async function createSession(
   return row!;
 }
 
-export async function listExpiredSessions(db: Db, olderThanDays: number): Promise<Session[]> {
-  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
-  return db.select().from(sessions).where(lt(sessions.createdAt, cutoff));
-}
-
 /** Sessions created more than `olderThanDays` ago whose source video hasn't been removed yet. */
 export async function listSessionsWithExpiredVideo(db: Db, olderThanDays: number): Promise<Session[]> {
   const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);

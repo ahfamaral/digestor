@@ -183,13 +183,26 @@ export async function refreshMonitor(
     db, missing.map(([externalId, v]) => ({ house: "camara", externalId, name: v.name, party: v.party || null, uf: v.uf || null, photoUrl: null })),
   );
   const memberIdOf = new Map([...ids, ...added]);
+
+  // A file that comes back empty or much shorter than what is stored is the Câmara failing (the same 200-with-nothing
+  // as the API): its part keeps the stored rows.
+  const stored = await monitorRowCounts(db);
+  const tooShort = (what: string, n: number, before: number) => {
+    if (before === 0 || n >= before / 2) return false;
+    console.warn(`monitor.refresh: ${what}: the file gave ${n} rows (${before} stored); kept the stored rows`);
+    return true;
+  };
+
   let votes = 0;
-  for (const rc of rollCalls) {
-    const rows = (votesByRollCall.get(rc.id) ?? []).map((v) => ({
-      memberId: memberIdOf.get(v.externalId)!, vote: v.vote, party: v.party || null, uf: v.uf || null,
-    }));
-    await replaceVotes(db, rc.id, rows);
-    votes += rows.length;
+  const voteRows = [...votesByRollCall.values()].reduce((n, l) => n + l.length, 0);
+  if (!tooShort("votes", voteRows, stored.votes)) {
+    for (const rc of rollCalls) {
+      const rows = (votesByRollCall.get(rc.id) ?? []).map((v) => ({
+        memberId: memberIdOf.get(v.externalId)!, vote: v.vote, party: v.party || null, uf: v.uf || null,
+      }));
+      await replaceVotes(db, rc.id, rows);
+      votes += rows.length;
+    }
   }
 
   const known = await rollCallIdsWithBill(db, rollCalls.map((r) => r.id));
@@ -216,15 +229,6 @@ export async function refreshMonitor(
       console.warn(`monitor.refresh: skipped ${kind}-${a.year}:`, (err as Error).message);
       return null;
     }
-  };
-
-  // A file that comes back empty or much shorter than what is stored is the Câmara failing (the same 200-with-nothing
-  // as the API): its part keeps the stored rows.
-  const stored = await monitorRowCounts(db);
-  const tooShort = (what: string, n: number, before: number) => {
-    if (before === 0 || n >= before / 2) return false;
-    console.warn(`monitor.refresh: ${what}: the file gave ${n} rows (${before} stored); kept the stored rows`);
-    return true;
   };
 
   const guidance = await optional("votacoesOrientacoes");

@@ -6,7 +6,8 @@ import { normName } from "@digestor/core";
  * The monitor's search by meaning, served by the worker (`POST /monitor/search`: local e5 embeddings of the official
  * speeches in Chroma). Internal only: `WORKER_URL` (prod: http://worker:8790 on the compose network; dev: the worker's
  * port published on the host's loopback). Anything but a good answer within 3 s is `ok: false`, never a throw: the
- * topic search then shows word results with a quiet note, and the worker is left alone for 30 s.
+ * topic search then shows word results with a quiet note. Only a worker that is down (a refused connection or a 5xx)
+ * is left alone for 30 s; a slow answer, a 404 or an odd body fails that search only.
  */
 export const DEFAULT_WORKER_URL = "http://127.0.0.1:8790";
 export const MEANING_TOP = 100;
@@ -17,7 +18,7 @@ const CACHE_MS = 60 * 60 * 1000;
 export type SemanticResult = { keys: string[]; ok: boolean };
 const reply = z.object({ hits: z.array(z.object({ speechKey: z.string(), score: z.number() })) });
 
-/** After a failure the worker isn't asked again for 30 s, so a hung worker doesn't add 3 s to every search. */
+/** After a refused connection or a 5xx the worker isn't asked again for 30 s (all three calls share the pause). */
 const RETRY_AFTER_MS = 30_000;
 
 const cache = new Map<string, { keys: string[]; at: number }>();
@@ -45,13 +46,15 @@ export async function semanticSearch(
       signal: AbortSignal.timeout(o.timeoutMs ?? 3000),
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`worker answered ${res.status}`);
+    if (!res.ok) throw new WorkerAnswered(res.status);
     const keys = reply.parse(await res.json()).hits.map((h) => h.speechKey);
     if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value!);
     cache.set(key, { keys, at: Date.now() });
     return { keys, ok: true };
   } catch (err) {
-    downUntil = Date.now() + RETRY_AFTER_MS;
+    // Same rule as the two calls below: a slow answer (a cold first query after a restart) must not make "Ask the
+    // record" and the vote/bill boxes say meaning is unavailable for the next 30 s.
+    if (err instanceof TypeError || (err instanceof WorkerAnswered && err.status >= 500)) downUntil = Date.now() + RETRY_AFTER_MS;
     console.warn("monitor search by meaning:", err instanceof Error ? err.message : err);
     return { keys: [], ok: false };
   }

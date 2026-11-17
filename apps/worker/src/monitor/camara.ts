@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { billLabel, type ExternalMandate, type Position } from "@digestor/core";
+import { billLabel, normName, type ExternalMandate, type Position } from "@digestor/core";
 import type { BlocInput, HistoryInput, MemberInput, ProfileInput, SpeechInput } from "@digestor/core/server";
 import { getJson, httpTiming } from "../records/http.js";
 
@@ -37,13 +37,19 @@ const proposicao = z
   .object({ id: z.coerce.number(), siglaTipo: z.string(), numero: z.coerce.number(), ano: z.coerce.number(), ementa: text })
   .passthrough();
 
-/** Every page of a list; a 404 on the first page is an empty list. */
+/**
+ * Every page of a list; a 404 on the first page is an empty list. A 404 on a later page throws: returning the pages
+ * read so far would let the caller replace the stored rows with part of the list.
+ */
 async function pages<T extends z.ZodTypeAny>(f: typeof fetch, first: string, item: T): Promise<z.infer<T>[]> {
   const out: z.infer<T>[] = [];
   let url: string | null = first;
   for (let n = 0; url && n < 100; n++) {
     const res = await getJson(url, f, LABEL);
-    if (res.status === 404) break;
+    if (res.status === 404) {
+      if (n === 0) break;
+      throw new Error(`${LABEL} API answered 404 on page ${n + 1}.`);
+    }
     const body = page(item).parse(res.body);
     out.push(...body.dados);
     const next = body.links?.find((l) => l.rel === "next")?.href;
@@ -68,12 +74,44 @@ export async function fetchInOfficeIds(f: typeof fetch): Promise<number[]> {
   return [...new Set(rows.map((d) => d.id))];
 }
 
-/** A deputy's speeches in [from, to] (days), oldest first. An unknown deputy (404) has none. */
+const words = (s: string) => new Set(normName(s).match(/[\p{L}\p{N}]+/gu) ?? []);
+/** Dice coefficient of the two texts' word sets (accents and case ignored). */
+function wordOverlap(a: string, b: string): number {
+  const A = words(a);
+  const B = words(b);
+  if (A.size + B.size === 0) return 1;
+  let both = 0;
+  for (const w of A) if (B.has(w)) both++;
+  return (2 * both) / (A.size + B.size);
+}
+
+/**
+ * The API sometimes lists one speech twice: a provisional record (no summary, no text page, unrevised text or only the
+ * heading) beside the final one (33549/33550). A row with neither summary nor text page is dropped when a row of the
+ * same minute and kind has a summary and the same speech: its text is empty, a prefix of the final text, or shares
+ * ≥ 0.6 of its words with it (Dice). Copies on 2026 data overlap ≥ 0.7; two different written speeches in one minute
+ * (29149/29150) 0.23 and both stay.
+ */
+export function dropProvisionalCopies(rows: SpeechInput[]): SpeechInput[] {
+  const group = (r: SpeechInput) => `${r.startsAt.slice(0, 16)}|${r.kind ?? ""}`;
+  const finals = new Map<string, SpeechInput[]>();
+  for (const r of rows) if (r.summary) finals.set(group(r), [...(finals.get(group(r)) ?? []), r]);
+  return rows.filter((r) => {
+    if (r.summary || r.urlText) return true;
+    const same = finals.get(group(r)) ?? [];
+    return !same.some((b) => r.text === "" || b.text.startsWith(r.text) || wordOverlap(r.text, b.text) >= 0.6);
+  });
+}
+
+/**
+ * A deputy's speeches in [from, to] (days), oldest first, provisional copies dropped (`dropProvisionalCopies`). An
+ * unknown deputy (404) has none.
+ */
 export async function fetchSpeeches(f: typeof fetch, externalId: number, from: string, to: string): Promise<SpeechInput[]> {
   const url = `${API}/deputados/${externalId}/discursos?dataInicio=${from}&dataFim=${to}&itens=100&ordenarPor=dataHoraInicio&ordem=ASC`;
   const rows = await pages(f, url, discurso);
-  return rows
-    .map((d) => {
+  const mapped = rows
+    .map((d): SpeechInput => {
       const { text, file } = attachedFile(cleanText(d.transcricao ?? ""));
       return {
         startsAt: d.dataHoraInicio.slice(0, 16),
@@ -87,6 +125,7 @@ export async function fetchSpeeches(f: typeof fetch, externalId: number, from: s
       };
     })
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  return dropProvisionalCopies(mapped);
 }
 
 const historico = z

@@ -274,10 +274,13 @@ describe("tracks", () => {
     const sig = burnSignature({ cues: [cue("Oi")] }, c);
     await updateClip(db, c.id, { startMs: 11_000 }, "user");
     expect(await finishTrackBurn(db, t.id, sig, "b.mp4")).toBe("stale");
+    // The trim outdated the track (its cues were built for the old range): it can't be burned again until rebuilt,
+    // and a burn that took the new bounds' signature from it is stale too.
+    expect(await getTrack(db, t.id)).toMatchObject({ status: "outdated", approvedAt: null });
     await setTrackBurnStatus(db, t.id, "none");
-    await claimTrackBurn(db, t.id);
+    expect(await claimTrackBurn(db, t.id)).toBe(false);
     const now = (await getClip(db, c.id))!;
-    expect(await finishTrackBurn(db, t.id, burnSignature({ cues: [cue("Oi")] }, now), "b.mp4")).toBe("done");
+    expect(await finishTrackBurn(db, t.id, burnSignature({ cues: [cue("Oi")] }, now), "b.mp4")).toBe("stale");
   });
 
   it("new clips get the position of the session's profile and the owner's latest style", async () => {
@@ -492,6 +495,41 @@ describe("ask and reports", () => {
     expect(got!.actions[0]!.status).toBe("confirmed");
     expect(await getAskMessage(db, m.id)).toMatchObject({ id: m.id, sessionId: s.id, role: "assistant", status: "done" });
     expect(await getAskMessage(db, "00000000-0000-0000-0000-000000000000")).toBeNull();
+  });
+
+  it("reopenToolApproval reopens only a resolved card whose answer still waits", async () => {
+    const { createToolApproval, resolveToolApproval, reopenToolApproval, getAskAction } = await import("./personal.ts");
+    const card = async () => {
+      const m = await addAskMessage(db, { sessionId: s.id, ownerId: OWNER, role: "assistant", text: "", status: "running" });
+      const a = await createToolApproval(db, m.id, { step: 1, calls: [{ id: "c1", name: "propose_clip", args: {}, summary: "Make a clip" }] });
+      return { m, a };
+    };
+    const ok = await card();
+    expect(await resolveToolApproval(db, ok.a.id, { decision: "approve" })).toBe(true);
+    await reopenToolApproval(db, ok.a.id); // the resume job couldn't be sent
+    expect(await getAskAction(db, ok.a.id)).toMatchObject({ status: "pending", resolution: null });
+
+    // The send threw after the job was stored: the resume ran and the answer finished. The card stays resolved.
+    const ran = await card();
+    expect(await resolveToolApproval(db, ran.a.id, { decision: "reject" })).toBe(true);
+    await finishAskMessage(db, ran.m.id, { text: "Done", status: "done" });
+    await reopenToolApproval(db, ran.a.id);
+    expect(await getAskAction(db, ran.a.id)).toMatchObject({ status: "dismissed", resolution: { decision: "reject" } });
+
+    // A bulk action is never touched.
+    const bulk = await createAskAction(db, { messageId: ok.m.id, kind: "bulk_selection", payload: { ids: [] } });
+    expect(await resolveAskAction(db, bulk.id, "confirmed")).toBe(true);
+    await reopenToolApproval(db, bulk.id);
+    expect((await getAskAction(db, bulk.id))?.status).toBe("confirmed");
+  });
+
+  it("the bulk-selection resolvers never resolve a tool approval card (it would wait for ever without its resume)", async () => {
+    const { createToolApproval, confirmBulkSelection, getAskAction } = await import("./personal.ts");
+    const m = await addAskMessage(db, { sessionId: s.id, ownerId: OWNER, role: "assistant", text: "", status: "running" });
+    const a = await createToolApproval(db, m.id, { step: 1, calls: [{ id: "c1", name: "propose_clip", args: {}, summary: "Make a clip" }] });
+    expect(await resolveAskAction(db, a.id, "dismissed")).toBe(false);
+    expect(await confirmBulkSelection(db, OWNER, a.id, [], "approved")).toBe(false);
+    expect((await getAskAction(db, a.id))?.status).toBe("pending");
   });
 
   it("claimAskMessage takes a pending answer once; release puts a running one back (T14)", async () => {

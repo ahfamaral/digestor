@@ -394,7 +394,6 @@ async function pruneFrames(db: Db, storage: Pick<LocalStorage, "key" | "resolve"
   }
 }
 
-export const RECORD_NOT_FOUND = "The Senado has no speeches for that date.";
 export const RECORD_ALL_REJECTED = "No speech in the record was kept for this video.";
 /** `date` is the record's day as the connector returned it (`YYYY-MM-DD`; a Câmara link carries no date of its own). */
 export const recordNoMatch = (ref: RecordRef, date: string) =>

@@ -43,6 +43,14 @@ describe("LocalStorage", () => {
     expect(existsSync(path.join(root, id, "clips"))).toBe(true);
   });
 
+  it("pathOf gives the same safe path without creating folders (read paths: a URL never makes a directory)", () => {
+    const key = storage.key(id, "clips/x.mp4");
+    expect(storage.pathOf(key)).toBe(path.join(path.resolve(root), id, "clips", "x.mp4"));
+    expect(existsSync(path.join(root, id))).toBe(false);
+    expect(() => storage.pathOf("../x")).toThrow(UnsafePathError);
+    expect(() => storage.pathOf(`${id}/../../x`)).toThrow(UnsafePathError);
+  });
+
   it("storage returns relative keys", async () => {
     const key = await storage.saveStream(id, "original.mp4", bodyOf(new Uint8Array([1, 2, 3])));
     expect(key).toBe(`${id}/original.mp4`);

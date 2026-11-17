@@ -281,3 +281,26 @@ describe("accepting or dismissing a suggestion", () => {
     expect((await act(sessionId, "accept", "x")).status).toBe(400);
   });
 });
+
+describe("the upload note (hint) is capped", () => {
+  const TOO_LONG = { error: "Keep the note to 2,000 characters or fewer." };
+  const URL_ = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+  it("youtube: 400 over 2,000 characters and no session starts; 2,000 is fine", async () => {
+    const res = await postYoutube(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ url: URL_, hint: "a".repeat(2001) }) }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(TOO_LONG);
+    expect(h.send).not.toHaveBeenCalled();
+    const ok = await postYoutube(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ url: URL_, hint: "a".repeat(2000) }) }));
+    expect(ok.status).toBe(200);
+  });
+
+  it("upload: 400 over 2,000 characters before the file is read", async () => {
+    const res = await putUpload(
+      new Request(`http://localhost/api/sessions/upload?filename=a.mp4&hint=${"a".repeat(2001)}`, { method: "PUT", body: new Blob(["x"]), duplex: "half" } as RequestInit),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(TOO_LONG);
+    expect(h.send).not.toHaveBeenCalled();
+  });
+});

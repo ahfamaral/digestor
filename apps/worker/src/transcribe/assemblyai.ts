@@ -86,6 +86,15 @@ export function buildTranscribeParams(audio: string, opts: TranscribeOptions = {
   };
 }
 
+/**
+ * How long to wait for AssemblyAI to finish: 3 × the recording, at least an hour. The SDK otherwise polls forever, and a
+ * transcript stuck `queued`/`processing` would hold the worker's one `session.start` slot (every later upload waits).
+ * Past the limit the SDK throws "Polling timeout": a transient error, so the job retries and the last attempt fails the session.
+ */
+export function pollingTimeoutMs(durationMs?: number): number {
+  return Math.max(60 * 60_000, 3 * (durationMs ?? 0));
+}
+
 export class AssemblyAITranscriber implements Transcriber {
   private client: AssemblyAI;
 
@@ -94,7 +103,9 @@ export class AssemblyAITranscriber implements Transcriber {
   }
 
   async transcribe(audioPath: string, fallbackDurationMs?: number, opts?: TranscribeOptions): Promise<Transcript> {
-    const raw = await this.client.transcripts.transcribe(buildTranscribeParams(audioPath, opts));
+    const raw = await this.client.transcripts.transcribe(buildTranscribeParams(audioPath, opts), {
+      pollingTimeout: pollingTimeoutMs(fallbackDurationMs),
+    });
     throwIfError(raw as RawTranscript);
     return mapAssemblyAI(raw as RawTranscript, fallbackDurationMs);
   }
