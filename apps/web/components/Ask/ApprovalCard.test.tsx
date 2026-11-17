@@ -19,6 +19,16 @@ describe("ApprovalCard", () => {
     expect(buttons(html)).toEqual(["Approve", "Edit", "Reject"]);
   });
 
+  it("several changes are numbered (the Edit form's blocks are headed Change 1, Change 2…); one change is a plain line", () => {
+    const html = render([clipCall, selectionCall], false);
+    expect(html).toMatch(/<ol[^>]*list-decimal[^>]*><li[^>]*>Make a clip/);
+    expect(html.match(/<li /g)).toHaveLength(2);
+    const one = render([clipCall], false);
+    expect(one).not.toContain("<ol");
+    expect(one).toContain("Approve this change?");
+    expect(one).toMatch(/<p[^>]*>Make a clip 00:00:10–00:00:30/);
+  });
+
   it("once the video is removed only Reject is offered (a change can't be made any more)", () => {
     expect(buttons(render([clipCall], true))).toEqual(["Reject"]);
   });
@@ -55,6 +65,12 @@ describe("ApprovalCard: clip package (C3)", () => {
     expect(buttons(html)).toContain("Make 3 clips");
     expect(buttons(html)).toContain("Reject");
     expect(buttons(html)).toContain("Edit times and titles");
+  });
+
+  it("each offered clip is its own labelled group (Clip 1, Clip 2…), so its fields stay together when editing", () => {
+    const html = render([pkg], false);
+    expect(html).toContain('role="group" aria-label="Clip 1"');
+    expect(html).toContain('role="group" aria-label="Clip 3"');
   });
 
   it("states the estimated cost before Make: translating the drafts (100 s of clips into English from Portuguese)", () => {

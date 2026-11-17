@@ -18,6 +18,8 @@ export function MediaPlayer({
   preload = "none",
   mediaRef,
   onTime,
+  controls = true,
+  onPlayingChange,
 }: {
   kind: "video" | "audio";
   src: string | undefined;
@@ -32,6 +34,10 @@ export function MediaPlayer({
   mediaRef?: RefObject<HTMLMediaElement | null>;
   /** Called with `currentTime` in seconds while it plays or seeks. */
   onTime?: (seconds: number) => void;
+  /** false: the caller draws its own controls (e.g. times inside a clip, which the browser's controls can't show). */
+  controls?: boolean;
+  /** Called when it starts or stops playing. */
+  onPlayingChange?: (playing: boolean) => void;
 }) {
   const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const setRef = useCallback(
@@ -44,7 +50,7 @@ export function MediaPlayer({
   usePauseWhenHidden(ref);
   const children = tracks?.map((tr) => <track key={tr.srcLang} kind="subtitles" src={tr.src} srcLang={tr.srcLang} label={tr.label} />);
   const common = {
-    controls: true,
+    controls,
     autoPlay,
     preload,
     src,
@@ -52,6 +58,8 @@ export function MediaPlayer({
     className,
     style,
     onTimeUpdate: onTime ? (e: React.SyntheticEvent<HTMLMediaElement>) => onTime(e.currentTarget.currentTime) : undefined,
+    onPlay: onPlayingChange ? () => onPlayingChange(true) : undefined,
+    onPause: onPlayingChange ? () => onPlayingChange(false) : undefined,
   };
   return kind === "video" ? (
     <video ref={setRef} poster={poster} {...common}>

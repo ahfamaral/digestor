@@ -63,6 +63,15 @@ export function seekFor(cue: { startMs: number }, clip: { startMs: number }): nu
   return (clip.startMs + cue.startMs) / 1000;
 }
 
+/**
+ * The review player's position inside the clip (ms, like the cues): 0 at the clip start, the clip length at its end.
+ * `sourceSec` is the preview copy's `currentTime`, which counts from the start of the whole video.
+ */
+export function clipPosition(sourceSec: number, clip: { startMs: number; endMs: number }): number {
+  const ms = Math.round(sourceSec * 1000) - clip.startMs;
+  return Math.min(Math.max(0, ms), clip.endMs - clip.startMs);
+}
+
 /** The review shows the "Original" column only when the track is in another language than the video's. */
 export function reviewColumns(trackLanguage: string, originalLanguage: string | null | undefined): 1 | 2 {
   if (!originalLanguage) return 2;

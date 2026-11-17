@@ -122,7 +122,13 @@ export function PackageCard({
               const shown = draftRange(c, offered);
               const range = `${formatTimestamp(shown.startMs)}–${formatTimestamp(shown.endMs)}`;
               return (
-                <div key={i} className="grid gap-1.5">
+                // While editing, each clip is its own white block (checkbox line, then its fields), so 5 clips stay readable.
+                <div
+                  key={i}
+                  role="group"
+                  aria-label={t("ask.package.clipN", { n: i + 1 })}
+                  className={editing ? "grid min-w-0 gap-2 rounded-md border border-border bg-white p-2" : "grid gap-1.5"}
+                >
                   <label className="flex items-start gap-2 text-xs">
                     <Checkbox checked={c.on} disabled={disabled} onCheckedChange={(on) => setClip(i, { on: on === true })} className="mt-0.5" />
                     <span className="min-w-0 break-words">
@@ -135,10 +141,10 @@ export function PackageCard({
                     </span>
                   </label>
                   {editing && c.on && (
-                    <div className="ml-6 grid gap-1.5">
+                    <div className="grid min-w-0 gap-2">
                       <div className="grid grid-cols-2 gap-2">
                         {(["start", "end"] as const).map((key) => (
-                          <label key={key} className="grid gap-1 text-xs font-medium">
+                          <label key={key} className="grid min-w-0 gap-1 text-xs font-medium">
                             {t(`ask.approval.${key}`)}
                             <Input
                               value={c[key]}

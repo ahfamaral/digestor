@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Annotation, END, START, Send, StateGraph } from "@langchain/langgraph";
 import {
-  PROFILES, ProfileIdSchema, displayTitle, formatTimestamp, type AnalysisBundle, type AskToolCallRecord, type ContextCard, type LibraryAskMessage, type LibraryAskSource, type ProfileId, type Transcript,
+  PROFILES, ProfileIdSchema, displayTitle, formatTimestamp, type AnalysisBundle, type AskToolCallRecord, type LibraryAskMessage, type LibraryAskSource, type ProfileId, type Transcript,
 } from "@digestor/core";
 import {
   claimLibraryAskMessage, finishLibraryAskMessage, getCurrentAnalysis, getLibraryAskMessage, getTranscript, listLibraryAskMessages, listLibraryCandidates,
@@ -12,7 +12,7 @@ import type { ToolLLM } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
 import { promptCard } from "../pipeline/naming.js";
 import { withProfile } from "../pipeline/analysis.js";
-import { ASK_FAILED, SEARCH_UNAVAILABLE, evidence, loadSessionNames, participantLines } from "./ask.js";
+import { ASK_FAILED, SEARCH_UNAVAILABLE, evidence, loadSessionNames, participantLines, roleLines } from "./ask.js";
 import { citedSentences, splitCouldntConfirm, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
 
 /**
@@ -199,17 +199,6 @@ async function sessionBlock(db: Db, pick: Pick, found: Found | undefined, loaded
     `Searched for: ${JSON.stringify(pick.query)}`,
   ].filter((x): x is string => x !== null);
   return `${pick.label} (cite as [${pick.label} hh:mm:ss]), title: ${JSON.stringify(pick.title)}\n${facts.map((f) => `- ${f}`).join("\n")}\n${passages}`;
-}
-
-/**
- * Speakers the card gives a role but no name (after `promptCard`: in a sensitive profile an unconfirmed name is
- * already withheld), as "B = moderator", so the answer can say "the moderator" instead of a letter.
- */
-export function roleLines(card: ContextCard | null): string[] {
-  return (card?.participants ?? []).flatMap((p) => {
-    const role = p.role.value?.trim();
-    return !p.name.value && role ? [`${p.speakerId} = ${oneLine(role)}`] : [];
-  });
 }
 
 // ---------------------------------------------------------------- verify

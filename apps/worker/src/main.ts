@@ -158,7 +158,7 @@ async function main() {
   await register(QUEUES.renderClip, RenderClipJobSchema, (j, attempt) => handleRenderClip({ db, storage }, j, attempt));
   const askDeps = {
     db, llm: toolLlm, judge: llm, search: (id: string, q: string, k: number) => searchTranscript(deps.search, id, q, k), checkpointer: askCheckpointer,
-    // Clip packages: the tool claims each track/render in the database first, then sends its job here.
+    // Clips made by Ask: the tool claims each track, render and moment check in the database first, then sends its job here.
     send: async (queue: string, data: Record<string, string>, singletonKey: string) => {
       await boss.send(queue, data, { ...JOB_OPTIONS, singletonKey });
     },

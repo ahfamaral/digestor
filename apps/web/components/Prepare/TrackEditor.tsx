@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import { formatTimestamp } from "@digestor/core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { patchTrack } from "@/lib/prepareApi";
 import type { ClipView, TrackView } from "@/lib/prepareData";
 import { pauseAllMedia } from "@/lib/media";
-import { cueAt, reviewColumns, seekFor } from "@/lib/subtitlePreview";
+import { clipPosition, cueAt, reviewColumns, seekFor } from "@/lib/subtitlePreview";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { cropPosition } from "./FormatPicker";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,9 @@ export function TrackEditor({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
+  /** The player's position inside the clip (ms, like the cue times), and whether it plays. */
+  const [position, setPosition] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const columns = reviewColumns(track.language, originalLanguage);
   const vertical = clip.format === "9:16";
@@ -60,6 +64,31 @@ export function TrackEditor({
   useEffect(() => {
     if (active >= 0) document.getElementById(`line-${track.id}-${active}`)?.scrollIntoView({ block: "nearest" });
   }, [active, track.id]);
+
+  /** The preview copy counts from the start of the whole video: show and seek in clip time, and stop at the clip's end. */
+  function onTime(sec: number) {
+    const el = mediaRef.current;
+    if (el && !el.paused && sec * 1000 >= clip.endMs) el.pause();
+    const pos = clipPosition(sec, clip);
+    setPosition(pos);
+    setActive(cueAt(track.cues, pos));
+  }
+
+  function togglePlay() {
+    const el = mediaRef.current;
+    if (!el) return;
+    if (!el.paused) return el.pause();
+    // At (or past) the end, play the clip again from its start.
+    if (el.currentTime * 1000 >= clip.endMs - 100 || el.currentTime * 1000 < clip.startMs) el.currentTime = clip.startMs / 1000;
+    void el.play().catch(() => {});
+  }
+
+  function seekClip(ms: number) {
+    const el = mediaRef.current;
+    if (!el) return;
+    el.currentTime = (clip.startMs + ms) / 1000;
+    setPosition(ms);
+  }
 
   function seek(i: number) {
     const el = mediaRef.current;
@@ -109,32 +138,46 @@ export function TrackEditor({
         {videoRemoved ? (
           <p className="rounded-lg bg-stone-900 px-4 py-6 text-center text-xs text-stone-300">{t("preview.videoRemoved")}</p>
         ) : (
-          <div className="flex shrink-0 justify-center">
-            {hasVideo ? (
-              <div className={cn("overflow-hidden rounded-lg bg-stone-900", vertical ? "aspect-[9/16] h-[min(30vh,16rem)]" : "aspect-video h-[min(30vh,16rem)]")}>
+          <div className="grid shrink-0 grid-cols-1 gap-2">
+            <div className="flex justify-center">
+              {hasVideo ? (
+                <div className={cn("overflow-hidden rounded-lg bg-stone-900", vertical ? "aspect-[9/16] h-[min(30vh,16rem)]" : "aspect-video h-[min(30vh,16rem)]")}>
+                  <MediaPlayer
+                    kind="video"
+                    src={src}
+                    label={playerLabel}
+                    poster={thumbUrl ?? undefined}
+                    preload="metadata"
+                    mediaRef={mediaRef}
+                    controls={false}
+                    onTime={onTime}
+                    onPlayingChange={setPlaying}
+                    className={cn("h-full w-full", vertical ? "object-cover" : "object-contain")}
+                    style={vertical ? { objectPosition: cropPosition(clip.cropOffset) } : undefined}
+                  />
+                </div>
+              ) : (
                 <MediaPlayer
-                  kind="video"
+                  kind="audio"
                   src={src}
                   label={playerLabel}
-                  poster={thumbUrl ?? undefined}
                   preload="metadata"
                   mediaRef={mediaRef}
-                  onTime={(sec) => setActive(cueAt(track.cues, sec * 1000 - clip.startMs))}
-                  className={cn("h-full w-full", vertical ? "object-cover" : "object-contain")}
-                  style={vertical ? { objectPosition: cropPosition(clip.cropOffset) } : undefined}
+                  controls={false}
+                  onTime={onTime}
+                  onPlayingChange={setPlaying}
+                  className="hidden"
                 />
-              </div>
-            ) : (
-              <MediaPlayer
-                kind="audio"
-                src={src}
-                label={playerLabel}
-                preload="metadata"
-                mediaRef={mediaRef}
-                onTime={(sec) => setActive(cueAt(track.cues, sec * 1000 - clip.startMs))}
-                className="w-full"
-              />
-            )}
+              )}
+            </div>
+            <ClipControls
+              position={position}
+              length={clip.endMs - clip.startMs}
+              playing={playing}
+              label={playerLabel}
+              onToggle={togglePlay}
+              onSeek={seekClip}
+            />
           </div>
         )}
         {videoRemoved && <p className="text-xs text-muted-foreground">{t("prepare.editorReadOnly")}</p>}
@@ -249,5 +292,44 @@ export function TrackEditor({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Play/pause, a position slider and the time, all inside the clip: 0:00 is the clip's start, as in the cue times (the
+ * browser's own controls would count from the start of the whole video).
+ */
+function ClipControls({
+  position, length, playing, label, onToggle, onSeek,
+}: {
+  position: number;
+  length: number;
+  playing: boolean;
+  label: string;
+  onToggle: () => void;
+  onSeek: (ms: number) => void;
+}) {
+  const now = formatTimestamp(position, { tenths: true });
+  const total = formatTimestamp(length, { tenths: true });
+  return (
+    <div role="group" aria-label={label} className="mx-auto flex w-full max-w-xl items-center gap-2">
+      <Button type="button" size="icon-sm" variant="outline" aria-label={playing ? t("prepare.editorPause") : t("prepare.editorPlay")} onClick={onToggle}>
+        {playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+      </Button>
+      <input
+        type="range"
+        min={0}
+        max={length}
+        step={100}
+        value={Math.min(position, length)}
+        aria-label={t("prepare.editorPosition")}
+        aria-valuetext={t("prepare.editorTime", { now, total })}
+        onChange={(e) => onSeek(Number(e.target.value))}
+        className="h-1.5 min-w-0 flex-1 cursor-pointer accent-brand"
+      />
+      <span aria-hidden className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+        {now} / {total}
+      </span>
+    </div>
   );
 }

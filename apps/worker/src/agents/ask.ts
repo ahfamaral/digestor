@@ -7,9 +7,9 @@ import {
   type ToolApprovalResolution, type Transcript, type Word,
 } from "@digestor/core";
 import {
-  claimAskMessage, claimClipRender, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
+  claimAskMessage, claimClipRender, claimMomentCheck, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
-  setClipRenderStatus, setSelection, updateClip, type AskMessage, type Db, type Session,
+  releaseMomentCheck, setClipRenderStatus, setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
 import type { StructuredLLM } from "../llm/structured.js";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
@@ -349,6 +349,25 @@ function willWrite(ctx: AskContext): void {
   ctx.callWrote = true;
 }
 
+/**
+ * Asks for the clip checks of a moment Ask just made, as approving or confirming does on the web (R29): claimed in the
+ * database first, then sent; a failed send gives the claim back. Best-effort: Prepare's poll asks again, so a failure
+ * is logged, never returned to the model. Without a sender (the eval script) nothing is sent.
+ */
+async function requestMomentCheck(ctx: AskContext, momentId: string): Promise<void> {
+  const send = ctx.send;
+  if (!send) return;
+  let claimed = false;
+  try {
+    claimed = await claimMomentCheck(ctx.db, momentId);
+    if (claimed) await send(QUEUES.checkMoment, { momentId }, momentId);
+  } catch (err) {
+    if (!claimed) return void console.error(`[ask] couldn't claim the checks of moment ${momentId}:`, err);
+    console.error(`[ask] couldn't queue the checks of moment ${momentId}:`, err);
+    await releaseMomentCheck(ctx.db, momentId).catch((e: unknown) => console.error("[ask] releasing the check claim failed", e));
+  }
+}
+
 const normSpeaker = (s: string) => s.trim().replace(/^speaker\s+/i, "").toLowerCase();
 
 // ---------------------------------------------------------------- clip packages
@@ -612,6 +631,7 @@ export const TOOLS: Tool[] = [
       const moment = await createPersonalMoment(ctx.db, { analysisId: analysis.version.id, ownerId: ctx.ownerId, ...range, title, origin: "ask" });
       const clip = await createClip(ctx.db, { sessionId: ctx.session.id, ownerId: ctx.ownerId, momentId: moment.id, ...range, actor: "ask" });
       await setSelection(ctx.db, ctx.ownerId, moment.id, "approved"); // so Prepare never shows "Approval dismissed"
+      await requestMomentCheck(ctx, moment.id); // so Prepare finds the checks done, not "Checking…"
       return {
         text: `Created clip ${clip.id} ${span(range)} "${title}" (moment ${moment.id}), snapped to whole sentences.`,
         clipId: clip.id,
@@ -732,7 +752,7 @@ export const TOOLS: Tool[] = [
       // In a sensitive profile (a trial) nothing is rendered before the export checklist, protected persons included.
       const profile = ProfileIdSchema.safeParse(analysis.version.profile);
       const render = !(profile.success && PROFILES[profile.data].sensitive);
-      const made: { id: string; range: Range; title: string }[] = [];
+      const made: { id: string; momentId: string; range: Range; title: string }[] = [];
       for (const c of clips) {
         const range = { startMs: c.startMs, endMs: c.endMs };
         const moment = await createPersonalMoment(ctx.db, { analysisId: analysis.version.id, ownerId: ctx.ownerId, ...range, title: c.title, origin: "ask" });
@@ -740,7 +760,7 @@ export const TOOLS: Tool[] = [
         // The channel credit Prepare would save on opening, set now: saved after the render, it would make it stale.
         if (clip.credit === null && !clip.noCreditNeeded && credit) await updateClip(ctx.db, clip.id, { credit }, "ask");
         await setSelection(ctx.db, ctx.ownerId, moment.id, "approved"); // so Prepare never shows "Approval dismissed"
-        made.push({ id: clip.id, range, title: c.title });
+        made.push({ id: clip.id, momentId: moment.id, range, title: c.title });
         ctx.madeClipIds.push(clip.id);
       }
       // Each job-owned row is claimed in the database first, then its job sent; a send that fails gives the claim back.
@@ -766,6 +786,7 @@ export const TOOLS: Tool[] = [
             await setClipRenderStatus(ctx.db, clip.id, "none").catch((e: unknown) => console.error("[ask] releasing the render claim failed", e));
           }
         }
+        await requestMomentCheck(ctx, clip.momentId); // so Prepare finds the checks done, not "Checking…"
       }
       const list = made.map((c) => `${c.id} ${span(c.range)} "${c.title}"`).join("; ");
       const drafts = subtitles ? `${languageLabel(subtitles)} subtitle drafts are being prepared.` : "";
@@ -833,6 +854,17 @@ export function participantLines(card: ContextCard | null, names: NameIndex): st
 }
 
 /**
+ * Speakers the card gives a role but no name (after `promptCard`: in a sensitive profile an unconfirmed name is
+ * already withheld), as "B = moderator", so the answer can say "the moderator" instead of a letter.
+ */
+export function roleLines(card: ContextCard | null): string[] {
+  return (card?.participants ?? []).flatMap((p) => {
+    const role = p.role.value?.replace(/\s+/g, " ").trim();
+    return !p.name.value && role ? [`${p.speakerId} = ${role}`] : [];
+  });
+}
+
+/**
  * Who may be named in a session's prompts: the context card with names projected from the current attributions
  * (`promptCard`, under the analysis's profile) and who speaks when. Sensitive profiles (a trial) name only confirmed
  * people, in the card's names, its free text and the name index.
@@ -858,12 +890,14 @@ function buildSystem(session: Session, transcript: Transcript | null, analysis: 
   const speakers = [...new Set((transcript?.words ?? []).map((w) => w.speaker))];
   const profile = ProfileIdSchema.safeParse(analysis?.version.profile ?? card?.profile.value);
   const known = participantLines(card, names);
+  const roles = roleLines(card);
   const facts = [
     `Title: ${JSON.stringify(session.title)}`,
     `Duration: ${ts(transcript?.durationMs ?? session.durationMs ?? 0)}`,
     profile.success ? `Kind of video: ${PROFILES[profile.data].label}` : null,
     `Speakers: ${speakers.length ? speakers.join(", ") : "unknown"}`,
     known.length ? `Known participants: ${known.join("; ")}` : null,
+    roles.length ? `Roles of speakers without a name (describe them by role): ${roles.join("; ")}` : null,
     profile.success ? `Highlight types in this kind of video: ${PROFILES[profile.data].highlightTypes.map(typeName).join(", ")}. list_moments shows them as "highlights: ..." on each moment, as the Briefing chips do.` : null,
     analysis ? null : "The analysis (topics, moments) isn't ready yet.",
   ].filter((x): x is string => x !== null);
@@ -876,7 +910,7 @@ Rules:
 - Cite a timestamp as [hh:mm:ss] for every claim, using the times in the tool results.
 - When the data doesn't support an answer, reply exactly: "${NOT_IN_DATA}"
 - If a tool says "${SEARCH_UNAVAILABLE}", tell the user, and use get_transcript, list_topics or list_moments instead.
-- Never invent names. Refer to speakers by their speaker id (for example "Speaker A"), unless the known participants below name them. Say "probably" with a name that is not confirmed. For what a named person said, use list_speeches, then get_transcript for the turns that matter.
+- Never invent names. Tool results mark who speaks with speaker ids (A, B, …); use them to work out who said what. In your answer, refer to a speaker the known participants below name by that name only, with "probably" before a name that is not confirmed (for example "probably Ana Silva said …"); never put their speaker id next to the name (not "Speaker C, probably Ana Silva"). Describe a speaker without a name by their role when one is given below (for example "the moderator"), else by their speaker id (for example "Speaker A"). For what a named person said, use list_speeches, then get_transcript for the turns that matter.
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
 - propose_clip, trim_clip, set_selection and make_clip_package change the user's own clips and selections. Use them only when the user asks for that change. You can't export, burn in subtitles or change the official analysis.

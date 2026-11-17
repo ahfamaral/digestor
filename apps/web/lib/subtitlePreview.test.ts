@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cueAt, previewCss, reviewColumns, seekFor, startingLook, subtitlePositions } from "./subtitlePreview";
+import { clipPosition, cueAt, previewCss, reviewColumns, seekFor, startingLook, subtitlePositions } from "./subtitlePreview";
 
 describe("subtitle positions", () => {
   it("offer Above name banner only when there is a picture", () => {
@@ -62,6 +62,14 @@ describe("review with playback", () => {
   it("seekFor: cues are clip-relative, the proxy is session-absolute (seconds)", () => {
     expect(seekFor(cues[1]!, { startMs: 60_000 })).toBe(62);
     expect(seekFor(cues[0]!, { startMs: 0 })).toBe(0.1);
+  });
+  it("clipPosition: the player counts from the clip start, like the cues, and stays inside the clip", () => {
+    const clip = { startMs: 750_000, endMs: 795_000 }; // a clip at 12:30 that runs 45 s
+    expect(clipPosition(750, clip)).toBe(0);
+    expect(clipPosition(762.3, clip)).toBe(12_300);
+    expect(clipPosition(795, clip)).toBe(45_000);
+    expect(clipPosition(800, clip)).toBe(45_000);
+    expect(clipPosition(10, clip)).toBe(0);
   });
   it("one column when the track is the video's own language", () => {
     expect(reviewColumns("de", "de")).toBe(1);

@@ -4,7 +4,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OWNER_ID, QUEUES, findBoundaries, snapRange, type AskToolCallRecord, type ToolApprovalPayload, type ToolApprovalResolution, type Word } from "@digestor/core";
 import {
-  addAskMessage, completeAnalysisVersion, createClip, createDb, createSession, getAskMessage, listAskMessages, listClips, listPersonalMoments,
+  addAskMessage, completeAnalysisVersion, createClip, createDb, createSession, claimMomentCheck, getAskMessage, listAskMessages, listClips, listPersonalMoments,
   listSelections, listTracks, resolveToolApproval, saveMoments, saveTopics, saveTranscript, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
 import { handleAskResume } from "../jobs.js";
@@ -675,9 +675,12 @@ describe("Clip packages (C3)", () => {
     expect(tracks.map((ts) => ts.map((t) => [t.language, t.status, t.approvedAt]))).toEqual([[["en", "preparing", null]], [["en", "preparing", null]]]);
     expect(jobs.sent.filter((j) => j.queue === QUEUES.prepareTrack).map((j) => j.data.trackId).sort()).toEqual(tracks.map((ts) => ts[0]!.id).sort());
     expect(jobs.sent.filter((j) => j.queue === QUEUES.renderClip).map((j) => j.data.clipId).sort()).toEqual(clips.map((c) => c.id).sort());
-    expect(jobs.sent.map((j) => j.queue).filter((q) => q !== QUEUES.prepareTrack && q !== QUEUES.renderClip)).toEqual([]); // never a burn
-    expect(jobs.sent.every((j) => j.key === (j.data.trackId ?? j.data.clipId))).toBe(true);
+    expect(jobs.sent.map((j) => j.queue).filter((q) => q !== QUEUES.prepareTrack && q !== QUEUES.renderClip && q !== QUEUES.checkMoment)).toEqual([]); // never a burn
+    expect(jobs.sent.every((j) => j.key === (j.data.trackId ?? j.data.clipId ?? j.data.momentId))).toBe(true);
     const moments = await listPersonalMoments(db, OWNER_ID, analysisId);
+    // Each new moment's clip checks are claimed and sent, so Prepare doesn't sit on "Checking…".
+    expect(jobs.sent.filter((j) => j.queue === QUEUES.checkMoment).map((j) => j.data.momentId).sort()).toEqual(moments.map((m) => m.id).sort());
+    expect(await Promise.all(moments.map((m) => claimMomentCheck(db, m.id)))).toEqual([false, false]); // already claimed
     expect(moments.map((m) => m.title).sort()).toEqual(["One", "Three, edited"]);
     const selections = await listSelections(db, OWNER_ID, s.id);
     expect(moments.every((m) => selections[m.id] === "approved")).toBe(true);
@@ -753,8 +756,34 @@ describe("Clip packages (C3)", () => {
     await decide(deps, s.id, msg.id, { decision: "approve" });
     const clips = await listClips(db, OWNER_ID, s.id);
     expect(clips.map((c) => c.renderStatus)).toEqual(["none", "none"]);
-    expect(jobs.sent.map((j) => j.queue)).toEqual([QUEUES.prepareTrack, QUEUES.prepareTrack]);
+    expect(jobs.sent.map((j) => j.queue)).toEqual([QUEUES.prepareTrack, QUEUES.checkMoment, QUEUES.prepareTrack, QUEUES.checkMoment]); // checks still run
     expect(toolResults(llm.calls[1]!)[0]).toMatch(/No renders were started/);
+  });
+
+  it("an approved propose_clip claims and sends its moment's checks; a failed send gives the claim back", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Clip it");
+    const jobs = sender();
+    const llm = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:01:01", end: "00:01:31", title: "One" })), answer("Made it.")]);
+    const deps = { ...depsFor(llm), send: jobs.send };
+    await runAsk(deps, msg.id);
+    expect(jobs.sent).toEqual([]); // nothing before the approval
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    const [clip] = await listClips(db, OWNER_ID, s.id);
+    expect(jobs.sent).toEqual([{ queue: QUEUES.checkMoment, data: { momentId: clip!.momentId }, key: clip!.momentId }]);
+    expect(await claimMomentCheck(db, clip!.momentId!)).toBe(false); // already claimed
+
+    const msg2 = await ask(s.id, "Another one");
+    const llm2 = new FakeToolLLM([toolStep(call("propose_clip", { start: "00:03:01", end: "00:03:41", title: "Two" })), answer("Made it.")]);
+    const failing = async () => { throw new Error("queue down"); };
+    const deps2 = { ...depsFor(llm2), send: failing };
+    await runAsk(deps2, msg2.id);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await decide(deps2, s.id, msg2.id, { decision: "approve" });
+    err.mockRestore();
+    const second = (await listClips(db, OWNER_ID, s.id)).find((c) => c.id !== clip!.id)!;
+    expect((await getAskMessage(db, msg2.id))!.status).toBe("done"); // the clip stands; Prepare's poll asks again
+    expect(await claimMomentCheck(db, second.momentId!)).toBe(true); // the claim was given back
   });
 
   it("a package that fails partway keeps the ids of the clips it made, so Undo can remove them", async () => {
@@ -847,7 +876,8 @@ describe("Clip packages (C3)", () => {
     const tracks = (await Promise.all(clips.map((c) => listTracks(db, c.id)))).flat();
     expect(tracks).toHaveLength(1); // the first draft couldn't be queued: its row is gone, so Prepare offers the language again
     expect(clips.map((c) => c.renderStatus).sort()).toEqual(["queued", "queued"]);
-    expect(sent).toHaveLength(3);
+    expect(sent.filter((j) => !j.startsWith(QUEUES.checkMoment))).toHaveLength(3);
+    expect(sent.filter((j) => j.startsWith(QUEUES.checkMoment))).toHaveLength(2); // each clip's checks
     expect(toolResults(llm.calls[1]!)[0]).toMatch(/Couldn't start 1 subtitle draft/);
     expect((await getAskMessage(db, msg.id))!.status).toBe("done");
   });

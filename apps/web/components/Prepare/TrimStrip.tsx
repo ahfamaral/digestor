@@ -199,12 +199,14 @@ export function TrimStrip({ clipId, title, clip, revision, durationMs, points, d
         onPointerLeave={() => setHoverMs(null)}
         className="relative mt-9 h-12 rounded-md bg-stone-100 select-none"
       >
-        {hoverMs !== null && (
+        {hoverMs !== null && !dragging && (
           <>
             <span aria-hidden className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-foreground/60" style={{ left: `${view.toPct(hoverMs)}%` }} />
+            {/* Under the time marks, in the clip-length line's slot (empty unless dragging), so it never covers them.
+                While a handle is dragged it is hidden: the handle's own label above the strip shows the cut. */}
             <span
               aria-hidden
-              className="pointer-events-none absolute top-full z-20 mt-1 -translate-x-1/2 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white"
+              className="pointer-events-none absolute top-full z-20 mt-8 -translate-x-1/2 rounded bg-foreground px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-white"
               style={{ left: `${Math.min(92, Math.max(8, view.toPct(hoverMs)))}%` }}
             >
               {tenths(hoverMs)}

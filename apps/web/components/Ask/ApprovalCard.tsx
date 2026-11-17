@@ -13,6 +13,9 @@ import { PackageCard } from "./PackageCard";
 type ClipDraft = { start: string; end: string; title: string };
 type Draft = Record<string, ClipDraft | string[]>;
 
+/** One change's block in the Edit form. */
+const BLOCK = "grid min-w-0 gap-2 rounded-md border border-border bg-white p-2";
+
 const isClip = (call: ToolApprovalCall) => call.name === "propose_clip" || call.name === "trim_clip";
 
 /** The edit fields' first values: the snapped range the summary shows, the model's title, every moment ticked. */
@@ -109,13 +112,20 @@ export function ApprovalCard({
       <p id={headingId} className="text-xs font-semibold">
         {calls.length === 1 ? t("ask.approval.titleOne") : t("ask.approval.title", { n: calls.length })}
       </p>
-      <ul className="grid gap-1">
-        {calls.map((call) => (
-          <li key={call.id} lang={lang} dir="auto" className="break-words text-xs">
-            {call.summary}
-          </li>
-        ))}
-      </ul>
+      {calls.length === 1 ? (
+        <p lang={lang} dir="auto" className="break-words text-xs">
+          {calls[0]!.summary}
+        </p>
+      ) : (
+        // Numbered, so each block of the Edit form ("Change 2") points at its line.
+        <ol className="grid list-decimal gap-1 pl-4 marker:text-muted-foreground">
+          {calls.map((call) => (
+            <li key={call.id} lang={lang} dir="auto" className="break-words text-xs">
+              {call.summary}
+            </li>
+          ))}
+        </ol>
+      )}
 
       {action.status !== "pending" ? (
         <p className="text-xs text-muted-foreground">{decided}</p>
@@ -123,10 +133,19 @@ export function ApprovalCard({
         <form onSubmit={submitEdits} className="grid gap-3" noValidate>
           {editable.map((call, index) => {
             const value = draft[call.id];
+            // One white block per change, headed with its number in the list above, so fields never run together.
+            const n = calls.indexOf(call) + 1;
+            const head = calls.length > 1 && (
+              <p className="text-xs font-semibold">
+                {t("ask.approval.changeN", { n })}
+              </p>
+            );
             if (Array.isArray(value)) {
               return (
-                <fieldset key={call.id} className="grid gap-1">
-                  <legend className="mb-1 text-xs font-medium">{t("ask.approval.moments")}</legend>
+                <fieldset key={call.id} className={BLOCK}>
+                  <legend className="sr-only">{calls.length > 1 ? `${t("ask.approval.changeN", { n })}: ${t("ask.approval.moments")}` : t("ask.approval.moments")}</legend>
+                  {head}
+                  <p aria-hidden className="text-xs font-medium">{t("ask.approval.moments")}</p>
                   {call.moments!.map((m) => (
                     <label key={m.id} className="flex items-start gap-2 text-xs">
                       <Checkbox autoFocus={index === 0 && m === call.moments![0]} checked={value.includes(m.id)} disabled={busy} onCheckedChange={(on) => toggleMoment(call.id, m.id, on === true)} className="mt-0.5" />
@@ -140,7 +159,7 @@ export function ApprovalCard({
             }
             if (!value) return null;
             const field = (key: "start" | "end") => (
-              <label className="grid gap-1 text-xs font-medium">
+              <label className="grid min-w-0 gap-1 text-xs font-medium">
                 {t(`ask.approval.${key}`)}
                 <Input
                   // The form opens below the summary: focusing its first field brings it into view.
@@ -156,8 +175,9 @@ export function ApprovalCard({
               </label>
             );
             return (
-              <fieldset key={call.id} className="grid gap-2">
+              <fieldset key={call.id} className={BLOCK}>
                 <legend className="sr-only">{call.summary}</legend>
+                {head}
                 <div className="grid grid-cols-2 gap-2">
                   {field("start")}
                   {field("end")}

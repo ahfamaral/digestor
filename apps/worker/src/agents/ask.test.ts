@@ -524,6 +524,33 @@ describe("runAsk loop", () => {
     expect(system).not.toContain("Known participants (confirmed)");
   });
 
+  it("tells the model to name a known speaker by name only, an unnamed one by role, else by speaker id", async () => {
+    const { s } = await seed();
+    const none = { value: null, source: null, evidence: null };
+    await saveContextCard(db, s.id, {
+      language: none, profile: { value: "interview", confidence: 0.9, evidence: "x" }, title: none, summary: "s", setting: none, dateOrYear: none,
+      participants: [
+        { speakerId: "A", name: none, role: { value: "the  moderator", source: "video", evidence: "moderator" }, affiliation: none },
+        { speakerId: "B", name: none, role: none, affiliation: none },
+      ],
+      sufficient: true, openQuestions: [],
+    }, 1);
+    const bia = await createCustomPerson(db, { displayName: "Bia Provável", createdBy: "transcript" });
+    await replaceAiAttributions(db, s.id, "transcript", [
+      { speakerId: "B", startMs: null, endMs: null, personId: bia.id, status: "proposed", confidence: 0.7, evidence: { kind: "quote", quote: "Bia" } },
+    ]);
+    const msg = await ask(s.id, "Who speaks?");
+    const llm = new FakeToolLLM([answer("x")]);
+    await runAsk(depsFor(llm), msg.id);
+    const system = llm.calls[0]!.system;
+    expect(system).toContain("B = probably Bia Provável, not confirmed");
+    expect(system).toContain("Roles of speakers without a name (describe them by role): A = the moderator");
+    expect(system).toContain(`refer to a speaker the known participants below name by that name only, with "probably" before a name that is not confirmed`);
+    expect(system).toContain(`never put their speaker id next to the name (not "Speaker C, probably Ana Silva")`);
+    expect(system).toContain(`else by their speaker id (for example "Speaker A")`);
+    expect(system).not.toContain("Refer to speakers by their speaker id");
+  });
+
   it("sends the prompt rules, session facts and the last 10 messages as history", async () => {
     const { s } = await seed();
     for (let i = 0; i < 6; i++) {
