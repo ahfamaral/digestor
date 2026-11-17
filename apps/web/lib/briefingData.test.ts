@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Word } from "@digestor/core";
-import { earlierSelections, focusOptions, insideApproved, momentExcerpt } from "./briefingData";
+import { earlierSelections, focusOptions, insideApproved, momentExcerpt, withCurrentSpeakerNames } from "./briefingData";
 import type { Attribution, Person } from "@digestor/core";
 
 const w = (text: string, startS: number, speaker = "A"): Word => ({
@@ -110,5 +110,33 @@ describe("insideApproved", () => {
     expect(insideApproved("k1", new Set(["k1", "e2"]), tree)).toBeNull();
     expect(insideApproved("e1", new Set(["e1"]), tree)).toBeNull();
     expect(insideApproved("missing", new Set(["e1"]), tree)).toBeNull();
+  });
+});
+
+describe("withCurrentSpeakerNames", () => {
+  const counted = {
+    id: "m1", analysisId: "v", topicId: null, parentId: null, granularity: "exchange", startMs: 60_000, endMs: 300_000,
+    title: "Longest speech: E", why: "The longest uninterrupted speech in the session, by E, 00:04:00 long (counted from the transcript).",
+    relevance: 100, speakers: ["E"], evidence: [], origin: "counted", highlights: [{ type: "longest_speech", method: "counted", value: 240 }],
+  } as unknown as Parameters<typeof withCurrentSpeakerNames>[0][number];
+
+  it("names the longest speech's speaker as the session names them now", () => {
+    const names = { persons: [person("P", "Matthias Gastel")], attributions: [att({ speakerId: "E", personId: "P" })] };
+    const [m] = withCurrentSpeakerNames([counted], names, false);
+    expect(m.title).toBe("Longest speech: Matthias Gastel");
+    expect(m.why).toContain("by Matthias Gastel, 00:04:00 long");
+  });
+
+  it("says Speaker E with no name, and withholds an unconfirmed name in a sensitive profile", () => {
+    expect(withCurrentSpeakerNames([counted], { persons: [], attributions: [] }, false)[0].title).toBe("Longest speech: Speaker E");
+    const proposed = { persons: [person("P", "Ana")], attributions: [att({ speakerId: "E", personId: "P", status: "proposed", source: "caption" })] };
+    expect(withCurrentSpeakerNames([counted], proposed, true)[0].title).toBe("Longest speech: Speaker E");
+  });
+
+  it("leaves AI moments and edited titles alone", () => {
+    const names = { persons: [person("P", "Matthias Gastel")], attributions: [att({ speakerId: "E", personId: "P" })] };
+    const ai = { ...counted, origin: "ai", title: "Longest speech: E" } as typeof counted;
+    const edited = { ...counted, title: "Gastel on rail" } as typeof counted;
+    expect(withCurrentSpeakerNames([ai, edited], names, false)).toEqual([ai, edited]);
   });
 });

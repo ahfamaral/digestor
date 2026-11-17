@@ -1,5 +1,5 @@
 import { FOCUS_MIN_MS, peopleInRange, personAt, sliceWords, toSentences, type MomentWithHighlights, type Word } from "@digestor/core";
-import type { NamesData } from "./names";
+import { voiceLabel, type NamesData } from "./names";
 
 /**
  * The transcript's own words inside the moment (never the model's evidence, which isn't checked as verbatim), cut to
@@ -103,4 +103,19 @@ export function insideApproved(
     return undefined;
   };
   return walk(tree, null) ?? null;
+}
+
+/**
+ * The counted "Longest speech" moment is stored with the speaker id the analysis saw ("Longest speech: E"); show the
+ * name the session has now instead (the same rule as the speaker lines: a sensitive profile names only confirmed
+ * people, else "Speaker E"). Other moments are returned unchanged.
+ */
+export function withCurrentSpeakerNames<M extends MomentWithHighlights>(moments: M[], names: NamesData, sensitive: boolean): M[] {
+  return moments.map((m) => {
+    const speaker = m.speakers[0];
+    if (m.origin !== "counted" || m.speakers.length !== 1 || !m.highlights.some((h) => h.type === "longest_speech")) return m;
+    if (m.title !== `Longest speech: ${speaker}`) return m;
+    const label = voiceLabel(names, speaker, m.startMs, sensitive).text;
+    return { ...m, title: `Longest speech: ${label}`, why: m.why.replace(`by ${speaker},`, `by ${label},`) };
+  });
 }

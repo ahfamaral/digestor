@@ -7,7 +7,7 @@ import {
   listPersonalMoments, listSelections, type Db, type Session,
 } from "@digestor/core/server";
 import type { FocusChoice } from "@/components/Briefing/Controls";
-import { earlierSelections, focusOptions, momentExcerpt, peopleByMoment } from "./briefingData";
+import { earlierSelections, focusOptions, momentExcerpt, peopleByMoment, withCurrentSpeakerNames } from "./briefingData";
 import { loadNames, namesChangedSince } from "./namesServer";
 import { labelText, namedCount, rangeVoices, voiceLabel, whosWhoRows, type NamesData, type Voice, type WhosWhoRow } from "./names";
 import { asProfile, latestFailedAfter, versionNote } from "./preview";
@@ -83,7 +83,7 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
 
   // Personal moments are stored without speakers; take them from the transcript so Focus finds them too.
   const moments = [
-    ...bundle.moments,
+    ...withCurrentSpeakerNames(bundle.moments, names, sensitive),
     ...personal.map((m) => (m.speakers.length > 0 ? m : { ...m, speakers: speakersIn(words, m) })),
   ];
   const ids = new Set(moments.map((m) => m.id));
