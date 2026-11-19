@@ -4,7 +4,7 @@ import {
   AIMessage, HumanMessage, SystemMessage, ToolMessage as LcToolMessage, type AIMessageChunk, type BaseMessage,
 } from "@langchain/core/messages";
 import type { z } from "zod";
-import { MODEL_IDS, type ClientOptions } from "./structured.js";
+import { llmJsonSchema, MODEL_IDS, type ClientOptions } from "./structured.js";
 import { usageCallbacks } from "./usage.js";
 
 /**
@@ -12,6 +12,14 @@ import { usageCallbacks } from "./usage.js";
  * the arguments itself, because they are model output.
  */
 export type ToolSpec = { name: string; description: string; schema: z.ZodObject<any> };
+
+/**
+ * A tool as bound to the chat: an OpenAI-style function whose parameters are `llmJsonSchema` of its zod schema (draft-07,
+ * closed objects, no safe-integer bounds), the same JSON as LangChain wrote from zod 3 and both vendors accepted live.
+ */
+export function boundTool(t: ToolSpec) {
+  return { type: "function" as const, function: { name: t.name, description: t.description, parameters: llmJsonSchema(t.schema) } };
+}
 
 /** A tool call as the model sent it. `args` is unvalidated (a raw string when the model's JSON didn't parse). */
 export type ToolCallRequest = { id: string; name: string; args: unknown };
@@ -83,7 +91,7 @@ export function createAnthropicToolLLM(apiKey: string, opts: ClientOptions = {})
   });
   return {
     async step(a) {
-      const model = a.tools.length > 0 ? chat.bindTools(a.tools) : chat;
+      const model = a.tools.length > 0 ? chat.bindTools(a.tools.map(boundTool)) : chat;
       const res = await model.invoke([new SystemMessage(a.system), ...toLangChainMessages(a.messages)], { callbacks: usageCallbacks(MODEL_IDS.reasoning) });
       return fromAIMessage(res);
     },

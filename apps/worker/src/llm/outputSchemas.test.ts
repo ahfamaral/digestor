@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toJsonSchema } from "@langchain/core/utils/json_schema";
-import type { z } from "zod";
+import { toJSONSchema, type z } from "zod";
 import { BriefingOutput } from "../agents/briefing.js";
 import { ChecksOutput } from "../agents/checks.js";
 import { ContextCardOutput } from "../agents/context.js";
@@ -27,15 +26,31 @@ const OUTPUTS: [string, z.ZodType<unknown>][] = [
 ];
 
 describe("agent output schemas as sent to the model", () => {
-  it("the context card is the one zod-to-json-schema writes with #/properties refs (the live 400)", () => {
-    expect(JSON.stringify(toJsonSchema(ContextCardOutput))).toContain('"$ref":"#/properties/');
+  const unionsIn = (json: string) => (json.match(/"type":\[/g) ?? []).length + (json.match(/"anyOf":/g) ?? []).length;
+
+  it("zod 4 inlines every reused shape by default: the context card would pass 16 unions (why llmJsonSchema shares them)", () => {
+    expect(unionsIn(JSON.stringify(toJSONSchema(ContextCardOutput, { io: "input" })))).toBeGreaterThan(16);
+  });
+
+  it.each(OUTPUTS)("%s: every object closed, no safe-integer bounds", (_name, schema) => {
+    const json = JSON.stringify(llmJsonSchema(schema));
+    expect(json).not.toContain(String(Number.MAX_SAFE_INTEGER));
+    const open: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (Array.isArray(node)) return node.forEach((n, i) => walk(n, `${path}[${i}]`));
+      if (!node || typeof node !== "object") return;
+      const n = node as Record<string, unknown>;
+      if (n.type === "object" && n.additionalProperties !== false) open.push(path);
+      Object.entries(n).forEach(([k, v]) => walk(v, `${path}.${k}`));
+    };
+    walk(JSON.parse(json), "$");
+    expect(open).toEqual([]);
   });
 
   it.each(OUTPUTS)("%s: refs only under $defs, at most 16 unions", (_name, schema) => {
     const json = JSON.stringify(llmJsonSchema(schema));
     expect(json).not.toContain('"#/properties');
-    const unions = (json.match(/"type":\[/g) ?? []).length + (json.match(/"anyOf":/g) ?? []).length;
-    expect(unions).toBeLessThanOrEqual(16);
+    expect(unionsIn(json)).toBeLessThanOrEqual(16);
   });
 
   it.each(OUTPUTS)("%s: every property is required (nullable, never optional)", (_name, schema) => {

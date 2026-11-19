@@ -13,13 +13,16 @@ function toMs(v: unknown): number | null {
   }
 }
 const Time = z.string().refine((v) => toMs(v) !== null);
-const ClipTimes = z.object({ start: z.unknown(), end: z.unknown() }).refine((a) => {
+/** The clip's end is after its start (both valid times). A refinement on the strict object itself: zod 4 reports an
+ * unknown key of an intersection (`.and`) only when both sides reject it, so a strict object `.and` a loose one let extra
+ * keys through. */
+const timesInOrder = (a: { start: string; end: string }) => {
   const start = toMs(a.start);
   const end = toMs(a.end);
   return start !== null && end !== null && end > start;
-});
+};
 const ClipTitle = z.string().trim().min(1).max(120);
-const ClipEdit = z.object({ start: Time, end: Time, title: ClipTitle }).strict().and(ClipTimes);
+const ClipEdit = z.object({ start: Time, end: Time, title: ClipTitle }).strict().refine(timesInOrder);
 
 const countOf = (original: unknown, key: string): number => {
   const v = (original as Record<string, unknown> | null)?.[key];
@@ -33,7 +36,7 @@ const countOf = (original: unknown, key: string): number => {
  */
 const EDIT_SCHEMAS: Record<string, (original: unknown, ctx: EditContext) => z.ZodType<unknown>> = {
   propose_clip: () => ClipEdit,
-  trim_clip: () => z.object({ start: Time, end: Time }).strict().and(ClipTimes),
+  trim_clip: () => z.object({ start: Time, end: Time }).strict().refine(timesInOrder),
   set_selection: (original) => {
     const allowed = new Set(((original as { momentIds?: unknown } | null)?.momentIds as string[] | undefined) ?? []);
     return z.object({ momentIds: z.array(z.string()).min(1).max(200).refine((ids) => ids.every((id) => allowed.has(id))) }).strict();
