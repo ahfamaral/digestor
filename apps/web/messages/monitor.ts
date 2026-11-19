@@ -153,6 +153,9 @@ export const monitorEn = {
     word: "Word",
     legend: "Key",
     cell: "{month}: {level}",
+    cellLink: "{month}: {level}. See the speeches with “{word}” that month.",
+    wordLink: "{word}: see the speeches",
+    linkHint: "Open a word, or one of its months, to see the speeches that use it.",
     level: {
       none: "little or no speech text",
       unused: "not used",
@@ -509,6 +512,9 @@ export const monitorPtBR: MonitorMessages = {
     word: "Palavra",
     legend: "Legenda",
     cell: "{month}: {level}",
+    cellLink: "{month}: {level}. Ver os discursos com “{word}” nesse mês.",
+    wordLink: "{word}: ver os discursos",
+    linkHint: "Abra uma palavra, ou um dos meses, para ver os discursos que a usam.",
     level: {
       none: "pouco ou nenhum texto de discurso",
       unused: "não usada",

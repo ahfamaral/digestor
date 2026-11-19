@@ -8,13 +8,13 @@ import { getServer } from "@/lib/server";
 const BodySchema = z.object({ question: z.string().trim().min(1).max(500) }).strict();
 
 /**
- * GET /api/library-ask — the owner's Ask-across-videos conversation, oldest first, and `live`: the cited sessions that
- * still exist (a source whose session was deleted renders as plain text).
+ * GET /api/library-ask — the owner's Ask-across-videos conversation, oldest first, and `live`: the sessions its answers
+ * cite or list as not searched that still exist (one deleted since renders as plain text).
  */
 export async function GET(): Promise<Response> {
   const { db } = getServer();
   const messages = await listLibraryAskMessages(db, OWNER_ID);
-  const cited = [...new Set(messages.flatMap((m) => (m.sources ?? []).map((s) => s.sessionId)))];
+  const cited = [...new Set(messages.flatMap((m) => [...(m.sources ?? []), ...(m.notSearched?.videos ?? [])].map((s) => s.sessionId)))];
   const live = await existingSessionIds(db, cited);
   return Response.json({ messages, live: cited.filter((id) => live.has(id)) });
 }

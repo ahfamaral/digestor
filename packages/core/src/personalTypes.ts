@@ -168,6 +168,26 @@ export interface LibraryAskSource {
   title: string;
 }
 
+/**
+ * Why one of the owner's videos wasn't offered to an answer across videos: waiting at the context check, still
+ * processing (any stage before `ready`), video removed by retention (`videoDeletedAt`), or ready with no search index
+ * (`unavailable`). Failed sessions are never listed.
+ */
+export type LibraryNotSearchedReason = "awaiting_context" | "processing" | "removed" | "unavailable";
+
+export interface LibraryNotSearchedVideo {
+  sessionId: string;
+  title: string;
+  reason: LibraryNotSearchedReason;
+}
+
+/** The owner's videos an answer across videos could not search, as they were when it was answered. */
+export interface LibraryNotSearched {
+  /** VIDEO_RETENTION_DAYS at answer time, for "older than N days". */
+  retentionDays: number;
+  videos: LibraryNotSearchedVideo[];
+}
+
 export interface LibraryAskMessage {
   id: string;
   ownerId: string;
@@ -179,6 +199,8 @@ export interface LibraryAskMessage {
   sources: LibraryAskSource[] | null;
   /** The verify chip (`verify_answer`), as on a one-video answer. */
   toolCalls: unknown;
+  /** Done answers: the owner's videos that couldn't be searched, and why (null on questions, failures, older rows). */
+  notSearched: LibraryNotSearched | null;
   status: LibraryAskStatus;
   createdAt: Date;
   updatedAt: Date;

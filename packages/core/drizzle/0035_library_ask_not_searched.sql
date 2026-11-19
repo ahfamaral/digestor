@@ -1,0 +1,1 @@
+ALTER TABLE "library_ask_messages" ADD COLUMN "not_searched" jsonb;

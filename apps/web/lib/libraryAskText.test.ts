@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerBlocks, glueCitationPunctuation, linkifyCitations } from "./libraryAskText";
+import { answerBlocks, glueCitationPunctuation, linkifyCitations, notSearchedSummary } from "./libraryAskText";
 
 const sources = [
   { label: "S1", sessionId: "a", title: "Debate" },
@@ -70,5 +70,37 @@ describe("glueCitationPunctuation", () => {
     const parts = glueCitationPunctuation(linkifyCitations("[S1 00:01:00, S1 00:02:00] and more", sources, new Set(["a"])));
     expect(parts.filter((p) => "trailing" in p)).toHaveLength(0);
     expect(parts.at(-1)).toEqual({ kind: "text", value: " and more" });
+  });
+});
+
+describe("notSearchedSummary", () => {
+  const v = (sessionId: string, reason: "awaiting_context" | "processing" | "removed" | "unavailable") => ({ sessionId, title: `Video ${sessionId}`, reason });
+
+  it("counts the videos by reason in one line, and lists each with its reason", () => {
+    const out = notSearchedSummary({
+      retentionDays: 14,
+      videos: [v("a", "processing"), v("b", "awaiting_context"), v("c", "removed"), v("d", "awaiting_context")],
+    });
+    expect(out?.line).toBe(
+      "Not searched: 2 videos still waiting for your context answers, 1 older than 14 days (search ends 14 days after upload), 1 still processing.",
+    );
+    expect(out?.items).toEqual([
+      { sessionId: "b", title: "Video b", reason: "waiting for your context answers" },
+      { sessionId: "d", title: "Video d", reason: "waiting for your context answers" },
+      { sessionId: "c", title: "Video c", reason: "older than 14 days" },
+      { sessionId: "a", title: "Video a", reason: "still processing" },
+    ]);
+  });
+
+  it("says video or videos on the first count only, and names a missing index plainly", () => {
+    expect(notSearchedSummary({ retentionDays: 30, videos: [v("a", "unavailable")] })?.line).toBe("Not searched: 1 video can't be searched right now.");
+    expect(notSearchedSummary({ retentionDays: 30, videos: [v("a", "removed"), v("b", "removed"), v("c", "unavailable")] })?.line).toBe(
+      "Not searched: 2 videos older than 30 days (search ends 30 days after upload), 1 can't be searched right now.",
+    );
+  });
+
+  it("shows nothing when every video was searched, or for an answer stored before this was recorded", () => {
+    expect(notSearchedSummary({ retentionDays: 14, videos: [] })).toBeNull();
+    expect(notSearchedSummary(null)).toBeNull();
   });
 });

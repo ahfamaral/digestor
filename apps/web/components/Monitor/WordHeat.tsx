@@ -1,5 +1,7 @@
+import Link from "next/link";
 import type { DistinctiveWord } from "@digestor/core/server";
 import { tm, type MonitorLocale } from "@/lib/monitor/i18n";
+import { wordSearchHref } from "@/lib/monitor/params";
 import { HEAT_LEVELS, heatRow, yearMonths, type HeatLevel } from "@/lib/monitor/wordHeat";
 
 /** The section's anchor (the deputy page's "On this page" row links here). */
@@ -18,6 +20,10 @@ const CELL: Record<HeatLevel, string> = {
   muchMore: "bg-stone-900",
 };
 
+/** Month cells that open their speeches: the months the word was counted in. */
+const LINKED = new Set<HeatLevel>(["about", "more", "muchMore"]);
+const FOCUS = "rounded outline-none focus-visible:ring-2 focus-visible:ring-stone-500";
+
 /** The party view's Suspense fallback: the heading and a quiet status while the words are counted. */
 export function WordHeatLoading({ locale }: { locale: MonitorLocale }) {
   return (
@@ -32,11 +38,16 @@ export function WordHeatLoading({ locale }: { locale: MonitorLocale }) {
  * "Words used more than the chamber": up to 20 words a deputy (or a party's speeches) uses more than the rest of the
  * chamber, each with a month-by-month heat row for `year`. Counting only, no AI; no numbers, scores or comparisons
  * between deputies. Below the minimum of text it says so instead of showing noisy words. `party`: the party view's note.
- * `today` ("YYYY-MM-DD"): months after it aren't drawn.
+ * `today` ("YYYY-MM-DD"): months after it aren't drawn. Each word opens its speeches (`wordSearchHref`): the deputy's
+ * (`deputy`, their speech search) or the party's (`party`, the landing's topic search); a month cell opens that month,
+ * only where the word was said (not "not used", nor a month with little or no text, where the search mostly finds nothing).
  */
 export function WordHeat({
-  locale, result, year, party, today,
-}: { locale: MonitorLocale; result: { enough: boolean; words: DistinctiveWord[] }; year: number; party?: string; today?: string }) {
+  locale, result, year, party, deputy, today,
+}: {
+  locale: MonitorLocale; result: { enough: boolean; words: DistinctiveWord[] }; year: number; party?: string; deputy?: number; today?: string;
+}) {
+  const owner = deputy !== undefined ? { deputy } : party ? { party } : null;
   const months = yearMonths(year, today).map((m) => new Date(`${m}-01T00:00:00Z`));
   const monthName = new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" });
   const monthLetter = new Intl.DateTimeFormat(locale, { month: "narrow", timeZone: "UTC" });
@@ -69,13 +80,36 @@ export function WordHeat({
               {result.words.map((w) => (
                 <tr key={w.stem}>
                   <th scope="row" lang="pt-BR" className="max-w-0 truncate pr-2 text-left font-medium sm:max-w-none sm:min-w-48 sm:pr-4" title={w.label}>
-                    {w.label}
+                    {owner ? (
+                      <Link
+                        href={wordSearchHref(owner, w.label, year)}
+                        aria-label={tm(locale, "words.wordLink", { word: w.label })}
+                        className={`block truncate underline decoration-stone-300 underline-offset-2 hover:decoration-current ${FOCUS}`}
+                      >
+                        {w.label}
+                      </Link>
+                    ) : (
+                      w.label
+                    )}
                   </th>
                   {heatRow(w.months, year, today).map((c, i) => {
-                    const text = tm(locale, "words.cell", { month: monthName.format(months[i]!), level: tm(locale, `words.level.${c.level}`) });
+                    const cell = { month: monthName.format(months[i]!), level: tm(locale, `words.level.${c.level}`) };
+                    const square = <span aria-hidden className={`block h-3.5 w-3.5 rounded-[3px] sm:h-5 sm:w-5 lg:h-6 lg:w-9 ${CELL[c.level]}`} />;
+                    if (owner && LINKED.has(c.level)) {
+                      const text = tm(locale, "words.cellLink", { ...cell, word: w.label });
+                      return (
+                        <td key={c.month} className="p-0" title={text}>
+                          <Link href={wordSearchHref(owner, w.label, year, c.month)} className={`block rounded-[3px] hover:ring-2 hover:ring-stone-500 ${FOCUS}`}>
+                            {square}
+                            <span className="sr-only">{text}</span>
+                          </Link>
+                        </td>
+                      );
+                    }
+                    const text = tm(locale, "words.cell", cell);
                     return (
                       <td key={c.month} className="p-0" title={text}>
-                        <span aria-hidden className={`block h-3.5 w-3.5 rounded-[3px] sm:h-5 sm:w-5 lg:h-6 lg:w-9 ${CELL[c.level]}`} />
+                        {square}
                         <span className="sr-only">{text}</span>
                       </td>
                     );
@@ -95,7 +129,10 @@ export function WordHeat({
               ))}
             </ul>
           </div>
-          <p className="text-xs text-muted-foreground">{tm(locale, "words.counted")}</p>
+          <p className="text-xs text-muted-foreground">
+            {tm(locale, "words.counted")}
+            {owner && <> · {tm(locale, "words.linkHint")}</>}
+          </p>
           <details className="text-sm">
             <summary className="w-fit cursor-pointer rounded font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
               {tm(locale, "words.how")}

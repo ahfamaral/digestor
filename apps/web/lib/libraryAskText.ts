@@ -1,4 +1,5 @@
-import type { LibraryAskSource } from "@digestor/core";
+import type { LibraryAskSource, LibraryNotSearched, LibraryNotSearchedReason } from "@digestor/core";
+import { t } from "@/lib/i18n";
 
 /** A piece of an answer across videos: text, or one citation `[S2 00:12:03]` of a video at a time. */
 export type LibraryAskPart =
@@ -105,4 +106,25 @@ export function glueCitationPunctuation(parts: LibraryAskPart[]): GluedPart[] {
     out.push(part);
   }
   return out;
+}
+
+/** The reasons in the order the line names them. */
+const NOT_SEARCHED_ORDER: LibraryNotSearchedReason[] = ["awaiting_context", "removed", "processing", "unavailable"];
+
+/**
+ * The line under an answer naming the owner's videos it couldn't search, counted by reason ("Not searched: 2 videos
+ * still waiting for your context answers, 1 still processing."), and each video with its reason, grouped in that
+ * order. Null when every video was searched, or for an answer stored before this was recorded.
+ */
+export function notSearchedSummary(ns: LibraryNotSearched | null): { line: string; items: { sessionId: string; title: string; reason: string }[] } | null {
+  if (!ns || ns.videos.length === 0) return null;
+  const days = ns.retentionDays;
+  const groups = NOT_SEARCHED_ORDER.map((reason) => ({ reason, videos: ns.videos.filter((v) => v.reason === reason) })).filter((g) => g.videos.length > 0);
+  const parts = groups.map((g, i) => {
+    const n = g.videos.length;
+    const count = i > 0 ? String(n) : n === 1 ? t("libraryAsk.notSearched.firstOne") : t("libraryAsk.notSearched.firstMany", { n });
+    return t(`libraryAsk.notSearched.count.${g.reason}`, { count, days });
+  });
+  const items = groups.flatMap((g) => g.videos.map((v) => ({ sessionId: v.sessionId, title: v.title, reason: t(`libraryAsk.notSearched.reason.${g.reason}`, { days }) })));
+  return { line: t("libraryAsk.notSearched.line", { parts: parts.join(", ") }), items };
 }

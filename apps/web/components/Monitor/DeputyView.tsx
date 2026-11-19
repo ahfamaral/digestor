@@ -152,7 +152,7 @@ export function DeputyView({
 
       {!searching && (
         <>
-          {words && <WordHeat locale={locale} result={words} year={params.year} today={today} />}
+          {words && <WordHeat locale={locale} result={words} year={params.year} deputy={id} today={today} />}
           <AuthoredBills locale={locale} externalId={id} params={params} bills={bills} />
           <div className="grid">
             <Section

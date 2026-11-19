@@ -1,6 +1,6 @@
 import type { Fact } from "@digestor/core";
 
-export type BadgeKind = "video" | "metadata" | "human" | "missing" | "ai";
+export type BadgeKind = "video" | "metadata" | "human" | "missing" | "ai" | "record";
 /** What a badge shows: a fact "from video" reads "from audio" for the language, and for every fact of an audio-only file. */
 export type ShownBadge = BadgeKind | "audio";
 
@@ -8,8 +8,12 @@ export function shownBadge(kind: BadgeKind, fromAudio: boolean): ShownBadge {
   return fromAudio && kind === "video" ? "audio" : kind;
 }
 
-/** Source badge for a field: edited → "from you" (or missing if cleared); empty → missing; else the fact's own source. */
-export function factBadge(fact: Fact | null, value: string, original: string): BadgeKind {
+/**
+ * Source badge for a field: edited → "from you" (or missing if cleared); empty → missing; else the fact's own source.
+ * `fromRecord`: a value filled into an empty field from the linked official record reads "from record" while unchanged.
+ */
+export function factBadge(fact: Fact | null, value: string, original: string, fromRecord?: string | null): BadgeKind {
+  if (fromRecord && !original.trim() && value.trim() === fromRecord) return "record";
   if (value.trim() !== original.trim()) return value.trim() ? "human" : "missing";
   if (!value.trim()) return "missing";
   return fact?.source ?? "human";

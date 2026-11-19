@@ -170,7 +170,51 @@ describe("runLibraryAsk", () => {
     expect(router.calls).toHaveLength(0);
     expect(llm.calls).toHaveLength(0);
     expect(searches).toHaveLength(0);
-    expect(b.id).toBeTruthy();
+    // The reply names why: the line under it lists each video and its reason.
+    expect(stored?.notSearched).toEqual({
+      retentionDays: 14,
+      videos: [
+        { sessionId: b.id, title: "Index missing", reason: "unavailable" },
+        { sessionId: a.id, title: "Old video", reason: "removed" },
+      ],
+    });
+  });
+
+  it("stores with the answer which of the owner's videos it couldn't search, and why (never failed ones)", async () => {
+    const at = (min: number) => new Date(Date.UTC(2026, 10, 1, 10, min));
+    const a = await video("Searchable");
+    const noIndex = await video("No index");
+    const waiting = await createSession(db, { title: "Waiting", source: "upload" });
+    await updateSession(db, waiting.id, { stage: "awaiting_context", createdAt: at(1) });
+    const processing = await createSession(db, { title: "Processing", source: "youtube" });
+    await updateSession(db, processing.id, { stage: "finding_topics", createdAt: at(2) });
+    const removed = await video("Removed");
+    await updateSession(db, removed.id, { videoDeletedAt: new Date(), createdAt: at(3) });
+    const failed = await createSession(db, { title: "Failed", source: "upload" });
+    await updateSession(db, failed.id, { stage: "failed" });
+    const msg = await question("Housing?");
+    const { deps, router } = depsFor({ indexed: [a.id], answer: "Rents [00:01:00]." });
+    await runLibraryAsk({ ...deps, retentionDays: 30 }, msg.id);
+    expect(router.calls.find((x) => x.name === "route_question")).toBeUndefined(); // one candidate: no routing call
+    const stored = await getLibraryAskMessage(db, msg.id);
+    expect(stored?.sources?.map((s) => s.sessionId)).toEqual([a.id]);
+    expect(stored?.notSearched).toEqual({
+      retentionDays: 30,
+      videos: [
+        { sessionId: noIndex.id, title: "No index", reason: "unavailable" },
+        { sessionId: removed.id, title: "Removed", reason: "removed" },
+        { sessionId: processing.id, title: "Processing", reason: "processing" },
+        { sessionId: waiting.id, title: "Waiting", reason: "awaiting_context" },
+      ],
+    });
+  });
+
+  it("stores an empty list when every video was offered", async () => {
+    const a = await video("Only one");
+    const msg = await question("Housing?");
+    const { deps } = depsFor({ indexed: [a.id], answer: "Rents [00:01:00]." });
+    await runLibraryAsk(deps, msg.id);
+    expect((await getLibraryAskMessage(db, msg.id))?.notSearched).toEqual({ retentionDays: 14, videos: [] });
   });
 
   it("answers with sources and per-session evidence, and never names a session's unconfirmed person in a sensitive profile", async () => {

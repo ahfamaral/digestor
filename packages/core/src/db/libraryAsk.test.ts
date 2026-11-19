@@ -5,7 +5,7 @@ import { completeAnalysisVersion, startAnalysisVersion } from "./analysis.ts";
 import { createSession, saveContextCard, updateSession } from "./repo.ts";
 import {
   addLibraryAskMessage, addLibraryQuestion, claimLibraryAskMessage, deleteLibraryAskMessages, finishLibraryAskMessage, getLibraryAskMessage, listLibraryAskMessages,
-  listLibraryCandidates, releaseLibraryAskMessage,
+  listLibraryCandidates, listLibraryNotSearchable, releaseLibraryAskMessage,
 } from "./libraryAsk.ts";
 import type { ContextCard } from "../schemas.ts";
 
@@ -55,7 +55,7 @@ describe("library ask messages", () => {
     expect(await claimLibraryAskMessage(db, a.id)).toBe(true);
     const sources = [{ label: "S1", sessionId: "7433d1c6-0000-4000-8000-000000000000", title: "Debate" }];
     const done = await finishLibraryAskMessage(db, a.id, { text: "They said [S1 00:01:00].", sources, toolCalls: [], status: "done" });
-    expect(done).toMatchObject({ status: "done", text: "They said [S1 00:01:00].", sources });
+    expect(done).toMatchObject({ status: "done", text: "They said [S1 00:01:00].", sources, notSearched: null });
     // Finished: a late claim does nothing.
     expect(await claimLibraryAskMessage(db, a.id)).toBe(false);
   });
@@ -99,5 +99,41 @@ describe("listLibraryCandidates", () => {
     expect(rows[1]).toMatchObject({ title: "Old interview", profile: "interview", card: { summary: "A mayor on housing." } });
     expect(rows[0]).toMatchObject({ title: "Debate", profile: null, card: null });
     expect(await listLibraryCandidates(db, "owner", 1)).toHaveLength(1);
+  });
+});
+
+describe("listLibraryNotSearchable", () => {
+  it("lists the owner's videos outside the candidates with why, newest first, never failed ones", async () => {
+    const at = (min: number) => new Date(Date.UTC(2026, 10, 1, 10, min));
+    const make = async (title: string, patch: Parameters<typeof updateSession>[2], min: number, ownerId?: string) => {
+      const s = await createSession(db, { title, source: "upload" });
+      await updateSession(db, s.id, { ...patch, createdAt: at(min), ...(ownerId ? { ownerId } : {}) });
+      return s;
+    };
+    await make("Ready", { stage: "ready" }, 1);
+    const waiting = await make("globo-debate-final", { stage: "awaiting_context" }, 2);
+    await saveContextCard(db, waiting.id, { ...card("A debate."), title: fact("Globo debate") }, 1);
+    const transcribing = await make("Transcribing", { stage: "transcribing" }, 3);
+    const uploaded = await make("Just uploaded", { stage: "uploaded" }, 4);
+    const removed = await make("Removed", { stage: "ready", videoDeletedAt: new Date() }, 5);
+    await make("Failed", { stage: "failed" }, 6);
+    await make("Failed and removed", { stage: "failed", videoDeletedAt: new Date() }, 7);
+    await make("Someone else's", { stage: "transcribing" }, 8, "someone");
+
+    expect(await listLibraryNotSearchable(db, "owner", 10)).toEqual([
+      { sessionId: removed.id, title: "Removed", reason: "removed" },
+      { sessionId: uploaded.id, title: "Just uploaded", reason: "processing" },
+      { sessionId: transcribing.id, title: "Transcribing", reason: "processing" },
+      // A file-name title gives way to the context card's.
+      { sessionId: waiting.id, title: "Globo debate", reason: "awaiting_context" },
+    ]);
+    expect(await listLibraryNotSearchable(db, "owner", 2)).toHaveLength(2);
+  });
+
+  it("stores an answer's videos that couldn't be searched", async () => {
+    const a = await addLibraryAskMessage(db, { ownerId: "owner", role: "assistant", text: "", status: "pending" });
+    const notSearched = { retentionDays: 14, videos: [{ sessionId: "7433d1c6-0000-4000-8000-000000000000", title: "Old", reason: "removed" as const }] };
+    await finishLibraryAskMessage(db, a.id, { text: "Fine.", status: "done", notSearched });
+    expect(await getLibraryAskMessage(db, a.id)).toMatchObject({ notSearched });
   });
 });

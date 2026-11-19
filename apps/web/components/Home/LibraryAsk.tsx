@@ -9,13 +9,15 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Textarea } from "@/components/ui/textarea";
 import { Busy, Spinner } from "@/components/ui/spinner";
 import { askPollMs, asToolCalls, isStalePending, verifyResult, type VerifyState } from "@/lib/askText";
-import { answerBlocks, glueCitationPunctuation, linkifyCitations, type GluedPart } from "@/lib/libraryAskText";
+import { answerBlocks, glueCitationPunctuation, linkifyCitations, notSearchedSummary, type GluedPart } from "@/lib/libraryAskText";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const MAX_QUESTION = 500;
 const COUNTER_FROM = 400;
+const DISCLOSURE =
+  "inline-flex min-h-8 cursor-pointer list-none items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand";
 const CITE =
   "whitespace-nowrap rounded bg-stone-100 px-1 font-mono text-xs font-medium text-foreground underline decoration-dotted underline-offset-2 outline-none hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-brand";
 
@@ -238,6 +240,8 @@ function MessageItem({ message, live, stale }: { message: Message; live: Readonl
   }
   const sources = message.sources ?? [];
   const verified = message.status === "done" ? verifyResult(asToolCalls(message.toolCalls)) : null;
+  // The owner's videos this answer couldn't search, as they were when it was answered (never an error).
+  const notSearched = message.status === "done" ? notSearchedSummary(message.notSearched ?? null) : null;
   return (
     <li className="mr-2 grid gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
       <span className="sr-only">{t("ask.answer")}: </span>
@@ -279,7 +283,7 @@ function MessageItem({ message, live, stale }: { message: Message; live: Readonl
       {verified && <p className="text-xs text-muted-foreground">{verifyLine(verified)}</p>}
       {message.status === "done" && sources.length > 0 && (
         <details className="group text-xs text-muted-foreground">
-          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand">
+          <summary className={DISCLOSURE}>
             <ChevronRightIcon aria-hidden className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
             {t("libraryAsk.sources", { n: sources.length })}
           </summary>
@@ -297,6 +301,32 @@ function MessageItem({ message, live, stale }: { message: Message; live: Readonl
             ))}
           </ul>
         </details>
+      )}
+      {notSearched && (
+        <div className="text-xs text-muted-foreground">
+          <p>{notSearched.line}</p>
+          <details className="group">
+            <summary className={DISCLOSURE}>
+              <ChevronRightIcon aria-hidden className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
+              {t("libraryAsk.notSearched.show")}
+            </summary>
+            <ul aria-label={t("libraryAsk.notSearched.listLabel")} className="mt-1 grid gap-0.5 pl-4">
+              {notSearched.items.map((v) => (
+                <li key={v.sessionId} className="break-words">
+                  {live.has(v.sessionId) ? (
+                    <Link href={`/s/${v.sessionId}`} dir="auto" className="underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand">
+                      {v.title}
+                    </Link>
+                  ) : (
+                    <span dir="auto">{v.title}</span>
+                  )}
+                  {" · "}
+                  {v.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
       )}
     </li>
   );

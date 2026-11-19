@@ -9,6 +9,7 @@ import type { NamesData, WhosWhoRow } from "@/lib/names";
 import { labelText, splitSpeakerQuestions, voiceLabel } from "@/lib/names";
 import { factBadge, profileBadge, shownBadge, type BadgeKind, type ShownBadge } from "@/lib/contextBadge";
 import { buildContextPayload, buildSkipPayload, type ContextFields } from "@/lib/contextPayload";
+import { prefillDate } from "@/lib/recordDate";
 import { sampleSrc } from "@/lib/media";
 import { WarningNote } from "@/components/WarningNote";
 import { HasVideoProvider } from "@/components/HasVideo";
@@ -24,6 +25,7 @@ const BADGES = {
   ai: { text: "context.badgeSuggested", cls: "bg-stone-100 text-stone-600" },
   human: { text: "context.badgeHuman", cls: "bg-purple-100 text-purple-800" },
   missing: { text: "context.badgeMissing", cls: "bg-red-100 text-red-700" },
+  record: { text: "context.badgeRecord", cls: "bg-green-100 text-green-800" },
 } as const satisfies Record<ShownBadge, { text: MessageKey; cls: string }>;
 
 const FIELD_LABEL = {
@@ -59,28 +61,37 @@ function toFields(card: ContextCard): ContextFields {
 
 const inputCls = "h-8 min-w-0 flex-1 rounded-md border border-border bg-white px-2 text-sm outline-none focus:border-brand";
 
-function Row({ label, badge, audio, children }: { label: string; badge: BadgeKind; audio?: boolean; children: React.ReactNode }) {
+function Row({ label, badge, audio, note, children }: { label: string; badge: BadgeKind; audio?: boolean; note?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border py-2 last:border-b-0">
       <span className="w-full shrink-0 text-xs font-semibold sm:w-24 text-muted-foreground">{label}</span>
       {children}
       <Badge kind={badge} audio={audio} />
+      {note && <p className="w-full text-xs text-muted-foreground sm:pl-26">{note}</p>}
     </div>
   );
 }
 
 /** Context check screen: review what the agent understood, answer its questions, then continue or skip. */
 export function ContextCheck({
-  sessionId, card, names, rows, proxyReady, hasVideo, noVideoNotice = false,
+  sessionId, card, names, rows, proxyReady, hasVideo, noVideoNotice = false, recordDate = null,
 }: {
   sessionId: string; card: ContextCard; names: NamesData; rows: WhosWhoRow[];
   /** The 360p preview copy exists; until then the samples play from the audio. */ proxyReady: boolean;
   /** False for an audio-only file: what was read from the recording says "from audio". */ hasVideo: boolean;
   /** The worker found no picture in a file not acknowledged as audio at upload: show the audio-only notice. */ noVideoNotice?: boolean;
+  /** The linked official record's day (`YYYY-MM-DD`, `contextRecordDate`): fills an empty Date field with no stored date. */ recordDate?: string | null;
 }) {
   const router = useRouter();
   const [original] = useState(() => toFields(card));
-  const [edited, setEdited] = useState<ContextFields>(original);
+  const [edited, setEdited] = useState<ContextFields>(() => ({ ...original, dateOrYear: prefillDate(original.dateOrYear, original.dateOrYear, recordDate) }));
+  // A record matched while the screen is open (RecordLink refreshes the page) fills the field too, if it is still empty.
+  const [seenRecordDate, setSeenRecordDate] = useState(recordDate);
+  if (recordDate !== seenRecordDate) {
+    setSeenRecordDate(recordDate);
+    const filled = prefillDate(edited.dateOrYear, original.dateOrYear, recordDate);
+    if (filled !== edited.dateOrYear) setEdited((e) => ({ ...e, dateOrYear: filled }));
+  }
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,8 +149,10 @@ export function ContextCheck({
   const speakerQuestions = Object.fromEntries(inline.map((q) => [q.speakerId as string, { id: q.id, question: q.question, why: q.why }]));
   const n = rest.length;
   const showQuestions = card.openQuestions.length === 0 || rest.length > 0;
-  const textRow = (label: string, key: "title" | "setting" | "dateOrYear", fact: Fact) => (
-    <Row label={label} audio={!hasVideo} badge={factBadge(fact, edited[key], original[key])}>
+  const textRow = (label: string, key: "title" | "setting" | "dateOrYear", fact: Fact) => {
+    const badge = factBadge(fact, edited[key], original[key], key === "dateOrYear" ? recordDate : null);
+    return (
+    <Row label={label} audio={!hasVideo} badge={badge} note={badge === "record" ? t("context.dateFromRecord") : undefined}>
       <input
         className={inputCls}
         aria-label={label}
@@ -149,7 +162,8 @@ export function ContextCheck({
         onBlur={() => !edited[key].trim() && set(key, original[key])}
       />
     </Row>
-  );
+    );
+  };
 
   return (
     <HasVideoProvider value={hasVideo}>

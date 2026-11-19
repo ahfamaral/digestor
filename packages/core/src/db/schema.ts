@@ -6,7 +6,7 @@ import type { AttributionEvidence, AttributionSource, AttributionStatus } from "
 import type { AnalysisStatus, BriefingContent, LLMUsage, MomentChecks, MomentOrigin, HighlightMethod } from "../analysisTypes.ts";
 import type {
   AskActionKind, AskActionStatus, AskMessageStatus, AskRole, ClipActor, ClipEventKind, ClipFormat, ProblemTargetKind,
-  FindMoreStatus, LibraryAskSource, LibraryAskStatus, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
+  FindMoreStatus, LibraryAskSource, LibraryAskStatus, LibraryNotSearched, RenderStatus, SelectionStatus, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import type { RecordRef, RecordStatus } from "../recordRef.ts";
 import type { ExternalMandate, Position } from "../monitorTimeline.ts";
@@ -314,6 +314,8 @@ export const libraryAskMessages = pgTable(
     text: text("text").notNull().default(""),
     sources: jsonb("sources").$type<LibraryAskSource[]>(),
     toolCalls: jsonb("tool_calls").$type<unknown>(),
+    /** A done answer's videos that couldn't be searched, and why, as they were when it was answered. */
+    notSearched: jsonb("not_searched").$type<LibraryNotSearched>(),
     status: text("status").$type<LibraryAskStatus>().notNull().default("done"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     /** Last status change: the sweep ages `pending`/`running` rows by it (R32). */

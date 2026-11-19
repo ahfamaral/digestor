@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { isProxyReady } from "@digestor/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getContextCard, getSession, getTranscript, type Session } from "@digestor/core/server";
+import { getContextCard, getSession, getSessionRecord, getTranscript, type Session } from "@digestor/core/server";
 import { AppBar, type Step } from "@/components/AppBar";
 import { ContextCheck } from "@/components/ContextCheck";
 import { Briefing } from "@/components/Briefing/Briefing";
@@ -11,6 +11,7 @@ import { isUuid } from "@/lib/ids";
 import { foundNoVideo } from "@/lib/media";
 import { loadBriefingPage } from "@/lib/briefingPage";
 import { loadNames } from "@/lib/namesServer";
+import { contextRecordDate } from "@/lib/recordDate";
 import { whosWhoRows } from "@/lib/names";
 import { getServer } from "@/lib/server";
 import { t } from "@/lib/i18n";
@@ -39,9 +40,9 @@ async function SessionScreen({ params }: { params: Promise<{ id: string }> }) {
   if (stage === "awaiting_context") {
     current = "Context";
     const { db } = getServer();
-    const [found, names, transcript] = await Promise.all([getContextCard(db, id), loadNames(db, id), getTranscript(db, id)]);
+    const [found, names, transcript, record] = await Promise.all([getContextCard(db, id), loadNames(db, id), getTranscript(db, id), getSessionRecord(db, id)]);
     body = found ? (
-      <ContextCheck sessionId={session.id} card={found.card} names={names} rows={whosWhoRows(names, transcript?.words ?? [])} proxyReady={isProxyReady(session)} hasVideo={session.hasVideo && !session.audioOnlyAck} noVideoNotice={foundNoVideo(session)} />
+      <ContextCheck sessionId={session.id} card={found.card} names={names} rows={whosWhoRows(names, transcript?.words ?? [])} proxyReady={isProxyReady(session)} hasVideo={session.hasVideo && !session.audioOnlyAck} noVideoNotice={foundNoVideo(session)} recordDate={contextRecordDate(record, names.attributions)} />
     ) : (
       <div role="alert" className="rounded-xl border border-border bg-white p-5 text-sm text-red-700">
         {t("session.contextMissing")}

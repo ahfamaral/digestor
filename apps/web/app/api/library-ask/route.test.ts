@@ -50,4 +50,22 @@ describe("/api/library-ask", () => {
     expect(body.messages[1].sources).toHaveLength(2);
     expect(body.live).toEqual([s.id]);
   });
+
+  it("GET returns an answer's videos not searched, and counts them as live while they exist", async () => {
+    const waiting = await createSession(h.db, { title: "Waiting", source: "upload" });
+    const gone = "00000000-0000-4000-8000-000000000002";
+    await addLibraryAskMessage(h.db, { ownerId: OWNER_ID, role: "user", text: "Q?" });
+    const a = await addLibraryAskMessage(h.db, { ownerId: OWNER_ID, role: "assistant", text: "", status: "pending" });
+    const notSearched = {
+      retentionDays: 14,
+      videos: [
+        { sessionId: waiting.id, title: "Waiting", reason: "awaiting_context" as const },
+        { sessionId: gone, title: "Deleted since", reason: "removed" as const },
+      ],
+    };
+    await finishLibraryAskMessage(h.db, a.id, { text: "Nothing.", status: "done", notSearched });
+    const body = await (await GET()).json();
+    expect(body.messages[1].notSearched).toEqual(notSearched);
+    expect(body.live).toEqual([waiting.id]);
+  });
 });

@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { AskRole, LibraryAskMessage, LibraryAskSource, LibraryAskStatus } from "../personalTypes.ts";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import type { AskRole, LibraryAskMessage, LibraryAskSource, LibraryAskStatus, LibraryNotSearched, LibraryNotSearchedVideo } from "../personalTypes.ts";
+import { displayTitle } from "../sessionTitle.ts";
 import type { ContextCard } from "../schemas.ts";
 import type { Db } from "./client.ts";
 import { analysisVersions, contextCards, libraryAskMessages, sessions } from "./schema.ts";
@@ -75,11 +76,17 @@ export async function releaseLibraryAskMessage(db: Db, id: string): Promise<void
 export async function finishLibraryAskMessage(
   db: Db,
   id: string,
-  a: { text: string; sources?: LibraryAskSource[] | null; toolCalls?: unknown; status: Exclude<LibraryAskStatus, "pending" | "running"> },
+  a: {
+    text: string;
+    sources?: LibraryAskSource[] | null;
+    toolCalls?: unknown;
+    notSearched?: LibraryNotSearched | null;
+    status: Exclude<LibraryAskStatus, "pending" | "running">;
+  },
 ): Promise<LibraryAskMessage> {
   const [row] = await db
     .update(libraryAskMessages)
-    .set({ text: a.text, sources: a.sources ?? null, toolCalls: a.toolCalls ?? null, status: a.status })
+    .set({ text: a.text, sources: a.sources ?? null, toolCalls: a.toolCalls ?? null, notSearched: a.notSearched ?? null, status: a.status })
     .where(eq(libraryAskMessages.id, id))
     .returning();
   if (!row) throw new Error(`Library ask message not found: ${id}`);
@@ -118,6 +125,26 @@ export async function listLibraryCandidates(db: Db, ownerId: string, limit: numb
     .where(and(eq(sessions.ownerId, ownerId), eq(sessions.stage, "ready"), isNull(sessions.videoDeletedAt)))
     .orderBy(desc(sessions.createdAt), asc(sessions.id))
     .limit(limit);
+}
+
+/**
+ * The owner's videos `listLibraryCandidates` leaves out, newest first, with why: video removed by retention
+ * (`videoDeletedAt`), waiting at the context check, or still processing (any other stage before `ready`). Failed
+ * sessions are not listed. A ready video whose search index is missing is the worker's finding (`unavailable`).
+ */
+export async function listLibraryNotSearchable(db: Db, ownerId: string, limit: number): Promise<LibraryNotSearchedVideo[]> {
+  const rows = await db
+    .select({ id: sessions.id, title: sessions.title, stage: sessions.stage, videoDeletedAt: sessions.videoDeletedAt, card: contextCards.card })
+    .from(sessions)
+    .leftJoin(contextCards, eq(contextCards.sessionId, sessions.id))
+    .where(and(eq(sessions.ownerId, ownerId), ne(sessions.stage, "failed"), or(ne(sessions.stage, "ready"), isNotNull(sessions.videoDeletedAt))))
+    .orderBy(desc(sessions.createdAt), asc(sessions.id))
+    .limit(limit);
+  return rows.map((r) => ({
+    sessionId: r.id,
+    title: displayTitle(r.title, r.card?.title.value),
+    reason: r.videoDeletedAt ? "removed" : r.stage === "awaiting_context" ? "awaiting_context" : "processing",
+  }));
 }
 
 /** Which of these sessions still exist (a reply's sources may outlive a deleted session). */

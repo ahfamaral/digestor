@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { Annotation, END, START, Send, StateGraph } from "@langchain/langgraph";
 import {
-  PROFILES, ProfileIdSchema, displayTitle, formatTimestamp, type AnalysisBundle, type AskToolCallRecord, type LibraryAskMessage, type LibraryAskSource, type ProfileId, type Transcript,
+  PROFILES, ProfileIdSchema, displayTitle, formatTimestamp, type AnalysisBundle, type AskToolCallRecord, type LibraryAskMessage, type LibraryAskSource, type LibraryNotSearchedVideo, type ProfileId, type Transcript,
 } from "@digestor/core";
 import {
-  claimLibraryAskMessage, finishLibraryAskMessage, getCurrentAnalysis, getLibraryAskMessage, getTranscript, listLibraryAskMessages, listLibraryCandidates,
+  claimLibraryAskMessage, finishLibraryAskMessage, getCurrentAnalysis, getLibraryAskMessage, getTranscript, listLibraryAskMessages, listLibraryCandidates, listLibraryNotSearchable,
   type Db, type LibraryCandidateRow,
 } from "@digestor/core/server";
 import type { StructuredLLM } from "../llm/structured.js";
@@ -27,12 +27,18 @@ import { citedSentences, splitCouldntConfirm, verifyAnswer, verifySummary, withC
  * `[S2 00:12:03]`; `verify` checks each cited video's sentences against that video's own transcript (verify.ts) and
  * adds an "I couldn't confirm: …" line for what isn't supported. Nothing is written but the answer, so there is no
  * approval pause and no checkpointer.
+ *
+ * `route` also records the owner's videos it couldn't offer and why (`notSearched`: waiting at the context check,
+ * still processing, video removed, or no search index), stored with the answer so the drawer says what wasn't
+ * searched as it was at that time.
  */
 export const MAX_PICKED = 5;
 export const SEARCH_K = 4;
 /** Newest ready videos offered to the router (only those with a search index are kept). */
 export const MAX_CANDIDATES = 100;
 const MAX_SUMMARY_CHARS = 300;
+/** The owner's videos outside the candidates listed as not searched (newest first). */
+export const MAX_NOT_SEARCHED = 100;
 /**
  * Earlier questions the router and the answer see, for follow-ups. Earlier answers are not replayed: their labels
  * meant other videos, and a model shown them took them for its own mistakes ("please disregard my earlier answer")
@@ -277,6 +283,8 @@ export const LibraryState = Annotation.Root({
   /** `final` is a fixed reply (nothing searched, or nothing to verify). */
   fixed: Annotation<boolean>({ reducer: keep, default: () => false }),
   records: Annotation<AskToolCallRecord[]>({ reducer: keep, default: () => [] }),
+  /** The owner's videos `route` couldn't offer, and why. */
+  notSearched: Annotation<LibraryNotSearchedVideo[]>({ reducer: keep, default: () => [] }),
 });
 type LibraryStateValue = typeof LibraryState.State;
 
@@ -294,7 +302,10 @@ export function buildLibraryGraph(deps: LibraryAskDeps) {
   };
 
   async function route(state: LibraryStateValue): Promise<typeof LibraryState.Update> {
-    const rows = await listLibraryCandidates(db, state.ownerId, MAX_CANDIDATES);
+    const [rows, elsewhere] = await Promise.all([
+      listLibraryCandidates(db, state.ownerId, MAX_CANDIDATES),
+      listLibraryNotSearchable(db, state.ownerId, MAX_NOT_SEARCHED),
+    ]);
     let indexed = new Set<string>();
     try {
       if (rows.length > 0) indexed = await deps.indexed(rows.map((r) => r.id));
@@ -302,9 +313,15 @@ export function buildLibraryGraph(deps: LibraryAskDeps) {
       throw new LibrarySearchDownError(err); // a retry may find the index back
     }
     const usable = rows.filter((r) => indexed.has(r.id));
-    if (usable.length === 0) return { final: noIndexedReply(deps.retentionDays ?? 14), fixed: true };
+    const notSearched: LibraryNotSearchedVideo[] = [
+      ...rows
+        .filter((r) => !indexed.has(r.id))
+        .map((r) => ({ sessionId: r.id, title: displayTitle(r.title, r.card?.title.value), reason: "unavailable" as const })),
+      ...elsewhere,
+    ];
+    if (usable.length === 0) return { final: noIndexedReply(deps.retentionDays ?? 14), fixed: true, notSearched };
     const candidates = await Promise.all(usable.map((r) => toCandidate(db, r)));
-    if (candidates.length === 1) return { picks: asPicks(candidates, state.question) };
+    if (candidates.length === 1) return { picks: asPicks(candidates, state.question), notSearched };
     let picks: Pick[];
     try {
       const out = await judge.generate({ schema: RouteOutputSchema, name: "route_question", system: ROUTE_SYSTEM, user: routeUser(state.question, state.earlier, candidates), model: "fast" });
@@ -312,10 +329,10 @@ export function buildLibraryGraph(deps: LibraryAskDeps) {
     } catch (err) {
       // Degrade, don't fail: search the newest videos instead.
       console.error("[ask-library] the routing call failed; searching the newest videos:", err);
-      return { picks: asPicks(candidates, state.question) };
+      return { picks: asPicks(candidates, state.question), notSearched };
     }
-    if (picks.length === 0) return { final: NOT_IN_LIBRARY, fixed: true };
-    return { picks };
+    if (picks.length === 0) return { final: NOT_IN_LIBRARY, fixed: true, notSearched };
+    return { picks, notSearched };
   }
 
   const fanOut = (state: LibraryStateValue) =>
@@ -423,5 +440,6 @@ export async function runLibraryAsk(deps: LibraryAskDeps, messageId: string, opt
   }
   const out = await buildLibraryGraph(deps).invoke({ ownerId: msg.ownerId, question, earlier }, { recursionLimit: 20 });
   const sources: LibraryAskSource[] | null = out.picks.length > 0 ? out.picks.map((p) => ({ label: p.label, sessionId: p.sessionId, title: p.title })) : null;
-  await finishLibraryAskMessage(db, msg.id, { text: out.final ?? NOT_IN_LIBRARY, sources, toolCalls: out.records, status: "done" });
+  const notSearched = { retentionDays: deps.retentionDays ?? 14, videos: out.notSearched };
+  await finishLibraryAskMessage(db, msg.id, { text: out.final ?? NOT_IN_LIBRARY, sources, toolCalls: out.records, notSearched, status: "done" });
 }

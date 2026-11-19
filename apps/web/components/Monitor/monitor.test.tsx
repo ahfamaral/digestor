@@ -104,6 +104,36 @@ describe("monitor components", () => {
     expect(html).toContain("Monroe, Colaresi &amp; Quinn, 2008");
   });
 
+  it("WordHeat links a deputy's word to their speech search, and each month the word was said to that month", () => {
+    const words = [
+      { stem: "agrotox", label: "agrotóxicos", count: 517, months: [{ month: "2026-02", share: null }, { month: "2026-03", share: 7.83 }, { month: "2026-04", share: 0 }] },
+    ];
+    const html = renderToStaticMarkup(<WordHeat locale="en" year={2026} today="2026-04-20" deputy={220574} result={{ enough: true, words }} />);
+    expect(html).toContain('href="/monitor/deputados/220574?q=agrot%C3%B3xicos&amp;exact=1#speeches"');
+    expect(html).toContain('aria-label="agrotóxicos: see the speeches"');
+    expect(html).toContain('href="/monitor/deputados/220574?q=agrot%C3%B3xicos&amp;exact=1&amp;from=2026-03-01&amp;to=2026-03-31#speeches"');
+    expect(html).toContain("March: used much more than the chamber. See the speeches with “agrotóxicos” that month.");
+    // February (little or no text) and April (not used) open nothing: the search would mostly find no speech
+    expect(html).not.toContain("from=2026-02-01");
+    expect(html).not.toContain("from=2026-04-01");
+    expect(html).toContain("February: little or no speech text");
+    expect(html).toContain("Open a word, or one of its months, to see the speeches that use it.");
+  });
+
+  it("WordHeat on a party's map links to the landing's topic search by the party on the day", () => {
+    const words = [{ stem: "merend", label: "merenda", count: 211, months: [{ month: "2026-03", share: 3.3 }] }];
+    const html = renderToStaticMarkup(<WordHeat locale="pt-BR" year={2026} today="2026-03-31" party="PSOL" result={{ enough: true, words }} />);
+    expect(html).toContain('href="/monitor?q=merenda&amp;exact=1&amp;show=speeches&amp;party=PSOL"');
+    expect(html).toContain('href="/monitor?q=merenda&amp;exact=1&amp;show=speeches&amp;from=2026-03-01&amp;to=2026-03-31&amp;party=PSOL"');
+    expect(html).toContain('aria-label="merenda: ver os discursos"');
+  });
+
+  it("WordHeat without a deputy or party links nothing", () => {
+    const words = [{ stem: "merend", label: "merenda", count: 211, months: [{ month: "2026-03", share: 3.3 }] }];
+    const html = renderToStaticMarkup(<WordHeat locale="en" year={2026} result={{ enough: true, words }} />);
+    expect(html).not.toContain("<a ");
+  });
+
   it("the deputy page links to its words section once loaded", () => {
     const words = { enough: false, words: [] };
     const html = renderToStaticMarkup(
@@ -115,6 +145,12 @@ describe("monitor components", () => {
       <DeputyView locale="en" member={member} params={parseDeputy({})} speeches={{ total: 0, rows: [] }} searched={null} votes={{ total: 0, rows: [] }} {...emptyWorkspace} />,
     );
     expect(without).not.toContain('href="#words"');
+    // its words open this deputy's own speech search
+    const some = { enough: true, words: [{ stem: "merend", label: "merenda", count: 9, months: [{ month: "2026-03", share: 3.3 }] }] };
+    const linked = renderToStaticMarkup(
+      <DeputyView locale="en" member={member} params={parseDeputy({})} speeches={{ total: 0, rows: [] }} searched={null} votes={{ total: 0, rows: [] }} {...emptyWorkspace} words={some} />,
+    );
+    expect(linked).toContain('href="/monitor/deputados/999?q=merenda&amp;exact=1#speeches"');
   });
 
   it("the directory shows a party's words only when a party is picked", () => {

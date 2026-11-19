@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  activeTopicFilters, askHref, backToSearch, parseAsk, deputyHref, directoryHref, fromDeputy, keptBy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam,
+  activeTopicFilters, askHref, backToSearch, parseAsk, deputyHref, directoryHref, fromDeputy, keptBy, parseDirectory, isRollCallId, landingHref, MONITOR_YEARS, parseDeputy, parseLanding, rollCallHref, yearParam, monthBounds, wordSearchHref,
   type DeputyParams, type LandingParams,
 } from "./params";
 
@@ -177,6 +177,31 @@ describe("parseDirectory and directoryHref", () => {
     const x = { party: "PSOL", uf: "RS", former: true };
     expect(directoryHref(x)).toBe("/monitor/deputados?party=PSOL&uf=RS&former=1");
     expect(parseDirectory(spOf(directoryHref(x)))).toEqual(x);
+  });
+});
+
+describe("word heat links", () => {
+  it("monthBounds gives a month's first and last day (leap years too)", () => {
+    expect(monthBounds("2026-02")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+    expect(monthBounds("2028-02")).toEqual({ from: "2028-02-01", to: "2028-02-29" });
+    expect(monthBounds("2026-12")).toEqual({ from: "2026-12-01", to: "2026-12-31" });
+  });
+
+  it("a deputy's word opens their speech search for it, exactly as written, at #speeches; a month narrows the dates", () => {
+    expect(wordSearchHref({ deputy: 220574 }, "agrotóxicos", 2026)).toBe("/monitor/deputados/220574?q=agrot%C3%B3xicos&exact=1#speeches");
+    const month = wordSearchHref({ deputy: 220574 }, "agrotóxicos", 2026, "2026-04");
+    expect(month).toBe("/monitor/deputados/220574?q=agrot%C3%B3xicos&exact=1&from=2026-04-01&to=2026-04-30#speeches");
+    // the page reads back the same search
+    expect(parseDeputy(spOf(month.replace(/#.*$/, "")))).toMatchObject({ q: "agrotóxicos", exact: true, from: "2026-04-01", to: "2026-04-30", rel: "by" });
+  });
+
+  it("a party's word opens the landing's topic search by the party on the day, speeches only, without an anchor", () => {
+    expect(wordSearchHref({ party: "PC do B" }, "merenda", 2026)).toBe("/monitor?q=merenda&exact=1&show=speeches&party=PC+do+B");
+    const month = wordSearchHref({ party: "PSOL" }, "merenda", 2026, "2026-03");
+    expect(month).toBe("/monitor?q=merenda&exact=1&show=speeches&from=2026-03-01&to=2026-03-31&party=PSOL");
+    expect(parseLanding(spOf(month))).toMatchObject({
+      q: "merenda", exact: true, show: { speeches: true, rollCalls: false }, from: "2026-03-01", to: "2026-03-31", party: "PSOL",
+    });
   });
 });
 

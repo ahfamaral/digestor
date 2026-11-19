@@ -208,6 +208,25 @@ export function deputyHref(externalId: number, p: Partial<DeputyParams> = {}): s
   ]);
 }
 
+/** A month "YYYY-MM" as its first and last day ("YYYY-MM-DD"). */
+export function monthBounds(month: string): { from: string; to: string } {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, "0")}` };
+}
+
+/**
+ * "Words used more than the chamber": the speeches using a word, searched exactly as written (`exact=1`), in `month`
+ * ("YYYY-MM") or the whole of `year`. A deputy's map opens their page's speech search (landing on `#speeches`, which
+ * `ScrollToHash` then drops); a party's map opens the landing's topic search by the party on the day, speeches only.
+ */
+export function wordSearchHref(owner: { deputy: number } | { party: string }, word: string, year: number, month?: string): string {
+  const range = month ? monthBounds(month) : { from: null, to: null };
+  const y = month ? Number(month.slice(0, 4)) : year;
+  if ("deputy" in owner) return `${deputyHref(owner.deputy, { q: word, exact: true, ...range, year: y })}#speeches`;
+  return landingHref({ q: word, exact: true, show: { speeches: true, rollCalls: false }, ...range, party: owner.party, year: y });
+}
+
 /** The deputies directory with only the non-default values. */
 export const directoryHref = (p: Partial<DirectoryParams> = {}) =>
   href("/monitor/deputados", [["party", p.party], ["uf", p.uf], ["former", p.former ? "1" : null]]);
