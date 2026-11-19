@@ -14,6 +14,7 @@ import { DeputySearch } from "./DeputySearch";
 import { ExternalLink } from "./ExternalLink";
 import { Fronts } from "./Fronts";
 import { LanguageSwitch } from "./LanguageSwitch";
+import { MeaningHeld } from "./MeaningNote";
 import { Pager } from "./Pager";
 import { PartyTimeline } from "./PartyTimeline";
 import { Positions } from "./Positions";
@@ -41,7 +42,7 @@ export type DeputyWorkspace = {
   /** `all`: every bill the deputy signed (the filters aside); `years`: the years presented; `searched`: what `bq` searched. */
   bills: {
     total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: (MemberBill & { byMeaning?: boolean })[];
-    searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number;
+    searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number; meaningHidden?: number;
   };
   phases: string[]; today: string;
   /** "Words used more than the chamber" (`distinctiveWords`); null while searching. */
@@ -60,7 +61,11 @@ export function DeputyView({
   locale: MonitorLocale; member: MemberRow; params: DeputyParams; searched: Searched | null; searching?: boolean;
   speeches: { total: number; rows: (SpeechRow | SpeechHit)[] };
   /** `total`: the votes the filters keep; `all`: every recorded vote of the deputy; `searched`: what `vq` searched. */
-  votes: { total: number; all?: number; rows: (Vote & { byMeaning?: boolean })[]; searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number } & Guided;
+  votes: {
+    total: number; all?: number; rows: (Vote & { byMeaning?: boolean })[]; searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number;
+    /** No word match: the closest by meaning, held back until asked for (`vmeaning`). */
+    meaningHidden?: number;
+  } & Guided;
 }) {
   const id = member.externalId;
   const mentions = params.rel === "mentions";
@@ -136,7 +141,7 @@ export function DeputyView({
                 empty={speeches.total ? null : tm(locale, filtered ? "empty.speeches" : "empty.memberSpeeches")}
               >
                 {speeches.rows.map((s, i, rows) => (
-                  <SpeechItem key={s.id} locale={locale} speech={s} showMember={mentions} videoNote={i === firstVideoRow(rows)} />
+                  <SpeechItem key={s.id} locale={locale} speech={s} showMember={mentions} videoNote={i === firstVideoRow(rows)} speaker={member} />
                 ))}
               </Section>
               <Pager locale={locale} page={params.p} size={MEMBER_PAGE} total={speeches.total} href={(p) => `${deputyHref(id, { ...params, p })}#${SPEECHES}`} label={tm(locale, "paging.speeches")} />
@@ -159,11 +164,17 @@ export function DeputyView({
                 allVotes > 0 && (
                   <VoteFilters
                     locale={locale} externalId={id} params={params} today={today} total={votes.total} all={allVotes} searched={votes.searched ?? null}
-                    guidedAll={votes.guidedAll} meaning={votes.meaning} meaningOnly={votes.meaningOnly}
+                    guidedAll={votes.guidedAll} meaning={votes.meaning} meaningOnly={votes.meaningOnly} meaningHidden={votes.meaningHidden}
                   />
                 )
               }
-              empty={votes.total ? null : allVotes > 0 && votesFiltered(params) ? votesEmpty(locale, params, votes) : tm(locale, "empty.memberVotes")}
+              empty={
+                votes.total
+                  ? null
+                  : votes.meaningHidden
+                    ? <MeaningHeld locale={locale} section="votes" hidden={votes.meaningHidden} showHref={`${deputyHref(id, { ...params, vmeaning: true, vp: 0 })}#votes`} />
+                    : allVotes > 0 && votesFiltered(params) ? votesEmpty(locale, params, votes) : tm(locale, "empty.memberVotes")
+              }
             >
               {votes.rows.map((v) => (
                 <VoteRow key={v.rollCallId} locale={locale} vote={v} from={id} />

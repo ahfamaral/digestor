@@ -1,6 +1,6 @@
 // Cost labels for the journalist screens (client-safe): every rate and estimate lives in core `cost.ts`.
 
-import { estimateTranslationUsd, usdAmount, type Spending } from "@digestor/core";
+import { BRIEFING_TRANSLATION_USD, estimateTranslationUsd, usdAmount, type Spending } from "@digestor/core";
 import { draftRange } from "@/lib/askText";
 import { t } from "@/lib/i18n";
 
@@ -14,6 +14,11 @@ export function aboutUsd(usd: number): string {
 export function recordedUsd(usd: number): string {
   const a = usdAmount(usd, { precise: true });
   return a.under ? t("cost.under") : t("cost.recorded", { amount: a.amount });
+}
+
+/** The Briefing's "Read in" price line: one translation per language (stored, so reading it again is free). */
+export function readInCostText(): string {
+  return t("cost.readIn", { cost: aboutUsd(BRIEFING_TRANSLATION_USD) });
 }
 
 /**

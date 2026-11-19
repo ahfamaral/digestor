@@ -5,6 +5,7 @@ import { LANGUAGES, briefingToMarkdown, type BriefingContent, type MomentWithHig
 import { Dropdown } from "@/components/Dropdown";
 import { Spinner } from "@/components/ui/spinner";
 import type { BriefingTranslation } from "@/lib/useBriefingTranslation";
+import { readInCostText } from "@/lib/cost";
 import { cn } from "@/lib/utils";
 import { languageName, t } from "@/lib/i18n";
 
@@ -86,6 +87,7 @@ export function DocActions({
             size="sm"
             value={tr.readIn}
             onValueChange={tr.pick}
+            aria-describedby="read-in-cost"
             className="w-auto max-w-full shrink-0"
             options={[
               { value: "", label: language ? t("preview.readInOriginal", { language: languageName(language) }) : t("preview.readInOriginalUnknown") },
@@ -93,6 +95,10 @@ export function DocActions({
             ]}
           />
         </label>
+        {/* The pay hint: a new language is a paid AI call (an estimate; rates in core cost.ts). */}
+        <span id="read-in-cost" className="text-xs text-muted-foreground">
+          {readInCostText()}
+        </span>
       </div>
       <div aria-live="polite" className="min-h-0">
         {notice && (

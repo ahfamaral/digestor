@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { JOB_OPTIONS, QUEUES, type ContextCard } from "@digestor/core";
 import { createSession, getSession, saveContextCard, setStage } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
-import { GET, POST } from "./[id]/context/route";
+import { POST } from "./[id]/context/route";
 
 const cardFailure = vi.hoisted(() => ({ next: null as Error | null }));
 vi.mock("@digestor/core/server", async (importOriginal) => {
@@ -137,17 +137,5 @@ describe("POST /api/sessions/[id]/context", () => {
     const payload = { action: "skip", cardEdits: { profile: "trial" } };
     expect((await post(id, payload)).status).toBe(200);
     expect(h.send).toHaveBeenCalledWith(QUEUES.resume, { sessionId: id, payload }, { ...JOB_OPTIONS, singletonKey: id });
-  });
-});
-
-describe("GET /api/sessions/[id]/context", () => {
-  it("returns the card and round, 404 when none", async () => {
-    const id = await session("awaiting_context");
-    const req = new Request("http://localhost/x");
-    expect((await GET(req, ctx(id))).status).toBe(404);
-    await saveContextCard(h.db, id, card, 1);
-    const res = await GET(req, ctx(id));
-    expect(await res.json()).toEqual({ card, round: 1 });
-    expect((await GET(req, ctx("nope"))).status).toBe(404);
   });
 });

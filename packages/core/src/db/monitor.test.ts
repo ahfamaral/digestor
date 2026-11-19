@@ -287,16 +287,27 @@ describe("a deputy's vote filters", () => {
     ]);
   });
 
-  it("the party's own label wins even when its guidance is empty: a federation's Sim behind it isn't used", async () => {
-    // Pins today's rule (the closest applicable label is picked before its orientation is read); 497 of 1,700 stored
-    // orientations are empty, so this can appear with the next file. Changing it to fall through is a product decision.
+  it("an empty own label is skipped: the federation's Sim is used, named as the source, and the guidance filter compares with it", async () => {
     const { a } = await setup();
     await upsertRollCalls(db, [rollCall("1-9", "2026-06-15")]);
     await replaceVotes(db, "1-9", [{ memberId: a, vote: "Não", party: "PT", uf: "SP" }]);
     await replaceOrientations(db, "1-9", [{ bloc: "PT", orientation: "" }, { bloc: "Fdr PT-PCdoB-PV", orientation: "Sim" }]);
     const r = await listMemberVotes(db, a, {});
-    expect(r.rows.filter((x) => x.rollCallId === "1-9").map((x) => [x.guidance, x.guidanceFrom])).toEqual([[null, null]]);
-    expect(ids(await listMemberVotes(db, a, { differsFromGuidance: true }))).not.toContain("1-9");
+    expect(r.rows.filter((x) => x.rollCallId === "1-9").map((x) => [x.guidance, x.guidanceFrom])).toEqual([["Sim", "Fdr PT-PCdoB-PV"]]);
+    expect(ids(await listMemberVotes(db, a, { differsFromGuidance: true }))).toContain("1-9");
+  });
+
+  it("an empty own label is skipped for a linked bloc too: the bloc's Não, with its full name as the source", async () => {
+    const { a } = await setup();
+    const full = "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE";
+    await replaceBlocs(db, [{ id: 589, legislature: 57, name: full, federation: false, parties: ["UNIÃO", "PP", "PSD", "REPUBLICANOS", "MDB", "PODE"] }]);
+    // 1-8: PSD's own label empty, its bloc says Não; A voted Não
+    await replaceOrientations(db, "1-8", [{ bloc: "Bl UniPpPsd...", orientation: "Não" }, { bloc: "PSD", orientation: "" }]);
+    // 1-6: the same, the bloc says Sim; A abstained, so the vote differs
+    await replaceOrientations(db, "1-6", [{ bloc: "Bl UniPpPsd...", orientation: "Sim" }, { bloc: "PSD", orientation: "" }]);
+    const r = await listMemberVotes(db, a, { from: "2026-07" });
+    expect(r.rows.map((x) => [x.rollCallId, x.guidance, x.guidanceFrom])).toEqual([["1-8", "Não", full], ["1-7", "Não", full], ["1-6", "Sim", full]]);
+    expect(ids(await listMemberVotes(db, a, { from: "2026-07", differsFromGuidance: true }))).toEqual(["1-6"]);
   });
 
   it("each filter alone", async () => {
@@ -569,6 +580,13 @@ describe("search filters", () => {
     const { f } = await setup();
     expect((await listMemberSpeeches(db, f, { phase: "Grande Expediente" })).total).toBe(1);
     expect((await listMemberSpeeches(db, f, { from: "2026-06-01", to: "2026-06-30" })).total).toBe(1);
+  });
+
+  it("listMemberSpeeches gives the party and state on the day (the copied quote names them)", async () => {
+    const { g } = await setup();
+    expect((await listMemberSpeeches(db, g, {})).rows.map((r) => [r.startsAt.slice(0, 10), r.partyThen, r.ufThen])).toEqual([
+      ["2026-05-01", "PL", "AL"], ["2026-04-29", "UNIÃO", "AL"],
+    ]);
   });
 
   it("searchRollCalls pages, filters by date and sorts", async () => {

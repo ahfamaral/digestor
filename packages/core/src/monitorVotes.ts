@@ -125,3 +125,18 @@ export function applicableGuidance(
   }
   return out.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
 }
+
+/**
+ * The guidance shown next to a member's vote (the deputy page's rule, the same as `memberVoteQuery`'s lateral join):
+ * among the labels that speak for `party` (`applicableGuidance`), a label whose orientation is empty is skipped and the
+ * closest one with a set orientation is used (own label, then federation, then bloc; the label as the tie-break), so an
+ * empty own label never hides its federation's or bloc's guidance. `source` names the label actually used (null: the
+ * party's own). Null when no applicable label has an orientation.
+ */
+export function pickGuidance(
+  party: string, orientations: { bloc: string; orientation: string }[], known: string[], blocs: StoredBloc[],
+): { guidance: string; label: string; source: string | null } | null {
+  const set = new Map(orientations.filter((o) => o.orientation !== "").map((o) => [o.bloc, o.orientation]));
+  const g = applicableGuidance(party, orientations.map((o) => o.bloc), known, blocs).find((x) => set.has(x.label));
+  return g ? { guidance: set.get(g.label)!, label: g.label, source: g.source } : null;
+}

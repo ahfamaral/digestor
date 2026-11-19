@@ -31,15 +31,6 @@ async function state(db: Db, sessionId: string) {
   return { persons: await getPersons(db, ids), attributions };
 }
 
-/** GET /api/sessions/[id]/names — current attributions and the people they mention. */
-export async function GET(_request: Request, ctx: Ctx): Promise<Response> {
-  const { id } = await ctx.params;
-  if (!isUuid(id)) return errorResponse(404, "Session not found.");
-  const { db } = getServer();
-  if (!(await getSession(db, id))) return errorResponse(404, "Session not found.");
-  return Response.json(await state(db, id));
-}
-
 /** POST /api/sessions/[id]/names — a human names, un-names or confirms a voice. */
 export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   const { id } = await ctx.params;

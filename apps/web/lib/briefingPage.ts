@@ -7,6 +7,7 @@ import {
   listPersonalMoments, listSelections, type Db, type Session,
 } from "@digestor/core/server";
 import type { FocusChoice } from "@/components/Briefing/Controls";
+import { askExampleNames, askExampleTopics, askExamples } from "./askExamples";
 import { earlierSelections, focusOptions, momentExcerpt, peopleByMoment, withCurrentSpeakerNames } from "./briefingData";
 import { loadNames, namesChangedSince } from "./namesServer";
 import { labelText, namedCount, rangeVoices, voiceLabel, whosWhoRows, type NamesData, type Voice, type WhosWhoRow } from "./names";
@@ -15,7 +16,11 @@ import { displayTitle } from "./sessionTitle";
 
 /** What the Briefing page (`components/Briefing/Briefing.tsx`) is rendered with; the client imports it as a type only. */
 export interface BriefingProps {
-  session: { id: string; title: string; durationMs: number; language: string | null; hasVideo: boolean; videoRemoved: boolean };
+  session: {
+    id: string; title: string; durationMs: number; language: string | null; hasVideo: boolean; videoRemoved: boolean;
+    /** Where the video came from ("Copy quote with source" links a YouTube video at the moment, `sourceLink`). */
+    source: "upload" | "youtube"; sourceUrl: string | null; sourceStartMs: number | null;
+  };
   analysis: {
     id: string;
     version: number;
@@ -51,6 +56,8 @@ export interface BriefingProps {
   types: HighlightTypeId[];
   /** Selections left on an earlier analysis version, or null. */
   earlier: { count: number; version: number } | null;
+  /** The empty Ask drawer's example questions, from this session's topics and names (`askExamples`). */
+  askExamples: string[];
   /** What this session has cost: estimates, and the LLM dollars its analysis versions recorded (the "Spending" line). */
   spending: Spending;
 }
@@ -121,6 +128,9 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
       language: session.language,
       hasVideo: session.hasVideo,
       videoRemoved: session.videoDeletedAt !== null,
+      source: session.source,
+      sourceUrl: session.sourceUrl,
+      sourceStartMs: session.sourceStartMs,
     },
     analysis: {
       id: analysisId,
@@ -146,6 +156,7 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
     people: Object.fromEntries([...peopleByMoment(moments, names, words, sensitive)].map(([mid, set]) => [mid, [...set]])),
     types,
     earlier: earlierSelections(byVersion, analysisId),
+    askExamples: askExamples({ topics: askExampleTopics(topics), names: askExampleNames(names, words, sensitive) }),
     spending: sessionSpending({ durationMs, hasVideo: session.hasVideo, transcribed: transcript !== null, analyses: versions }),
   };
 }

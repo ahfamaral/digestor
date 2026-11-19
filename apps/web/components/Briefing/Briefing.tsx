@@ -227,6 +227,7 @@ export function Briefing(props: BriefingProps) {
     names,
     voices,
     sensitive,
+    quoteSource: { title: session.title, source: session.source, sourceUrl: session.sourceUrl, sourceStartMs: session.sourceStartMs },
     errors,
     approvedIds: approvedSet,
     views,
@@ -271,7 +272,7 @@ export function Briefing(props: BriefingProps) {
             <Button ref={whoRef} variant="outline" size="sm" onClick={() => openWho("button")}>
               {t("names.whoOpen")}
             </Button>
-            <AskDrawer sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} />
+            <AskDrawer sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} examples={props.askExamples} />
           </div>
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-xs text-muted-foreground">

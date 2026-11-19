@@ -6,15 +6,6 @@ import { getServer } from "@/lib/server";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** GET /api/sessions/[id]/context — the current context card and round. */
-export async function GET(_request: Request, ctx: Ctx): Promise<Response> {
-  const { id } = await ctx.params;
-  if (!isUuid(id)) return errorResponse(404, "Session not found.");
-  const found = await getContextCard(getServer().db, id);
-  if (!found) return errorResponse(404, "No context card yet.");
-  return Response.json({ card: found.card, round: found.round });
-}
-
 /** POST /api/sessions/[id]/context — answer (continue) or skip; resumes the pipeline. */
 export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   const { id } = await ctx.params;

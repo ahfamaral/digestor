@@ -262,6 +262,10 @@ Dev on 2026-11-13 (Colima, 4 CPUs): 126 roll calls in 20 s and 39,646 signed bil
 
 yt-dlp downloads only the part (`--download-sections "*<start>-<end>"`, keyframe-approximate, from the plain https formats only: on an 8-hour plenary stream the HLS format never started; a video without them fails at once). A part may take 4 × its length (at least 10 minutes); past that yt-dlp and its ffmpeg are stopped and the session fails with "YouTube is sending this part too slowly. Please try again later." Parts over 60 minutes are refused before a session is made. Dev on 2026-11-13: a 97 s speech (137 s part, 1080p AV1, 19 MB) downloaded in about 2 min 20 s (YouTube serves it at about playback speed) and reached the context check 7.5 min after the click, with the Câmara record matched.
 
+### Once, when updating to the 2026-11-19 round (migration 0034)
+
+`up -d --build` runs migration 0034: two plain indexes (`clip_events.clip_id`, `ask_actions.message_id`), nothing to backfill. The same update moves Next.js to 16.4.6 (security fixes).
+
 ### Once, when updating to main bills (migration 0033)
 
 `up -d --build` runs migration 0033: `parl_bills.main_bill_id` / `main_bill_label` (nullable). An opinion, substitute or amendment (PRL, SBR, EMC…) is numbered inside its main bill and has year 0 in the Câmara's data; the bulk `proposicoes` file names that bill (`uriPropPrincipal`; the API's `/proposicoes/{id}` of the item answers null), so the refresh stores its id and, when the same file holds the main bill, its label; older main bills are asked from the API (`fillMainBillLabels`, at most 1,000 a night, an unknown id stored as "" and not asked again). The deputy page lists such a row as "PRL 1 on PL 1761/2025" ("PRL 1 sobre o PL 1761/2025"), never "/0", and a row without a summary says "No summary published." Run `monitor-backfill.ts --bill-mains` once (step 5 of the rollout).

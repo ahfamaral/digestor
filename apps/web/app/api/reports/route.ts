@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { OWNER_ID } from "@digestor/core";
-import { addProblemReport, getSession, listProblemReports } from "@digestor/core/server";
+import { addProblemReport, getSession } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { getServer } from "@/lib/server";
 
@@ -12,11 +12,6 @@ const BodySchema = z
     note: z.string().trim().max(1000).optional(),
   })
   .strict();
-
-/** GET /api/reports — the owner's problem reports, newest first. */
-export async function GET(): Promise<Response> {
-  return Response.json({ reports: await listProblemReports(getServer().db, OWNER_ID) });
-}
 
 /** POST /api/reports — "Report a problem": `{ sessionId, targetKind, targetId, note? }` → 201. */
 export async function POST(request: Request): Promise<Response> {

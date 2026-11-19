@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { MessageSquareQuote } from "lucide-react";
 import { isWrittenOnly } from "@digestor/core";
+import { CopyQuote } from "@/components/CopyQuote";
 import { Spinner } from "@/components/ui/spinner";
 import { questionTopic, type AskPassage, type AskResult } from "@/lib/monitor/askRecord";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { firstVideoRow } from "@/lib/monitor/video";
 import { askHref, deputyHref, landingHref, MAX_QUERY, MONITOR_YEARS, type AskParams } from "@/lib/monitor/params";
+import { quoteWithSource } from "@/lib/monitor/quote";
 import { ExternalLink } from "./ExternalLink";
 import { GetForm } from "./GetForm";
 import { LanguageSwitch } from "./LanguageSwitch";
@@ -124,12 +126,18 @@ export function AskForm({
   );
 }
 
-/** One quoted passage: the record's sentences, then who said them and when, the video moment and the whole speech. */
+/**
+ * One quoted passage: the record's sentences, then who said them and when, the video moment, the whole speech and
+ * "Copy quote with source" (the sentences with who, when, the official record and the video link).
+ */
 function PassageItem({ locale, passage, videoNote }: { locale: MonitorLocale; passage: AskPassage; videoNote: boolean }) {
   const { speech, sentences } = passage;
   const party = speech.partyThen ?? speech.member.party;
   const uf = speech.partyThen ? speech.ufThen : speech.member.uf;
   const day = speech.startsAt.slice(0, 10);
+  const copy = quoteWithSource(locale, {
+    quote: sentences.join(" "), name: speech.member.name, party, uf, startsAt: speech.startsAt, urlText: speech.urlText, video: speech.video,
+  });
   return (
     <li className="grid gap-2 px-4 py-4 text-sm">
       <figure className="grid gap-2">
@@ -159,6 +167,10 @@ function PassageItem({ locale, passage, videoNote }: { locale: MonitorLocale; pa
           {tm(locale, "ask.readSpeech")}
         </Link>
         {speech.urlText && <ExternalLink href={speech.urlText} className="font-medium underline">{tm(locale, "member.officialRecord")}</ExternalLink>}
+        <CopyQuote
+          text={copy} label={tm(locale, "copyQuote.button")} copiedLabel={tm(locale, "copyQuote.copied")} failedLabel={tm(locale, "copyQuote.failed")}
+          className="h-7 border-border bg-white px-2.5 text-xs"
+        />
       </div>
     </li>
   );

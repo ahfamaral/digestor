@@ -45,13 +45,15 @@ export function votesEmpty(locale: MonitorLocale, p: DeputyParams, g: Guided): s
  * filter is set, "N of M recorded votes" (this deputy's own records only) and a way to clear them.
  */
 export function VoteFilters({
-  locale, externalId, params, today, total, all, searched, guidedAll, meaning, meaningOnly = 0,
+  locale, externalId, params, today, total, all, searched, guidedAll, meaning, meaningOnly = 0, meaningHidden = 0,
 }: {
   locale: MonitorLocale; externalId: number; params: DeputyParams; today: string; total: number; all: number; searched: Searched | null;
   /** Votes a guidance can be compared with, overall; 0: the guidance checkbox is replaced by a line saying why. */
   guidedAll?: number;
   /** How the text box was searched; `meaningOnly`: the rows only the search by meaning found (part of `total`, never counted as matches). */
   meaning?: RecordMeaning; meaningOnly?: number;
+  /** No word match: the rows the search by meaning found, held back until asked for (`vmeaning`). */
+  meaningHidden?: number;
 }) {
   const months = monthsOf(params.year, today).map((m) => ({ value: m, label: formatMonth(m, locale) }));
   const filtered = votesFiltered(params);
@@ -119,7 +121,7 @@ export function VoteFilters({
           </Link>
         </div>
       )}
-      <MeaningNote locale={locale} section="votes" meaning={meaning} words={total - meaningOnly} meaningOnly={meaningOnly} />
+      <MeaningNote locale={locale} section="votes" meaning={meaning} words={total - meaningOnly} meaningOnly={meaningOnly} hidden={meaningHidden} />
     </div>
   );
 }

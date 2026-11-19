@@ -233,7 +233,7 @@ export const clipEvents = pgTable("clip_events", {
   after: jsonb("after"),
   undoneAt: timestamp("undone_at", { withTimezone: true }),
   at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [index("clip_events_clip_idx").on(t.clipId)]);
 
 export const subtitleTracks = pgTable(
   "subtitle_tracks",
@@ -293,7 +293,10 @@ export const askActions = pgTable(
     resolution: jsonb("resolution").$type<unknown>(),
   },
   // One approval per answer and model turn: the graph's approve node re-runs on resume and finds it.
-  (t) => [uniqueIndex("ask_actions_tool_approval_step").on(t.messageId, sql`(${t.payload}->>'step')`).where(sql`${t.kind} = 'tool_approval'`)],
+  (t) => [
+    uniqueIndex("ask_actions_tool_approval_step").on(t.messageId, sql`(${t.payload}->>'step')`).where(sql`${t.kind} = 'tool_approval'`),
+    index("ask_actions_message_idx").on(t.messageId),
+  ],
 );
 
 /**

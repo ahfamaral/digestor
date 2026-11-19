@@ -699,18 +699,22 @@ function ClipCard({
               </p>
             )}
           </div>
-          <ClipStatusBadge status={clipState} dismissed={item.dismissed} className="mt-1" />
-          {open && item.undo && !frozen && (
-            <button
-              type="button"
-              onClick={onUndo}
-              disabled={busy}
-              aria-label={t("prepare.undoLabel", { action: undoLabel(item.undo), title: title || t("prepare.clipHeading", { n }) })}
-              className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {undoLabel(item.undo)}
-            </button>
-          )}
+          {/* On a phone the badge and Undo go on their own line under the title, so the title keeps the width and
+              breaks between words, not inside one (mid-word only for a single word wider than the line). */}
+          <div className="flex shrink-0 flex-wrap items-start gap-2 max-sm:basis-full max-sm:pl-10">
+            <ClipStatusBadge status={clipState} dismissed={item.dismissed} className="mt-1" />
+            {open && item.undo && !frozen && (
+              <button
+                type="button"
+                onClick={onUndo}
+                disabled={busy}
+                aria-label={t("prepare.undoLabel", { action: undoLabel(item.undo), title: title || t("prepare.clipHeading", { n }) })}
+                className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {undoLabel(item.undo)}
+              </button>
+            )}
+          </div>
         </header>
 
         <div id={bodyId} hidden={!open}>

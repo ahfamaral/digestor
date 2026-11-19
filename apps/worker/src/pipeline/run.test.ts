@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChromaClient } from "chromadb";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { personAt, type RecordRef, type ContextCard, type Fact, type ResumePayload, type Transcript, type Word } from "@digestor/core";
 import {
@@ -45,9 +46,9 @@ import { FakeLLM } from "../llm/structured.js";
 import { FakeEmbedder } from "../search/embed.js";
 import { collectionName, deleteSessionIndex } from "../search/index.js";
 import { analysisResponses, captionOf, crashOnInsert, emptyAnalysisResponses } from "./fakeAnalysis.js";
-import { nameSpeakersNode } from "./naming.js";
+import { RECORD_TAKEOVER_MS, nameSpeakersNode } from "./naming.js";
 import { FIXTURE_DATE, fakeSenadoFetch, transcriptOfSpeeches } from "../records/fakeSenado.js";
-import { YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
+import { SLOW_SECTION_MESSAGE, YouTubeDownloadError, mapYtDlpError, type YouTubeMetadata, type downloadYouTube } from "../youtube/ytdlp.js";
 import { STEPS, runPipeline, type PipelineDeps } from "./run.js";
 import { runProxy } from "./proxy.js";
 
@@ -546,23 +547,53 @@ describe("pipeline", () => {
     expect(llm.calls.length).toBe(0);
   });
 
-  it("an unexpected download error ends with the generic message", async () => {
+  it("a download that fails for no known cause is retried, and a later attempt goes on", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const { start, sessionId, llm } = await setup({
+      let calls = 0;
+      const stub = youtubeStub({ title: "T", description: "", channel: "C", uploadDate: null, webpageUrl: "https://www.youtube.com/watch?v=abc", durationS: 100 });
+      const { sessionId, deps, nextStep } = await setup({
+        context: [draft()],
+        youtube: async (url, out, env, section) => {
+          calls += 1;
+          if (calls === 1) throw new YouTubeDownloadError(mapYtDlpError("ERROR: unable to download video data: HTTP Error 503"), "HTTP Error 503");
+          return stub(url, out, env, section);
+        },
+      });
+      const ctx: JobContext = { db, deps };
+      await expect(handleStart(ctx, { sessionId }, { retryCount: 0, retryLimit: 2 })).rejects.toBeInstanceOf(YouTubeDownloadError);
+      expect((await getSession(db, sessionId))!.stage).toBe("downloading"); // not failed while a retry is coming
+      expect(await nextStep()).toBe("download");
+      await handleStart(ctx, { sessionId }, { retryCount: 1, retryLimit: 2 });
+      expect(calls).toBe(2);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context", error: null });
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("a download that fails for no known cause on the final attempt ends with the generic message", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { sessionId, deps, llm } = await setup({
         youtube: async () => {
           throw new Error("ENOENT: no such file or directory, open '/data/x/original.info.json'");
         },
       });
-      await start();
-      expect(await getSession(db, sessionId)).toMatchObject({
-        stage: "failed",
-        error: "Couldn't download this video from YouTube.",
-      });
+      const ctx: JobContext = { db, deps };
+      await expect(handleStart(ctx, { sessionId }, { retryCount: 2, retryLimit: 2 })).rejects.toBeInstanceOf(YouTubeDownloadError);
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: "Couldn't download this video from YouTube." });
       expect(llm.calls.length).toBe(0);
-      expect(log).toHaveBeenCalled();
     } finally {
       log.mockRestore();
+    }
+  });
+
+  it("YouTube's verdict (private, live, too slow...) fails the session at once without a retry", async () => {
+    for (const message of [mapYtDlpError("ERROR: [youtube] abc: Private video. Sign in if you've been granted access"), SLOW_SECTION_MESSAGE]) {
+      const { sessionId, deps } = await setup({ youtube: async () => { throw new YouTubeDownloadError(message, ""); } });
+      await handleStart({ db, deps }, { sessionId }, { retryCount: 0, retryLimit: 2 }); // completes: no rethrow
+      expect(await getSession(db, sessionId)).toMatchObject({ stage: "failed", error: message });
     }
   });
 
@@ -1111,14 +1142,26 @@ describe("match_record", () => {
     log.mockRestore();
   });
 
-  it("a record row left running by a crashed attempt is taken over and matched", async () => {
+  it("a record row left running by a crashed attempt, untouched for 10 min, is taken over and matched", async () => {
     const { f } = fakeSenadoFetch();
     const { start, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
     await claimRecordFetch(db, sessionId); // the crashed attempt's claim
+    await db.update(sessionRecords).set({ updatedAt: new Date(Date.now() - RECORD_TAKEOVER_MS - 60_000) }).where(eq(sessionRecords.sessionId, sessionId));
     expect((await getSessionRecord(db, sessionId))?.status).toBe("running");
     await start();
     expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "matched" });
     expect(await recordRows(sessionId)).toHaveLength(5);
+  });
+
+  it("a record row a live session.names job just claimed is left to the job: no second fetch, and the graph goes on", async () => {
+    const { f, calls } = fakeSenadoFetch();
+    const { start, sessionId } = await setup({ context: [draft()], transcript: transcriptOfSpeeches(), record, fetch: f });
+    await claimRecordFetch(db, sessionId); // the job's claim, a moment ago
+    await start();
+    expect(await getSession(db, sessionId)).toMatchObject({ stage: "awaiting_context" });
+    expect(await getSessionRecord(db, sessionId)).toMatchObject({ status: "running" }); // still the job's
+    expect(calls.length).toBe(0);
+    expect(await recordRows(sessionId)).toHaveLength(0);
   });
 
   it("the raw record payload survives name_speakers' frame clean-up", async () => {

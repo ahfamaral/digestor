@@ -10,7 +10,7 @@ import { ExternalLink } from "./ExternalLink";
 import { FormSelect } from "./FormSelect";
 import { GetForm } from "./GetForm";
 import { KeptFields } from "./KeptFields";
-import { ByMeaning, MeaningCount, MeaningNote } from "./MeaningNote";
+import { ByMeaning, MeaningCount, MeaningHeld, MeaningNote } from "./MeaningNote";
 import { SearchedFor } from "./SearchedFor";
 import { Pager } from "./Pager";
 import { Section } from "./Section";
@@ -39,6 +39,8 @@ export function AuthoredBills({
   bills: {
     total: number; all?: number; years?: number[]; byType: { type: string; n: number }[]; rows: (MemberBill & { byMeaning?: boolean })[];
     searched?: Searched | null; meaning?: RecordMeaning; meaningOnly?: number;
+    /** No word match: the closest by meaning, held back until asked for (`bmeaning`). */
+    meaningHidden?: number;
   };
 }) {
   const all = bills.byType.reduce((s, r) => s + r.n, 0);
@@ -90,7 +92,7 @@ export function AuthoredBills({
           </Link>
         </div>
       )}
-      <MeaningNote locale={locale} section="bills" meaning={bills.meaning} words={bills.total - meaningOnly} meaningOnly={meaningOnly} />
+      <MeaningNote locale={locale} section="bills" meaning={bills.meaning} words={bills.total - meaningOnly} meaningOnly={meaningOnly} hidden={bills.meaningHidden} />
     </div>
   );
   const filter = (type: string | null, text: React.ReactNode) => (
@@ -140,7 +142,13 @@ export function AuthoredBills({
           id={BILLS}
           title={tm(locale, "bills.title")}
           count={signed ? formatCount(signed, locale) : undefined}
-          empty={bills.total ? null : signed > 0 && filtered ? tm(locale, "bills.none") : tm(locale, "bills.empty", { year: params.year })}
+          empty={
+            bills.total
+              ? null
+              : bills.meaningHidden
+                ? <MeaningHeld locale={locale} section="bills" hidden={bills.meaningHidden} showHref={`${deputyHref(externalId, { ...params, bmeaning: true, bp: 0 })}#${BILLS}`} />
+                : signed > 0 && filtered ? tm(locale, "bills.none") : tm(locale, "bills.empty", { year: params.year })
+          }
           toolbar={(form || types || codes) && <>{form}{types}{codes}</>}
         >
           {bills.rows.map((b) => (

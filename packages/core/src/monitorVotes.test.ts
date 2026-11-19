@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applicableGuidance, differsFromGuidance, guidanceLabels, isRequestVote, linkBloc, VOTE_FILTERS, type StoredBloc } from "./monitorVotes.ts";
+import { applicableGuidance, differsFromGuidance, guidanceLabels, isRequestVote, linkBloc, pickGuidance, VOTE_FILTERS, type StoredBloc } from "./monitorVotes.ts";
 
 /** The parties at the vote in the dev data (2026), as the Câmara spells them. */
 const PARTIES = [
@@ -103,6 +103,32 @@ describe("applicableGuidance", () => {
   it("no stored blocs: exactly the name rule", () => {
     expect(applicableGuidance("MDB", LABELS, PARTIES, [])).toEqual([]);
     expect(applicableGuidance("PSD", LABELS, PARTIES, [])).toEqual([{ label: "Bl UniPpPsd...", rank: 2, source: "Bl UniPpPsd..." }]);
+  });
+});
+
+describe("pickGuidance", () => {
+  const fed = "Fdr PT-PCdoB-PV";
+  it("the closest label with a set orientation: the party's own first", () => {
+    expect(pickGuidance("PT", [{ bloc: "PT", orientation: "Não" }, { bloc: fed, orientation: "Sim" }], PARTIES, BLOCS))
+      .toEqual({ guidance: "Não", label: "PT", source: null });
+  });
+
+  it("an empty own label is skipped: the federation's guidance is used, and named as the source", () => {
+    expect(pickGuidance("PT", [{ bloc: "PT", orientation: "" }, { bloc: fed, orientation: "Sim" }], PARTIES, BLOCS))
+      .toEqual({ guidance: "Sim", label: fed, source: fed });
+  });
+
+  it("an empty own label is skipped for a linked bloc too: the bloc's full name is the source", () => {
+    expect(pickGuidance("PSD", [{ bloc: "PSD", orientation: "" }, { bloc: "Bl UniPpPsd...", orientation: "Não" }], PARTIES, BLOCS))
+      .toEqual({ guidance: "Não", label: "Bl UniPpPsd...", source: BIG });
+    // an empty federation falls through to the bloc as well
+    expect(pickGuidance("PSDB", [{ bloc: "Fdr PSDB-CIDADANIA", orientation: "" }, { bloc: "Bl UniPpPsd...", orientation: "Sim" }], PARTIES, BLOCS))
+      .toMatchObject({ guidance: "Sim", source: BIG });
+  });
+
+  it("every applicable label empty, or none applies (the government's guidance never does): no guidance", () => {
+    expect(pickGuidance("PT", [{ bloc: "PT", orientation: "" }, { bloc: fed, orientation: "" }], PARTIES, BLOCS)).toBeNull();
+    expect(pickGuidance("PT", [{ bloc: "Governo", orientation: "Sim" }], PARTIES, BLOCS)).toBeNull();
   });
 });
 

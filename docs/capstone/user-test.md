@@ -2,7 +2,7 @@
 
 **Status: planned protocol, not run yet.** No tester has gone through it, and the results template at the end is empty on purpose.
 
-A moderated test of about 40 minutes. It shows whether a journalist can go from a long interview to a subtitled clip without help, and whether they trust what the AI writes.
+A moderated test of about 40 minutes (a 20-minute version with a printable notes sheet is in [user-test-script.md](user-test-script.md)). It shows whether a journalist can go from a long interview to a subtitled clip without help, and whether they trust what the AI writes.
 
 ## Who the tester is
 

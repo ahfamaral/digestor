@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sessionSpending } from "@digestor/core";
-import { aboutUsd, packageCostUsd, recordedUsd, spendingLines, spentSoFarText } from "./cost";
+import { aboutUsd, packageCostUsd, readInCostText, recordedUsd, spendingLines, spentSoFarText } from "./cost";
 
 describe("cost labels", () => {
   it("says 'about' for estimates and 'under $0.01' for tiny ones", () => {
@@ -12,6 +12,12 @@ describe("cost labels", () => {
     expect(recordedUsd(0.1449)).toBe("$0.14");
     expect(recordedUsd(0.0345)).toBe("$0.035");
     expect(recordedUsd(0)).toBe("under $0.01");
+  });
+});
+
+describe("readInCostText", () => {
+  it("prices a briefing translation per language", () => {
+    expect(readInCostText()).toBe("about $0.01 per language");
   });
 });
 
@@ -38,7 +44,7 @@ describe("spending lines", () => {
     const l = spendingLines(s);
     expect(l.summary).toBe("Estimated: about $0.60 · Recorded: $0.14");
     expect(l.detail).toBe(
-      "Recorded is what the AI analyses stored (1 of 1 runs). Transcription, about $0.48, is always estimated. Ask, checks, subtitles and Find more aren't recorded.",
+      "Recorded is what the AI analyses stored (1 of 1 runs). Transcription, about $0.48, is always estimated. Ask, checks, subtitles, briefing translations and Find more aren't recorded.",
     );
   });
   it("says when nothing was recorded, and counts unpriced calls", () => {

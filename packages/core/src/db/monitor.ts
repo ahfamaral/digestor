@@ -31,6 +31,8 @@ export type SpeechRow = {
   video: SpeechVideo | null;
   /** `parl_speeches.speech_key` ("Clip this speech" is keyed by it); always set by the queries, optional for fixtures. */
   speechKey?: string | null;
+  /** The speaker's party and state on the day (null without history); set by `listMemberSpeeches` and the searches. */
+  partyThen?: string | null; ufThen?: string | null;
 };
 /** `member` carries today's party and state; `partyThen`/`ufThen` are the speaker's on the day (null without history). */
 export type SpeechHit = SpeechRow & {
@@ -225,6 +227,7 @@ export async function listMemberSpeeches(
       id: parlSpeeches.id, startsAt: parlSpeeches.startsAt, phase: parlSpeeches.phase, kind: parlSpeeches.kind,
       summary: parlSpeeches.summary, text: parlSpeeches.text, urlText: parlSpeeches.urlText, textFile: parlSpeeches.textFile,
       speechKey: parlSpeeches.speechKey, videoId: parlSpeechVideos.videoId, startS: parlSpeechVideos.startS, endS: parlSpeechVideos.endS,
+      partyThen: parlSpeeches.party, ufThen: parlSpeeches.uf,
     })
     .from(parlSpeeches)
     .leftJoin(parlSpeechVideos, eq(parlSpeechVideos.speechKey, parlSpeeches.speechKey))
@@ -542,10 +545,11 @@ async function memberVoteQuery(db: Db, memberId: number, a: MemberVoteFilters & 
     join parl_roll_calls r on r.id = v.roll_call_id
     join parl_members m on m.id = v.member_id
     cross join q
+    -- pickGuidance's rule: the closest applicable label with a set orientation (an empty one is skipped)
     left join lateral (
       select nullif(x.orientation, '') as guidance, g.source as guidance_from from parl_orientations x
       join g on g.label = x.bloc and g.party = coalesce(v.party, m.party)
-      where x.roll_call_id = v.roll_call_id order by g.rank, x.bloc limit 1
+      where x.roll_call_id = v.roll_call_id order by (nullif(x.orientation, '') is null), g.rank, x.bloc limit 1
     ) o on true
     where v.member_id = ${memberId} ${filters}`;
   const order = a.ids !== undefined

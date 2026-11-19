@@ -53,6 +53,15 @@ export const TRANSLATION_USD_PER_CLIP_MINUTE = 0.002;
  */
 export const FIND_MORE_USD = 0.01;
 
+/**
+ * "Read in": translating one briefing into one language (`briefing.translate`). Not metered. The worker sends the
+ * lead, every topic summary sentence and key quote as numbered lines, 80 to a call, on the fast model: a briefing of
+ * 10 to 25 topics is 40 to 100 lines (about 2,000 to 5,000 tokens in, the same out plus thinking, say 10,000 output
+ * tokens at most), so about $0.002 to $0.006 at Haiku 5.5 prices ($0.10 / $0.50 per million tokens); rounded up to
+ * $0.01, the Ask ceiling. A language once translated is stored per analysis version and costs nothing to read again.
+ */
+export const BRIEFING_TRANSLATION_USD = 0.01;
+
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
 

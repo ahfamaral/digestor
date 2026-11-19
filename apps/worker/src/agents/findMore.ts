@@ -129,9 +129,16 @@ function windowsText(words: Word[], turns: Range[], durationMs: number, marginMs
  */
 export async function findMoreMoments(
   llm: StructuredLLM,
-  a: { card: ContextCard; transcript: Transcript; topics: Topic[]; personTurns: Range[]; personName: string; existing?: (Range & { granularity: Granularity })[]; confirmed?: boolean },
+  a: {
+    card: ContextCard; transcript: Transcript; topics: Topic[]; personTurns: Range[]; personName: string; existing?: (Range & { granularity: Granularity })[]; confirmed?: boolean;
+    /** The video's own length (`sessions.duration_ms`), when known. */
+    videoDurationMs?: number | null;
+  },
 ): Promise<NewMoment[]> {
-  const { words, durationMs } = a.transcript;
+  const { words } = a.transcript;
+  // AssemblyAI rounds its duration up to the next second: never snap or place a moment past the video's own end (as
+  // `runAnalysis` does).
+  const durationMs = a.videoDurationMs ? Math.min(a.transcript.durationMs, a.videoDurationMs) : a.transcript.durationMs;
   if (words.length === 0 || a.personTurns.length === 0) return [];
   const boundaries = findBoundaries(words, durationMs);
   const types = aiTypes(a.card);

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { isWrittenOnly } from "@digestor/core";
-import type { SpeechHit, SpeechRow } from "@digestor/core/server";
+import type { MemberRow, SpeechHit, SpeechRow } from "@digestor/core/server";
+import { CopyQuote } from "@/components/CopyQuote";
 import { monitorClipEnabled } from "@/lib/monitor/clip";
 import { formatSpeechTime, tm, type MonitorLocale } from "@/lib/monitor/i18n";
 import { deputyHref } from "@/lib/monitor/params";
+import { quoteWithSource, shownExcerpt } from "@/lib/monitor/quote";
 import type { LandingSpeech } from "@/lib/monitor/search";
 import { snippetCuts } from "@/lib/monitor/snippet";
 import { ExternalLink } from "./ExternalLink";
@@ -20,16 +22,29 @@ import { SpeechVideo } from "./SpeechVideo";
  * A topic-search row found only by the search by meaning (none of the searched words) is marked "Close in meaning".
  * A snippet cut mid-text gets "…" where it is cut; a speech with no summary yet says so. `videoNote`: this row's video
  * button carries the note about YouTube's cookies (the list's first video, `firstVideoRow`).
+ * "Copy quote with source" copies what the row shows (the excerpt, or the summary labelled as the Câmara's) with who,
+ * when, the official record and the video link (`quoteWithSource`); `speaker`: who spoke, for a row without `member`
+ * (a deputy's own list).
  */
 export function SpeechItem({
-  locale, speech, showMember, videoNote = true,
-}: { locale: MonitorLocale; speech: SpeechRow | SpeechHit | LandingSpeech; showMember?: boolean; videoNote?: boolean }) {
+  locale, speech, showMember, videoNote = true, speaker,
+}: {
+  locale: MonitorLocale; speech: SpeechRow | SpeechHit | LandingSpeech; showMember?: boolean; videoNote?: boolean;
+  speaker?: Pick<MemberRow, "name" | "party" | "uf">;
+}) {
   const hit = "snippet" in speech ? speech : null;
   const byMeaning = "byMeaning" in speech && speech.byMeaning;
   const party = hit ? (hit.partyThen ?? hit.member.party) : null;
   const uf = hit ? (hit.partyThen ? hit.ufThen : hit.member.uf) : null;
   const changed = hit && hit.partyThen && hit.member.party && hit.member.party !== hit.partyThen ? hit.member.party : null;
   const cuts = hit ? snippetCuts(hit.snippet, speech.summary, speech.text) : null;
+  const who = hit ? { name: hit.member.name, party, uf } : speaker
+    ? { name: speaker.name, party: speech.partyThen ?? speaker.party, uf: speech.partyThen ? (speech.ufThen ?? null) : speaker.uf }
+    : null;
+  const shown = hit ? shownExcerpt(hit.snippet, speech.summary, speech.text) : speech.summary ? { quote: speech.summary, summary: true } : null;
+  const copy = who && shown
+    ? quoteWithSource(locale, { ...shown, ...who, startsAt: speech.startsAt, urlText: speech.urlText, video: speech.video })
+    : null;
   return (
     <li className="grid gap-1.5 px-4 py-3 text-sm">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -84,10 +99,20 @@ export function SpeechItem({
       ) : (
         <p className="text-xs text-muted-foreground">{tm(locale, "speech.noText")}</p>
       )}
-      {speech.urlText && (
-        <ExternalLink href={speech.urlText} className="w-fit text-xs font-medium underline">
-          {tm(locale, "member.officialRecord")}
-        </ExternalLink>
+      {(speech.urlText || copy) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {speech.urlText && (
+            <ExternalLink href={speech.urlText} className="w-fit text-xs font-medium underline">
+              {tm(locale, "member.officialRecord")}
+            </ExternalLink>
+          )}
+          {copy && (
+            <CopyQuote
+              text={copy} label={tm(locale, "copyQuote.button")} copiedLabel={tm(locale, "copyQuote.copied")} failedLabel={tm(locale, "copyQuote.failed")}
+              className="h-7 border-border bg-white px-2.5 text-xs"
+            />
+          )}
+        </div>
       )}
     </li>
   );

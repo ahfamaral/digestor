@@ -107,13 +107,13 @@ async function DeputyData({
   const votePage = { limit: VOTE_PAGE, offset: p.vp * VOTE_PAGE };
   const votesOf = async () =>
     votesSearched
-      ? hybridVotes(db, member.id, { terms: queryTerms(votesSearched), phrase: typedPhrase(votesSearched.q), filters: voteFilters, meaning: votesMeaning, ...votePage })
+      ? hybridVotes(db, member.id, { terms: queryTerms(votesSearched), phrase: typedPhrase(votesSearched.q), filters: voteFilters, meaning: votesMeaning, showMeaning: p.vmeaning, ...votePage })
       : { ...(await listMemberVotes(db, member.id, { ...votePage, ...voteFilters })), meaning: "off" as const, meaningOnly: 0 };
   const billPage = { limit: BILL_PAGE, offset: p.bp * BILL_PAGE };
   const billsOf = async () =>
     billsSearched
       ? hybridBills(db, member.id, {
-          terms: queryTerms(billsSearched), phrase: typedPhrase(billsSearched.q), type: p.btype ?? undefined, year: p.byear ?? undefined, meaning: billsMeaning,
+          terms: queryTerms(billsSearched), phrase: typedPhrase(billsSearched.q), type: p.btype ?? undefined, year: p.byear ?? undefined, meaning: billsMeaning, showMeaning: p.bmeaning,
           ...billPage,
         })
       : {

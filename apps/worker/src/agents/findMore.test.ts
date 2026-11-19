@@ -109,6 +109,17 @@ describe("findMoreMoments", () => {
     expect(await run(false)).toBe("Focus person: Tralli (proposed, not confirmed: don't state it as fact)");
   });
 
+  it("never places a moment past the video's own length (AssemblyAI rounds its duration up)", async () => {
+    const t = transcript(600); // the transcript says 10:00; the video ends at 9:59.6
+    const run = async (videoDurationMs?: number) => {
+      const llm = new FakeLLM([{ moments: [lm(560 * S, 600 * S)] }]);
+      return findMoreMoments(llm, { card, transcript: t, topics, personTurns: [{ startMs: 0, endMs: t.durationMs }], personName: "Tralli", videoDurationMs });
+    };
+    expect((await run())[0]!.endMs).toBeGreaterThan(599_600); // without the video's length, as before
+    const [m] = await run(599_600);
+    expect(m!.endMs).toBeLessThanOrEqual(599_600);
+  });
+
   it("makes no call when the person has no turns", async () => {
     const llm = new FakeLLM([]);
     expect(await findMoreMoments(llm, { card, transcript: transcript(600), topics, personTurns: [], personName: "X" })).toEqual([]);

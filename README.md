@@ -374,5 +374,6 @@ Still open (all small):
 - [docs/capstone/showcase.md](docs/capstone/showcase.md): showcase description, video script and screenshot list (the showcase is optional and not uploaded yet).
 - [docs/capstone/presentation.md](docs/capstone/presentation.md): presentation outline with speaker notes.
 - [docs/capstone/user-test.md](docs/capstone/user-test.md): the planned user test (protocol only; no test has been run yet).
+- [docs/capstone/user-test-script.md](docs/capstone/user-test-script.md): a 20-minute version for one tester, with a printable notes sheet for the agent's accuracy and response times.
 
 The reasoning for using LangGraph in Ask but not in the pipeline is in the Architecture section above.

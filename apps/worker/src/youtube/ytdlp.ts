@@ -54,6 +54,12 @@ export const SLOW_VIDEO_MESSAGE = "YouTube is sending this video too slowly. Ple
 
 const LIVE_MESSAGE = "Live streams can't be processed. Try again after the stream has ended.";
 
+/**
+ * The fallback when yt-dlp's output names no known cause: maybe a network blip or a YouTube 5xx, so the pipeline retries
+ * it (every other message here is YouTube's verdict, which a retry can't change).
+ */
+export const DOWNLOAD_FAILED_MESSAGE = "Couldn't download this video from YouTube.";
+
 export function mapYtDlpError(stderr: string): string {
   if (!/confirm your age/i.test(stderr) && /Sign in to confirm|not a bot/i.test(stderr))
     return "YouTube blocked this download from the server. Download the video yourself and upload the file instead.";
@@ -63,7 +69,7 @@ export function mapYtDlpError(stderr: string): string {
   if (/does not pass filter|due to --break-match-filter/i.test(stderr))
     return LIVE_MESSAGE;
   if (/Video unavailable/i.test(stderr)) return "This video is unavailable or was removed.";
-  return "Couldn't download this video from YouTube.";
+  return DOWNLOAD_FAILED_MESSAGE;
 }
 
 /** MAX_UPLOAD_GB (default 5) also caps what yt-dlp may download. */
@@ -147,7 +153,8 @@ export async function downloadYouTube(
     const metadata = mapInfoJson(JSON.parse(await readFile(infoPath, "utf8")));
     return { videoPath: `${outPathNoExt}.mp4`, metadata };
   } catch (err) {
-    // The session fails here (the step stops): partial files would otherwise wait for retention, 14 days.
+    // The session fails here (the step stops), or a retry downloads again from scratch: partial files would otherwise
+    // wait for retention, 14 days.
     await removeLeftovers(outPathNoExt);
     throw err;
   } finally {

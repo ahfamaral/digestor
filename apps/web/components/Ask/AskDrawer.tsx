@@ -46,6 +46,8 @@ export interface AskDrawerProps {
   language: string | null;
   hasVideo: boolean;
   videoRemoved: boolean;
+  /** Example questions for the empty drawer (from the session's topics and names); a click fills the input. */
+  examples: string[];
 }
 
 /**
@@ -62,12 +64,14 @@ function verifyLine(v: VerifyState): string {
   return v.n === 1 ? t("ask.verify.uncheckedOne") : t("ask.verify.unchecked", { n: v.n });
 }
 
-export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDrawerProps) {
+export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, examples }: AskDrawerProps) {
   const router = useRouter();
   const lang = language ?? undefined;
   const desktop = useDesktop();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listEnd = useRef<HTMLDivElement>(null);
+  /** The question box: focused when the drawer opens (the example buttons above it would take focus otherwise). */
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadError, setLoadError] = useState(false);
@@ -273,6 +277,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
       <Dialog open={open} onOpenChange={onOpenChange} modal={!desktop} disablePointerDismissal={desktop}>
         <DialogContent
           finalFocus={triggerRef}
+          initialFocus={inputRef}
           overlayClassName="lg:hidden"
           showCloseButton
           className="top-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-md lg:border-l lg:border-border lg:shadow-xl"
@@ -310,7 +315,32 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
                 {t("ask.loadFailed")}
               </p>
             )}
-            {messages.length === 0 && !loadError && <p className="text-sm text-muted-foreground">{t("ask.empty")}</p>}
+            {messages.length === 0 && !loadError && (
+              <div>
+                <p className="text-sm text-muted-foreground">{t("ask.empty")}</p>
+                <p id="ask-example-hint" className="sr-only">
+                  {t("ask.exampleHint")}
+                </p>
+                {/* Fills the input, never sends: the question is a paid call, so the journalist sends it. */}
+                <ul className="mt-2 grid gap-1.5">
+                  {examples.map((q) => (
+                    <li key={q}>
+                      <button
+                        type="button"
+                        aria-describedby="ask-example-hint"
+                        onClick={() => {
+                          setText(q);
+                          inputRef.current?.focus();
+                        }}
+                        className="w-full rounded-md border border-border bg-white px-2.5 py-1.5 text-left text-sm break-words text-foreground outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand"
+                      >
+                        {q}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <ol aria-live="polite" aria-relevant="additions" className="grid gap-3">
               {messages.map((m) => (
                 <MessageItem
@@ -337,6 +367,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved }: AskDr
               {t("ask.inputLabel")}
             </label>
             <Textarea
+              ref={inputRef}
               id="ask-input"
               maxLength={MAX_QUESTION}
               value={text}

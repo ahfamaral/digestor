@@ -54,6 +54,7 @@ import { recordFetchFailed, RecordStepError, promptCard, runRecordStep } from ".
 import type { BurnTrackJob, RenderClipJob } from "@digestor/core";
 import { runPipeline, type PipelineDeps } from "./pipeline/run.js";
 import { TranscriptionError } from "./transcribe/assemblyai.js";
+import { YouTubeDownloadError } from "./youtube/ytdlp.js";
 
 import { MissingApiKeyError, VideoRemovedError } from "./errors.js";
 import { fetchRetryLine, insidePublishWindow } from "./records/connector.js";
@@ -80,6 +81,11 @@ export function failureMessage(err: unknown): string {
     return TRANSCRIPTION_FAILED;
   }
   if (err instanceof MissingApiKeyError) return err.message;
+  if (err instanceof YouTubeDownloadError) {
+    // A download that failed for no known cause on every attempt (`download` in run.ts); the message is friendly.
+    console.error(`[jobs] YouTube download failed: ${err.stderr}`);
+    return err.message;
+  }
   console.error(err);
   return "Something went wrong while processing this video. Please try again.";
 }
@@ -392,9 +398,9 @@ export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: 
   if (!(await claimFindMore(db, row.id)) && !(attempt.retryCount > 0 && row.status === "running")) return;
   try {
     const version = await getAnalysisVersion(db, row.analysisId);
-    const [transcript, stored, persons] = version
-      ? await Promise.all([getTranscript(db, version.sessionId), getContextCard(db, version.sessionId), getPersons(db, [row.personId])])
-      : [null, null, []];
+    const [transcript, stored, persons, session] = version
+      ? await Promise.all([getTranscript(db, version.sessionId), getContextCard(db, version.sessionId), getPersons(db, [row.personId]), getSession(db, version.sessionId)])
+      : [null, null, [], null];
     const profile = ProfileIdSchema.safeParse(version?.profile);
     const person = persons[0];
     if (!version || !transcript || !stored || !profile.success || !person) {
@@ -412,6 +418,7 @@ export async function handleFindMore(deps: { db: Db; llm: StructuredLLM }, job: 
         : await findMoreMoments(llm, {
             card, transcript, topics: await getAnalysisTopics(db, version.id), personTurns: turns, personName: person.displayName, confirmed: personConfirmed(transcript.words, atts, person.id),
             existing: await listShownRanges(db, { analysisId: row.analysisId, ownerId: row.ownerId, requestId: row.id }),
+            videoDurationMs: session?.durationMs,
           });
     await finishFindMore(db, row.id, found);
   } catch (err) {

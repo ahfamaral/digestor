@@ -399,6 +399,14 @@ export const RECORD_ALL_REJECTED = "No speech in the record was kept for this vi
 export const recordNoMatch = (ref: RecordRef, date: string) =>
   `None of the speeches in the ${CHAMBERS[ref.chamber].shortName} record of ${formatRecordDate(ref.chamber, date)} match this video. ${"eventId" in ref ? "Check the link." : "Check the date."}`;
 
+/**
+ * The pipeline's record step takes over a `running` row only after it has been untouched this long (every status change
+ * bumps `updated_at`): a fresher claim most likely belongs to a live `session.names` job, and two fetch+align runs at once
+ * would double the house API calls. A job's run normally ends well within that; a row whose run died is failed by the
+ * sweep (`sweepStaleJobRows`) or taken over by a later step once it is this old.
+ */
+export const RECORD_TAKEOVER_MS = 10 * 60_000;
+
 /** A transient failure of a claimed run, carrying the ref it claimed so the caller fails only that claim. */
 export class RecordStepError extends Error {
   constructor(readonly original: unknown, readonly ref: RecordRef) {
@@ -419,14 +427,15 @@ export type RecordStepDeps = Pick<PipelineDeps, "db" | "storage"> & {
 /**
  * Matches the session's linked official record against its transcript (the `record` source). One code path for the
  * pipeline step (`match_record`) and the `session.names` job. Claims the row (`pending` → `running`; with `retrying` a
- * `running` row is taken over, since a retry finds its own claim), fetches the speeches, aligns them to the voice turns,
+ * `running` row is taken over, since a retry finds its own claim; with `retrying: "stale"`, the pipeline's, only one untouched
+ * for `RECORD_TAKEOVER_MS`, since a fresher one is most likely a live `session.names` job's), fetches the speeches, aligns them to the voice turns,
  * upserts the senators or deputies and replaces only the `record` rows (human rows are never touched and always win). Stores the
  * raw payload at `<sessionId>/names/record.json`, then marks the row `matched`.
  * - no speeches for the date or event: the row is `failed` with a friendly line and it returns (a retry can't help);
  * - any other error (5xx, network): thrown, the row stays `running` so the caller decides (the job retries, then fails it).
  * Without a linked record, with a row that isn't claimable, or before the transcript exists, it does nothing.
  */
-export async function runRecordStep(deps: RecordStepDeps, sessionId: string, opts: { retrying?: boolean } = {}): Promise<void> {
+export async function runRecordStep(deps: RecordStepDeps, sessionId: string, opts: { retrying?: boolean | "stale" } = {}): Promise<void> {
   const { db } = deps;
   const f = deps.fetch ?? fetch;
   const record = await claimRecordFetch(db, sessionId);
@@ -434,6 +443,11 @@ export async function runRecordStep(deps: RecordStepDeps, sessionId: string, opt
     if (!opts.retrying) return;
     const current = await getSessionRecord(db, sessionId);
     if (current?.status !== "running") return;
+    if (opts.retrying === "stale" && Date.now() - current.updatedAt.getTime() < RECORD_TAKEOVER_MS) {
+      // Most likely a live `session.names` job's claim: leave it to the job (it finishes the row, or the sweep fails it).
+      console.log(`names: session ${sessionId}: the record is being matched by another run; leaving it to that run`);
+      return;
+    }
     return runClaimedOrThrow(deps, sessionId, current.ref, f, { linkedAt: current.linkedAt });
   }
   return runClaimedOrThrow(deps, sessionId, record.ref, f, { linkedAt: record.linkedAt });
@@ -551,7 +565,8 @@ export const matchRecordNode =
   (deps: PipelineDeps) =>
   async (s: { sessionId: string }): Promise<Record<string, never>> => {
     try {
-      await runRecordStep(deps, s.sessionId, { retrying: true }); // a crashed earlier attempt may have left the row running
+      // A crashed earlier attempt may have left the row running; a fresh claim is a live session.names job's: leave it.
+      await runRecordStep(deps, s.sessionId, { retrying: "stale" });
     } catch (err) {
       console.error(`match_record: could not match the record of session ${s.sessionId}; continuing without it`, err);
       const ref = err instanceof RecordStepError ? err.ref : undefined;

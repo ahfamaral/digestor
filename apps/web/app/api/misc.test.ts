@@ -11,7 +11,7 @@ import { GET as getAsk, POST as postAsk } from "./sessions/[id]/ask/route";
 import { POST as postAction } from "./ask-actions/[id]/route";
 import { GET as getTranslationRoute, POST as postTranslation } from "./analyses/[id]/translations/route";
 import { POST as reanalyze } from "./sessions/[id]/reanalyze/route";
-import { GET as getReports, POST as postReport } from "./reports/route";
+import { POST as postReport } from "./reports/route";
 
 let h: Harness;
 beforeAll(() => {
@@ -377,9 +377,7 @@ describe("problem reports", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ sessionId, targetKind: "moment", targetId: moments[0]!.id, note: "Wrong speaker", ownerId: OWNER_ID });
     expect((await postReport(req({ sessionId, targetKind: "briefing", targetId: "x" }))).status).toBe(201);
-    expect((await listProblemReports(h.db, OWNER_ID)).filter((r) => r.sessionId === sessionId)).toHaveLength(2);
-    const list = await (await getReports()).json();
-    expect(list.reports.filter((r: { sessionId: string }) => r.sessionId === sessionId).map((r: { targetKind: string }) => r.targetKind)).toEqual(["briefing", "moment"]);
+    expect((await listProblemReports(h.db, OWNER_ID)).filter((r) => r.sessionId === sessionId).map((r) => r.targetKind)).toEqual(["briefing", "moment"]);
   });
 
   it("reports: accepts targetKind attribution", async () => {

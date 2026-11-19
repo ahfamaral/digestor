@@ -1068,7 +1068,8 @@ async function advance(deps: AskDeps, graph: AskGraph, checkpointer: BaseCheckpo
 /**
  * Answers the pending assistant message `messageId`: claims it (`pending` → `running`), then runs the Ask graph
  * (askGraph.ts) from the conversation so far. A message already claimed or finished (a duplicate job) is left alone;
- * one left `running` by a crashed attempt is failed. A turn that would change clips or selections pauses the answer
+ * one left `running` by a crashed attempt is failed; one a failed attempt put back to `pending` continues from its
+ * thread's last checkpoint when that thread wrote nothing. A turn that would change clips or selections pauses the answer
  * for approval (`waiting`); `resumeAsk` continues it. Errors are thrown as AskRunError.
  */
 export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
@@ -1094,8 +1095,17 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
     return;
   }
   const checkpointer = deps.checkpointer ?? localSaver;
-  await checkpointer.deleteThread(msg.id); // a retry after a failed attempt starts from the question again
   const graph = buildAskGraph(deps, checkpointer);
+  // A retry after a transient error (the job put the answer back to `pending`) continues from the last checkpoint, as a
+  // resume retry does, so the model turns and searches already done aren't bought again. Only a thread that wrote nothing
+  // and isn't paused: anything else starts from the question again.
+  const state = await graph.getState(threadConfig(msg.id));
+  if (state.next.length > 0 && interruptedBy(state) === null && (state.values as { wrote?: boolean }).wrote !== true) {
+    console.log(`[ask] message ${messageId}: continuing from its last checkpoint (${state.next.join(", ")})`);
+    await advance(deps, graph, checkpointer, msg.id, null);
+    return;
+  }
+  await checkpointer.deleteThread(msg.id);
   await advance(deps, graph, checkpointer, msg.id, {
     messages: history, records: [], final: null, steps: 0, directChanges: 0, wrote: false, approval: null,
     finalRaw: undefined, verifyRounds: 0, lastCheck: null, settled: false,

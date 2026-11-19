@@ -20,11 +20,19 @@ import { SpeechItem } from "./SpeechItem";
 import { VoteRow } from "./VoteRow";
 import { WordHeat } from "./WordHeat";
 
+// The copy button renders its text as an attribute, so the markup shows what would be copied.
+vi.mock("@/components/CopyQuote", () => ({
+  CopyQuote: ({ text, label }: { text: string; label: string }) => <button type="button" data-copy={text}>{label}</button>,
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
   usePathname: () => "/monitor",
   useSearchParams: () => new URLSearchParams(),
 }));
+
+/** The texts the copy buttons in some markup would copy. */
+const copied = (html: string) => [...html.matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1]!.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&"));
 
 const member = { id: 1, externalId: 999, name: "Suplente Teste", party: "PT", uf: "SP", photoUrl: null, inOffice: false };
 const emptyWorkspace = {
@@ -276,6 +284,29 @@ describe("monitor components", () => {
     expect(html).toContain('role="combobox"');
     expect(html).not.toContain("No speeches match.");
     expect(html).not.toContain("Speeches</h2>");
+  });
+
+  it("speech rows copy what they show with who said it: the excerpt on a search, else the summary labelled as the Câmara's", () => {
+    const row = {
+      id: 3, startsAt: "2026-02-24T19:08", phase: "Breves Comunicações", kind: null, summary: "A Deputada denunciou.", text: "A SRA. X - Presidente, a saúde pública está em crise.",
+      urlText: "https://www.camara.leg.br/x", textFile: false, video: { videoId: "abcdefghijk", startS: 61, endS: 120 }, partyThen: "PSOL", ufThen: "RS",
+    };
+    // a deputy's own list: the speaker comes from the page, with the party on the day
+    const own = renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} speaker={{ name: "Fernanda Melchionna", party: "PT", uf: "SP" }} /></ul>);
+    expect(copied(own)).toEqual([[
+      "Câmara summary: “A Deputada denunciou.”",
+      "Fernanda Melchionna (PSOL-RS), Feb 24, 2026, 7:08 PM, Brasília time",
+      "Official record: https://www.camara.leg.br/x",
+      "Video: https://www.youtube.com/watch?v=abcdefghijk&t=61s",
+    ].join("\n")]);
+    // a topic search row: the excerpt as shown (matches unmarked, cut marked)
+    const hit = { ...row, member: { externalId: 1, name: "X", party: "PL", uf: "RS" }, snippet: "a \u0001saúde\u0002 pública", partyThen: null, ufThen: null, video: null, urlText: null };
+    expect(copied(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={hit} showMember /></ul>))).toEqual([
+      "“… a saúde pública …”\nX (PL-RS), Feb 24, 2026, 7:08 PM, Brasília time",
+    ]);
+    // nothing shown to quote, or no speaker known: no button
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={{ ...row, summary: "" }} speaker={{ name: "F", party: null, uf: null }} /></ul>)).not.toContain("Copy quote");
+    expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} /></ul>)).not.toContain("Copy quote");
   });
 
   it("a speech's summary is labelled as the Câmara's and links to its official text", () => {
@@ -717,6 +748,38 @@ describe("monitor components", () => {
     expect(used).not.toContain("are about the topic");
   });
 
+  it("vote and bill text boxes with no word match: the closest by meaning are held back behind a link", () => {
+    const params = parseDeputy({ vq: "armas", bq: "armas", q: "saúde" });
+    const view = (locale: "en" | "pt-BR", hidden: number) => renderToStaticMarkup(
+      <DeputyView
+        locale={locale} member={member} params={params} searched={null} speeches={{ total: 0, rows: [] }}
+        votes={{ total: 0, all: 125, meaning: "used", meaningOnly: 0, meaningHidden: hidden, rows: [] }}
+        {...emptyWorkspace}
+        bills={{ total: 0, all: 9, byType: [], meaning: "used", meaningOnly: 0, meaningHidden: hidden, rows: [] }}
+      />,
+    );
+    const html = view("en", 10);
+    const votes = html.slice(html.indexOf('id="votes"'));
+    const bills = html.slice(html.indexOf('id="bills"'), html.indexOf('id="votes"'));
+    expect(votes).toContain("No vote uses these words.");
+    expect(votes).toContain("Show the 10 closest by meaning");
+    expect(votes).not.toContain("Closest by meaning (may be unrelated)");
+    expect(votes).not.toContain("No votes match these filters.");
+    expect(votes).not.toContain("Closest matches first.");
+    // the link opens them, keeping every other section's state; the bills link likewise
+    const vHref = /href="([^"]+)"[^>]*>Show the 10 closest/.exec(votes)![1]!.replace(/&amp;/g, "&");
+    expect(vHref.endsWith("#votes")).toBe(true);
+    expect(parseDeputy(Object.fromEntries(new URLSearchParams(vHref.split("?")[1]!.split("#")[0])))).toMatchObject({ vq: "armas", bq: "armas", q: "saúde", vmeaning: true, bmeaning: false });
+    expect(bills).toContain("No bill uses these words.");
+    const bHref = /href="([^"]+)"[^>]*>Show the 10 closest/.exec(bills)![1]!.replace(/&amp;/g, "&");
+    expect(parseDeputy(Object.fromEntries(new URLSearchParams(bHref.split("?")[1]!.split("#")[0])))).toMatchObject({ bmeaning: true, vmeaning: false });
+    expect(view("en", 1)).toContain("Show the closest by meaning");
+    const pt = view("pt-BR", 3);
+    expect(pt).toContain("Nenhuma votação usa estas palavras.");
+    expect(pt).toContain("Nenhuma proposição usa estas palavras.");
+    expect(pt).toContain("Mostrar as 3 mais próximas pelo sentido");
+  });
+
   it("a bloc guidance names the bloc as the Câmara lists it", () => {
     const v = { rollCallId: "1-1", date: "2026-03-10", description: "Aprovado.", billId: null, billLabel: null, billSummary: "", vote: "Não", guidance: "Sim" };
     const html = renderToStaticMarkup(<ul><VoteRow locale="en" vote={{ ...v, guidanceFrom: "UNIÃO, PP, PSD, REPUBLICANOS, MDB, Federação PSDB CIDADANIA, PODE" }} /></ul>);
@@ -888,6 +951,21 @@ describe("Ask the record", () => {
     const pt = renderToStaticMarkup(<AskRecordView locale="pt-BR" params={params} result={{ ok: true, passages: [{ speech, sentences: ["Frase."] }] }} />);
     expect(pt).toContain("Nada aqui foi escrito por IA.");
     expect(pt).toContain("Ver a partir de 1:18:42");
+  });
+
+  it("each passage copies its sentences with who, when, the official record and the video link", () => {
+    const html = renderToStaticMarkup(
+      <AskRecordView locale="en" params={params} result={{ ok: true, passages: [{ speech, sentences: ["O preço da comida subiu.", "A cesta básica ficou cara."] }] }} />,
+    );
+    expect(html).toContain(">Copy quote with source</button>");
+    expect(copied(html)).toEqual([[
+      "“O preço da comida subiu. A cesta básica ficou cara.”",
+      "Fernanda Melchionna (PSOL-RS), Apr 8, 2026, 11:28 AM, Brasília time",
+      "Official record: https://www.camara.leg.br/notas?x=1",
+      "Video: https://www.youtube.com/watch?v=abcdefghijk&t=4722s",
+    ].join("\n")]);
+    const pt = renderToStaticMarkup(<AskRecordView locale="pt-BR" params={params} result={{ ok: true, passages: [{ speech, sentences: ["Frase."] }] }} />);
+    expect(pt).toContain(">Copiar citação com a fonte</button>");
   });
 
   it("the worker down offers the word search with the question; nothing found says so", () => {

@@ -264,7 +264,9 @@ describe("a deputy's vote and bill text boxes with search by meaning", () => {
     // the other filters narrow the ranked votes too
     const april = await voteMeaning(db, a, { from: "2026-04" }, "pensions", semantic);
     expect(semantic).toHaveBeenLastCalledWith("rollCalls", "pensions", ["4-1"]);
-    const r2 = await hybridVotes(db, a, { terms: ["aposentadoria"], filters: { from: "2026-04" }, meaning: april, ...page });
+    // (no word match in April: held back until asked for)
+    expect(await hybridVotes(db, a, { terms: ["aposentadoria"], filters: { from: "2026-04" }, meaning: april, ...page })).toMatchObject({ total: 0, meaningHidden: 1 });
+    const r2 = await hybridVotes(db, a, { terms: ["aposentadoria"], filters: { from: "2026-04" }, meaning: april, showMeaning: true, ...page });
     expect(r2.rows.map((v) => v.rollCallId)).toEqual(["4-1"]);
     // a meaning hit that doesn't pass the filters never shows
     const r3 = await hybridVotes(db, a, { terms: ["aposentadoria"], filters: { vote: "Sim" }, meaning, ...page });
@@ -293,6 +295,30 @@ describe("a deputy's vote and bill text boxes with search by meaning", () => {
     const r = await hybridVotes(db, a, { terms: ["aposentadoria"], phrase: "aposentadoria", filters: {}, meaning: null, ...page });
     expect(r).toMatchObject({ meaning: "words", meaningOnly: 0, total: 2 });
     expect(r.rows.map((v) => v.rollCallId)).toEqual(["1-1", "4-1"]); // best match first, not newest
+  });
+
+  it("no word match: the rows only meaning found are held back (counted in `meaningHidden`) until asked for (`showMeaning`)", async () => {
+    const a = await setup();
+    const votesSemantic = vi.fn<RecordSemantic>(async (_kind, _q, ids) => ({
+      ok: true, hits: [{ id: "2-1", score: 0.9 }, { id: "4-1", score: 0.89 }].filter((h) => ids.includes(h.id)),
+    }));
+    const vm = await voteMeaning(db, a, {}, "armas", votesSemantic);
+    const held = await hybridVotes(db, a, { terms: ["armas"], filters: {}, meaning: vm, ...page });
+    expect(held).toMatchObject({ meaning: "used", total: 0, all: 4, meaningOnly: 0, meaningHidden: 2, rows: [] });
+    const shown = await hybridVotes(db, a, { terms: ["armas"], filters: {}, meaning: vm, showMeaning: true, ...page });
+    expect(shown).toMatchObject({ total: 2, meaningOnly: 2, meaningHidden: 0 });
+    expect(shown.rows.map((v) => [v.rollCallId, v.byMeaning])).toEqual([["2-1", true], ["4-1", true]]);
+    // with word matches nothing is held back, asked for or not
+    expect(await hybridVotes(db, a, { terms: ["aposentadoria"], filters: {}, meaning: vm, ...page })).toMatchObject({ total: 3, meaningOnly: 2, meaningHidden: 0 });
+
+    const bm = await billMeaning(db, a, {}, "armas", vi.fn<RecordSemantic>(async () => ({ ok: true, hits: [{ id: "11", score: 0.88 }, { id: "12", score: 0.87 }] })));
+    const bheld = await hybridBills(db, a, { terms: ["armas"], meaning: bm, ...page });
+    expect(bheld).toMatchObject({ total: 0, meaningOnly: 0, meaningHidden: 2, rows: [] });
+    // the type filter counts what would be shown
+    expect(await hybridBills(db, a, { terms: ["armas"], type: "REQ", meaning: bm, ...page })).toMatchObject({ total: 0, meaningHidden: 1 });
+    const bshown = await hybridBills(db, a, { terms: ["armas"], meaning: bm, showMeaning: true, ...page });
+    expect(bshown).toMatchObject({ total: 2, meaningOnly: 2, meaningHidden: 0 });
+    expect(bshown.rows.map((b) => b.id)).toEqual([11, 12]);
   });
 
   it("bills: fused the same way; the type filter and the counts by type follow the fused list", async () => {

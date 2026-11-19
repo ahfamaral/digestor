@@ -6,7 +6,7 @@ import {
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
-import { GET as getNames, POST as postNames } from "./sessions/[id]/names/route";
+import { POST as postNames } from "./sessions/[id]/names/route";
 import { GET as getPersons } from "./persons/route";
 import { namesChangedSince } from "@/lib/namesServer";
 
@@ -62,8 +62,7 @@ describe("names", () => {
     body = await res.json();
     expect(body.attributions.find((a: { startMs: number | null }) => a.startMs === 6000)).toMatchObject({ personId: null, status: "anonymous" });
 
-    const got = await (await getNames(new Request("http://localhost/x"), ctx(sessionId))).json();
-    expect(got.attributions).toHaveLength(3);
+    expect(body.attributions).toHaveLength(3);
 
     // confirm: a proposed whole-voice name becomes a human row
     const other = await createCustomPerson(h.db, { displayName: "Bia Lima", createdBy: OWNER_ID });
@@ -245,7 +244,6 @@ describe("names", () => {
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({ error: "Session not found." });
     }
-    expect((await getNames(new Request("http://localhost/x"), ctx("nope"))).status).toBe(404);
   });
 });
 

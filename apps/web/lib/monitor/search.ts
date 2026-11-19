@@ -171,40 +171,54 @@ const meaningState = (m: RecordSearchResult | null): RecordMeaning => (!m ? "wor
  * The votes text box: the word matches, best first (RRF lifts the ones the search by meaning found too), then the
  * closest votes only the meaning search found (`fuseRecords`), every other filter applied to both, paged over that list.
  * Those rows are marked `byMeaning` and counted apart (`meaningOnly`): they may not be about the topic, so they never
- * count as matches. `meaning` null (exact words) or a worker that didn't answer: the word matches only, best first.
+ * count as matches. With no word match at all they are held back (`meaningHidden`: how many) until asked for
+ * (`showMeaning`, the page's `vmeaning=1`). `meaning` null (exact words) or a worker that didn't answer: the word
+ * matches only, best first.
  */
 export async function hybridVotes(
   db: Db, memberId: number,
-  a: { terms: string[]; phrase?: string; filters: Omit<MemberVoteFilters, "q">; meaning: RecordSearchResult | null; limit: number; offset: number },
-): Promise<Omit<Awaited<ReturnType<typeof listMemberVotes>>, "rows"> & { rows: DeputyVote[]; meaning: RecordMeaning; meaningOnly: number }> {
+  a: {
+    terms: string[]; phrase?: string; filters: Omit<MemberVoteFilters, "q">; meaning: RecordSearchResult | null; showMeaning?: boolean;
+    limit: number; offset: number;
+  },
+): Promise<Omit<Awaited<ReturnType<typeof listMemberVotes>>, "rows"> & { rows: DeputyVote[]; meaning: RecordMeaning; meaningOnly: number; meaningHidden: number }> {
   const words = await memberVoteIds(db, memberId, { ...a.filters, q: a.terms, phrase: a.phrase });
   const { list, meaningOnly } = a.meaning?.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
-  const r = await listMemberVotes(db, memberId, { ...a.filters, ids: list, limit: a.limit, offset: a.offset });
+  const hide = words.length === 0 && !a.showMeaning;
+  const r = await listMemberVotes(db, memberId, { ...a.filters, ids: hide ? [] : list, limit: a.limit, offset: a.offset });
   const only = new Set(meaningOnly);
   return {
     ...r, rows: r.rows.map((v) => ({ ...v, byMeaning: only.has(v.rollCallId) })), meaning: meaningState(a.meaning),
-    meaningOnly: r.total - words.length,
+    meaningOnly: r.total - words.length, meaningHidden: hide ? meaningOnly.length : 0,
   };
 }
 
-/** The bills text box, as `hybridVotes`; the type filter and the counts by type cover the whole list shown. */
+/**
+ * The bills text box, as `hybridVotes` (`showMeaning`: the page's `bmeaning=1`); the type filter and the counts by type
+ * cover the whole list shown.
+ */
 export async function hybridBills(
   db: Db, memberId: number,
-  a: { terms: string[]; phrase?: string; type?: string; year?: number; meaning: RecordSearchResult | null; limit: number; offset: number },
-): Promise<Omit<Awaited<ReturnType<typeof listMemberBills>>, "rows"> & { rows: DeputyBill[]; meaning: RecordMeaning; meaningOnly: number }> {
+  a: {
+    terms: string[]; phrase?: string; type?: string; year?: number; meaning: RecordSearchResult | null; showMeaning?: boolean;
+    limit: number; offset: number;
+  },
+): Promise<Omit<Awaited<ReturnType<typeof listMemberBills>>, "rows"> & { rows: DeputyBill[]; meaning: RecordMeaning; meaningOnly: number; meaningHidden: number }> {
   const words = (await memberBillIds(db, memberId, { q: a.terms, phrase: a.phrase, year: a.year })).map(String);
   const { list, meaningOnly } = a.meaning?.ok ? fuseRecords(words, a.meaning.hits) : { list: words, meaningOnly: [] };
+  const hide = words.length === 0 && !a.showMeaning;
   const filters = { type: a.type, year: a.year };
   const [r, only] = await Promise.all([
-    listMemberBills(db, memberId, { ...filters, ids: list.map(Number), limit: a.limit, offset: a.offset }),
+    listMemberBills(db, memberId, { ...filters, ids: hide ? [] : list.map(Number), limit: a.limit, offset: a.offset }),
     meaningOnly.length ? listMemberBills(db, memberId, { ...filters, ids: meaningOnly.map(Number), limit: 0 }) : null,
   ]);
   const marked = new Set(meaningOnly);
+  const n = only?.total ?? 0;
   return {
-    ...r, rows: r.rows.map((b) => ({ ...b, byMeaning: marked.has(String(b.id)) })), meaning: meaningState(a.meaning), meaningOnly: only?.total ?? 0,
+    ...r, rows: r.rows.map((b) => ({ ...b, byMeaning: marked.has(String(b.id)) })), meaning: meaningState(a.meaning),
+    meaningOnly: hide ? 0 : n, meaningHidden: hide ? n : 0,
   };
 }
-
 
 export const deputyUrl = (externalId: number) => `https://www.camara.leg.br/deputados/${externalId}`;
 export const billUrl = (billId: number) => `https://www.camara.leg.br/propostas-legislativas/${billId}`;

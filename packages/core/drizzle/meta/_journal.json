@@ -239,6 +239,13 @@
       "when": 1794830648717,
       "tag": "0033_monitor_bill_main",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795079320952,
+      "tag": "0034_clip_events_ask_actions_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ANALYSIS_USD_PER_HOUR, ASK_USD_PER_QUESTION, CAPTIONS_USD, FIND_MORE_USD, LIBRARY_ASK_USD_PER_QUESTION, PROCESSING_USD_PER_HOUR,
+  ANALYSIS_USD_PER_HOUR, ASK_USD_PER_QUESTION, BRIEFING_TRANSLATION_USD, CAPTIONS_USD, FIND_MORE_USD, LIBRARY_ASK_USD_PER_QUESTION, PROCESSING_USD_PER_HOUR,
   TRANSCRIPTION_USD_PER_HOUR, TRANSLATION_USD_PER_CLIP_MINUTE, estimateCostUsd, estimateReanalysisUsd, estimateTranslationUsd, priceKey,
   recordedCost, sessionSpending, totalSpending, usdAmount,
 } from "./cost.ts";
@@ -31,6 +31,7 @@ describe("rates", () => {
     expect(LIBRARY_ASK_USD_PER_QUESTION).toBe(0.02);
     expect(TRANSLATION_USD_PER_CLIP_MINUTE).toBe(0.002);
     expect(FIND_MORE_USD).toBe(0.01);
+    expect(BRIEFING_TRANSLATION_USD).toBe(0.01);
   });
   it("prices a re-analysis as analysis only (no new transcription)", () => {
     expect(estimateReanalysisUsd(2 * 3_600_000)).toBeCloseTo(0.14);

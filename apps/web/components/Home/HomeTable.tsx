@@ -107,7 +107,7 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
   };
 
   const links = (r: HomeRow) => (
-    <span className="flex flex-wrap gap-1 md:flex-nowrap">
+    <span className="flex flex-wrap gap-1 @min-[60rem]:flex-nowrap">
       {goTo(r).map((g) =>
         g.href ? (
           <Link key={g.step} href={g.href} className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2 text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
@@ -215,9 +215,11 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
           </button>
         </div>
       ) : (
-        <>
-          {/* Wide screens: a table. It scrolls sideways inside its own box when the page narrows (the Ask across videos panel). */}
-          <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-border bg-white md:block">
+        // Table or stacked rows by the width this list gets, not the window's: the "Ask across videos" panel takes 28 rem
+        // beside the page, and a table squeezed below its natural width (about 60 rem) scrolled sideways.
+        <div className="@container">
+          {/* Wide enough: a table (overflow-x-auto is only a last resort for an unusually wide cell). */}
+          <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-border bg-white @min-[60rem]:block">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs whitespace-nowrap text-muted-foreground">
               <tr>
@@ -261,8 +263,8 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
           </table>
           </div>
 
-          {/* Narrow screens: stacked rows. */}
-          <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-white md:hidden">
+          {/* Narrower: stacked rows. */}
+          <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-white @min-[60rem]:hidden">
             {shown.map((r) => (
               <li key={r.id} className="flex flex-col gap-1.5 px-3 py-3">
                 <div className="flex items-start justify-between gap-2">
@@ -283,7 +285,7 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
               </li>
             ))}
           </ul>
-        </>
+        </div>
       )}
       {rows.length >= limit && <p className="text-center text-xs text-muted-foreground">{t("home.capped", { n: limit })}</p>}
     </div>

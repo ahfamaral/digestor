@@ -36,7 +36,7 @@ import { releaseAudio } from "./audio.js";
 import { importContextNames, lockedParticipants, matchRecordNode, nameSpeakersNode, namedVoices } from "./naming.js";
 import type { StructuredLLM } from "../llm/structured.js";
 import { TranscriptionError, type Transcriber } from "../transcribe/assemblyai.js";
-import { YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
+import { DOWNLOAD_FAILED_MESSAGE, YouTubeDownloadError, type downloadYouTube } from "../youtube/ytdlp.js";
 
 export type PipelineDeps = {
   db: Db;
@@ -69,7 +69,6 @@ const NO_SPEECH = "No speech was detected in this video.";
 const UNREADABLE_VIDEO = "We couldn't read this video file.";
 /** AssemblyAI's error (with language_detection on) for audio without speech: "…cannot be performed on files with no spoken audio". */
 const NO_SPOKEN_AUDIO = /no spoken audio/i;
-const DOWNLOAD_FAILED = "Couldn't download this video from YouTube.";
 /** Evidence marker for an event type the user picked; such an event type is locked in later rounds. */
 const USER_SET_EVIDENCE = "set by user";
 /** Question rounds: the first round plus at most one follow-up. */
@@ -156,9 +155,13 @@ const download: Step = async (deps, s) => {
   const { db, storage } = deps;
   await setStage(db, s.sessionId, "downloading", 2);
   const session = await requireSession(db, s.sessionId);
+  if (!session.sourceUrl) {
+    console.error(`[pipeline] YouTube session ${s.sessionId} has no source URL`);
+    await setStage(db, s.sessionId, "failed", 2, DOWNLOAD_FAILED_MESSAGE);
+    return STOP;
+  }
   let result: Awaited<ReturnType<typeof downloadYouTube>>;
   try {
-    if (!session.sourceUrl) throw new Error("YouTube session has no source URL");
     // A speech clipped from the monitor: only its part of the video (times in the session are relative to it).
     const section = session.sourceStartMs !== null && session.sourceEndMs !== null
       ? { startS: Math.floor(session.sourceStartMs / 1000), endS: Math.ceil(session.sourceEndMs / 1000) }
@@ -166,13 +169,15 @@ const download: Step = async (deps, s) => {
     // yt-dlp appends the extension (.mp4).
     result = await deps.youtube.downloadYouTube(session.sourceUrl, storage.resolve(storage.key(s.sessionId, "original")), undefined, section);
   } catch (err) {
-    if (err instanceof YouTubeDownloadError) {
+    // YouTube's verdict (private, age-restricted, live, too large, unavailable, blocked, too slow): a retry can't change it.
+    if (err instanceof YouTubeDownloadError && err.message !== DOWNLOAD_FAILED_MESSAGE) {
       await setStage(db, s.sessionId, "failed", 2, err.message);
-    } else {
-      console.error(`[pipeline] YouTube download failed for session ${s.sessionId}:`, err);
-      await setStage(db, s.sessionId, "failed", 2, DOWNLOAD_FAILED);
+      return STOP;
     }
-    return STOP;
+    // No known cause (a network blip, a YouTube 5xx, an unexpected error): thrown for pg-boss to retry (nothing paid has
+    // run yet); the final attempt fails the session with DOWNLOAD_FAILED_MESSAGE (`failureMessage` in jobs.ts).
+    if (err instanceof YouTubeDownloadError) throw err;
+    throw new YouTubeDownloadError(DOWNLOAD_FAILED_MESSAGE, err instanceof Error ? (err.stack ?? err.message) : String(err));
   }
   await updateSession(db, s.sessionId, {
     originalKey: storage.key(s.sessionId, path.basename(result.videoPath)),

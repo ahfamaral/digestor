@@ -986,6 +986,28 @@ describe("handleAsk", () => {
     err.mockRestore();
   });
 
+  it("a retry after a transient error at step 2 continues from the checkpoint: step 1 is not bought again", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "What did Fulano say?");
+    const llm = new FakeToolLLM([
+      toolStep(call("list_speeches", { person: "Fulano de Tal" })),
+      () => { throw new Error("529 overloaded"); },
+      answer(NOT_IN_DATA),
+    ]);
+    const deps = depsFor(llm);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await expect(handleAsk(deps, { messageId: msg.id }, FIRST)).rejects.toThrow("529 overloaded");
+    expect((await getAskMessage(db, msg.id))!.status).toBe("pending");
+    await handleAsk(deps, { messageId: msg.id }, { retryCount: 1, retryLimit: 2 });
+    err.mockRestore();
+    log.mockRestore();
+    expect(llm.calls).toHaveLength(3); // step 1 once, the failed step 2, its retry
+    expect(toolResults(llm.calls[2]!)).toEqual(["No one by that name speaks in this session."]); // step 1's result, not re-run
+    expect(await getAskMessage(db, msg.id)).toMatchObject({ status: "done", text: NOT_IN_DATA });
+    expect(await deps.checkpointer.getTuple({ configurable: { thread_id: msg.id } })).toBeUndefined();
+  });
+
   it("a missing key fails the message at once without a retry", async () => {
     const { s } = await seed();
     const msg = await ask(s.id, "Q");

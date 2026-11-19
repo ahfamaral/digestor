@@ -9,6 +9,8 @@ import { PersonalMarker } from "./PersonalMarker";
 import { SpeakerName, SpeakerSep } from "@/components/Names/SpeakerName";
 import type { NamesData, Voice } from "@/lib/names";
 import { insideApproved } from "@/lib/briefingData";
+import { CopyQuote } from "@/components/CopyQuote";
+import { quoteSpeakers, quoteWithSource, sourceLink } from "@/lib/quoteSource";
 import type { MomentView } from "@/lib/briefingFilters";
 import { cn } from "@/lib/utils";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -44,6 +46,8 @@ export interface RowContext {
   names: NamesData;
   voices: Record<string, Voice[]>;
   sensitive: boolean;
+  /** The video's title and source, for "Copy quote with source". */
+  quoteSource: { title: string } & Parameters<typeof sourceLink>[0];
   errors: Record<string, string>;
   /** Approved moment ids and the shown tree, for "Inside an approved exchange". */
   approvedIds: ReadonlySet<string>;
@@ -159,16 +163,33 @@ export function MomentRow({
           {m.why && <p className="mt-1 text-xs text-muted-foreground">{t("preview.why", { why: m.why })}</p>}
           {excerpt && (
             <>
-              <button
-                type="button"
-                aria-expanded={transcriptOpen}
-                aria-controls={`m-tx-${m.id}`}
-                onClick={() => setTranscriptOpen((o) => !o)}
-                className="mt-1 inline-flex items-center gap-0.5 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                <ChevronRightIcon aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", transcriptOpen && "rotate-90")} />
-                {t("briefing.transcript")}
-              </button>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <button
+                  type="button"
+                  aria-expanded={transcriptOpen}
+                  aria-controls={`m-tx-${m.id}`}
+                  onClick={() => setTranscriptOpen((o) => !o)}
+                  className="inline-flex items-center gap-0.5 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  <ChevronRightIcon aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", transcriptOpen && "rotate-90")} />
+                  {t("briefing.transcript")}
+                </button>
+                <CopyQuote
+                  text={quoteWithSource({
+                    quote: excerpt,
+                    speakers: quoteSpeakers(ctx.names, voices, ctx.sensitive),
+                    title: ctx.quoteSource.title,
+                    startMs: m.startMs,
+                    endMs: m.endMs,
+                    link: sourceLink(ctx.quoteSource, m.startMs),
+                  })}
+                  label={t("briefing.copyQuote.button")}
+                  copiedLabel={t("briefing.copyQuote.copied")}
+                  failedLabel={t("briefing.copyQuote.failed")}
+                  ariaLabel={t("briefing.copyQuote.label", { title: m.title })}
+                  className="h-auto rounded-sm px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+                />
+              </div>
               {transcriptOpen && (
                 <p id={`m-tx-${m.id}`} className="mt-1 border-l-[3px] border-stone-300 bg-stone-50 px-2.5 py-1 text-[13px] text-foreground/90">
                   <span className="sr-only">{t("briefing.excerpt")}: </span>
