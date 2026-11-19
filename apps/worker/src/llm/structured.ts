@@ -1,8 +1,7 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import type { MessageContent } from "@langchain/core/messages";
 import { OutputParserException } from "@langchain/core/output_parsers";
-import { toJsonSchema } from "@langchain/core/utils/json_schema";
-import { ZodError, type z } from "zod";
+import { toJSONSchema, ZodError, type z } from "zod";
 import { usageCallbacks } from "./usage.js";
 
 export type LLMModel = "reasoning" | "fast";
@@ -52,43 +51,45 @@ export function createAnthropicLLM(apiKey: string, opts: ClientOptions = {}): St
 }
 
 /**
- * The JSON schema sent to the model. zod-to-json-schema writes a reused sub-schema as a `$ref` to its first use
- * (`#/properties/language`); Claude structured outputs only accept refs under `$defs`. Each such shape moves to
- * `$defs` once and every use points there. Not inlined: copies multiply nullable fields, and Claude allows at most
- * 16 union-typed parameters per schema (both limits seen live on 2026-10-30).
+ * The JSON schema sent to the model. Claude structured outputs only accept refs under `$defs`, and allow at most 16
+ * union-typed parameters per schema (both limits seen live on 2026-10-30), so a sub-schema used more than once is written
+ * once under `$defs` and every use points there (`reused: "ref"`; zod 4 would otherwise inline every copy, multiplying
+ * the nullable fields). `io: "input"`: the model writes what the schema reads (defaults and transforms are ours).
+ * `$schema` stays draft-07 as recorded live, every object is closed (`additionalProperties: false`), and the shared parts are
+ * renamed `def0`, `def1`… in order.
  */
 export function llmJsonSchema(schema: z.ZodType<unknown>): Record<string, unknown> {
-  const root = toJsonSchema(schema) as Record<string, unknown>;
-  const at = (ref: string): unknown =>
-    ref
-      .replace(/^#\/?/, "")
-      .split("/")
-      .filter(Boolean)
-      .reduce<unknown>((node, key) => (node as Record<string, unknown>)?.[key.replace(/~1/g, "/").replace(/~0/g, "~")], root);
-
-  const names = new Map<string, string>(); // ref target path → $defs name
-  const collect = (node: unknown): void => {
-    if (Array.isArray(node)) return node.forEach(collect);
-    if (node === null || typeof node !== "object") return;
-    const ref = (node as { $ref?: unknown }).$ref;
-    if (typeof ref === "string" && !names.has(ref)) names.set(ref, `def${names.size}`);
-    Object.values(node).forEach(collect);
+  const root = toJSONSchema(schema, { reused: "ref", io: "input", unrepresentable: "any" }) as Record<string, unknown>;
+  root.$schema = "http://json-schema.org/draft-07/schema#"; // as sent (and accepted) since October
+  const defs = (root.$defs ?? {}) as Record<string, unknown>;
+  delete root.$defs;
+  // Only objects and unions stay shared (they are what multiplies); a reused leaf (an integer, an enum) is written inline.
+  const shared = (d: unknown) => {
+    const n = d as Record<string, unknown>;
+    return n.type === "object" || Array.isArray(n.type) || "anyOf" in n || "oneOf" in n || "$ref" in n;
   };
-  collect(root);
-
-  // `path` is the node's own JSON pointer in the original schema; a node that is a ref target becomes a ref.
-  const rewrite = (node: unknown, path: string, isDefRoot = false): unknown => {
-    if (!isDefRoot && names.has(path)) return { $ref: `#/$defs/${names.get(path)}` };
-    if (Array.isArray(node)) return node.map((n, i) => rewrite(n, `${path}/${i}`));
+  const kept = Object.keys(defs).filter((k) => shared(defs[k]));
+  const names = new Map(kept.map((k, i) => [`#/$defs/${k}`, `def${i}`]));
+  const rewrite = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(rewrite);
     if (node === null || typeof node !== "object") return node;
-    return Object.fromEntries(
-      Object.entries(node).map(([k, v]) =>
-        k === "$ref" && typeof v === "string" ? [k, `#/$defs/${names.get(v)}`] : [k, rewrite(v, `${path}/${k.replace(/~/g, "~0").replace(/\//g, "~1")}`)],
-      ),
+    const ref = (node as { $ref?: unknown }).$ref;
+    if (typeof ref === "string" && !names.has(ref) && ref.startsWith("#/$defs/")) {
+      const { $ref: _, ...rest } = node as Record<string, unknown>;
+      return rewrite({ ...(defs[ref.slice(8)] as Record<string, unknown>), ...rest });
+    }
+    const out = Object.fromEntries(
+      Object.entries(node)
+        // zod 4 bounds every `.int()` by the safe-integer range; not a real limit, and not sent before.
+        .filter(([k, v]) => !((k === "minimum" || k === "maximum") && Math.abs(v as number) === Number.MAX_SAFE_INTEGER))
+        .map(([k, v]) => (k === "$ref" && typeof v === "string" ? [k, `#/$defs/${names.get(v)}`] : [k, rewrite(v)])),
     );
+    // Claude structured outputs need every object closed; zod 4 writes it only for strict objects in input mode.
+    if (out.type === "object" && !("additionalProperties" in out)) out.additionalProperties = false;
+    return out;
   };
-  const out = rewrite(root, "#") as Record<string, unknown>;
-  if (names.size > 0) out.$defs = Object.fromEntries([...names].map(([ref, name]) => [name, rewrite(at(ref), ref, true)]));
+  const out = rewrite(root) as Record<string, unknown>;
+  if (names.size > 0) out.$defs = Object.fromEntries(kept.map((k) => [names.get(`#/$defs/${k}`)!, rewrite(defs[k])]));
   return out;
 }
 
