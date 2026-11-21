@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PROFILES, formatTimestamp, type ClipStatus, type Granularity, type SelectionStatus } from "@digestor/core";
 import { AskDrawer } from "@/components/Ask/AskDrawer";
+import { AskDraftBanner } from "@/components/Ask/AskDraftBanner";
+import { useAskDock } from "@/components/Ask/useAskDock";
+import { showDraftBanner } from "@/lib/askDock";
 import { ContextBanner } from "@/components/ContextBanner";
 import { previewTargets } from "@/components/ReportProblem";
 import { WhosWhoDrawer } from "@/components/Names/WhosWho";
@@ -84,8 +87,7 @@ export function Briefing(props: BriefingProps) {
   const statuses = useMemo(() => displayStatuses(selections, overlay), [selections, overlay]);
   const [playing, setPlaying] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  // Task 10 replaces this with the dock hook; until then the drawer is closed by default, as before.
-  const [askOpen, setAskOpen] = useState(false);
+  const dock = useAskDock(session.id, Boolean(session.goal));
   const [announcement, setAnnouncement] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
@@ -274,7 +276,7 @@ export function Briefing(props: BriefingProps) {
             <Button ref={whoRef} variant="outline" size="sm" onClick={() => openWho("button")}>
               {t("names.whoOpen")}
             </Button>
-            <AskDrawer open={askOpen} onOpenChange={setAskOpen} sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} examples={props.askExamples} />
+            <AskDrawer open={dock.open} onOpenChange={dock.setOpen} sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} examples={props.askExamples} />
           </div>
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-xs text-muted-foreground">
@@ -310,6 +312,10 @@ export function Briefing(props: BriefingProps) {
           <p className="mt-0.5 text-muted-foreground">{spendingLines(props.spending).detail}</p>
         </div>
       </header>
+
+      {showDraftBanner({ desktop: dock.desktop, hasGoal: Boolean(session.goal), askStarted: props.askStarted, remembered: dock.remembered, open: dock.open }) && (
+        <AskDraftBanner onOpen={() => dock.setOpen(true)} />
+      )}
 
       {analysis.running && (
         <p role="status" className={`${NOTICE} border-border bg-white text-foreground`}>

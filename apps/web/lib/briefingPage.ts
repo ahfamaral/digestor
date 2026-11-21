@@ -4,7 +4,7 @@ import {
 } from "@digestor/core";
 import {
   countSelectionsByAnalysis, getContextCard, getCurrentAnalysis, getRunningAnalysis, getTranscript, listAnalysisVersions,
-  listPersonalMoments, listSelections, type Db, type Session,
+  listAskMessages, listPersonalMoments, listSelections, type Db, type Session,
 } from "@digestor/core/server";
 import type { FocusChoice } from "@/components/Briefing/Controls";
 import { askExampleNames, askExampleTopics, askExamples } from "./askExamples";
@@ -20,7 +20,11 @@ export interface BriefingProps {
     id: string; title: string; durationMs: number; language: string | null; hasVideo: boolean; videoRemoved: boolean;
     /** Where the video came from ("Copy quote with source" links a YouTube video at the moment, `sourceLink`). */
     source: "upload" | "youtube"; sourceUrl: string | null; sourceStartMs: number | null;
+    /** What the journalist wants out of this video (Ask docks open beside the page when set), or null. */
+    goal: string | null;
   };
+  /** The owner has any Ask message in this session (the phone banner needs one). */
+  askStarted: boolean;
   analysis: {
     id: string;
     version: number;
@@ -72,7 +76,7 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
   const bundle = await getCurrentAnalysis(db, id);
   if (!bundle) return null;
   const analysisId = bundle.version.id;
-  const [versions, running, context, names, transcript, personal, selections, byVersion, namesChanged] = await Promise.all([
+  const [versions, running, context, names, transcript, personal, selections, byVersion, namesChanged, asks] = await Promise.all([
     listAnalysisVersions(db, id),
     getRunningAnalysis(db, id),
     getContextCard(db, id),
@@ -82,6 +86,7 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
     listSelections(db, OWNER_ID, id),
     countSelectionsByAnalysis(db, OWNER_ID, id),
     namesChangedSince(db, id, bundle.version.namesAt),
+    listAskMessages(db, OWNER_ID, id),
   ]);
   const { topics, briefing } = bundle;
   const words = transcript?.words ?? [];
@@ -131,7 +136,9 @@ export async function loadBriefingPage(db: Db, session: Session): Promise<Briefi
       source: session.source,
       sourceUrl: session.sourceUrl,
       sourceStartMs: session.sourceStartMs,
+      goal: session.goal,
     },
+    askStarted: asks.length > 0,
     analysis: {
       id: analysisId,
       version: bundle.version.version,

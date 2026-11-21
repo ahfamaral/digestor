@@ -416,6 +416,13 @@ export const en = {
   },
   ask: {
     open: "Ask",
+    draftBanner: "Ask has a draft for you",
+    draftOpen: "Open",
+    prepareExamples: {
+      shorter: "Make clip 1 shorter",
+      question: "Include the question before clip 1",
+      platform: "Make clip 1 for Instagram with English subtitles",
+    },
     title: "Ask about this video",
     hint: "Answers come only from this video's stored data.",
     titleAudio: "Ask about this recording",
@@ -689,6 +696,7 @@ export const en = {
   },
   prepare: {
     title: "Prepare clips",
+    madeWithAsk: "Made with Ask",
     mergeButton: "Merge clips {a} and {b}",
     mergeTitle: "Merge clips {a} and {b}?",
     mergeDescription: "They become one clip from {start} to {end} with clip {a}'s settings. Its subtitles need rebuilding. You can undo this.",

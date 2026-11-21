@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OWNER_ID, PROFILES, cutsMidSentence, findBoundaries } from "@digestor/core";
-import { getMoment, getSession, getTranscript, listClipEvents, listClips, listSelections, listTracks } from "@digestor/core/server";
+import { clipsMadeByAsk, getMoment, getSession, getTranscript, listClipEvents, listClips, listSelections, listTracks } from "@digestor/core/server";
 import { AppBar } from "@/components/AppBar";
 import { PrepareList, type PrepareClipData } from "@/components/Prepare/PrepareList";
 import { isUuid } from "@/lib/ids";
@@ -55,6 +55,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
   // Boundaries are computed here and only the clip's window (± 30 s) is sent, as plain numbers.
   const names = await loadNames(db, id);
   const sensitive = PROFILES[asProfile(session.profile)].sensitive;
+  const madeByAsk = await clipsMadeByAsk(db, clips.map((c) => c.id));
   const boundaries = transcript ? findBoundaries(transcript.words, durationMs) : [];
 
   const data: PrepareClipData[] = await Promise.all(
@@ -82,6 +83,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
         thumbUrl: moment?.thumbKey ? `/api/files/${id}/thumbs/${moment.id}.jpg` : null,
         dismissed: approvalDismissed(clip, selections),
         mergedCount: (clip.momentId ? 1 : 0) + clip.mergedMomentIds.length,
+        madeByAsk: madeByAsk.has(clip.id),
       };
     }),
   );
@@ -96,6 +98,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
         hasVideo: session.hasVideo,
         videoRemoved: session.videoDeletedAt !== null,
         profile: asProfile(session.profile),
+        goal: session.goal,
       }}
       defaultCredit={defaultCredit(session)}
       names={names}

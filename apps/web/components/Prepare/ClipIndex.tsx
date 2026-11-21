@@ -5,6 +5,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { formatTimestamp } from "@digestor/core";
 import type { ClipStatus } from "@/lib/prepareData";
 import { ClipStatusBadge } from "./ClipStatusBadge";
+import { MadeWithAsk } from "./MadeWithAsk";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
@@ -15,6 +16,7 @@ export interface ClipIndexEntry {
   startMs: number;
   status: ClipStatus;
   dismissed: boolean;
+  madeByAsk: boolean;
 }
 
 /**
@@ -50,7 +52,10 @@ export function ClipIndex({ entries, language, onJump }: { entries: ClipIndexEnt
                 <span className="font-mono text-xs">
                   {t("prepare.clipHeading", { n: e.n })} · {formatTimestamp(e.startMs)}
                 </span>
-                <ClipStatusBadge status={e.status} dismissed={e.dismissed} />
+                <span className="flex flex-wrap items-center gap-1">
+                  {e.madeByAsk && <MadeWithAsk />}
+                  <ClipStatusBadge status={e.status} dismissed={e.dismissed} />
+                </span>
               </span>
               {e.title && (
                 <span lang={language} dir="auto" className="truncate text-xs text-muted-foreground">

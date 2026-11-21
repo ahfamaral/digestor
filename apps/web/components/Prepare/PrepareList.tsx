@@ -26,6 +26,9 @@ import { ApprovalDismissed } from "@/components/ApprovalDismissed";
 import { ChecksPanel } from "./ChecksPanel";
 import { Checklist } from "./Checklist";
 import { ClipIndex } from "./ClipIndex";
+import { MadeWithAsk } from "./MadeWithAsk";
+import { AskDrawer } from "@/components/Ask/AskDrawer";
+import { useAskDock } from "@/components/Ask/useAskDock";
 import { ClipStatusBadge } from "./ClipStatusBadge";
 import { ChevronRightIcon } from "lucide-react";
 import { FormatPicker, cropPosition } from "./FormatPicker";
@@ -58,6 +61,8 @@ export interface PrepareClipData {
   dismissed: boolean;
   /** How many moments the clip covers (more than one after a merge). */
   mergedCount: number;
+  /** Ask created this clip (its creation event was by Ask). */
+  madeByAsk: boolean;
 }
 
 export interface PrepareListProps {
@@ -69,6 +74,8 @@ export interface PrepareListProps {
     hasVideo: boolean;
     videoRemoved: boolean;
     profile: ProfileId;
+    /** What the journalist wants out of this video, or null (Ask docks open on arrival when set). */
+    goal: string | null;
   };
   /** The credit a clip starts with (YouTube channel), or "" for uploads. */
   defaultCredit: string;
@@ -149,6 +156,8 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
   const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const lang = session.language ?? undefined;
+  const dock = useAskDock(session.id, Boolean(session.goal));
+  const askExamples = [t("ask.prepareExamples.shorter"), t("ask.prepareExamples.question"), t("ask.prepareExamples.platform")];
 
   // A router.refresh() brings new server data: fold it in (see merge).
   if (clips !== seen) {
@@ -417,9 +426,20 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
           <BackLink href={`/s/${session.id}`} label={t("prepare.backToBriefing")} />
-          <h1 lang={lang} dir="auto" className="mt-1 text-xl font-bold tracking-tight break-words">
-            {session.title}
-          </h1>
+          <div className="mt-1 flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+            <h1 lang={lang} dir="auto" className="min-w-0 basis-full text-xl font-bold tracking-tight break-words sm:flex-1 sm:basis-0">
+              {session.title}
+            </h1>
+            <AskDrawer
+              open={dock.open}
+              onOpenChange={dock.setOpen}
+              sessionId={session.id}
+              language={session.language}
+              hasVideo={session.hasVideo}
+              videoRemoved={session.videoRemoved}
+              examples={askExamples}
+            />
+          </div>
           <p className="mt-1 font-mono text-xs text-muted-foreground">
             {t("prepare.title")} · {items.length === 1 ? t("prepare.clipsOne") : t("prepare.clipsMany", { n: items.length })}
           </p>
@@ -473,7 +493,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
                 setOpenOverride((o) => withOpen(o, id));
               }}
               language={lang}
-              entries={items.map((i, n) => ({ id: i.clip.id, n: n + 1, title: i.title, startMs: i.clip.startMs, status: statusOf(i.clip.id), dismissed: i.dismissed }))}
+              entries={items.map((i, n) => ({ id: i.clip.id, n: n + 1, title: i.title, startMs: i.clip.startMs, status: statusOf(i.clip.id), dismissed: i.dismissed, madeByAsk: i.madeByAsk }))}
             />
             <ol className="grid gap-4">
               {items.map((item, n) => (
@@ -672,6 +692,7 @@ function ClipCard({
             >
               {title || t("prepare.clipHeading", { n })}
             </h2>
+            {item.madeByAsk && <MadeWithAsk className="mt-0.5" />}
             {inside !== null && <p className="font-mono text-xs text-muted-foreground">{t("prepare.insideClip", { n: inside })}</p>}
             {open && item.mergedCount > 1 && (
               <p className="font-mono text-xs text-muted-foreground">{t("prepare.mergedFrom", { n: item.mergedCount })}</p>
