@@ -612,7 +612,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
     // A deleted clip's only legitimate undo is its own delete (an absorbed clip returns with its merge's undo).
     if (clip.deletedAt && ev.kind !== "delete") return null;
     const now = new Date();
-    let set: Partial<typeof clips.$inferInsert> = { updatedAt: now, editVersion: sql`${clips.editVersion} + 1` as unknown as number };
+    let set: Partial<typeof clips.$inferInsert> = { updatedAt: now, ...(ev.kind === "style" ? {} : { editVersion: bumpVersion.editVersion as unknown as number }) };
     if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "style") {
       set = { ...set, ...(ev.before as object) };
     } else if (ev.kind === "create") {

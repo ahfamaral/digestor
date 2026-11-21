@@ -966,6 +966,15 @@ describe("edit version", () => {
     expect(await version(a.id)).toBe(6);
   });
 
+  it("undo of a style change doesn't bump the edit version", async () => {
+    const c = await newClip();
+    await updateClip(db, c.id, { subtitleStyle: "white" }, "user");
+    const before = await version(c.id);
+    await undoLastEvent(db, c.id);
+    expect((await getClip(db, c.id))!.subtitleStyle).toBe("yellow");
+    expect(await version(c.id)).toBe(before);
+  });
+
   it("a new subtitle language bumps it, a rebuild of the same language doesn't, a rolled-back track does", async () => {
     const c = await newClip();
     const en = await createTrack(db, c.id, "en");
