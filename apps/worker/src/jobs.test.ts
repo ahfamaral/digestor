@@ -139,6 +139,37 @@ d("job handlers", () => {
     expect(await getSession(db, id)).toMatchObject({ stage: "failed", progress: 40, error: message });
   });
 
+  describe("the upload goal", () => {
+    const withGoal = async () => {
+      const id = await newSession();
+      await updateSession(db, id, { goal: "The heated exchanges" });
+      return id;
+    };
+    const goalCtx = (enqueueAsk: (id: string) => Promise<void>): JobContext => ({ db, deps: { db, enqueueAsk } as unknown as JobContext["deps"] });
+
+    it("handleStart starts Ask on the goal once the run made the session ready", async () => {
+      const id = await withGoal();
+      runner.mockImplementation(async () => { await setStage(db, id, "ready", 100); return "done"; });
+      const enqueueAsk = vi.fn(async (_id: string) => {});
+      await handleStart(goalCtx(enqueueAsk), { sessionId: id }, FIRST);
+      expect(enqueueAsk).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["handleStart", (c: JobContext, id: string, a: { retryCount: number; retryLimit: number }) => handleStart(c, { sessionId: id }, a)],
+      ["handleResume", (c: JobContext, id: string, a: { retryCount: number; retryLimit: number }) => handleResume(c, { sessionId: id, payload: { action: "skip" } }, a)],
+    ])("%s that throws after the session became ready still starts the goal, once", async (_name, run) => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const id = await withGoal();
+      runner.mockImplementation(async () => { await setStage(db, id, "ready", 100); throw new Error("ECONNRESET"); });
+      const enqueueAsk = vi.fn(async (_id: string) => {});
+      await expect(run(goalCtx(enqueueAsk), id, FIRST)).rejects.toThrow("ECONNRESET");
+      await expect(run(goalCtx(enqueueAsk), id, { retryCount: 1, retryLimit: 2 })).rejects.toThrow("ECONNRESET");
+      expect(enqueueAsk).toHaveBeenCalledTimes(1);
+      log.mockRestore();
+    });
+  });
+
   it("handleResume follows the same attempt rules", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const payload = { action: "skip" } as const;
@@ -667,6 +698,17 @@ d("handleProxy (the preview copy job)", () => {
     await handleProxy({ db, storage, media: fakeMedia(), enqueueAsk }, { sessionId: id }, FIRST);
     await handleProxy({ db, storage, media: fakeMedia(), enqueueAsk }, { sessionId: id }, FIRST);
     expect(enqueueAsk).toHaveBeenCalledTimes(1);
+  });
+
+  it("a copy job that throws while the session is ready still starts Ask on the goal", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = await seed();
+    await updateSession(db, id, { goal: "The heated exchanges" });
+    const enqueueAsk = vi.fn(async (_id: string) => {});
+    const media = { makeProxy: vi.fn(async () => { await setStage(db, id, "ready", 100); throw new Error("ffmpeg died"); }) };
+    await expect(handleProxy({ db, storage, media, enqueueAsk }, { sessionId: id }, FIRST)).rejects.toThrow("ffmpeg died");
+    expect(enqueueAsk).toHaveBeenCalledTimes(1);
+    log.mockRestore();
   });
 
   it("handleProxy claims, encodes, finishes and settles; the ready session's audio.mp3 goes", async () => {

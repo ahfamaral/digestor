@@ -874,6 +874,9 @@ export const TOOLS: Tool[] = [
         } catch (err) {
           console.error(`[ask] couldn't queue the subtitle draft of clip ${clip.id}:`, err);
           await deleteTrack(ctx.db, out.trackId).catch((e: unknown) => console.error("[ask] removing the unqueued track failed", e));
+          // Removing the track bumped the version again: a later call on this clip in the same card expects that one.
+          const now = await getClip(ctx.db, clip.id);
+          if (now && ctx.versions.has(clip.id)) ctx.versions.set(clip.id, now.editVersion);
           draft = `Couldn't start the ${languageLabel(set.addLanguage!)} subtitle draft: the user can add it on Prepare.`;
         }
       }
@@ -911,9 +914,10 @@ export const TOOLS: Tool[] = [
         const n = (await numberedClips(ctx)).find((c) => c.clip.id === clip.id)?.n ?? ctx.numbers.get(clip.id) ?? 0;
         const old = clip.momentId ? await getMoment(ctx.db, clip.momentId) : null;
         const oldTitle = old ? ` ${quoted(old.title)}` : "";
+        const goBack = clip.mergedMomentIds.length > 0 ? "its moments go back" : "its moment goes back";
         return {
           text: "",
-          summary: `Replace clip ${n} (${ts(clip.startMs)}–${ts(clip.endMs)}${oldTitle}) with ${ts(range.startMs)}–${ts(range.endMs)} ${quoted(title)}; its moment goes back to undecided on the Briefing`,
+          summary: `Replace clip ${n} (${ts(clip.startMs)}–${ts(clip.endMs)}${oldTitle}) with ${ts(range.startMs)}–${ts(range.endMs)} ${quoted(title)}; ${goBack} to undecided on the Briefing`,
           range,
           clips: [{ id: clip.id, n, version: clip.editVersion }],
         };
@@ -948,7 +952,7 @@ export const TOOLS: Tool[] = [
       }
       const drafts = out.trackIds.length ? `${out.trackIds.length} subtitle draft${out.trackIds.length === 1 ? " is" : "s are"} being prepared again${failed ? ` (${failed} couldn't be started: the user can try again on Prepare)` : ""}.` : "";
       return {
-        text: [`Clip ${clip.id} now shows ${span(range)} "${title}" (moment ${out.momentId}), snapped to whole sentences; its old moment is undecided on the Briefing.`, drafts, "No video was made: the user renders from Prepare."].filter(Boolean).join(" "),
+        text: [`Clip ${clip.id} now shows ${span(range)} "${title}" (moment ${out.momentId}), snapped to whole sentences; ${clip.mergedMomentIds.length > 0 ? "its old moments are" : "its old moment is"} undecided on the Briefing.`, drafts, "No video was made: the user renders from Prepare."].filter(Boolean).join(" "),
         clipId: clip.id,
       };
     },

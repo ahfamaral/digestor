@@ -125,7 +125,10 @@ async function onJobError(ctx: JobContext, sessionId: string, err: unknown, atte
   throw err;
 }
 
-/** Best effort: the session may have just become `ready`; start Ask on its goal. Errors are logged, never fail the job. */
+/**
+ * Best effort: the session may have just become `ready`; start Ask on its goal. Errors are logged, never fail the job.
+ * Called from a `finally`: an attempt that throws after the session became ready (and may never be retried) still starts it.
+ */
 async function goalHook(deps: { db: Db; enqueueAsk?: (messageId: string) => Promise<void> }, sessionId: string): Promise<void> {
   await startGoalAsk(deps, sessionId).catch((err: unknown) => console.error(`[jobs] goal Ask of ${sessionId} not started:`, err));
 }
@@ -140,8 +143,9 @@ export async function handleStart(ctx: JobContext, job: StartJob, attempt: Attem
     await runPipeline(ctx.deps, job.sessionId);
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
+  } finally {
+    await goalHook(ctx.deps, job.sessionId);
   }
-  await goalHook(ctx.deps, job.sessionId);
 }
 
 /** Idempotent: the answer is applied only at a pending context check, so a retried or duplicated resume never answers a later one. */
@@ -150,8 +154,9 @@ export async function handleResume(ctx: JobContext, job: ResumeJob, attempt: Att
     await runPipeline(ctx.deps, job.sessionId, { resume: job.payload, round: job.round });
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
+  } finally {
+    await goalHook(ctx.deps, job.sessionId);
   }
-  await goalHook(ctx.deps, job.sessionId);
 }
 
 /**
@@ -490,7 +495,6 @@ export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: Nam
 export async function handleProxy(deps: ProxyDeps, job: ProxyJob, attempt: Attempt): Promise<void> {
   try {
     await runProxy(deps, job.sessionId, { retrying: attempt.retryCount > 0 });
-    await goalHook(deps, job.sessionId);
   } catch (err) {
     if (attempt.retryCount >= attempt.retryLimit) {
       await failProxy(deps.db, job.sessionId);
@@ -500,6 +504,8 @@ export async function handleProxy(deps: ProxyDeps, job: ProxyJob, attempt: Attem
       console.error(`[jobs] preview copy of ${job.sessionId} attempt ${attempt.retryCount + 1} failed; pg-boss will retry:`, err);
     }
     throw err;
+  } finally {
+    await goalHook(deps, job.sessionId);
   }
 }
 

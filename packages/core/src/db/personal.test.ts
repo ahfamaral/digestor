@@ -998,6 +998,13 @@ describe("edit version", () => {
     expect(await version(c.id)).toBe(3);
   });
 
+  it("an updateClip patch equal to the current values doesn't bump it", async () => {
+    const c = await newClip();
+    await updateClip(db, c.id, { startMs: c.startMs, endMs: c.endMs, format: c.format, cropOffset: c.cropOffset, credit: c.credit, noCreditNeeded: c.noCreditNeeded }, "user");
+    expect(await version(c.id)).toBe(0);
+    expect((await listClipEvents(db, c.id)).map((e) => e.kind)).toEqual(["create"]);
+  });
+
   it("updateClip with a different expectVersion throws StaleClipError and changes nothing", async () => {
     const c = await newClip();
     await expect(updateClip(db, c.id, { startMs: 12_000 }, "ask", { expectVersion: c.editVersion + 1 })).rejects.toBeInstanceOf(StaleClipError);
@@ -1106,6 +1113,27 @@ describe("applyClipUpdate", () => {
     expect((await getClip(db, c.id))!.credit).toBeNull();
   });
 
+  it("undo stales a finished render only when format, crop or credit change back", async () => {
+    const mine = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 10_000, endMs: 50_000, title: "Old", origin: "ask" });
+    const c = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: mine.id, startMs: 10_000, endMs: 50_000, actor: "ask" });
+    const render = async () => {
+      const cur = (await getClip(db, c.id))!;
+      await claimClipRender(db, c.id);
+      await finishClipRender(db, c.id, { startMs: cur.startMs, endMs: cur.endMs, format: cur.format, cropOffset: cur.cropOffset, credit: cur.credit }, { renderKey: "k" });
+      expect((await getClip(db, c.id))!.renderStatus).toBe("done");
+    };
+    await render();
+    await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, title: "New", addLanguage: "pt", actor: "ask" });
+    expect((await getClip(db, c.id))!.renderStatus).toBe("done");
+    await undoLastEvent(db, c.id);
+    expect((await getClip(db, c.id))!.renderStatus).toBe("done");
+
+    await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, credit: "X", actor: "ask" });
+    await render();
+    await undoLastEvent(db, c.id);
+    expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
+  });
+
   it("stales a finished render", async () => {
     const c = await newClip();
     await claimClipRender(db, c.id);
@@ -1173,7 +1201,24 @@ describe("replaceClipMoment", () => {
     const sel = await listSelections(db, OWNER, s.id);
     expect(sel[old.id]).toBe("approved");
     expect(sel[momentId]).toBeUndefined();
-    expect(await getMoment(db, momentId)).not.toBeNull(); // the new personal moment stays, undecided
+    expect(await getMoment(db, momentId)).toBeNull(); // the replacement moment goes with the undo
+    expect((await listPersonalMoments(db, OWNER, analysisId)).map((m) => m.id)).not.toContain(momentId);
+  });
+
+  it("Undo keeps the replacement moment while a live clip or a selection still uses it", async () => {
+    const { c } = await setup();
+    const { momentId } = await swap(c.id);
+    const other = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId, startMs: 200_000, endMs: 240_000, actor: "user" });
+    await undoLastEvent(db, c.id);
+    expect(await getMoment(db, momentId)).not.toBeNull();
+    expect((await getClip(db, other.id))!.momentId).toBe(momentId);
+
+    const { c: c2 } = await setup();
+    const { momentId: m2 } = await swap(c2.id, { startMs: 300_000, endMs: 340_000 });
+    await setSelection(db, OWNER, m2, "rejected");
+    await undoLastEvent(db, c2.id);
+    expect(await getMoment(db, m2)).not.toBeNull();
+    expect((await listSelections(db, OWNER, s.id))[m2]).toBe("rejected");
   });
 
   it("after a replace, Prepare clips (confirmClips) doesn't bring the old moment's clip back", async () => {
@@ -1208,6 +1253,36 @@ describe("replaceClipMoment", () => {
     const live = await listClips(db, OWNER, s.id);
     expect(live).toHaveLength(1);
     expect(live[0]).toMatchObject({ id: c1.id, momentId });
+  });
+
+  it("replacing a merge survivor drops its merged moments and puts them back to undecided; Undo restores both exactly", async () => {
+    const m1 = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 10_000, endMs: 50_000, title: "A", origin: "user" });
+    const m2 = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 40_000, endMs: 80_000, title: "B", origin: "user" });
+    const m3 = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 70_000, endMs: 90_000, title: "C", origin: "user" });
+    const c1 = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m1.id, startMs: 10_000, endMs: 50_000, actor: "user" });
+    const c2 = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m2.id, startMs: 40_000, endMs: 80_000, actor: "user" });
+    const c3 = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m3.id, startMs: 70_000, endMs: 90_000, actor: "user" });
+    await setSelection(db, OWNER, m1.id, "approved");
+    await setSelection(db, OWNER, m2.id, "approved");
+    await mergeClips(db, OWNER, [c1.id, c2.id], "user");
+    await mergeClips(db, OWNER, [c1.id, c3.id], "user"); // m3 has no selection
+    const before = { clip: (await getClip(db, c1.id))!, selections: await listSelections(db, OWNER, s.id) };
+    expect(before.clip.mergedMomentIds).toEqual([m2.id, m3.id]);
+
+    const { clip, momentId } = await swap(c1.id);
+    expect(clip.mergedMomentIds).toEqual([]);
+    expect(await listSelections(db, OWNER, s.id)).toEqual({ [momentId]: "approved" });
+
+    // The old moments are free again: approving one makes its own clip, the replaced clip no longer covers it.
+    await setSelection(db, OWNER, m2.id, "approved");
+    const made = await confirmClips(db, OWNER, s.id, [{ id: momentId, startMs: 200_000, endMs: 240_000 }, { id: m2.id, startMs: 40_000, endMs: 80_000 }]);
+    expect((await listClips(db, OWNER, s.id)).map((x) => x.momentId)).toEqual([m2.id, momentId]);
+    await setSelection(db, OWNER, m2.id, null);
+    await deleteClip(db, made.find((x) => x.momentId === m2.id)!.id, "user");
+
+    const undone = await undoLastEvent(db, c1.id);
+    expect(undone).toMatchObject({ momentId: m1.id, mergedMomentIds: [m2.id, m3.id], startMs: before.clip.startMs, endMs: before.clip.endMs });
+    expect(await listSelections(db, OWNER, s.id)).toEqual(before.selections);
   });
 
   it("a finished burn comes back stale on undo", async () => {

@@ -11,7 +11,7 @@ import { handleAskResume } from "../jobs.js";
 import { FakeLLM, type GenerateArgs, type StructuredLLM } from "../llm/structured.js";
 import { FakeToolLLM, type ToolCallRequest, type ToolMessage, type ToolStepCall } from "../llm/tools.js";
 import type { SearchHit } from "../search/index.js";
-import { ASK_CANT_CONTINUE, ASK_FAILED, DECLINED, MAX_ASK_STEPS, MUTATING_TOOLS, NOT_IN_DATA, resumeAsk, runAsk, type AskDeps } from "./ask.js";
+import { ASK_CANT_CONTINUE, ASK_FAILED, DECLINED, MAX_ASK_STEPS, MUTATING_TOOLS, NOT_IN_DATA, loadAskRun, resumeAsk, runAsk, runTool, staleText, type AskDeps } from "./ask.js";
 import { COULDNT_CONFIRM, VERIFY_RETRIES } from "./verify.js";
 
 /** 20 minutes of speech: 500 ms per word, sentences of 5 words (2.5 s), speaker A then B every other minute. */
@@ -1009,6 +1009,43 @@ describe("update_clip", () => {
     expect(toolResults(llm.calls.at(-1)!)[0]).toMatch(/Couldn't start the Portuguese subtitle draft/);
   });
 
+  it("a draft that can't be queued doesn't make a second change to the same clip in that card stale", async () => {
+    const { s, clip3 } = await threeClips();
+    const msg = await ask(s.id, "Add Portuguese subtitles to clip 3 and credit it.");
+    const llm = new FakeToolLLM([
+      toolStep(call("update_clip", { clipId: clip3.id, addSubtitles: "pt" }), call("update_clip", { clipId: clip3.id, credit: "Agência" })),
+      answer("Done."),
+    ]);
+    const deps = { ...depsFor(llm), send: async () => { throw new Error("queue down"); } };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    const [first, second] = toolResults(llm.calls.at(-1)!);
+    expect(first).toMatch(/Couldn't start the Portuguese subtitle draft/);
+    expect(second).not.toContain("changed since");
+    expect(await getClip(db, clip3.id)).toMatchObject({ credit: "Agência" });
+    expect(await listTracks(db, clip3.id)).toEqual([]);
+  });
+
+  it("apply mode: a clip at another version than the card's gets the stale text with the card's number; nothing changes", async () => {
+    const { s, clip2, clip3 } = await threeClips();
+    const msg = await ask(s.id, "Make clip 3 16:9.");
+    const { ctx } = await loadAskRun({ db, search: noSearch, send: sender().send }, msg);
+    const apply = (clipId: string, n: number, args: Record<string, unknown>) =>
+      runTool(
+        { ...ctx, mode: "apply", callId: "c1", approved: new Set(["c1"]), versions: new Map([[clipId, 0]]), numbers: new Map([[clipId, n]]) },
+        { id: "c1", name: "update_clip", args: { clipId, ...args } },
+      );
+    await updateClip(db, clip3.id, { credit: "By hand" }, "user");
+    expect(await apply(clip3.id, 3, { format: "16:9" })).toMatchObject({ ok: false, text: `Error: ${staleText([{ n: 3, removed: false }])}` });
+    expect(staleText([{ n: 3, removed: false }])).toBe("Clip 3 changed since this card was made (edited by hand or removed). Nothing was changed: tell the user, and offer to ask again.");
+    expect(await getClip(db, clip3.id)).toMatchObject({ format: "9:16", credit: "By hand", editVersion: 1 });
+    // A removed clip is named by its card number too (the tool itself reports a deleted clip as not in this video).
+    expect(staleText([{ n: 2, removed: true }])).toMatch(/^Clip 2 changed since this card was made \(edited by hand or removed\)/);
+    await deleteClip(db, clip2.id, "user");
+    expect(await apply(clip2.id, 2, { format: "16:9" })).toMatchObject({ ok: false, text: `Error: there is no clip ${clip2.id} in this video.` });
+    expect(await getClip(db, clip2.id)).toBeNull();
+  });
+
   it("update_clip counts as one change toward the cap of 3", async () => {
     const { s, clip1, clip2, clip3 } = await threeClips();
     const msg = await ask(s.id, "Trim all three, then make clip 1 16:9.");
@@ -1127,6 +1164,16 @@ describe("replace_clip", () => {
     await createTrack(db, clip2.id, "pt");
     return { ...seeded, clip1, clip2, clip3 };
   }
+
+  it("a merged clip's card says its moments go back to undecided", async () => {
+    const { s, clip1, momentIds } = await threeClips();
+    await db.execute(sql`update clips set merged_moment_ids = array[${momentIds[2]!}]::uuid[] where id = ${clip1.id}`);
+    const msg = await ask(s.id, "Use another moment instead of clip 1.");
+    const llm = new FakeToolLLM([toolStep(call("replace_clip", { clipId: clip1.id, start: "00:10:01", end: "00:10:31", title: "Another" })), answer("Done.")]);
+    await runAsk({ ...depsFor(llm), send: sender().send }, msg.id);
+    const [action] = await approvals(s.id, msg.id);
+    expect((action!.payload as ToolApprovalPayload).calls[0]!.summary).toMatch(/; its moments go back to undecided on the Briefing$/);
+  });
 
   it("instead of clip 2: replace_clip keeps three clips, and the card names clip 2", async () => {
     const { s, clip2, momentIds } = await threeClips();
