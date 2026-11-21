@@ -152,6 +152,25 @@ describe("clip tools", () => {
     order.forEach((id, i) => expect(result).toContain(`Clip ${i + 1} · ${id}`));
   });
 
+  it("list_clips keeps whole lines, says how many it shows, and numbers like Prepare", async () => {
+    const { s } = await seed();
+    for (let i = 0; i < 40; i++) {
+      await createClip(db, { sessionId: s.id, ownerId: OWNER_ID, startMs: i * 20_000, endMs: i * 20_000 + 15_000, actor: "user" });
+    }
+    const result = await listCall(s.id);
+    expect(result.length).toBeLessThanOrEqual(MAX_TOOL_OUTPUT);
+    const all = await listClips(db, OWNER_ID, s.id);
+    const shown = result.split("\n").filter((l) => l.startsWith("Clip "));
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.length).toBeLessThan(40);
+    expect(result).toContain(`40 clips; showing the first ${shown.length}.`);
+    shown.forEach((l, i) => {
+      expect(l.startsWith(`Clip ${i + 1} · ${all[i]!.id}`)).toBe(true);
+      expect(l).toMatch(/"\(no title\)"$/); // whole line, nothing cut
+    });
+    expect(result.trimEnd().endsWith("</transcript>")).toBe(true);
+  });
+
   it("list_clips marks clips Ask made and puts titles inside <transcript>", async () => {
     const { s } = await seed();
     const msg = await ask(s.id, "Make a clip.");

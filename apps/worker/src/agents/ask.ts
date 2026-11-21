@@ -592,8 +592,16 @@ export const TOOLS: Tool[] = [
           return clipLine({ n, clip, title: moment?.title ?? "", moment, tracks, madeByAsk: madeByAsk.has(clip.id) });
         }),
       );
+      // Fit by whole lines, and say when some are left out (the model must not take a cut-off list for the whole one).
+      const fits = (k: number) => {
+        const head = k < lines.length ? `${lines.length} clips; showing the first ${k}. Ask the user which clip, or name it by title.\n` : "";
+        return head.length + "<transcript>\n\n</transcript>".length + lines.slice(0, k).join("\n").length <= MAX_TOOL_OUTPUT ? head : null;
+      };
+      let k = lines.length;
+      while (k > 1 && fits(k) === null) k--;
+      const head = fits(k) ?? "";
       // Moment titles were written from the transcript (or by a user): evidence, never instructions (R31).
-      return { text: evidence(lines.join("\n")) };
+      return { text: head + evidence(lines.slice(0, k).join("\n"), MAX_TOOL_OUTPUT - head.length) };
     },
   },
   {
