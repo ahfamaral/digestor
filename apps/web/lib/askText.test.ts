@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, initialPackageDraft, isChange, packageDecision, packageOutcome,
-  sourceLines, isAnswering, isStalePending, askPollMs, ASK_POLL_MS, ASK_SLOW_POLL_MS, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, verifyResult,
+  sourceLines, isAnswering, isStalePending, askPollMs, ASK_POLL_MS, ASK_SLOW_POLL_MS, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, staleLine, verifyResult,
 } from "./askText";
 
 describe("linkifyTimestamps", () => {
@@ -251,6 +251,16 @@ describe("tool approvals (C1)", () => {
     });
     expect(parseApprovalPayload({ calls: "x" })).toBeNull();
     expect(parseApprovalPayload(null)).toBeNull();
+  });
+
+  it("parseApprovalPayload keeps a call's clips (number and edit version)", () => {
+    const call = { id: "c1", name: "trim_clip", args: {}, summary: "Change clip 2", clips: [{ id: "k", n: 2, version: 3 }, { id: 1 }] };
+    expect(parseApprovalPayload({ step: 1, calls: [call] })!.calls[0]!.clips).toEqual([{ id: "k", n: 2, version: 3 }]);
+  });
+
+  it("staleLine names the first stale clip, changed or removed", () => {
+    expect(staleLine([{ n: 2, removed: false }, { n: 3, removed: true }])).toBe("Clip 2 changed since this card was made. Ask again.");
+    expect(staleLine([{ n: 3, removed: true }])).toBe("Clip 3 was removed since this card was made. Ask again.");
   });
 
   it("checkClipEdit wants times as hh:mm:ss, the end after the start, and a title when asked", () => {

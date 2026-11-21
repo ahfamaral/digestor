@@ -4,7 +4,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OWNER_ID, QUEUES, findBoundaries, snapRange, type AskToolCallRecord, type ToolApprovalPayload, type ToolApprovalResolution, type Word } from "@digestor/core";
 import {
-  addAskMessage, completeAnalysisVersion, createClip, createDb, createSession, claimMomentCheck, getAskMessage, listAskMessages, listClips, listPersonalMoments,
+  addAskMessage, completeAnalysisVersion, createClip, createDb, createSession, claimMomentCheck, deleteClip, getAskMessage, getClip, updateClip, listAskMessages, listClips, listPersonalMoments,
   listSelections, listTracks, resolveToolApproval, saveMoments, saveTopics, saveTranscript, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
 import { handleAskResume } from "../jobs.js";
@@ -330,7 +330,7 @@ describe("Ask graph", () => {
     expect((await getAskMessage(db, msg.id))!.status).toBe("waiting");
     const second = (await approvals(s.id, msg.id)).find((a) => a.status === "pending")!;
     expect((second.payload as ToolApprovalPayload).step).toBe(2);
-    expect((second.payload as ToolApprovalPayload).calls[0]!.summary).toMatch(/^Change the clip 00:10:00–00:10:30 to /);
+    expect((second.payload as ToolApprovalPayload).calls[0]!.summary).toMatch(/^Change clip 2 00:10:00–00:10:30 to /);
     await resumeAsk(deps, first.id); // a redelivered job of the first decision
     expect((await getAskMessage(db, msg.id))!.status).toBe("waiting");
     expect(llm.calls).toHaveLength(2);
@@ -880,5 +880,65 @@ describe("Clip packages (C3)", () => {
     expect(sent.filter((j) => j.startsWith(QUEUES.checkMoment))).toHaveLength(2); // each clip's checks
     expect(toolResults(llm.calls[1]!)[0]).toMatch(/Couldn't start 1 subtitle draft/);
     expect((await getAskMessage(db, msg.id))!.status).toBe("done");
+  });
+});
+
+
+describe("stale approval cards", () => {
+  async function pausedTrim(calls: "one" | "two" = "one") {
+    const { s } = await seed();
+    const clip1 = await createClip(db, { sessionId: s.id, ownerId: OWNER_ID, startMs: 300_000, endMs: 330_000, actor: "user" });
+    const clip2 = await createClip(db, { sessionId: s.id, ownerId: OWNER_ID, startMs: 600_000, endMs: 630_000, actor: "user" });
+    const msg = await ask(s.id, "Trim my clips.");
+    const trims = [call("trim_clip", { clipId: clip2.id, start: "00:10:05", end: "00:10:25" })];
+    if (calls === "two") trims.unshift(call("trim_clip", { clipId: clip1.id, start: "00:05:05", end: "00:05:25" }));
+    const llm = new FakeToolLLM([toolStep(...trims), answer("Done.")]);
+    const deps = depsFor(llm);
+    await runAsk(deps, msg.id);
+    return { s, clip1, clip2, msg, llm, deps };
+  }
+  const manual = { startMs: 601_000, endMs: 629_000 };
+
+  it("the card records the clip's number and edit version", async () => {
+    const { s, clip2, msg } = await pausedTrim();
+    const [card] = await approvals(s.id, msg.id);
+    expect((card!.payload as ToolApprovalPayload).calls[0]!.clips).toEqual([{ id: clip2.id, n: 2, version: 0 }]);
+  });
+
+  it("stale-card refusal: a clip trimmed by hand after the card was made is not changed on approve", async () => {
+    const { s, clip2, msg, llm, deps } = await pausedTrim();
+    await updateClip(db, clip2.id, manual, "user");
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await getClip(db, clip2.id)).toMatchObject(manual);
+    expect(toolResults(llm.calls.at(-1)!)[0]).toContain("Clip 2 changed since this card was made");
+  });
+
+  it("a card with two calls applies neither when one clip went stale", async () => {
+    const { s, clip1, clip2, msg, llm, deps } = await pausedTrim("two");
+    await updateClip(db, clip2.id, manual, "user");
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await getClip(db, clip1.id)).toMatchObject({ startMs: 300_000, endMs: 330_000 });
+    expect(await getClip(db, clip2.id)).toMatchObject(manual);
+    const results = toolResults(llm.calls.at(-1)!);
+    expect(results).toHaveLength(2);
+    for (const r of results) expect(r).toContain("Nothing was changed");
+  });
+
+  it("a manual trim after the route's check is still refused at apply time", async () => {
+    const { s, clip2, msg, llm, deps } = await pausedTrim();
+    const pending = (await approvals(s.id, msg.id)).find((a) => a.status === "pending")!;
+    expect(await resolveToolApproval(db, pending.id, { decision: "approve" })).toBe(true); // the route's check passed here
+    await updateClip(db, clip2.id, manual, "user");
+    await resumeAsk(deps, pending.id);
+    expect(await getClip(db, clip2.id)).toMatchObject(manual);
+    expect(toolResults(llm.calls.at(-1)!)[0]).toContain("Clip 2 changed since this card was made");
+  });
+
+  it("a clip removed while the card waits is refused as removed", async () => {
+    const { s, clip2, msg, llm, deps } = await pausedTrim();
+    await deleteClip(db, clip2.id, "user");
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(toolResults(llm.calls.at(-1)!)[0]).toContain("removed");
+    expect(await getClip(db, clip2.id)).toBeNull();
   });
 });

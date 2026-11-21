@@ -3,13 +3,13 @@ import { Command, MemorySaver, type BaseCheckpointSaver } from "@langchain/langg
 import {
   GRANULARITY, HIGHLIGHT_TYPES, defaultCredit, type HighlightTypeId, HighlightTypeIdSchema, LANGUAGES, PROFILES, ProfileIdSchema, QUEUES, findBoundaries, formatTimestamp,
   normaliseName, parseTimestamp, personAt, renderTranscript, sliceWords, snapEdges, snapRange, toSentences, VIDEO_REMOVED,
-  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type Clip, type ClipFormat, type ContextCard, type Person, type SelectionStatus, type ToolApprovalCall,
-  type ToolApprovalResolution, type Transcript, type Word,
+  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type CardClip, type Clip, type ClipFormat, type ContextCard, type Person, type SelectionStatus, type ToolApprovalCall,
+  type StaleClip, type ToolApprovalResolution, type Transcript, type Word,
 } from "@digestor/core";
 import {
   claimAskMessage, claimClipRender, clipsMadeByAsk, listClips, listTracks, claimMomentCheck, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
-  releaseMomentCheck, setClipRenderStatus, setSelection, updateClip, type AskMessage, type Db, type Session,
+  releaseMomentCheck, setClipRenderStatus, setSelection, StaleClipError, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
 import type { StructuredLLM } from "../llm/structured.js";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
@@ -135,10 +135,14 @@ export type AskContext = {
   approved: ReadonlySet<string>;
   /** The id of the tool call that is running. */
   callId: string;
+  /** Apply mode: the edit version each clip of the approved card had (a change to a clip passes only at this version). */
+  versions: Map<string, number>;
+  /** Apply mode: the card's clip numbers, to name a clip that changed meanwhile. */
+  numbers: Map<string, number>;
 };
 
 /** Plan mode only: `summary` means the change needs approval; `range`, `moments` and `package` are for the card's Edit. */
-export type ToolResult = { text: string } & Partial<Pick<ToolApprovalCall, "summary" | "range" | "moments" | "package">> & Pick<AskToolCallRecord, "undo" | "clipId" | "clipIds">;
+export type ToolResult = { text: string } & Partial<Pick<ToolApprovalCall, "summary" | "range" | "moments" | "package" | "clips">> & Pick<AskToolCallRecord, "undo" | "clipId" | "clipIds">;
 type Tool = { spec: ToolSpec; run(ctx: AskContext, args: never): Promise<ToolResult> };
 
 // ---------------------------------------------------------------- names
@@ -433,6 +437,11 @@ function hitTitle(text: string): string {
 /** A subtitle language the package may ask for: one Prepare offers (the list, or the video's own language). */
 function subtitleLanguageOk(ctx: AskContext, code: string): boolean {
   return LANGUAGES.some((l) => l.code === code) || code === ctx.session.language;
+}
+
+/** What the model reads when a card's clips changed since it was made: nothing was changed. */
+export function staleText(stale: StaleClip[]): string {
+  return `${stale.map((c) => `Clip ${c.n}`).join(", ")} changed since this card was made (edited by hand or removed). Nothing was changed: tell the user, and offer to ask again.`;
 }
 
 /** Prepare's clips in Prepare's order: every clip number Ask shows or records comes from here (1-based, live clips only). */
@@ -733,12 +742,28 @@ export const TOOLS: Tool[] = [
       requireDirectChange(ctx);
       if (ctx.mode === "plan") {
         ctx.directChanges += 1;
-        return { text: "", summary: `Change the clip ${ts(clip.startMs)}–${ts(clip.endMs)} to ${ts(range.startMs)}–${ts(range.endMs)}`, range };
+        const n = (await numberedClips(ctx)).find((c) => c.clip.id === clip.id)?.n ?? 0;
+        return {
+          text: "",
+          summary: `Change clip ${n} ${ts(clip.startMs)}–${ts(clip.endMs)} to ${ts(range.startMs)}–${ts(range.endMs)}`,
+          range,
+          clips: [{ id: clip.id, n, version: clip.editVersion }],
+        };
       }
       requireApproved(ctx);
       willWrite(ctx);
       ctx.directChanges += 1;
-      await updateClip(ctx.db, clip.id, range, "ask");
+      let updated: Clip;
+      try {
+        updated = await updateClip(ctx.db, clip.id, range, "ask", { expectVersion: ctx.versions.get(clip.id) });
+      } catch (err) {
+        if (err instanceof StaleClipError) {
+          const live = await getClip(ctx.db, clip.id);
+          throw new ToolInputError(staleText([{ n: ctx.numbers.get(clip.id) ?? 0, removed: !live }]));
+        }
+        throw err;
+      }
+      if (ctx.versions.has(clip.id)) ctx.versions.set(clip.id, updated.editVersion);
       return { text: `Clip ${clip.id} now runs ${span(range)} (changed edges snapped to whole sentences).`, clipId: clip.id };
     },
   },
@@ -1100,6 +1125,8 @@ export async function loadAskRun(deps: Pick<AskDeps, "db" | "search" | "send">, 
     mode: "apply",
     approved: new Set(),
     callId: "",
+    versions: new Map(),
+    numbers: new Map(),
   };
   // Sensitive profiles (a trial) name only confirmed people, in the prompt and in list_speeches.
   const { card, names, withheld } = await loadSessionNames(db, session.id, transcript, analysis);
@@ -1185,7 +1212,7 @@ export async function runAsk(deps: AskDeps, messageId: string): Promise<void> {
 export function readResolution(raw: unknown, status: string): ToolApprovalResolution {
   const r = raw as Partial<ToolApprovalResolution> | null;
   if (r && (r.decision === "approve" || r.decision === "reject" || r.decision === "edit")) {
-    return { decision: r.decision, ...(Array.isArray(r.edits) ? { edits: r.edits } : {}) };
+    return { decision: r.decision, ...(Array.isArray(r.edits) ? { edits: r.edits } : {}), ...(Array.isArray(r.stale) ? { stale: r.stale } : {}) };
   }
   return { decision: status === "dismissed" ? "reject" : "approve" };
 }

@@ -1,17 +1,17 @@
 import {
   Annotation, END, INTERRUPT, START, StateGraph, interrupt, type BaseCheckpointSaver, type LangGraphRunnableConfig, type StateSnapshot,
 } from "@langchain/langgraph";
-import type { AskToolCallRecord, ToolApprovalCall, ToolApprovalResolution } from "@digestor/core";
-import { createToolApproval, getAskMessage, getToolApproval } from "@digestor/core/server";
+import type { AskToolCallRecord, CardClip, StaleClip, ToolApprovalCall, ToolApprovalResolution } from "@digestor/core";
+import { createToolApproval, getAskMessage, getToolApproval, staleCardClips } from "@digestor/core/server";
 import type { ToolCallRequest, ToolMessage } from "../llm/tools.js";
 import {
-  ANSWER_TOO_LONG, AskRunError, DECLINED, EDITED, readResolution, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
+  ANSWER_TOO_LONG, AskRunError, DECLINED, EDITED, readResolution, staleText, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
   type AskDeps, type AskRun, type ToolResult,
 } from "./ask.js";
 import { VERIFY_RETRIES, splitCouldntConfirm, verificationFeedback, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
 
 /** The decision the approve node passes on to `tools`, with the calls it covers (the ones on the card). */
-export type Approval = ToolApprovalResolution & { ids: string[] };
+export type Approval = ToolApprovalResolution & { ids: string[]; clips: CardClip[]; stale?: StaleClip[] };
 
 const keep = <T>(_old: T, next: T): T => next;
 
@@ -213,6 +213,7 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
           ...(out.range ? { range: out.range } : {}),
           ...(out.moments ? { moments: out.moments } : {}),
           ...(out.package ? { package: out.package } : {}),
+          ...(out.clips ? { clips: out.clips } : {}),
         });
       }
       if (calls.length === 0) return { approval: null };
@@ -225,8 +226,10 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
       action.status === "pending"
         ? interrupt<{ actionId: string }, ToolApprovalResolution>({ actionId: action.id })
         : readResolution(action.resolution, action.status);
-    const ids = ((action.payload as { calls?: { id: string }[] }).calls ?? []).map((c) => c.id);
-    return { approval: { decision: decision.decision, ...(decision.edits ? { edits: decision.edits } : {}), ids } };
+    const cardCalls = (action.payload as { calls?: { id: string; clips?: CardClip[] }[] }).calls ?? [];
+    const ids = cardCalls.map((c) => c.id);
+    const clips = cardCalls.flatMap((c) => c.clips ?? []);
+    return { approval: { decision: decision.decision, ...(decision.edits ? { edits: decision.edits } : {}), ...(decision.stale ? { stale: decision.stale } : {}), ids, clips } };
   }
 
   async function tools(state: AskStateValue, config: LangGraphRunnableConfig): Promise<typeof AskState.Update> {
@@ -241,6 +244,11 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
       ctx.directChanges = state.directChanges;
       ctx.wrote = state.wrote;
       ctx.approved = approval && approval.decision !== "reject" ? asked : new Set();
+      // Every clip the card changes must still be at the version the card was made on, or nothing from the card runs.
+      const applying = approval !== null && approval.decision !== "reject";
+      const stale = applying && approval.clips.length > 0 ? await staleCardClips(db, ctx.ownerId, approval.clips) : [];
+      ctx.versions = new Map(applying ? approval.clips.map((c) => [c.id, c.version] as const) : []);
+      ctx.numbers = new Map(applying ? approval.clips.map((c) => [c.id, c.n] as const) : []);
       const edits = new Map(approval?.decision === "edit" ? (approval.edits ?? []).map((e) => [e.id, e.args] as const) : []);
       for (const [i, asSent] of (lastTurn(state).toolCalls ?? []).entries()) {
         const call = withEdits(asSent, edits);
@@ -251,6 +259,7 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
         try {
           if (i >= MAX_CALLS_PER_STEP) out = { text: `Error: at most ${MAX_CALLS_PER_STEP} tool calls per turn.`, ok: false };
           else if (approval?.decision === "reject" && asked.has(call.id)) out = { text: DECLINED, ok: false };
+          else if (stale.length > 0 && asked.has(call.id)) out = { text: staleText(stale), ok: false };
           else {
             out = await runTool(ctx, call);
             if (out.ok && call !== asSent) out = { ...out, text: out.text + EDITED };

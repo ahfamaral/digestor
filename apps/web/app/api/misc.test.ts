@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
 import {
-  createToolApproval, getAskAction,
+  createClip, createToolApproval, getAskAction, updateClip,
   completeAnalysisVersion, getRunningAnalysis, listAnalysisVersions, createAskAction, getAskMessage, listAskMessages, listProblemReports, listSelections, saveTranslation,
   startAnalysisVersion, createSession, updateSession, getTranslation, addAskMessage, getMoment, setMomentChecks,
 } from "@digestor/core/server";
@@ -175,6 +175,44 @@ describe("POST /api/ask-actions/[id] (tool_approval)", () => {
       expect(again.status).toBe(409);
       expect(resumeSends()).toHaveLength(1);
     }
+  });
+
+  async function staleCard() {
+    const { sessionId } = await seedReadySession(h.db);
+    const clip1 = await createClip(h.db, { sessionId, ownerId: OWNER_ID, startMs: 10_000, endMs: 30_000, actor: "user" });
+    const clip2 = await createClip(h.db, { sessionId, ownerId: OWNER_ID, startMs: 40_000, endMs: 60_000, actor: "user" });
+    const msg = await addAskMessage(h.db, { sessionId, ownerId: OWNER_ID, role: "assistant", text: "", status: "running" });
+    const action = await createToolApproval(h.db, msg.id, {
+      step: 1,
+      calls: [{
+        id: "c1", name: "trim_clip", args: {}, summary: "Change clip 2 00:00:40–00:01:00 to 00:00:41–00:00:59",
+        clips: [{ id: clip2.id, n: 2, version: clip2.editVersion }],
+      }],
+    });
+    return { clip1, clip2, action };
+  }
+
+  it("Approve on a stale card answers 409 with the stale sentence, stores the stale resolution and resumes", async () => {
+    const { clip2, action } = await staleCard();
+    await updateClip(h.db, clip2.id, { startMs: 41_000, endMs: 59_000 }, "user");
+    const res = await postAction(req({ decision: "approve" }), ctx(action.id));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("Clip 2 changed since this card was made. Ask again.");
+    expect(await getAskAction(h.db, action.id)).toMatchObject({ status: "dismissed", resolution: { decision: "reject", stale: [{ n: 2, removed: false }] } });
+    expect(h.send).toHaveBeenCalledWith(QUEUES.askResume, { actionId: action.id }, expect.objectContaining({ singletonKey: action.id }));
+  });
+
+  it("Approve on an unchanged clip's card goes through", async () => {
+    const { action } = await staleCard();
+    expect((await postAction(req({ decision: "approve" }), ctx(action.id))).status).toBe(200);
+  });
+
+  it("Reject on a stale card is an ordinary reject (200)", async () => {
+    const { clip2, action } = await staleCard();
+    await updateClip(h.db, clip2.id, { startMs: 41_000, endMs: 59_000 }, "user");
+    const res = await postAction(req({ decision: "reject" }), ctx(action.id));
+    expect(res.status).toBe(200);
+    expect(await getAskAction(h.db, action.id)).toMatchObject({ status: "dismissed", resolution: { decision: "reject" } });
   });
 
   it("reject dismisses the card and still continues the answer", async () => {

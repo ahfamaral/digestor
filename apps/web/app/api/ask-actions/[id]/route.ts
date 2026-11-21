@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { JOB_OPTIONS, OWNER_ID, QUEUES, type AskAction, type ToolApprovalPayload, type ToolApprovalResolution } from "@digestor/core";
 import {
-  confirmBulkSelection, getAskAction, getAskMessage, getMoment, getSession, reopenToolApproval, resolveAskAction, resolveToolApproval,
+  confirmBulkSelection, getAskAction, getAskMessage, getMoment, getSession, reopenToolApproval, resolveAskAction, resolveToolApproval, staleCardClips,
 } from "@digestor/core/server";
 import { readEdits } from "@/lib/askEdits";
-import { asSelectionStatus } from "@/lib/askText";
+import { asSelectionStatus, parseApprovalPayload, staleLine } from "@/lib/askText";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { QUEUE_FAILED, VIDEO_REMOVED, readySession, sendMomentCheckQuietly, sessionIdOfMoment } from "@/lib/personal";
@@ -64,6 +64,20 @@ async function decideApproval(raw: unknown, action: AskAction, messageStatus: st
     const session = await getSession(db, sessionId);
     if (!session) return errorResponse(404, "Suggestion not found.");
     if (session.videoDeletedAt) return errorResponse(409, VIDEO_REMOVED);
+    // A clip changed by hand (or removed) since the card was made: nothing is applied; the answer ends as a refusal.
+    const cardClips = (parseApprovalPayload(action.payload)?.calls ?? []).flatMap((c) => c.clips ?? []);
+    const stale = cardClips.length > 0 ? await staleCardClips(db, OWNER_ID, cardClips) : [];
+    if (stale.length > 0) {
+      if (!(await resolveToolApproval(db, action.id, { decision: "reject", stale }))) return errorResponse(409, NOT_PENDING);
+      try {
+        await boss.send(QUEUES.askResume, { actionId: action.id }, { ...JOB_OPTIONS, singletonKey: action.id });
+      } catch (err) {
+        console.error("ask-actions: enqueue failed", err);
+        await reopenToolApproval(db, action.id).catch((e: unknown) => console.error("ask-actions: reopening the card failed", e));
+        return errorResponse(503, QUEUE_FAILED);
+      }
+      return errorResponse(409, staleLine(stale));
+    }
     if (parsed.data.decision === "edit") {
       const edits = readEdits(action.payload as ToolApprovalPayload, parsed.data.edits as { id: string; args: unknown }[], { sessionLanguage: session.language });
       if (!edits) return errorResponse(400, BAD_EDIT);

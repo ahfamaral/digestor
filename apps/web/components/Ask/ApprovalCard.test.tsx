@@ -40,6 +40,16 @@ describe("ApprovalCard", () => {
   });
 });
 
+describe("ApprovalCard: stale", () => {
+  it("a stale card says which clip changed instead of Declined", () => {
+    const action: AskAction = { ...card([clipCall]), status: "dismissed", resolution: { decision: "reject", stale: [{ n: 2, removed: false }] } };
+    const html = renderToStaticMarkup(<ApprovalCard action={action} lang="en" busy={false} error={undefined} videoRemoved={false} onDecide={() => {}} />);
+    expect(html).toContain("Clip 2 changed since this card was made. Ask again.");
+    expect(html).not.toContain("Declined.");
+    expect(buttons(html)).toEqual([]);
+  });
+});
+
 describe("ApprovalCard: clip package (C3)", () => {
   const pkg = {
     id: "pkg", name: "make_clip_package", args: {}, summary: "Make 3 clips (9:16) with English subtitle drafts: …",

@@ -1,12 +1,12 @@
 "use client";
 
 import { useId, useState } from "react";
-import { formatTimestamp, type AskAction, type ToolApprovalCall, type ToolApprovalResolution } from "@digestor/core";
+import { formatTimestamp, type AskAction, type StaleClip, type ToolApprovalCall, type ToolApprovalResolution } from "@digestor/core";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Busy } from "@/components/ui/spinner";
-import { checkClipEdit, editHasClip, parseApprovalPayload } from "@/lib/askText";
+import { checkClipEdit, editHasClip, parseApprovalPayload, staleLine } from "@/lib/askText";
 import { t } from "@/lib/i18n";
 import { PackageCard } from "./PackageCard";
 
@@ -103,9 +103,11 @@ export function ApprovalCard({
       return { ...d, [id]: on ? [...ids, momentId] : ids.filter((m) => m !== momentId) };
     });
 
-  const resolution = action.resolution as { decision?: string } | null;
+  const resolution = action.resolution as { decision?: string; stale?: StaleClip[] } | null;
   const decided =
-    action.status === "dismissed" ? t("ask.approval.declined") : resolution?.decision === "edit" ? t("ask.approval.approvedEdited") : t("ask.approval.approved");
+    resolution?.stale && resolution.stale.length > 0
+      ? staleLine(resolution.stale)
+      : action.status === "dismissed" ? t("ask.approval.declined") : resolution?.decision === "edit" ? t("ask.approval.approvedEdited") : t("ask.approval.approved");
 
   return (
     <div role="group" aria-labelledby={headingId} className="grid gap-2 rounded-lg border border-border bg-stone-50 p-2">

@@ -486,6 +486,8 @@ export const en = {
       approved: "Approved.",
       approvedEdited: "Approved with your changes.",
       declined: "Declined.",
+      stale: "Clip {n} changed since this card was made. Ask again.",
+      staleRemoved: "Clip {n} was removed since this card was made. Ask again.",
       failed: "Your decision couldn't be sent. Try again in a moment.",
       start: "Start",
       end: "End",

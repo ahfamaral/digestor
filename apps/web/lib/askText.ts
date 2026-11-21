@@ -1,7 +1,8 @@
 import {
   GRANULARITY, formatTimestamp, parseTimestamp, type AskToolCallRecord, type ClipFormat, type ClipPackagePlan, type SelectionStatus, type ToolApprovalCall, type ToolApprovalPayload,
-  type ToolApprovalResolution,
+  type StaleClip, type ToolApprovalResolution,
 } from "@digestor/core";
+import { t } from "./i18n";
 
 export type AskTextPart = { kind: "text"; value: string } | { kind: "time"; ms: number; label: string };
 
@@ -305,6 +306,12 @@ export function parseApprovalPayload(raw: unknown): ToolApprovalPayload | null {
       const subtitles = typeof c.package.subtitles === "string" ? c.package.subtitles : null;
       if (clips.length > 0) call.package = { clips, format: c.package.format, subtitles };
     }
+    if (Array.isArray(c.clips)) {
+      const clips = (c.clips as unknown[]).flatMap((x) =>
+        isRecord(x) && typeof x.id === "string" && typeof x.n === "number" && typeof x.version === "number" ? [{ id: x.id, n: x.n, version: x.version }] : [],
+      );
+      if (clips.length > 0) call.clips = clips;
+    }
     if (Array.isArray(c.moments)) {
       call.moments = (c.moments as unknown[]).flatMap((m) =>
         isRecord(m) && isRange(m) && typeof (m as Record<string, unknown>).id === "string" && typeof (m as Record<string, unknown>).title === "string"
@@ -315,6 +322,13 @@ export function parseApprovalPayload(raw: unknown): ToolApprovalPayload | null {
     calls.push(call);
   }
   return { step: typeof raw.step === "number" ? raw.step : 0, calls };
+}
+
+/** The card's refusal line: the first clip that changed or was removed since the card was made. */
+export function staleLine(stale: StaleClip[]): string {
+  const first = stale[0];
+  if (!first) return t("ask.approval.declined");
+  return t(first.removed ? "ask.approval.staleRemoved" : "ask.approval.stale", { n: first.n });
 }
 
 function msOf(v: string): number | null {
