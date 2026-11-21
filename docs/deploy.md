@@ -262,6 +262,10 @@ Dev on 2026-11-13 (Colima, 4 CPUs): 126 roll calls in 20 s and 39,646 signed bil
 
 yt-dlp downloads only the part (`--download-sections "*<start>-<end>"`, keyframe-approximate, from the plain https formats only: on an 8-hour plenary stream the HLS format never started; a video without them fails at once). A part may take 4 × its length (at least 10 minutes); past that yt-dlp and its ffmpeg are stopped and the session fails with "YouTube is sending this part too slowly. Please try again later." Parts over 60 minutes are refused before a session is made. Dev on 2026-11-13: a 97 s speech (137 s part, 1080p AV1, 19 MB) downloaded in about 2 min 20 s (YouTube serves it at about playback speed) and reached the context check 7.5 min after the click, with the Câmara record matched.
 
+### Once, when updating to AI goes first (migration 0036)
+
+Nothing to run by hand. `up -d --build` runs migration 0036: `sessions.goal` (nullable text) and `clips.edit_version` (integer, default 0, so existing clips start at version 0). No new environment variables and no new queue (the goal starts Ask through the existing `ask.run`). Sessions with no goal behave as before; an Ask card made before the update has no recorded clip versions and is not checked for staleness.
+
 ### Once, when updating to the 2026-11-19 round (migrations 0034, 0035)
 
 `up -d --build` runs migration 0034: two plain indexes (`clip_events.clip_id`, `ask_actions.message_id`), and 0035: a nullable `library_ask_messages.not_searched` (older answers keep null and show no "Not searched" line). Nothing to backfill. The same update moves Next.js to 16.4.6 and zod to 4.6.7 (security fixes); the JSON schemas sent to the model are unchanged on the wire.
