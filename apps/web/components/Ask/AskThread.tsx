@@ -9,7 +9,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  askUserPrompt, asToolCalls, awaitsApproval, clipLinks, formatToolCall, isChange, packageOutcome, parseApprovalPayload, isStalePending, isWorkingOn, askPollMs, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
+  askUserPrompt, asToolCalls, awaitsApproval, clipLinks, formatToolCall, isChange, packageOutcome, parseApprovalPayload, isStalePending, isWorkingOn, stoppedSince, askPollMs, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
 } from "@/lib/askText";
 import { ApprovalCard } from "./ApprovalCard";
 import { errorMessage } from "@/lib/http";
@@ -87,8 +87,8 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
       if (!res.ok) throw new Error("load");
       const body = (await res.json()) as { messages: Message[] };
       // Done, failed, or paused on a further approval card: whatever it changed before stopping is in the database now.
-      const finished = body.messages.some((m) => working.current.has(m.id) && !isWorkingOn(m));
-      working.current = new Set(body.messages.filter(isWorkingOn).map((m) => m.id));
+      const { finished, working: stillWorking } = stoppedSince(working.current, body.messages);
+      working.current = stillWorking;
       if (finished) router.refresh();
       setMessages(body.messages);
       setNow(Date.now());

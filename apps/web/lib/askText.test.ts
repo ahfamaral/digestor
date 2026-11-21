@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, initialPackageDraft, isChange, packageDecision, packageOutcome,
-  askUserPrompt, clipLinks, sourceLines, isAnswering, isStalePending, askPollMs, ASK_POLL_MS, ASK_SLOW_POLL_MS, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, staleLine, verifyResult,
+  askUserPrompt, clipLinks, stoppedSince, sourceLines, isAnswering, isStalePending, askPollMs, ASK_POLL_MS, ASK_SLOW_POLL_MS, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, staleLine, verifyResult,
 } from "./askText";
 
 describe("linkifyTimestamps", () => {
@@ -361,5 +361,19 @@ describe("ask_user records", () => {
     ]);
     expect(clipLinks({ name: "make_clip_package", args: { clips: [{ title: "One" }, { title: "Two" }] }, result: "", ok: true, clipIds: ["a"] })).toEqual([{ clipId: "a", title: null }]);
     expect(clipLinks({ name: "set_selection", args: {}, result: "", ok: true })).toEqual([]);
+  });
+});
+
+describe("stoppedSince", () => {
+  const m = (id: string, status: string) => ({ id, role: "assistant", status, actions: [] }) as never;
+  it("an answer worked on at the last load that finished while the drawer was closed asks for a refresh on reopen", () => {
+    const first = stoppedSince(new Set(), [m("a1", "running")]);
+    expect(first).toEqual({ finished: false, working: new Set(["a1"]) });
+    // The drawer closes (no polling); on reopen the answer is done.
+    expect(stoppedSince(first.working, [m("a1", "done")])).toEqual({ finished: true, working: new Set() });
+  });
+  it("still running, or never seen running, asks for nothing", () => {
+    expect(stoppedSince(new Set(["a1"]), [m("a1", "pending")]).finished).toBe(false);
+    expect(stoppedSince(new Set(), [m("a1", "done")]).finished).toBe(false);
   });
 });

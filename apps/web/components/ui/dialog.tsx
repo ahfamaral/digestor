@@ -44,13 +44,16 @@ function DialogContent({
   children,
   showCloseButton = true,
   overlayClassName,
+  keepMounted,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   overlayClassName?: string
+  /** Keep the content in the DOM (hidden) while closed, so its state survives close and reopen. */
+  keepMounted?: boolean
 }) {
   return (
-    <DialogPortal>
+    <DialogPortal keepMounted={keepMounted}>
       <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"

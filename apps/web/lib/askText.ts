@@ -311,6 +311,17 @@ export function isWorkingOn(m: WithActions): boolean {
   return isAnswering(m.status) || (m.status === "waiting" && !awaitsApproval(m));
 }
 
+/**
+ * Whether an answer being worked on at the last load has stopped since (done, failed, or paused on a further card):
+ * whatever it changed before stopping is in the database now, so the page refreshes. Also the ids still being worked on.
+ */
+export function stoppedSince(working: ReadonlySet<string>, messages: (WithActions & { id: string })[]): { finished: boolean; working: Set<string> } {
+  return {
+    finished: messages.some((m) => working.has(m.id) && !isWorkingOn(m)),
+    working: new Set(messages.filter(isWorkingOn).map((m) => m.id)),
+  };
+}
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isRange = (v: unknown): v is { startMs: number; endMs: number } => isRecord(v) && typeof v.startMs === "number" && typeof v.endMs === "number";
 

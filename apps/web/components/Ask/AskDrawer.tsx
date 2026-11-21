@@ -41,7 +41,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
   }, [open, desktop]);
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
-    const dialogOpen = document.querySelector("[role='dialog']") !== null;
+    const dialogOpen = document.querySelector("[role='dialog']:not([hidden])") !== null;
     if (!opensAsk(e, { typing: isTyping(e.target), dialogOpen })) return;
     e.preventDefault();
     onOpenChange(true);
@@ -64,6 +64,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
           initialFocus={inputRef}
           overlayClassName="lg:hidden"
           showCloseButton
+          keepMounted
           className="top-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-md lg:border-l lg:border-border lg:shadow-xl"
         >
           <div className="border-b border-border px-4 py-3 pr-12">
