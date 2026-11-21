@@ -351,7 +351,7 @@ export function checkClipEdit(e: { start: string; end: string; title?: string },
 
 /** Whether an approval card's edit holds a clip (its times snap to whole sentences, so the card says so). */
 export function editHasClip(calls: { name: string }[]): boolean {
-  return calls.some((c) => c.name === "propose_clip" || c.name === "trim_clip");
+  return calls.some((c) => c.name === "propose_clip" || c.name === "trim_clip" || c.name === "replace_clip");
 }
 
 /** A clip spans the punchline minimum to the exchange maximum, as the worker checks after snapping. */

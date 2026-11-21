@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AskAction } from "@digestor/core";
 import { editHasClip } from "@/lib/askText";
-import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalCard, clipEditArgs, needsTitle } from "./ApprovalCard";
 
 const clipCall = { id: "c1", name: "propose_clip", args: { title: "Rent caps" }, summary: "Make a clip 00:00:10–00:00:30 'Rent caps'", range: { startMs: 10_000, endMs: 30_000 } };
 const selectionCall = { id: "c2", name: "set_selection", args: {}, summary: "Approve 1 moment: 'A'", moments: [{ id: "m1", title: "A", startMs: 0, endMs: 1000 }] };
@@ -37,6 +37,17 @@ describe("ApprovalCard", () => {
     expect(editHasClip([clipCall])).toBe(true);
     expect(editHasClip([selectionCall])).toBe(false);
     expect(editHasClip([{ ...clipCall, name: "trim_clip" }, selectionCall])).toBe(true);
+    expect(editHasClip([{ ...clipCall, name: "replace_clip" }])).toBe(true);
+  });
+
+  it("a replace_clip card's edit has a title field and posts { start, end, title }, like a new clip; a trim has none", () => {
+    const value = { start: "00:12:01", end: "00:12:31", title: "  Edited " };
+    const replace = { ...clipCall, name: "replace_clip" };
+    expect(needsTitle(replace)).toBe(true);
+    expect(clipEditArgs(replace, value)).toEqual({ start: "00:12:01", end: "00:12:31", title: "Edited" });
+    expect(needsTitle({ ...clipCall, name: "trim_clip" })).toBe(false);
+    expect(clipEditArgs({ ...clipCall, name: "trim_clip" }, value)).toEqual({ start: "00:12:01", end: "00:12:31" });
+    expect(buttons(render([replace], false))).toEqual(["Approve", "Edit", "Reject"]);
   });
 });
 

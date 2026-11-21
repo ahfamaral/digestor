@@ -16,6 +16,13 @@ type Draft = Record<string, ClipDraft | string[]>;
 /** One change's block in the Edit form. */
 const BLOCK = "grid min-w-0 gap-2 rounded-md border border-border bg-white p-2";
 
+/** A clip card whose edit form has a title (a new clip, or the moment a clip is swapped to); a trim has times only. */
+export const needsTitle = (call: ToolApprovalCall) => call.name === "propose_clip" || call.name === "replace_clip";
+
+/** What the Edit posts for one clip call: times, and the title when the tool takes one. */
+export const clipEditArgs = (call: ToolApprovalCall, value: { start: string; end: string; title: string }) =>
+  needsTitle(call) ? { start: value.start, end: value.end, title: value.title.trim() } : { start: value.start, end: value.end };
+
 const isClip = (call: ToolApprovalCall) => call.name === "propose_clip" || call.name === "trim_clip" || call.name === "replace_clip";
 
 /** The edit fields' first values: the snapped range the summary shows, the model's title, every moment ticked. */
@@ -87,9 +94,9 @@ export function ApprovalCard({
         if (value.length === 0) return setEditError(t("ask.approval.errorMoments"));
         edits.push({ id: call.id, args: { momentIds: value } });
       } else if (value) {
-        const problem = checkClipEdit(value, call.name === "propose_clip");
+        const problem = checkClipEdit(value, needsTitle(call));
         if (problem) return setEditError(t(`ask.approval.error.${problem}`));
-        edits.push({ id: call.id, args: call.name === "propose_clip" ? { start: value.start, end: value.end, title: value.title.trim() } : { start: value.start, end: value.end } });
+        edits.push({ id: call.id, args: clipEditArgs(call, value) });
       }
     }
     setEditError(null);
@@ -184,7 +191,7 @@ export function ApprovalCard({
                   {field("start")}
                   {field("end")}
                 </div>
-                {call.name === "propose_clip" && (
+                {needsTitle(call) && (
                   <label className="grid gap-1 text-xs font-medium">
                     {t("ask.approval.clipTitle")}
                     <Input

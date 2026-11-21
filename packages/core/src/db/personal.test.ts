@@ -1184,7 +1184,30 @@ describe("replaceClipMoment", () => {
     const approved = Object.entries(await listSelections(db, OWNER, s.id)).filter(([, st]) => st === "approved").map(([id]) => id);
     expect(approved).not.toContain(old.id);
     expect(approved).toContain(momentId);
-    expect(await listClips(db, OWNER, s.id)).toHaveLength(2);
+    const wanted = (await Promise.all(approved.map((id) => getMoment(db, id)))).map((m) => ({ id: m!.id, startMs: m!.startMs, endMs: m!.endMs }));
+    await confirmClips(db, OWNER, s.id, wanted);
+    const live = await listClips(db, OWNER, s.id);
+    expect(live).toHaveLength(2);
+    expect(live.find((x) => x.id === c.id)!.momentId).toBe(momentId);
+  });
+
+  it("a merge survivor replaced and then confirmed keeps the same number of clips", async () => {
+    const m1 = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 10_000, endMs: 50_000, title: "A", origin: "user" });
+    const m2 = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 40_000, endMs: 80_000, title: "B", origin: "user" });
+    const c1 = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m1.id, startMs: 10_000, endMs: 50_000, actor: "user" });
+    const c2 = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: m2.id, startMs: 40_000, endMs: 80_000, actor: "user" });
+    await setSelection(db, OWNER, m1.id, "approved");
+    await setSelection(db, OWNER, m2.id, "approved");
+    const merged = await mergeClips(db, OWNER, [c1.id, c2.id], "user");
+    expect(merged.ok).toBe(true);
+    expect(await listClips(db, OWNER, s.id)).toHaveLength(1);
+    const { momentId } = await swap(c1.id);
+    const approved = Object.entries(await listSelections(db, OWNER, s.id)).filter(([, st]) => st === "approved").map(([id]) => id);
+    const wanted = (await Promise.all(approved.map((id) => getMoment(db, id)))).map((m) => ({ id: m!.id, startMs: m!.startMs, endMs: m!.endMs }));
+    await confirmClips(db, OWNER, s.id, wanted);
+    const live = await listClips(db, OWNER, s.id);
+    expect(live).toHaveLength(1);
+    expect(live[0]).toMatchObject({ id: c1.id, momentId });
   });
 
   it("a finished burn comes back stale on undo", async () => {
