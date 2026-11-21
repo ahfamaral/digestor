@@ -30,7 +30,7 @@ export function initialAskOpen(a: { desktop: boolean; hasGoal: boolean; remember
   return a.desktop && a.hasGoal && a.remembered !== "closed";
 }
 
-/** The phone's "Ask has a draft for you" banner: a goal whose Ask started, not closed before, drawer not open. */
-export function showDraftBanner(a: { desktop: boolean; hasGoal: boolean; askStarted: boolean; remembered: AskDockState | null; open: boolean }): boolean {
-  return !a.desktop && a.hasGoal && a.askStarted && a.remembered !== "closed" && !a.open;
+/** The phone's "Ask has a draft for you" banner: a goal whose Ask started, not closed before, drawer not open, and only once the client knows the width and storage (`ready`). */
+export function showDraftBanner(a: { desktop: boolean; hasGoal: boolean; askStarted: boolean; remembered: AskDockState | null; open: boolean; ready: boolean }): boolean {
+  return a.ready && !a.desktop && a.hasGoal && a.askStarted && a.remembered !== "closed" && !a.open;
 }

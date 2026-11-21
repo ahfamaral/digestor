@@ -10,4 +10,10 @@ describe("ClipIndex", () => {
     expect(html.match(/Made with Ask/g)).toHaveLength(1);
     expect(html.indexOf("Made with Ask")).toBeLessThan(html.indexOf("T2"));
   });
+
+  it("stacked (Ask docked) drops the side-column classes and keeps the Clips bar", () => {
+    const html = renderToStaticMarkup(<ClipIndex stacked entries={[entry("a", 1, false)]} language="en" onJump={() => {}} />);
+    expect(html).not.toContain("lg:");
+    expect(html).toContain("Clips (1)");
+  });
 });

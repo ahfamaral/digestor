@@ -157,6 +157,8 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
   const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const lang = session.language ?? undefined;
   const dock = useAskDock(session.id, Boolean(session.goal));
+  // While Ask is docked (28 rem of the width) the clip index stacks above the cards so every control keeps its room.
+  const docked = dock.open && dock.desktop;
   const askExamples = [t("ask.prepareExamples.shorter"), t("ask.prepareExamples.question"), t("ask.prepareExamples.platform")];
 
   // A router.refresh() brings new server data: fold it in (see merge).
@@ -486,8 +488,9 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
             </Link>
           </div>
         ) : (
-          <div className="lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start lg:gap-5">
+          <div className={cn(!docked && "lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start lg:gap-5")}>
             <ClipIndex
+              stacked={docked}
               onJump={(id) => {
                 hashTarget.current = id;
                 setOpenOverride((o) => withOpen(o, id));

@@ -313,7 +313,7 @@ export function Briefing(props: BriefingProps) {
         </div>
       </header>
 
-      {showDraftBanner({ desktop: dock.desktop, hasGoal: Boolean(session.goal), askStarted: props.askStarted, remembered: dock.remembered, open: dock.open }) && (
+      {showDraftBanner({ desktop: dock.desktop, hasGoal: Boolean(session.goal), askStarted: props.askStarted, remembered: dock.remembered, open: dock.open, ready: dock.ready }) && (
         <AskDraftBanner onOpen={() => dock.setOpen(true)} />
       )}
 

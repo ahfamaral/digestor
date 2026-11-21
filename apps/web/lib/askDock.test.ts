@@ -20,13 +20,15 @@ describe("ask dock", () => {
   });
 
   it("the phone banner shows only with a goal whose Ask started, until closed once", () => {
-    const base = { desktop: false, hasGoal: true, askStarted: true, remembered: null, open: false } as const;
+    const base = { desktop: false, hasGoal: true, askStarted: true, remembered: null, open: false, ready: true } as const;
     expect(showDraftBanner(base)).toBe(true);
     expect(showDraftBanner({ ...base, desktop: true })).toBe(false);
     expect(showDraftBanner({ ...base, hasGoal: false })).toBe(false);
     expect(showDraftBanner({ ...base, askStarted: false })).toBe(false);
     expect(showDraftBanner({ ...base, remembered: "closed" })).toBe(false);
     expect(showDraftBanner({ ...base, open: true })).toBe(false);
+    // Not before the client has read the width and storage (server HTML, hydration): no flash on a desktop.
+    expect(showDraftBanner({ ...base, ready: false })).toBe(false);
   });
 
   it("remembers the state per session", () => {
