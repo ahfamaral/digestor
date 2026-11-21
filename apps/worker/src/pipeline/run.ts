@@ -52,6 +52,8 @@ export type PipelineDeps = {
   enqueueNames?: (sessionId: string) => Promise<void>;
   /** Sends `session.proxy` (set by the worker's main; the job claims the row first, so a double send is harmless). */
   enqueueProxy?: (sessionId: string) => Promise<void>;
+  /** Sends `ask.run` for an answer (set by the worker's main); the goal's first question starts it once the session is `ready`. */
+  enqueueAsk?: (messageId: string) => Promise<void>;
 };
 
 /**

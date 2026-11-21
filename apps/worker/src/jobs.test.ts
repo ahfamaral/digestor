@@ -660,6 +660,15 @@ d("handleProxy (the preview copy job)", () => {
   }
   const hasAudioFile = (id: string) => readFile(storage.resolve(`${id}/audio.mp3`)).then(() => true, () => false);
 
+  it("the copy that makes a session with a goal ready starts Ask once", async () => {
+    const id = await seed();
+    await updateSession(db, id, { goal: "The heated exchanges" });
+    const enqueueAsk = vi.fn(async (_id: string) => {});
+    await handleProxy({ db, storage, media: fakeMedia(), enqueueAsk }, { sessionId: id }, FIRST);
+    await handleProxy({ db, storage, media: fakeMedia(), enqueueAsk }, { sessionId: id }, FIRST);
+    expect(enqueueAsk).toHaveBeenCalledTimes(1);
+  });
+
   it("handleProxy claims, encodes, finishes and settles; the ready session's audio.mp3 goes", async () => {
     const id = await seed();
     await withAudio(id);

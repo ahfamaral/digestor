@@ -60,6 +60,7 @@ import { MissingApiKeyError, VideoRemovedError } from "./errors.js";
 import { fetchRetryLine, insidePublishWindow } from "./records/connector.js";
 import { RECORD_RETRY_HOURS } from "./records/retry.js";
 import { burnTrack, renderClipJob, type RenderDeps } from "./pipeline/render.js";
+import { startGoalAsk } from "./goalAsk.js";
 import { runProxy, type ProxyDeps } from "./pipeline/proxy.js";
 
 export { MissingApiKeyError };
@@ -124,6 +125,11 @@ async function onJobError(ctx: JobContext, sessionId: string, err: unknown, atte
   throw err;
 }
 
+/** Best effort: the session may have just become `ready`; start Ask on its goal. Errors are logged, never fail the job. */
+async function goalHook(deps: { db: Db; enqueueAsk?: (messageId: string) => Promise<void> }, sessionId: string): Promise<void> {
+  await startGoalAsk(deps, sessionId).catch((err: unknown) => console.error(`[jobs] goal Ask of ${sessionId} not started:`, err));
+}
+
 /**
  * Start (or continue) the pipeline. Idempotent: the run continues from its stored step after a crash or retry; a
  * finished run, a failed session or one paused at the context check is left alone (`runPipeline`), so a duplicate start
@@ -135,6 +141,7 @@ export async function handleStart(ctx: JobContext, job: StartJob, attempt: Attem
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
   }
+  await goalHook(ctx.deps, job.sessionId);
 }
 
 /** Idempotent: the answer is applied only at a pending context check, so a retried or duplicated resume never answers a later one. */
@@ -144,6 +151,7 @@ export async function handleResume(ctx: JobContext, job: ResumeJob, attempt: Att
   } catch (err) {
     await onJobError(ctx, job.sessionId, err, attempt);
   }
+  await goalHook(ctx.deps, job.sessionId);
 }
 
 /**
@@ -482,6 +490,7 @@ export async function handleNames(ctx: Pick<JobContext, "db" | "deps">, job: Nam
 export async function handleProxy(deps: ProxyDeps, job: ProxyJob, attempt: Attempt): Promise<void> {
   try {
     await runProxy(deps, job.sessionId, { retrying: attempt.retryCount > 0 });
+    await goalHook(deps, job.sessionId);
   } catch (err) {
     if (attempt.retryCount >= attempt.retryLimit) {
       await failProxy(deps.db, job.sessionId);

@@ -3,7 +3,7 @@ import { claimProxy, failProxy, finishProxy, getSession, settlePreview, type Db,
 import type * as ffmpeg from "../media/ffmpeg.js";
 import { releaseAudio } from "./audio.js";
 
-export type ProxyDeps = { db: Db; storage: LocalStorage; media: Pick<typeof ffmpeg, "makeProxy"> };
+export type ProxyDeps = { db: Db; storage: LocalStorage; media: Pick<typeof ffmpeg, "makeProxy">; enqueueAsk?: (messageId: string) => Promise<void> };
 
 /**
  * Encodes the session's 360p preview copy in its own job, so the pipeline never waits for it. The row goes

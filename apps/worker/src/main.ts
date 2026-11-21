@@ -135,6 +135,9 @@ async function main() {
   deps.enqueueProxy = async (sessionId) => {
     await boss.send(QUEUES.proxy, { sessionId }, JOB_OPTIONS);
   };
+  deps.enqueueAsk = async (messageId) => {
+    await boss.send(QUEUES.ask, { messageId }, { ...JOB_OPTIONS, singletonKey: messageId });
+  };
   await boss.schedule(CLEANUP_QUEUE, CLEANUP_CRON, {}, { tz: "UTC" });
   await boss.schedule(SWEEP_QUEUE, SWEEP_CRON, {}, { tz: "UTC" });
   await boss.schedule(RECORDS_RETRY_QUEUE, RECORDS_RETRY_CRON, {}, { tz: "UTC" });
@@ -173,7 +176,7 @@ async function main() {
   await register(QUEUES.translateBriefing, TranslateBriefingJobSchema, (j, attempt) => handleTranslateBriefing({ db, llm }, j, attempt));
   await register(QUEUES.findMore, FindMoreJobSchema, (j, attempt) => handleFindMore({ db, llm }, j, attempt));
   await register(QUEUES.names, NamesJobSchema, (j, attempt) => handleNames(ctx, j, attempt));
-  await register(QUEUES.proxy, ProxyJobSchema, (j, attempt) => handleProxy({ db, storage, media }, j, attempt));
+  await register(QUEUES.proxy, ProxyJobSchema, (j, attempt) => handleProxy({ db, storage, media, enqueueAsk: deps.enqueueAsk }, j, attempt));
   await boss.work(CLEANUP_QUEUE, { batchSize: 1 }, async () => {
     await runDailyCleanup({ db, storage, chroma }, videoRetentionDays());
   });

@@ -19,7 +19,7 @@ import { moments as momentsTable } from "./schema.ts";
 import type { TrackCue } from "../personalTypes.ts";
 import { createCustomPerson } from "./names.ts";
 import type { NewMoment } from "./analysis.ts";
-import { listShownRanges, requestFindMore, claimFindMore, finishFindMore, failFindMore, getFindMore } from "./personal.ts";
+import { startAskQuestion, ASK_QUEUE_FAILED, AskQueueError, listAskMessages as listAsk, listShownRanges, requestFindMore, claimFindMore, finishFindMore, failFindMore, getFindMore } from "./personal.ts";
 
 const OWNER = "owner";
 let db: Db;
@@ -1009,5 +1009,34 @@ describe("edit version", () => {
     expect(await staleCardClips(db, OWNER, card)).toEqual([{ n: 2, removed: false }, { n: 3, removed: true }]);
     expect(await staleCardClips(db, "someone-else", [card[0]!])).toEqual([{ n: 1, removed: true }]);
     expect(await staleCardClips(db, OWNER, [{ id: "00000000-0000-4000-8000-000000000000", n: 4, version: 0 }])).toEqual([{ n: 4, removed: true }]);
+  });
+});
+
+describe("startAskQuestion", () => {
+  const start = (enqueue: (id: string) => Promise<void>, over: { onlyIfEmpty?: boolean; onEnqueueError?: "rollback" | "fail" } = {}) =>
+    startAskQuestion(db, enqueue, { sessionId: s.id, ownerId: OWNER, text: "3 clips", onEnqueueError: "rollback", ...over });
+
+  it("stores the question then a pending answer and enqueues the answer", async () => {
+    const calls: string[] = [];
+    const r = await start(async (id) => void calls.push(id));
+    expect(calls).toEqual([r!.answer.id]);
+    expect(r!.question).toMatchObject({ role: "user", status: "done", text: "3 clips" });
+    expect(r!.answer).toMatchObject({ role: "assistant", status: "pending" });
+  });
+  it("rollback: a failed enqueue removes both rows and throws AskQueueError", async () => {
+    await expect(start(async () => { throw new Error("down"); })).rejects.toBeInstanceOf(AskQueueError);
+    expect(await listAsk(db, OWNER, s.id)).toEqual([]);
+  });
+  it("fail: a failed enqueue keeps the question and fails the answer with ASK_QUEUE_FAILED", async () => {
+    const r = await start(async () => { throw new Error("down"); }, { onEnqueueError: "fail" });
+    const [q, a] = await listAsk(db, OWNER, s.id);
+    expect(q).toMatchObject({ role: "user", status: "done" });
+    expect(a).toMatchObject({ status: "failed", text: ASK_QUEUE_FAILED });
+    expect(r!.answer.id).toBe(a!.id);
+  });
+  it("onlyIfEmpty: two calls at once store one pair", async () => {
+    const [a, b] = await Promise.all([start(async () => {}, { onlyIfEmpty: true }), start(async () => {}, { onlyIfEmpty: true })]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    expect(await listAsk(db, OWNER, s.id)).toHaveLength(2);
   });
 });

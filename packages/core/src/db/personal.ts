@@ -923,6 +923,61 @@ export async function addAskMessage(
   return row!;
 }
 
+export type AskEnqueue = (answerId: string) => Promise<void>;
+export const ASK_QUEUE_FAILED = "Couldn't start this answer. Please ask again.";
+export class AskQueueError extends Error {
+  constructor() {
+    super(ASK_QUEUE_FAILED);
+    this.name = "AskQueueError";
+  }
+}
+
+/**
+ * The one way to start an Ask answer: stores the question (`done`), then a `pending` answer (inserted second with its own
+ * clock_timestamp, since now() is the same inside a transaction and the order would tie), in one transaction, then enqueues the answer. `onlyIfEmpty` serialises
+ * per session (advisory lock) and returns null when the owner already has any Ask message there. A failed enqueue:
+ * `rollback` removes both rows and throws `AskQueueError`; `fail` keeps the question and fails the answer.
+ */
+export async function startAskQuestion(
+  db: Db,
+  enqueue: AskEnqueue,
+  a: { sessionId: string; ownerId: string; text: string; onlyIfEmpty?: boolean; onEnqueueError: "rollback" | "fail" },
+): Promise<{ question: AskMessage; answer: AskMessage } | null> {
+  const stored = await db.transaction(async (tx) => {
+    if (a.onlyIfEmpty) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${a.sessionId}))`);
+      const [any] = await tx
+        .select({ id: askMessages.id })
+        .from(askMessages)
+        .where(and(eq(askMessages.sessionId, a.sessionId), eq(askMessages.ownerId, a.ownerId)))
+        .limit(1);
+      if (any) return null;
+    }
+    const [question] = await tx
+      .insert(askMessages)
+      .values({ sessionId: a.sessionId, ownerId: a.ownerId, role: "user", text: a.text, status: "done", createdAt: sql`clock_timestamp()` })
+      .returning();
+    const [answer] = await tx
+      .insert(askMessages)
+      .values({ sessionId: a.sessionId, ownerId: a.ownerId, role: "assistant", text: "", status: "pending", createdAt: sql`clock_timestamp()` })
+      .returning();
+    return { question: question!, answer: answer! };
+  });
+  if (!stored) return null;
+  try {
+    await enqueue(stored.answer.id);
+  } catch (err) {
+    console.error("ask: enqueue failed", err);
+    if (a.onEnqueueError === "rollback") {
+      await deleteAskMessages(db, [stored.question.id, stored.answer.id]).catch((e: unknown) => console.error("ask: rollback failed", e));
+      throw new AskQueueError();
+    }
+    const failed = await finishAskMessage(db, stored.answer.id, { text: ASK_QUEUE_FAILED, status: "failed" });
+    return { question: stored.question, answer: failed };
+  }
+  return stored;
+}
+
 export async function finishAskMessage(
   db: Db,
   id: string,

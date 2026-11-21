@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JOB_OPTIONS, OWNER_ID, QUEUES } from "@digestor/core";
-import { addAskMessage, deleteAskMessages, listAskMessages } from "@digestor/core/server";
+import { AskQueueError, listAskMessages, startAskQuestion } from "@digestor/core/server";
 import { errorResponse } from "@/lib/http";
 import { isUuid } from "@/lib/ids";
 import { QUEUE_FAILED, readySession } from "@/lib/personal";
@@ -36,14 +36,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const ready = await readySession(db, id);
   if ("error" in ready) return ready.error;
 
-  const question = await addAskMessage(db, { sessionId: id, ownerId: OWNER_ID, role: "user", text: parsed.data.question, status: "done" });
-  const pending = await addAskMessage(db, { sessionId: id, ownerId: OWNER_ID, role: "assistant", text: "", status: "pending" });
   try {
-    await boss.send(QUEUES.ask, { messageId: pending.id }, { ...JOB_OPTIONS, singletonKey: pending.id });
+    const started = await startAskQuestion(
+      db,
+      (messageId) => boss.send(QUEUES.ask, { messageId }, { ...JOB_OPTIONS, singletonKey: messageId }).then(() => {}),
+      { sessionId: id, ownerId: OWNER_ID, text: parsed.data.question, onEnqueueError: "rollback" },
+    );
+    return Response.json({ question: started!.question, answer: started!.answer }, { status: 202 });
   } catch (err) {
-    console.error("ask: enqueue failed", err);
-    await deleteAskMessages(db, [question.id, pending.id]).catch((e: unknown) => console.error("ask: rollback failed", e));
-    return errorResponse(503, QUEUE_FAILED);
+    if (err instanceof AskQueueError) return errorResponse(503, QUEUE_FAILED);
+    throw err;
   }
-  return Response.json({ question, answer: pending }, { status: 202 });
 }
