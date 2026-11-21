@@ -7,9 +7,9 @@ import {
   type StaleClip, type ToolApprovalResolution, type Transcript, type Word,
 } from "@digestor/core";
 import {
-  claimAskMessage, claimClipRender, clipsMadeByAsk, listClips, listTracks, claimMomentCheck, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
+  claimAskMessage, claimClipRender, clipsMadeByAsk, listClips, listTracks, claimMomentCheck, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, failTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
-  releaseMomentCheck, setClipRenderStatus, setSelection, StaleClipError, updateClip, applyClipUpdate, ClipTitleNotOwnError, type AskMessage, type Db, type Session,
+  releaseMomentCheck, setClipRenderStatus, setSelection, StaleClipError, updateClip, applyClipUpdate, ClipTitleNotOwnError, replaceClipMoment, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
 import type { StructuredLLM } from "../llm/structured.js";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
@@ -91,7 +91,7 @@ export type AskDeps = {
 export type JobSender = (queue: string, data: Record<string, string>, singletonKey: string) => Promise<void>;
 
 /** The tools that change the journalist's clips or selections: the graph asks for approval before they run. */
-export const MUTATING_TOOLS: ReadonlySet<string> = new Set(["propose_clip", "trim_clip", "set_selection", "make_clip_package", "update_clip"]);
+export const MUTATING_TOOLS: ReadonlySet<string> = new Set(["propose_clip", "trim_clip", "set_selection", "make_clip_package", "update_clip", "replace_clip"]);
 
 export type { AskToolCallRecord };
 
@@ -872,6 +872,71 @@ export const TOOLS: Tool[] = [
   },
   {
     spec: {
+      name: "replace_clip",
+      description:
+        `Swap one of the user's clips for a different moment (only when they ask for "another moment instead of clip N"): the clip keeps its number, format, crop, credit and subtitle languages; its subtitle drafts are made again for the new moment. The old moment goes back to undecided. Times are snapped to whole sentences. Counts as one of the ${MAX_DIRECT_CHANGES} changes allowed per question.`,
+      schema: z.object({ clipId: z.string().uuid(), start: TimeArg, end: TimeArg, title: z.string().describe("Short title in the language of the video") }),
+    },
+    async run(ctx, a: { clipId: string; start: string | number; end: string | number; title: string }) {
+      const analysis = requireAnalysis(ctx);
+      const clip = await getClip(ctx.db, a.clipId);
+      if (!clip || clip.ownerId !== ctx.ownerId || clip.sessionId !== ctx.session.id) {
+        throw new ToolInputError(`there is no clip ${a.clipId} in this video.`);
+      }
+      requireVideo(ctx);
+      const title = a.title.trim().slice(0, MAX_TITLE_CHARS);
+      if (!title) throw new ToolInputError("title is empty.");
+      const range = snapClip(ctx, a);
+      requireDirectChange(ctx);
+      if (ctx.mode === "plan") {
+        ctx.directChanges += 1;
+        const n = (await numberedClips(ctx)).find((c) => c.clip.id === clip.id)?.n ?? ctx.numbers.get(clip.id) ?? 0;
+        const old = clip.momentId ? await getMoment(ctx.db, clip.momentId) : null;
+        const oldTitle = old ? ` ${quoted(old.title)}` : "";
+        return {
+          text: "",
+          summary: `Replace clip ${n} (${ts(clip.startMs)}–${ts(clip.endMs)}${oldTitle}) with ${ts(range.startMs)}–${ts(range.endMs)} ${quoted(title)}; its moment goes back to undecided on the Briefing`,
+          range,
+          clips: [{ id: clip.id, n, version: clip.editVersion }],
+        };
+      }
+      requireApproved(ctx);
+      willWrite(ctx);
+      ctx.directChanges += 1;
+      let out: Awaited<ReturnType<typeof replaceClipMoment>>;
+      try {
+        out = await replaceClipMoment(ctx.db, { clipId: clip.id, ownerId: ctx.ownerId, analysisId: analysis.version.id, ...range, title, actor: "ask", expectVersion: ctx.versions.get(clip.id) });
+      } catch (err) {
+        if (err instanceof StaleClipError) {
+          const live = await getClip(ctx.db, clip.id);
+          throw new ToolInputError(staleText([{ n: ctx.numbers.get(clip.id) ?? 0, removed: !live }]));
+        }
+        throw err;
+      }
+      if (ctx.versions.has(clip.id)) ctx.versions.set(clip.id, out.clip.editVersion);
+      await requestMomentCheck(ctx, out.momentId); // so Prepare finds the checks done, not "Checking…"
+      // Each new track row is the claim; its job is sent after it, and a send that fails marks the track failed ("Try again" on Prepare).
+      let failed = 0;
+      if (ctx.send) {
+        for (const trackId of out.trackIds) {
+          try {
+            await ctx.send(QUEUES.prepareTrack, { trackId }, trackId);
+          } catch (err) {
+            console.error(`[ask] couldn't queue the subtitle draft ${trackId} of clip ${clip.id}:`, err);
+            failed += 1;
+            await failTrack(ctx.db, trackId, "Couldn't start this subtitle draft. Please try again.").catch((e: unknown) => console.error("[ask] marking the track failed", e));
+          }
+        }
+      }
+      const drafts = out.trackIds.length ? `${out.trackIds.length} subtitle draft${out.trackIds.length === 1 ? " is" : "s are"} being prepared again${failed ? ` (${failed} couldn't be started: the user can try again on Prepare)` : ""}.` : "";
+      return {
+        text: [`Clip ${clip.id} now shows ${span(range)} "${title}" (moment ${out.momentId}), snapped to whole sentences; its old moment is undecided on the Briefing.`, drafts, "No video was made: the user renders from Prepare."].filter(Boolean).join(" "),
+        clipId: clip.id,
+      };
+    },
+  },
+  {
+    spec: {
       name: "set_selection",
       description:
         `Mark moments approved or skipped (not a clip), or back to undecided (only when the user asks). Send every moment of one request in a single call. Per question, only ${MAX_DIRECT_CHANGES} changes apply at once (clips count too); a call that would go beyond that waits for the user's confirmation instead.`,
@@ -1156,10 +1221,11 @@ Rules:
 - Never invent names. Tool results mark who speaks with speaker ids (A, B, …); use them to work out who said what. In your answer, refer to a speaker the known participants below name by that name only, with "probably" before a name that is not confirmed (for example "probably Ana Silva said …"); never put their speaker id next to the name (not "Speaker C, probably Ana Silva"). Describe a speaker without a name by their role when one is given below (for example "the moderator"), else by their speaker id (for example "Speaker A"). For what a named person said, use list_speeches, then get_transcript for the turns that matter.
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
-- propose_clip, trim_clip, set_selection, make_clip_package and update_clip change the user's own clips and selections. Use them only when the user asks for that change. You can't export, burn in subtitles or change the official analysis.
+- propose_clip, trim_clip, set_selection, make_clip_package, update_clip and replace_clip change the user's own clips and selections. Use them only when the user asks for that change. You can't export, burn in subtitles or change the official analysis.
 - When the user names a clip by number or title, call list_clips first; its numbers are the ones the user sees in Prepare.
 - For what comes just before or after a clip (the question before an answer, where an argument continues), call get_clip_context, then trim_clip.
 - For a set of clips ('3 clips on Ukraine for Instagram'), call find_clip_candidates, then make_clip_package with the best ones; Instagram, TikTok, Reels and Shorts mean 9:16.
+- When the user wants a different moment instead of an existing clip ("instead of clip 2"), find candidates with list_moments or search_transcript, pick by the moment's highlight type and reason (a calmer moment is not one marked Heated), and use replace_clip, never propose_clip: the user keeps the same number of clips.
 - update_clip changes a clip's format, title, credit line or adds a subtitle draft; X and YouTube mean 16:9, Instagram, TikTok, Reels and Shorts 9:16.
 - The user approves each change before it is made, and may edit it first. When a result says "${DECLINED}", nothing was changed: say so plainly and don't try it again unless they ask.
 - Write plain text only: no Markdown (no **, #, backticks or asterisk bullets; use "-" for a list). Timestamps stay as [hh:mm:ss].

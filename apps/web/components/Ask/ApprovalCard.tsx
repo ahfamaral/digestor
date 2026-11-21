@@ -16,7 +16,7 @@ type Draft = Record<string, ClipDraft | string[]>;
 /** One change's block in the Edit form. */
 const BLOCK = "grid min-w-0 gap-2 rounded-md border border-border bg-white p-2";
 
-const isClip = (call: ToolApprovalCall) => call.name === "propose_clip" || call.name === "trim_clip";
+const isClip = (call: ToolApprovalCall) => call.name === "propose_clip" || call.name === "trim_clip" || call.name === "replace_clip";
 
 /** The edit fields' first values: the snapped range the summary shows, the model's title, every moment ticked. */
 function initialDraft(calls: ToolApprovalCall[]): Draft {

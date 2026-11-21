@@ -49,3 +49,19 @@ describe("readEdits: clip packages (C3)", () => {
     expect(readEdits(payload, [{ id: "nope", args: {} }], ctx)).toBeNull();
   });
 });
+
+describe("readEdits: replace_clip", () => {
+  const p: ToolApprovalPayload = {
+    step: 1,
+    calls: [{ id: "rep", name: "replace_clip", args: { clipId: "c", start: "00:07:00", end: "00:07:30", title: "Four" }, summary: "Replace clip 2 …" }],
+  };
+  it("takes start, end and title like propose_clip", () => {
+    const args = { start: "00:08:00", end: "00:08:30", title: " Five " };
+    expect(readEdits(p, [{ id: "rep", args }], ctx)).toEqual([{ id: "rep", args: { ...args, title: "Five" } }]);
+  });
+  it("rejects extra keys, a reversed range and an empty title", () => {
+    expect(readEdits(p, [{ id: "rep", args: { start: "00:08:00", end: "00:08:30", title: "x", clipId: "other" } }], ctx)).toBeNull();
+    expect(readEdits(p, [{ id: "rep", args: { start: "00:08:30", end: "00:08:00", title: "x" } }], ctx)).toBeNull();
+    expect(readEdits(p, [{ id: "rep", args: { start: "00:08:00", end: "00:08:30", title: " " } }], ctx)).toBeNull();
+  });
+});

@@ -733,7 +733,7 @@ describe("runAsk loop", () => {
     const formatted = new ChatAnthropic({ apiKey: "x", model: "claude-sonnet-5-5" }).formatStructuredToolToAnthropic(c!.tools) as { input_schema: { type: string } }[];
     expect(formatted.every((t) => t.input_schema.type === "object")).toBe(true);
     expect(c!.tools.map((t) => t.name).sort()).toEqual(
-      ["find_clip_candidates", "get_clip_context", "get_transcript", "list_clips", "list_moments", "list_speeches", "list_topics", "make_clip_package", "propose_clip", "search_transcript", "set_selection", "trim_clip", "update_clip"],
+      ["find_clip_candidates", "get_clip_context", "get_transcript", "list_clips", "list_moments", "list_speeches", "list_topics", "make_clip_package", "propose_clip", "replace_clip", "search_transcript", "set_selection", "trim_clip", "update_clip"],
     );
   });
 

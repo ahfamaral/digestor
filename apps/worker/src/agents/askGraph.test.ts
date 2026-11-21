@@ -120,8 +120,8 @@ async function decide(deps: ReturnType<typeof depsFor>, sessionId: string, messa
 }
 
 describe("Ask graph", () => {
-  it("MUTATING_TOOLS are the four tools that change clips or selections", () => {
-    expect([...MUTATING_TOOLS].sort()).toEqual(["make_clip_package", "propose_clip", "set_selection", "trim_clip", "update_clip"]);
+  it("MUTATING_TOOLS are the tools that change clips or selections", () => {
+    expect([...MUTATING_TOOLS].sort()).toEqual(["make_clip_package", "propose_clip", "replace_clip", "set_selection", "trim_clip", "update_clip"]);
   });
 
   it("a read-only turn answers without a pause, with the same tool records as before plus the verify chip", async () => {
@@ -1107,5 +1107,85 @@ describe("update_clip", () => {
     await decide(deps2, s.id, msg2.id, { decision: "approve" });
     const [moment] = await listPersonalMoments(db, OWNER_ID, analysisId);
     expect(moment!.title).toBe("New");
+  });
+});
+
+describe("replace_clip", () => {
+  const sender = () => {
+    const sent: { queue: string; data: Record<string, string>; key: string }[] = [];
+    return { sent, send: async (queue: string, data: Record<string, string>, key: string) => void sent.push({ queue, data, key }) };
+  };
+  async function threeClips() {
+    const seeded = await seed();
+    const mk = (startMs: number, endMs: number, momentId: string) =>
+      createClip(db, { sessionId: seeded.s.id, ownerId: OWNER_ID, startMs, endMs, format: "9:16", momentId, actor: "user" });
+    const clip1 = await mk(60_000, 90_000, seeded.momentIds[1]!);
+    const clip2 = await mk(180_000, 210_000, seeded.momentIds[3]!);
+    const clip3 = await mk(300_000, 330_000, seeded.momentIds[4]!);
+    for (const id of [seeded.momentIds[1]!, seeded.momentIds[3]!, seeded.momentIds[4]!]) await db.execute(sql`insert into selections (owner_id, moment_id, status) values (${OWNER_ID}, ${id}, 'approved')`);
+    await updateClip(db, clip2.id, { credit: "Agência", cropOffset: 0.2 }, "user");
+    await createTrack(db, clip2.id, "pt");
+    return { ...seeded, clip1, clip2, clip3 };
+  }
+
+  it("instead of clip 2: replace_clip keeps three clips, and the card names clip 2", async () => {
+    const { s, clip2, momentIds } = await threeClips();
+    const msg = await ask(s.id, "Use another moment instead of clip 2.");
+    const jobs = sender();
+    const llm = new FakeToolLLM([
+      toolStep(call("list_clips", {})),
+      toolStep(call("replace_clip", { clipId: clip2.id, start: "00:10:01", end: "00:10:31", title: "A calmer answer" }, "rep")),
+      answer("Done."),
+    ]);
+    const deps = { ...depsFor(llm), send: jobs.send };
+    await runAsk(deps, msg.id);
+    const [action] = await approvals(s.id, msg.id);
+    const [card] = (action!.payload as ToolApprovalPayload).calls;
+    expect(card).toMatchObject({ name: "replace_clip", clips: [{ id: clip2.id, n: 2 }], range: expect.any(Object) });
+    expect(card!.summary).toMatch(/^Replace clip 2 \(.*'Moment 3'\) with .*'A calmer answer'; its moment goes back to undecided on the Briefing$/);
+    expect(await getClip(db, clip2.id)).toMatchObject({ startMs: 180_000 }); // nothing before approval
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await listClips(db, OWNER_ID, s.id)).toHaveLength(3);
+    const after = (await getClip(db, clip2.id))!;
+    expect(after).toMatchObject({ id: clip2.id, format: "9:16", credit: "Agência", cropOffset: 0.2, momentId: expect.not.stringMatching(momentIds[3]!) });
+    expect(after.startMs).toBeGreaterThanOrEqual(600_000 - 3000);
+    const sel = await listSelections(db, OWNER_ID, s.id);
+    expect(sel[momentIds[3]!]).toBeUndefined();
+    expect(sel[after.momentId!]).toBe("approved");
+    const [track] = await listTracks(db, clip2.id);
+    expect(track).toMatchObject({ language: "pt", status: "preparing" });
+    expect(jobs.sent.map((j) => j.queue).sort()).toEqual([QUEUES.checkMoment, QUEUES.prepareTrack].sort()); // no render
+    expect(jobs.sent.find((j) => j.queue === QUEUES.checkMoment)!.data).toEqual({ momentId: after.momentId });
+    expect(jobs.sent.find((j) => j.queue === QUEUES.prepareTrack)!.data).toEqual({ trackId: track!.id });
+    const stored = await getAskMessage(db, msg.id);
+    expect((stored!.toolCalls as AskToolCallRecord[]).find((c) => c.name === "replace_clip")).toMatchObject({ ok: true, clipId: clip2.id });
+  });
+
+  it("the card's Edit changes the new times and title", async () => {
+    const { s, clip2 } = await threeClips();
+    const msg = await ask(s.id, "Replace clip 2.");
+    const llm = new FakeToolLLM([toolStep(call("replace_clip", { clipId: clip2.id, start: "00:10:01", end: "00:10:31", title: "First" }, "rep")), answer("Done.")]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    const [action] = await approvals(s.id, msg.id);
+    const [card] = (action!.payload as ToolApprovalPayload).calls;
+    await decide(deps, s.id, msg.id, { decision: "edit", edits: [{ id: card!.id, args: { start: "00:12:01", end: "00:12:31", title: "Edited" } }] } as ToolApprovalResolution);
+    const after = (await getClip(db, clip2.id))!;
+    const want = snapped(721_000, 751_000);
+    expect(after).toMatchObject({ startMs: want.startMs, endMs: want.endMs });
+    const row = await db.execute(sql`select title from moments where id = ${after.momentId}`);
+    expect(row.rows[0]).toMatchObject({ title: "Edited" });
+  });
+
+  it("counts as one change toward the cap of 3, and a stale card changes nothing", async () => {
+    const { s, clip2 } = await threeClips();
+    const msg = await ask(s.id, "Replace clip 2.");
+    const llm = new FakeToolLLM([toolStep(call("replace_clip", { clipId: clip2.id, start: "00:10:01", end: "00:10:31", title: "X" })), answer("Done.")]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    await updateClip(db, clip2.id, { credit: "By hand" }, "user");
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await getClip(db, clip2.id)).toMatchObject({ startMs: 180_000, credit: "By hand" });
+    expect(toolResults(llm.calls.at(-1)!)[0]).toContain("Clip 2 changed since this card was made");
   });
 });

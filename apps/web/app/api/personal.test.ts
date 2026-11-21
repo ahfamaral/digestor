@@ -3,7 +3,7 @@ import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
 import {
   createCustomPerson, getFindMore, replaceAiAttributions, setHumanAttribution, claimFindMore,
   createClip, createTrack, deleteClip, failTrack, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
-  approveTrack, updateClip, setSelection, confirmClips,
+  approveTrack, updateClip, setSelection, confirmClips, replaceClipMoment,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
@@ -267,6 +267,31 @@ describe("PATCH /api/clips/[id]", () => {
     // without the body Prepare's Undo still restores a deleted clip
     expect((await undo(req({}), ctx(gone.id))).status).toBe(200);
     expect(await getClip(h.db, gone.id)).not.toBeNull();
+  });
+
+  it("the Ask chip's undo (ifActor ask) reverts a replace, and leaves a later manual edit alone", async () => {
+    const { sessionId, moments, analysisId } = await seedReadySession(h.db);
+    const m = moments[0]!;
+    const guarded = { ifActor: "ask" };
+    const clip = await createClip(h.db, { sessionId, ownerId: OWNER_ID, momentId: m.id, startMs: 10_000, endMs: 30_000, actor: "user" });
+    await replaceClipMoment(h.db, { clipId: clip.id, ownerId: OWNER_ID, analysisId, startMs: 60_000, endMs: 80_000, title: "New", actor: "ask" });
+    const ok = await undo(req(guarded), ctx(clip.id));
+    expect(ok.status).toBe(200);
+    expect(await getClip(h.db, clip.id)).toMatchObject({ startMs: 10_000, endMs: 30_000, momentId: m.id });
+    // replace again, then a manual trim: the Ask chip's undo refuses and the manual edit stays
+    await replaceClipMoment(h.db, { clipId: clip.id, ownerId: OWNER_ID, analysisId, startMs: 60_000, endMs: 80_000, title: "New", actor: "ask" });
+    await patchClip(req({ extend: "next" }, "PATCH"), ctx(clip.id));
+    const manual = (await getClip(h.db, clip.id))!;
+    expect(manual.endMs).toBeGreaterThan(80_000);
+    const refused = await undo(req(guarded), ctx(clip.id));
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toBe("There is nothing to undo.");
+    expect((await getClip(h.db, clip.id))!.endMs).toBe(manual.endMs);
+    // Prepare's own Undo reverts the manual edit first, then the replace
+    expect((await undo(req({}), ctx(clip.id))).status).toBe(200);
+    expect((await getClip(h.db, clip.id))!.endMs).toBe(80_000);
+    expect((await undo(req({}), ctx(clip.id))).status).toBe(200);
+    expect(await getClip(h.db, clip.id)).toMatchObject({ startMs: 10_000, endMs: 30_000, momentId: m.id });
   });
 
   it("a clip owned by someone else is a 404 on every clip and track route", async () => {

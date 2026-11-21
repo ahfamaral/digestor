@@ -36,6 +36,7 @@ const countOf = (original: unknown, key: string): number => {
  */
 const EDIT_SCHEMAS: Record<string, (original: unknown, ctx: EditContext) => z.ZodType<unknown>> = {
   propose_clip: () => ClipEdit,
+  replace_clip: () => ClipEdit,
   trim_clip: () => z.object({ start: Time, end: Time }).strict().refine(timesInOrder),
   set_selection: (original) => {
     const allowed = new Set(((original as { momentIds?: unknown } | null)?.momentIds as string[] | undefined) ?? []);

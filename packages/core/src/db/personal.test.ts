@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  StaleClipError, staleCardClips, setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents, clipsMadeByAsk, applyClipUpdate, ClipTitleNotOwnError,
+  StaleClipError, staleCardClips, setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents, clipsMadeByAsk, applyClipUpdate, ClipTitleNotOwnError, replaceClipMoment, listTracks,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -1112,5 +1112,88 @@ describe("applyClipUpdate", () => {
     await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" });
     await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, credit: "X", actor: "ask" });
     expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
+  });
+});
+
+describe("replaceClipMoment", () => {
+  const pick = <T extends object>(o: T, keys: string[]) => Object.fromEntries(keys.map((k) => [k, (o as Record<string, unknown>)[k]]));
+  async function setup() {
+    const old = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 10_000, endMs: 50_000, title: "Old", origin: "ask" });
+    const c = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: old.id, startMs: 10_000, endMs: 50_000, format: "9:16", actor: "user" });
+    await setSelection(db, OWNER, old.id, "approved");
+    await updateClip(db, c.id, { cropOffset: 0.3, credit: "Agência", warningsAck: true, protectedAck: true }, "user");
+    const pt = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, pt.id, [cue("Oi")], "ready");
+    await setTrackCues(db, pt.id, [cue("Oi")], "ready", { startMs: 10_000, endMs: 50_000 });
+    await approveTrack(db, pt.id);
+    await createTrack(db, c.id, "de");
+    return { old, c };
+  }
+  const swap = (clipId: string, over: Record<string, unknown> = {}) =>
+    replaceClipMoment(db, { clipId, ownerId: OWNER, analysisId, startMs: 200_000, endMs: 240_000, title: "New", actor: "ask", ...over });
+
+  it("keeps the clip's id, place, format, crop, credit and languages; new moment, bounds, reset acknowledgements", async () => {
+    const { old, c } = await setup();
+    const v0 = (await getClip(db, c.id))!.editVersion;
+    const { clip, momentId, trackIds } = await swap(c.id);
+    expect(clip).toMatchObject({ id: c.id, momentId, startMs: 200_000, endMs: 240_000, format: "9:16", cropOffset: 0.3, credit: "Agência", warningsAck: false, protectedAck: false, editVersion: v0 + 1 });
+    expect((await getMoment(db, momentId))).toMatchObject({ origin: "ask", title: "New", ownerId: OWNER });
+    const tracks = await listTracks(db, c.id);
+    expect(tracks.map((t) => [t.language, t.status, t.approvedAt])).toEqual([["de", "preparing", null], ["pt", "preparing", null]]);
+    expect(tracks.map((t) => t.id).sort()).toEqual([...trackIds].sort());
+    const sel = await listSelections(db, OWNER, s.id);
+    expect(sel[momentId]).toBe("approved");
+    expect(sel[old.id]).toBeUndefined();
+    const ev = (await listClipEvents(db, c.id)).filter((e) => e.kind === "replace");
+    expect(ev).toHaveLength(1);
+    expect(ev[0]!.after).toEqual({ startMs: 200_000, endMs: 240_000, momentId });
+  });
+
+  it("stales a finished render and throws StaleClipError on a version mismatch", async () => {
+    const { c } = await setup();
+    await expect(swap(c.id, { expectVersion: 99 })).rejects.toBeInstanceOf(StaleClipError);
+    expect((await getClip(db, c.id))!.startMs).toBe(10_000);
+    await claimClipRender(db, c.id);
+    const cur = (await getClip(db, c.id))!;
+    await finishClipRender(db, c.id, { startMs: cur.startMs, endMs: cur.endMs, format: cur.format, cropOffset: cur.cropOffset, credit: cur.credit }, { renderKey: "k" });
+    await swap(c.id, { expectVersion: cur.editVersion });
+    expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
+  });
+
+  it("Undo restores the old clip exactly", async () => {
+    const { old, c } = await setup();
+    const trackKeys = ["language", "cues", "approvedAt", "builtStartMs", "builtEndMs", "status"];
+    const before = { clip: (await getClip(db, c.id))!, tracks: await listTracks(db, c.id), selections: await listSelections(db, OWNER, s.id) };
+    expect(before.tracks.find((t) => t.language === "pt")!.approvedAt).not.toBeNull();
+    const { momentId } = await swap(c.id);
+    const undone = await undoLastEvent(db, c.id);
+    expect(undone!.editVersion).toBeGreaterThan(before.clip.editVersion + 1);
+    expect(await getClip(db, c.id)).toMatchObject(pick(before.clip, ["startMs", "endMs", "momentId", "warningsAck", "protectedAck", "format", "cropOffset", "credit"]));
+    expect((await listTracks(db, c.id)).map((t) => pick(t, trackKeys))).toEqual(before.tracks.map((t) => pick(t, trackKeys)));
+    const sel = await listSelections(db, OWNER, s.id);
+    expect(sel[old.id]).toBe("approved");
+    expect(sel[momentId]).toBeUndefined();
+    expect(await getMoment(db, momentId)).not.toBeNull(); // the new personal moment stays, undecided
+  });
+
+  it("after a replace, Prepare clips (confirmClips) doesn't bring the old moment's clip back", async () => {
+    const { old, c } = await setup();
+    const other = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 100_000, endMs: 130_000, title: "Other", origin: "user" });
+    await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: other.id, startMs: 100_000, endMs: 130_000, actor: "user" });
+    const { momentId } = await swap(c.id);
+    const approved = Object.entries(await listSelections(db, OWNER, s.id)).filter(([, st]) => st === "approved").map(([id]) => id);
+    expect(approved).not.toContain(old.id);
+    expect(approved).toContain(momentId);
+    expect(await listClips(db, OWNER, s.id)).toHaveLength(2);
+  });
+
+  it("a finished burn comes back stale on undo", async () => {
+    const { c } = await setup();
+    const pt = (await listTracks(db, c.id)).find((t) => t.language === "pt")!;
+    await setTrackBurnStatus(db, pt.id, "done");
+    await swap(c.id);
+    await undoLastEvent(db, c.id);
+    const back = (await listTracks(db, c.id)).find((t) => t.language === "pt")!;
+    expect(back.burnStatus).toBe("stale");
   });
 });

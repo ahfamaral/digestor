@@ -48,7 +48,7 @@ function granularityFor(lenMs: number): Granularity {
 }
 
 export async function createPersonalMoment(
-  db: Db,
+  db: Conn,
   a: { analysisId: string; ownerId: string; startMs: number; endMs: number; title: string; origin: "ask" | "user" },
 ): Promise<MomentWithHighlights> {
   // The topic holding its start, else the nearest one: never "no topic" (shown apart) while the analysis has topics.
@@ -647,6 +647,58 @@ export async function applyClipUpdate(
   });
 }
 
+type ReplaceSnapshotTrack = Omit<Track, "approvedAt" | "updatedAt"> & { approvedAt: string | null; updatedAt: string };
+
+/**
+ * Ask's `replace_clip`: the clip keeps its id (its place in the list), format, crop, credit, style and languages, and
+ * moves to a new personal moment (origin `ask`, approved) with the new bounds, in one transaction under the session
+ * lock. The old moment goes back to undecided (else "Prepare clips" would bring it back as another clip). Its tracks
+ * are deleted and one `preparing` track per language inserted (the caller claims and sends their jobs); a finished
+ * render goes stale. One `replace` event holds everything `undoLastEvent` needs to restore the old clip exactly.
+ */
+export async function replaceClipMoment(
+  db: Db,
+  a: { clipId: string; ownerId: string; analysisId: string; startMs: number; endMs: number; title: string; actor: ClipActor; expectVersion?: number },
+): Promise<{ clip: Clip; momentId: string; trackIds: string[] }> {
+  return db.transaction(async (tx) => {
+    const [peek] = await tx.select({ sessionId: clips.sessionId }).from(clips).where(eq(clips.id, a.clipId));
+    if (!peek) throw a.expectVersion !== undefined ? new StaleClipError(a.clipId) : new Error(`Clip not found: ${a.clipId}`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${peek.sessionId}))`);
+    const before = await lockClip(tx, a.clipId);
+    if (a.expectVersion !== undefined && (!before || before.deletedAt || before.editVersion !== a.expectVersion)) throw new StaleClipError(a.clipId);
+    if (!before || before.deletedAt || before.ownerId !== a.ownerId) throw new Error(`Clip not found: ${a.clipId}`);
+    const oldTracks = await tx.select().from(subtitleTracks).where(eq(subtitleTracks.clipId, a.clipId)).orderBy(asc(subtitleTracks.language));
+    let oldSelection: SelectionStatus | null = null;
+    if (before.momentId) {
+      const [sel] = await tx.select({ status: selections.status }).from(selections).where(and(eq(selections.ownerId, a.ownerId), eq(selections.momentId, before.momentId)));
+      oldSelection = sel?.status ?? null;
+      await tx.delete(selections).where(and(eq(selections.ownerId, a.ownerId), eq(selections.momentId, before.momentId)));
+    }
+    const moment = await createPersonalMoment(tx, { analysisId: a.analysisId, ownerId: a.ownerId, startMs: a.startMs, endMs: a.endMs, title: a.title, origin: "ask" });
+    await tx.insert(selections).values({ ownerId: a.ownerId, momentId: moment.id, status: "approved" }).onConflictDoUpdate({ target: [selections.ownerId, selections.momentId], set: { status: "approved", updatedAt: new Date() } });
+    await tx.delete(subtitleTracks).where(eq(subtitleTracks.clipId, a.clipId));
+    const trackIds: string[] = [];
+    for (const t of oldTracks) {
+      const [row] = await tx.insert(subtitleTracks).values({ clipId: a.clipId, language: t.language }).returning({ id: subtitleTracks.id });
+      trackIds.push(row!.id);
+    }
+    await tx
+      .update(clips)
+      .set({ momentId: moment.id, startMs: a.startMs, endMs: a.endMs, warningsAck: false, protectedAck: false, updatedAt: new Date(), ...bumpVersion })
+      .where(eq(clips.id, a.clipId));
+    await staleIfDone(tx, a.clipId);
+    await tx.insert(clipEvents).values({
+      clipId: a.clipId,
+      actor: a.actor,
+      kind: "replace",
+      before: { startMs: before.startMs, endMs: before.endMs, momentId: before.momentId, warningsAck: before.warningsAck, protectedAck: before.protectedAck, oldSelection, tracks: oldTracks },
+      after: { startMs: a.startMs, endMs: a.endMs, momentId: moment.id },
+    });
+    const [fresh] = await tx.select().from(clips).where(eq(clips.id, a.clipId));
+    return { clip: fresh!, momentId: moment.id, trackIds };
+  });
+}
+
 /**
  * Soft delete: the row and its events stay so `undoLastEvent` can restore it. Test-only today (no route deletes a
  * clip; merge soft-deletes through `mergeClips`): tests use it to set up a deleted clip and the `delete` undo.
@@ -708,6 +760,24 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
           sql`${subtitleTracks.burnStatus} not in ('queued', 'rendering')`,
         ));
       }
+    } else if (ev.kind === "replace") {
+      const b = ev.before as { startMs: number; endMs: number; momentId: string | null; warningsAck: boolean; protectedAck: boolean; oldSelection: SelectionStatus | null; tracks: ReplaceSnapshotTrack[] };
+      const a = ev.after as { momentId: string };
+      set = { ...set, startMs: b.startMs, endMs: b.endMs, momentId: b.momentId, warningsAck: b.warningsAck, protectedAck: b.protectedAck };
+      await tx.delete(subtitleTracks).where(eq(subtitleTracks.clipId, clipId));
+      for (const t of b.tracks) {
+        await tx.insert(subtitleTracks).values({
+          ...t,
+          clipId,
+          approvedAt: t.approvedAt ? new Date(t.approvedAt) : null,
+          updatedAt: new Date(),
+          burnStatus: t.burnStatus === "done" ? "stale" : t.burnStatus === "queued" || t.burnStatus === "rendering" ? "none" : t.burnStatus,
+        });
+      }
+      await tx.delete(selections).where(and(eq(selections.ownerId, clip.ownerId), eq(selections.momentId, a.momentId), eq(selections.status, "approved")));
+      if (b.momentId && b.oldSelection) {
+        await tx.insert(selections).values({ ownerId: clip.ownerId, momentId: b.momentId, status: b.oldSelection }).onConflictDoUpdate({ target: [selections.ownerId, selections.momentId], set: { status: b.oldSelection, updatedAt: new Date() } });
+      }
     } else if (ev.kind === "merge") {
       set = { ...set, ...(ev.before as object) };
       const { absorbedClipId } = ev.after as { absorbedClipId: string };
@@ -717,7 +787,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
     }
     await tx.update(clips).set(set).where(eq(clips.id, clipId));
     await tx.update(clipEvents).set({ undoneAt: now }).where(eq(clipEvents.id, ev.id));
-    if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "merge" || ev.kind === "update") await staleIfDone(tx, clipId);
+    if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "merge" || ev.kind === "update" || ev.kind === "replace") await staleIfDone(tx, clipId);
     if (ev.kind === "style") await staleBurnsIfDone(tx, clipId);
     if (ev.kind === "bounds" || ev.kind === "merge") await afterBoundsChange(tx, clipId, ev.before as { startMs: number; endMs: number });
     const [fresh] = await tx.select().from(clips).where(eq(clips.id, clipId));
