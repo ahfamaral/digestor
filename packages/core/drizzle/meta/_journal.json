@@ -253,6 +253,13 @@
       "when": 1795091130526,
       "tag": "0035_library_ask_not_searched",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795289937753,
+      "tag": "0036_ai_goes_first",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
+  StaleClipError, staleCardClips, setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -915,5 +915,90 @@ describe("listClipPreviews", () => {
   it("returns [] for no session ids", async () => {
     await newClip();
     expect(await listClipPreviews(db, OWNER, [])).toEqual([]);
+  });
+});
+
+describe("edit version", () => {
+  const version = async (id: string) => (await getClip(db, id))!.editVersion;
+
+  it("bounds, format, crop, credit and no-credit changes bump the edit version once each", async () => {
+    const c = await newClip();
+    expect(c.editVersion).toBe(0);
+    await updateClip(db, c.id, { startMs: 11_000, endMs: 49_000 }, "user");
+    expect(await version(c.id)).toBe(1);
+    await updateClip(db, c.id, { format: "9:16" }, "user");
+    expect(await version(c.id)).toBe(2);
+    await updateClip(db, c.id, { cropOffset: 0.5 }, "user");
+    expect(await version(c.id)).toBe(3);
+    await updateClip(db, c.id, { credit: "Agência" }, "user");
+    expect(await version(c.id)).toBe(4);
+    await updateClip(db, c.id, { noCreditNeeded: true }, "user");
+    expect(await version(c.id)).toBe(5);
+  });
+
+  it("renders, acknowledgements, subtitle style and cue edits don't bump it", async () => {
+    const c = await newClip();
+    const t = await createTrack(db, c.id, "en");
+    await setTrackCues(db, t!.id, [cue("Hi")], "ready");
+    const before = await version(c.id);
+    await updateClip(db, c.id, { warningsAck: true }, "user");
+    await updateClip(db, c.id, { protectedAck: true }, "user");
+    await updateClip(db, c.id, { subtitleStyle: "white" }, "user");
+    await claimClipRender(db, c.id);
+    await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" });
+    await editTrackCues(db, t!.id, [{ i: 0, text: "Edited" }]);
+    expect(await version(c.id)).toBe(before);
+  });
+
+  it("merge bumps the survivor; undo of bounds or format bumps again", async () => {
+    const a = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 10_000, endMs: 30_000, actor: "user" });
+    const b = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 25_000, endMs: 40_000, actor: "user" });
+    await mergeClips(db, OWNER, [a.id, b.id], "user");
+    expect(await version(a.id)).toBe(1);
+    await undoLastEvent(db, a.id);
+    expect(await version(a.id)).toBe(2);
+    await updateClip(db, a.id, { startMs: 11_000 }, "user");
+    expect(await version(a.id)).toBe(3);
+    await undoLastEvent(db, a.id);
+    expect(await version(a.id)).toBe(4);
+    await updateClip(db, a.id, { format: "9:16" }, "user");
+    await undoLastEvent(db, a.id);
+    expect(await version(a.id)).toBe(6);
+  });
+
+  it("a new subtitle language bumps it, a rebuild of the same language doesn't, a rolled-back track does", async () => {
+    const c = await newClip();
+    const en = await createTrack(db, c.id, "en");
+    expect(await version(c.id)).toBe(1);
+    await failTrack(db, en!.id, "boom");
+    expect(await deleteFailedTrack(db, en!.id)).toBe(true);
+    await createTrack(db, c.id, "en", { rebuild: true });
+    expect(await version(c.id)).toBe(1);
+    const pt = await createTrack(db, c.id, "pt");
+    expect(await version(c.id)).toBe(2);
+    await deleteTrack(db, pt!.id);
+    expect(await version(c.id)).toBe(3);
+  });
+
+  it("updateClip with a different expectVersion throws StaleClipError and changes nothing", async () => {
+    const c = await newClip();
+    await expect(updateClip(db, c.id, { startMs: 12_000 }, "ask", { expectVersion: c.editVersion + 1 })).rejects.toBeInstanceOf(StaleClipError);
+    expect((await getClip(db, c.id))!.startMs).toBe(c.startMs);
+    const ok = await updateClip(db, c.id, { startMs: 12_000 }, "ask", { expectVersion: c.editVersion });
+    expect(ok).toMatchObject({ startMs: 12_000, editVersion: 1 });
+    await deleteClip(db, c.id, "user");
+    await expect(updateClip(db, c.id, { startMs: 13_000 }, "ask", { expectVersion: 1 })).rejects.toBeInstanceOf(StaleClipError);
+  });
+
+  it("staleCardClips names changed and removed clips by their card number", async () => {
+    const a = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 1000, endMs: 20_000, actor: "user" });
+    const b = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 30_000, endMs: 60_000, actor: "user" });
+    const gone = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 70_000, endMs: 90_000, actor: "user" });
+    const card = [{ id: a.id, n: 1, version: 0 }, { id: b.id, n: 2, version: 0 }, { id: gone.id, n: 3, version: 0 }];
+    await updateClip(db, b.id, { startMs: 31_000 }, "user");
+    await deleteClip(db, gone.id, "user");
+    expect(await staleCardClips(db, OWNER, card)).toEqual([{ n: 2, removed: false }, { n: 3, removed: true }]);
+    expect(await staleCardClips(db, "someone-else", [card[0]!])).toEqual([{ n: 1, removed: true }]);
+    expect(await staleCardClips(db, OWNER, [{ id: "00000000-0000-4000-8000-000000000000", n: 4, version: 0 }])).toEqual([{ n: 4, removed: true }]);
   });
 });

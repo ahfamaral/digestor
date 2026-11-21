@@ -37,6 +37,8 @@ export const sessions = pgTable("sessions", {
   language: text("language"),
   profile: text("profile"),
   hint: text("hint"),
+  /** What the journalist wants out of this video (Ask's starting goal), at most 500 characters; separate from `hint`. */
+  goal: text("goal"),
   languageOverride: text("language_override"),
   stage: text("stage").$type<Stage>().notNull().default("uploaded"),
   progress: integer("progress").notNull().default(0),
@@ -215,6 +217,8 @@ export const clips = pgTable(
     protectedAck: boolean("protected_ack").notNull().default(false),
     renderStatus: text("render_status").$type<RenderStatus>().notNull().default("none"),
     renderKey: text("render_key"),
+    /** Bumped by changes to bounds, format, crop, credit and subtitle languages (never renders or acknowledgements): stale-card check. */
+    editVersion: integer("edit_version").notNull().default(0),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

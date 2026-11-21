@@ -5,7 +5,7 @@ export type SelectionStatus = "approved" | "rejected";
 export type ClipFormat = "16:9" | "9:16";
 export type RenderStatus = "none" | "queued" | "rendering" | "done" | "failed" | "stale";
 export type ClipActor = "user" | "ask";
-export type ClipEventKind = "create" | "bounds" | "format" | "style" | "delete" | "merge";
+export type ClipEventKind = "create" | "bounds" | "format" | "style" | "delete" | "merge" | "update" | "replace";
 /** `outdated`: built for clip bounds that have since changed (Rebuild replaces it). */
 export type TrackStatus = "preparing" | "ready" | "failed" | "outdated";
 export type AskRole = "user" | "assistant";
@@ -48,6 +48,8 @@ export interface Clip {
   protectedAck: boolean;
   renderStatus: RenderStatus;
   renderKey: string | null;
+  /** Bumped by bounds, format/crop, credit and subtitle-language changes; a card's clips are checked against it. */
+  editVersion: number;
   /** Set when the clip was deleted (or its creation undone); the row and its history are kept. */
   deletedAt: Date | null;
   createdAt: Date;
@@ -105,6 +107,21 @@ export interface ToolApprovalCall {
   moments?: { id: string; title: string; startMs: number; endMs: number }[];
   /** A `make_clip_package` call: its clips after snapping, the format and the subtitle language, for the card's picks. */
   package?: ClipPackagePlan;
+  /** `update_clip` / `replace_clip`: the clips the call touches, as numbered on the card, with the edit version it was planned on. */
+  clips?: CardClip[];
+}
+
+/** A clip on an approval card: its Prepare number and the edit version the card was planned on. */
+export interface CardClip {
+  id: string;
+  n: number;
+  version: number;
+}
+
+/** A card clip that changed or went away since the card was made. */
+export interface StaleClip {
+  n: number;
+  removed: boolean;
 }
 
 /** What a clip package will make: the clips (snapped), one format for all, and subtitle drafts in one language or none. */
@@ -126,6 +143,8 @@ export type ToolApprovalDecision = "approve" | "reject" | "edit";
 export interface ToolApprovalResolution {
   decision: ToolApprovalDecision;
   edits?: { id: string; args: unknown }[];
+  /** Set when the card was refused because these clips changed meanwhile. */
+  stale?: StaleClip[];
 }
 
 export interface AskMessage {

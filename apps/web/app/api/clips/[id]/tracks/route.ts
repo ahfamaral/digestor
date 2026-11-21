@@ -18,7 +18,7 @@ async function createOrRetry(db: Db, clipId: string, language: string): Promise<
   const existing = (await listTracks(db, clipId)).find((t) => t.language === language);
   const replaceable = existing?.status === "failed" || existing?.status === "outdated";
   if (!existing || !replaceable || !(await deleteFailedTrack(db, existing.id))) return null;
-  return createTrack(db, clipId, language); // null if a parallel retry got there first
+  return createTrack(db, clipId, language, { rebuild: true }); // null if a parallel retry got there first
 }
 
 /**

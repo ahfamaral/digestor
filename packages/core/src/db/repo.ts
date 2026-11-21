@@ -16,6 +16,7 @@ export async function createSession(
     sourceUrl?: string;
     originalKey?: string;
     hint?: string | null;
+    goal?: string | null;
     audioOnlyAck?: boolean;
     languageOverride?: string | null;
     /** Download only this part of the source (ms from its start); both or neither. */
@@ -31,6 +32,7 @@ export async function createSession(
       sourceUrl: input.sourceUrl ?? null,
       originalKey: input.originalKey ?? null,
       hint: input.hint ?? null,
+      goal: input.goal ?? null,
       audioOnlyAck: input.audioOnlyAck ?? false,
       languageOverride: input.languageOverride ?? null,
       sourceStartMs: input.sourceRange?.startMs ?? null,

@@ -25,6 +25,12 @@ beforeEach(async () => {
 });
 
 describe("sessions", () => {
+  it("createSession stores the goal, null when not given", async () => {
+    expect(s.goal).toBeNull();
+    const g = await createSession(db, { title: "G", source: "upload", goal: "Three clips on climate" });
+    expect(g.goal).toBe("Three clips on climate");
+  });
+
   it("creates with defaults and updates stage", async () => {
     expect(s).toMatchObject({ stage: "uploaded", progress: 0, metadata: {}, originalKey: null, hint: "h" });
     await setStage(db, s.id, "failed", 10, "boom");

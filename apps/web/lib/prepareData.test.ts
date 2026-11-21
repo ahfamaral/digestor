@@ -70,7 +70,7 @@ describe("views", () => {
     const at = new Date("2026-10-30T10:00:00Z");
     const clip = {
       id: "c", sessionId: "s", ownerId: "owner", momentId: "m", mergedMomentIds: [] as string[], startMs: 1, endMs: 2, format: "9:16" as const, cropOffset: 0.5, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const,
-      credit: null, noCreditNeeded: false, creditSetAt: null, warningsAck: true, protectedAck: false, renderStatus: "none" as const, renderKey: null,
+      credit: null, noCreditNeeded: false, creditSetAt: null, warningsAck: true, protectedAck: false, renderStatus: "none" as const, renderKey: null, editVersion: 0,
       deletedAt: null, createdAt: at, updatedAt: at,
     };
     const fromRow = toClipView(clip);

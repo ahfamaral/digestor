@@ -5,7 +5,7 @@ import { saveMoments, type NewMoment } from "./analysis.ts";
 import { topicForStart } from "../moments.ts";
 import type {
   AskActionKind, AskAction, AskMessage, AskMessageStatus, AskMessageWithActions, AskRole, Clip, ClipActor, ClipFormat,
-  ClipEvent, ToolApprovalPayload, ToolApprovalResolution, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
+  ClipEvent, CardClip, StaleClip, ToolApprovalPayload, ToolApprovalResolution, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
 } from "../personalTypes.ts";
 import { GRANULARITY, ProfileIdSchema, type Granularity } from "../profiles.ts";
 import { defaultSubtitlePosition, type SubtitlePosition, type SubtitleStyle } from "../subtitleStyle.ts";
@@ -14,6 +14,16 @@ import {
   askActions, askMessages, analysisVersions, clipEvents, clips, findMoreRequests, momentHighlights, moments, problemReports, selections, sessions, subtitleTracks,
   topics,
 } from "./schema.ts";
+
+/** An Ask write was planned on a clip version that no longer holds, or the clip is gone. */
+export class StaleClipError extends Error {
+  constructor(readonly clipId: string) {
+    super(`Clip changed or removed: ${clipId}`);
+    this.name = "StaleClipError";
+  }
+}
+
+const bumpVersion = { editVersion: sql`${clips.editVersion} + 1` };
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Conn = Db | Tx;
@@ -411,7 +421,7 @@ export async function mergeClips(db: Db, ownerId: string, clipIds: [string, stri
     const merged = [...new Set([...first.mergedMomentIds, ...(second.momentId ? [second.momentId] : []), ...second.mergedMomentIds])]
       .filter((id) => id !== first.momentId);
     const now = new Date();
-    await tx.update(clips).set({ ...bounds, mergedMomentIds: merged, updatedAt: now }).where(eq(clips.id, first.id));
+    await tx.update(clips).set({ ...bounds, mergedMomentIds: merged, updatedAt: now, ...bumpVersion }).where(eq(clips.id, first.id));
     await tx.update(clips).set({ deletedAt: now, updatedAt: now }).where(eq(clips.id, second.id));
     await tx.insert(clipEvents).values({
       clipId: first.id,
@@ -494,15 +504,30 @@ export async function getClip(db: Db, id: string): Promise<Clip | null> {
   return row ?? null;
 }
 
+/**
+ * The clips of an approval card that changed since it was made: gone, deleted, not this owner's, or at another edit
+ * version. One entry per such clip, in card order.
+ */
+export async function staleCardClips(db: Db, ownerId: string, cardClips: CardClip[]): Promise<StaleClip[]> {
+  const out: StaleClip[] = [];
+  for (const c of cardClips) {
+    const row = await getClipAny(db, c.id);
+    if (!row || row.deletedAt || row.ownerId !== ownerId) out.push({ n: c.n, removed: true });
+    else if (row.editVersion !== c.version) out.push({ n: c.n, removed: false });
+  }
+  return out;
+}
+
 /** Like `getClip` but also returns a soft-deleted clip (undo needs to find it). */
 export async function getClipAny(db: Db, id: string): Promise<Clip | null> {
   const [row] = await db.select().from(clips).where(eq(clips.id, id));
   return row ?? null;
 }
 
-export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: ClipActor): Promise<Clip> {
+export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: ClipActor, opts?: { expectVersion?: number }): Promise<Clip> {
   return db.transaction(async (tx) => {
     const before = await lockClip(tx, id);
+    if (opts?.expectVersion !== undefined && (!before || before.deletedAt || before.editVersion !== opts.expectVersion)) throw new StaleClipError(id);
     if (!before || before.deletedAt) throw new Error(`Clip not found: ${id}`);
     const changed = <K extends keyof ClipPatch>(k: K) => patch[k] !== undefined && patch[k] !== before[k];
     const boundsChanged = changed("startMs") || changed("endMs");
@@ -511,7 +536,7 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
     const creditChanged = changed("credit") || changed("noCreditNeeded");
     const [row] = await tx
       .update(clips)
-      .set({ ...patch, updatedAt: new Date(), ...(changed("credit") ? { creditSetAt: new Date() } : {}) })
+      .set({ ...patch, updatedAt: new Date(), ...(changed("credit") ? { creditSetAt: new Date() } : {}), ...(boundsChanged || formatChanged || creditChanged ? bumpVersion : {}) })
       .where(eq(clips.id, id))
       .returning();
     if (boundsChanged) {
@@ -587,7 +612,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
     // A deleted clip's only legitimate undo is its own delete (an absorbed clip returns with its merge's undo).
     if (clip.deletedAt && ev.kind !== "delete") return null;
     const now = new Date();
-    let set: Partial<typeof clips.$inferInsert> = { updatedAt: now };
+    let set: Partial<typeof clips.$inferInsert> = { updatedAt: now, editVersion: sql`${clips.editVersion} + 1` as unknown as number };
     if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "style") {
       set = { ...set, ...(ev.before as object) };
     } else if (ev.kind === "create") {
@@ -693,14 +718,24 @@ export async function listTracks(db: Db, clipId: string): Promise<Track[]> {
 }
 
 /** Null if the clip already has a track in this language. */
-export async function createTrack(db: Db, clipId: string, language: string): Promise<Track | null> {
-  const [row] = await db.insert(subtitleTracks).values({ clipId, language }).onConflictDoNothing().returning();
-  return row ?? null;
+export async function createTrack(db: Db, clipId: string, language: string, opts?: { rebuild?: boolean }): Promise<Track | null> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(subtitleTracks).values({ clipId, language }).onConflictDoNothing().returning();
+    // A rebuild of the same language doesn't change what the clip carries.
+    if (row && !opts?.rebuild) await tx.update(clips).set(bumpVersion).where(eq(clips.id, clipId));
+    return row ?? null;
+  });
 }
 
 /** Removes a track that never got going (its prepare job couldn't be queued); only while `preparing`. */
 export async function deleteTrack(db: Db, id: string): Promise<void> {
-  await db.delete(subtitleTracks).where(and(eq(subtitleTracks.id, id), eq(subtitleTracks.status, "preparing")));
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .delete(subtitleTracks)
+      .where(and(eq(subtitleTracks.id, id), eq(subtitleTracks.status, "preparing")))
+      .returning({ clipId: subtitleTracks.clipId });
+    if (rows[0]) await tx.update(clips).set(bumpVersion).where(eq(clips.id, rows[0].clipId));
+  });
 }
 
 /**
