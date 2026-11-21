@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attribution, Person, Topic, Word } from "@digestor/core";
-import { GENERIC_ASK_EXAMPLES, askExampleNames, askExamples, askExampleTopics } from "./askExamples";
+import { GENERIC_ASK_EXAMPLES, askExampleNames, askExamples, askExampleTopics, prepareAskExamples } from "./askExamples";
 
 const w = (startS: number, speaker: string): Word => ({ text: "x", startMs: startS * 1000, endMs: startS * 1000 + 500, speaker, confidence: 0.9 });
 const person = (id: string, displayName: string): Person => ({
@@ -75,5 +75,13 @@ describe("askExamples", () => {
   it("falls back to generic examples without topics or names", () => {
     expect(askExamples({ topics: [], names: [] })).toEqual(GENERIC_ASK_EXAMPLES);
     expect(GENERIC_ASK_EXAMPLES).toHaveLength(3);
+  });
+});
+
+describe("prepareAskExamples", () => {
+  it("offers clip examples only when the session has clips", () => {
+    expect(prepareAskExamples(2)).toEqual(["Make clip 1 shorter", "Include the question before clip 1", "Make clip 1 for Instagram with English subtitles"]);
+    expect(prepareAskExamples(0)).toEqual(GENERIC_ASK_EXAMPLES);
+    expect(prepareAskExamples(0).join(" ")).not.toMatch(/clip 1/);
   });
 });

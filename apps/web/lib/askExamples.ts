@@ -11,6 +11,12 @@ const MAX_TOPIC_CHARS = 60;
 /** The examples for a session with no topics or names to build from. */
 export const GENERIC_ASK_EXAMPLES: readonly string[] = [t("ask.example.mainTopics"), t("ask.example.longest"), t("ask.example.quotable")];
 
+/** Prepare's examples: about clip 1 while the session has clips, else the generic ones (there is no clip 1 to name). */
+export function prepareAskExamples(clipCount: number): readonly string[] {
+  if (clipCount === 0) return GENERIC_ASK_EXAMPLES;
+  return [t("ask.prepareExamples.shorter"), t("ask.prepareExamples.question"), t("ask.prepareExamples.platform")];
+}
+
 const tidy = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /**

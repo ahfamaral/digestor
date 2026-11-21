@@ -1,6 +1,6 @@
 // Cost labels for the journalist screens (client-safe): every rate and estimate lives in core `cost.ts`.
 
-import { BRIEFING_TRANSLATION_USD, estimateTranslationUsd, usdAmount, type Spending } from "@digestor/core";
+import { ASK_USD_PER_QUESTION, BRIEFING_TRANSLATION_USD, estimateTranslationUsd, usdAmount, type Spending } from "@digestor/core";
 import { draftRange } from "@/lib/askText";
 import { t } from "@/lib/i18n";
 
@@ -8,6 +8,11 @@ import { t } from "@/lib/i18n";
 export function aboutUsd(usd: number): string {
   const a = usdAmount(usd);
   return a.under ? t("cost.under") : t("cost.about", { amount: a.amount });
+}
+
+/** The upload confirm's line for a goal: "Ask will then start on your goal: about $0.01 more.", or null without one. */
+export function uploadGoalCostText(goal: string): string | null {
+  return goal.trim() ? t("cost.uploadGoal", { cost: aboutUsd(ASK_USD_PER_QUESTION) }) : null;
 }
 
 /** A recorded figure: "$0.132" (three decimals under ten cents), or "under $0.01". */

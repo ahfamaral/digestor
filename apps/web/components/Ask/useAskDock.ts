@@ -7,7 +7,8 @@ import { isDesktopNow, useDesktop } from "@/lib/useDesktop";
 
 /**
  * Whether the Ask drawer is open. It starts closed (so does the server render), then opens once after mount when
- * `initialAskOpen` says so (`ready` flips in that same effect); the journalist's own open or close is remembered per session in this browser.
+ * `initialAskOpen` says so (`ready` flips in that same effect; `autoOpened` marks that open, which takes no focus); the
+ * journalist's own open or close is remembered per session in this browser.
  */
 export function useAskDock(sessionId: string, hasGoal: boolean) {
   const desktop = useDesktop();
@@ -15,6 +16,8 @@ export function useAskDock(sessionId: string, hasGoal: boolean) {
   const [remembered, setRemembered] = useState<AskDockState | null>(null);
   /** False on the server and during hydration; true once the width and storage have been read. */
   const [ready, setReady] = useState(false);
+  /** True while the panel is open because it opened by itself on load: it then leaves focus on the page. */
+  const [autoOpened, setAutoOpened] = useState(false);
 
   useEffect(() => {
     const stored = readAskDock(browserStorage(), sessionId);
@@ -22,7 +25,10 @@ export function useAskDock(sessionId: string, hasGoal: boolean) {
     /* eslint-disable react-hooks/set-state-in-effect -- reading browser storage after mount is deliberate */
     setRemembered(stored);
     setReady(true);
-    if (initialAskOpen({ desktop: isDesktopNow(), hasGoal, remembered: stored })) setOpenState(true);
+    if (initialAskOpen({ desktop: isDesktopNow(), hasGoal, remembered: stored })) {
+      setOpenState(true);
+      setAutoOpened(true);
+    }
     /* eslint-enable react-hooks/set-state-in-effect */
     // Once after mount: later width changes or edits never open the panel by themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -30,10 +36,11 @@ export function useAskDock(sessionId: string, hasGoal: boolean) {
 
   function setOpen(next: boolean) {
     setOpenState(next);
+    setAutoOpened(false);
     const state: AskDockState = next ? "open" : "closed";
     setRemembered(state);
     writeAskDock(browserStorage(), sessionId, state);
   }
 
-  return { open, setOpen, desktop, remembered, ready };
+  return { open, setOpen, desktop, remembered, ready, autoOpened };
 }

@@ -276,7 +276,7 @@ export function Briefing(props: BriefingProps) {
             <Button ref={whoRef} variant="outline" size="sm" onClick={() => openWho("button")}>
               {t("names.whoOpen")}
             </Button>
-            <AskDrawer open={dock.open} onOpenChange={dock.setOpen} sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} examples={props.askExamples} />
+            <AskDrawer open={dock.open} onOpenChange={dock.setOpen} autoOpened={dock.autoOpened} sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} examples={props.askExamples} />
           </div>
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-xs text-muted-foreground">

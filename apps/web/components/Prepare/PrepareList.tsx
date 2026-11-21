@@ -28,6 +28,7 @@ import { Checklist } from "./Checklist";
 import { ClipIndex } from "./ClipIndex";
 import { MadeWithAsk } from "./MadeWithAsk";
 import { AskDrawer } from "@/components/Ask/AskDrawer";
+import { prepareAskExamples } from "@/lib/askExamples";
 import { useAskDock } from "@/components/Ask/useAskDock";
 import { ClipStatusBadge } from "./ClipStatusBadge";
 import { ChevronRightIcon } from "lucide-react";
@@ -159,7 +160,6 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
   const dock = useAskDock(session.id, Boolean(session.goal));
   // While Ask is docked (28 rem of the width) the clip index stacks above the cards so every control keeps its room.
   const docked = dock.open && dock.desktop;
-  const askExamples = [t("ask.prepareExamples.shorter"), t("ask.prepareExamples.question"), t("ask.prepareExamples.platform")];
 
   // A router.refresh() brings new server data: fold it in (see merge).
   if (clips !== seen) {
@@ -435,11 +435,12 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
             <AskDrawer
               open={dock.open}
               onOpenChange={dock.setOpen}
+              autoOpened={dock.autoOpened}
               sessionId={session.id}
               language={session.language}
               hasVideo={session.hasVideo}
               videoRemoved={session.videoRemoved}
-              examples={askExamples}
+              examples={[...prepareAskExamples(items.length)]}
             />
           </div>
           <p className="mt-1 font-mono text-xs text-muted-foreground">

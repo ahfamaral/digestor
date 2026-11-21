@@ -18,13 +18,21 @@ export interface AskDrawerProps {
   examples: string[];
   open: boolean;
   onOpenChange(next: boolean): void;
+  /** The panel opened by itself on load (`useAskDock`): focus stays on the page until the journalist opens Ask. */
+  autoOpened?: boolean;
 }
+
+/**
+ * Where focus goes when the panel opens: the question box when the journalist opened it (button, `/`, the phone
+ * banner's Open), nowhere when it opened by itself, so keyboard and screen-reader users stay on the page.
+ */
+export const askTakesFocus = (autoOpened: boolean): boolean => !autoOpened;
 
 /**
  * The Ask drawer: `/` (or the Ask button) opens a side panel where the journalist questions this video. The
  * conversation itself is `AskThread`; this is its frame (trigger, `/`, dialog, title, room beside the page).
  */
-export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, examples, open, onOpenChange }: AskDrawerProps) {
+export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, examples, open, onOpenChange, autoOpened = false }: AskDrawerProps) {
   const desktop = useDesktop();
   const triggerRef = useRef<HTMLButtonElement>(null);
   /** The question box: focused when the drawer opens (the example buttons above it would take focus otherwise). */
@@ -40,11 +48,18 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
     };
   }, [open, desktop]);
 
+  /** The journalist opens Ask: an already open panel (one that opened by itself) gets focus in its question box. */
+  function openByUser() {
+    if (open) inputRef.current?.focus();
+    onOpenChange(true);
+  }
+
   const onKey = useEffectEvent((e: KeyboardEvent) => {
-    const dialogOpen = document.querySelector("[role='dialog']:not([hidden])") !== null;
+    // Another dialog (a confirm) blocks `/`; Ask's own open panel doesn't: `/` then moves focus into it.
+    const dialogOpen = [...document.querySelectorAll("[role='dialog']:not([hidden])")].some((d) => !inputRef.current || !d.contains(inputRef.current));
     if (!opensAsk(e, { typing: isTyping(e.target), dialogOpen })) return;
     e.preventDefault();
-    onOpenChange(true);
+    openByUser();
   });
   useEffect(() => {
     window.addEventListener("keydown", onKey);
@@ -53,7 +68,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
 
   return (
     <>
-      <Button ref={triggerRef} type="button" variant="outline" size="sm" onClick={() => onOpenChange(true)} aria-keyshortcuts="/">
+      <Button ref={triggerRef} type="button" variant="outline" size="sm" onClick={openByUser} aria-keyshortcuts="/">
         {t("ask.open")}
         <kbd className="rounded border border-border bg-stone-50 px-1 font-mono text-[11px] text-muted-foreground">/</kbd>
       </Button>
@@ -61,7 +76,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
       <Dialog open={open} onOpenChange={onOpenChange} modal={!desktop} disablePointerDismissal={desktop}>
         <DialogContent
           finalFocus={triggerRef}
-          initialFocus={inputRef}
+          initialFocus={askTakesFocus(autoOpened) ? inputRef : false}
           overlayClassName="lg:hidden"
           showCloseButton
           keepMounted

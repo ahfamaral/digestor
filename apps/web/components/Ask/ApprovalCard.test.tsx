@@ -59,6 +59,17 @@ describe("ApprovalCard: stale", () => {
     expect(html).not.toContain("Declined.");
     expect(buttons(html)).toEqual([]);
   });
+
+  it("after the 409 that made it stale, the stale line shows once (no red copy of it)", () => {
+    const line = "Clip 2 changed since this card was made. Ask again.";
+    const action: AskAction = { ...card([clipCall]), status: "dismissed", resolution: { decision: "reject", stale: [{ n: 2, removed: false }] } };
+    const html = renderToStaticMarkup(<ApprovalCard action={action} lang="en" busy={false} error={line} videoRemoved={false} onDecide={() => {}} />);
+    expect(html.split(line)).toHaveLength(2);
+    expect(html).not.toContain('role="alert"');
+    // A card still waiting keeps its error (e.g. the video was removed).
+    const pending = renderToStaticMarkup(<ApprovalCard action={card([clipCall])} lang="en" busy={false} error="Oops." videoRemoved={false} onDecide={() => {}} />);
+    expect(pending).toMatch(/role="alert"[^>]*>Oops\./);
+  });
 });
 
 describe("ApprovalCard: clip package (C3)", () => {

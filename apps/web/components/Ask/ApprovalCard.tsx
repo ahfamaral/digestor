@@ -240,7 +240,8 @@ export function ApprovalCard({
           </Button>
         </div>
       )}
-      {error && (
+      {/* A decided card's line says what happened (a stale card names the clip): the 409 that led there isn't repeated. */}
+      {error && action.status === "pending" && (
         <p role="alert" className="text-xs text-red-700">
           {error}
         </p>

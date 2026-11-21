@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sessionSpending } from "@digestor/core";
-import { aboutUsd, packageCostUsd, readInCostText, recordedUsd, spendingLines, spentSoFarText } from "./cost";
+import { aboutUsd, packageCostUsd, readInCostText, recordedUsd, spendingLines, spentSoFarText, uploadGoalCostText } from "./cost";
 
 describe("cost labels", () => {
   it("says 'about' for estimates and 'under $0.01' for tiny ones", () => {
@@ -55,5 +55,12 @@ describe("spending lines", () => {
   });
   it("words the Sessions page total", () => {
     expect(spentSoFarText({ bestUsd: 1.234, recordedUsd: 0.2 })).toEqual({ total: "Spent so far: about $1.23", detail: "$0.20 recorded, the rest estimated" });
+  });
+});
+
+describe("uploadGoalCostText", () => {
+  it("names the Ask cost once, without 'about about'", () => {
+    expect(uploadGoalCostText("The heated exchanges")).toBe("Ask will then start on your goal: about $0.01 more.");
+    expect(uploadGoalCostText("   ")).toBeNull();
   });
 });

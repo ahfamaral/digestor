@@ -4,9 +4,9 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRightIcon, UploadIcon, XIcon } from "lucide-react";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
-import { ASK_USD_PER_QUESTION, PROCESSING_USD_PER_HOUR, SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
+import { PROCESSING_USD_PER_HOUR, SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { aboutUsd } from "@/lib/cost";
+import { aboutUsd, uploadGoalCostText } from "@/lib/cost";
 import { HINT_MAX_CHARS } from "@/lib/hintInput";
 import { GOAL_MAX_CHARS } from "@/lib/goalInput";
 import { Badge } from "@/components/ui/badge";
@@ -217,7 +217,7 @@ export function UploadForm() {
           estimate: t("cost.uploadRate", { rate: aboutUsd(PROCESSING_USD_PER_HOUR) }),
         };
 
-  const goalCost = goal.trim() ? t("cost.uploadGoal", { cost: aboutUsd(ASK_USD_PER_QUESTION) }) : null;
+  const goalCost = uploadGoalCostText(goal);
   const confirmText = { ...baseConfirm, estimate: goalCost ? `${baseConfirm.estimate} ${goalCost}` : baseConfirm.estimate };
 
   const estimate =

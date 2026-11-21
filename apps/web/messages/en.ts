@@ -237,7 +237,7 @@ export const en = {
     uploadYoutube: "Transcription and AI analysis will be paid once the video is downloaded.",
     uploadUnknown: "Transcription and AI analysis will be paid. This browser couldn't read the file's length.",
     uploadRate: "That is {rate} per hour of video; the Processing screen shows the estimate once the length is known. This is an estimate, not a bill.",
-    uploadGoal: "Ask will then start on your goal: about {cost} more.",
+    uploadGoal: "Ask will then start on your goal: {cost} more.",
     uploadAction: "Continue",
     processing: "Estimated cost: {cost} for {length} of video (transcription and AI analysis).",
     reanalyze: "Estimated cost: {cost} (AI analysis only; the transcript is reused). This is an estimate.",
