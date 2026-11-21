@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { JOB_OPTIONS, QUEUES } from "@digestor/core";
 import { getSession, sessions } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
+import { t } from "@/lib/i18n";
 import { POST } from "./route";
 
 let h: Harness;
@@ -49,6 +50,24 @@ describe("POST /api/sessions/youtube", () => {
       hint: "First video ever",
     });
     expect(h.send).toHaveBeenCalledWith(QUEUES.start, { sessionId }, { ...JOB_OPTIONS, singletonKey: sessionId });
+  });
+
+  it("stores the goal apart from the hint", async () => {
+    const res = await post({ url: "https://youtu.be/jNQXAC9IVRw", goal: " 3 clips on housing ", hint: "A panel" });
+    const s = await getSession(h.db, ((await res.json()) as { sessionId: string }).sessionId);
+    expect(s).toMatchObject({ goal: "3 clips on housing", hint: "A panel" });
+  });
+
+  it("an empty goal stores null", async () => {
+    const res = await post({ url: "https://youtu.be/jNQXAC9IVRw" });
+    expect((await getSession(h.db, ((await res.json()) as { sessionId: string }).sessionId))?.goal).toBeNull();
+  });
+
+  it("a goal over 500 characters is a friendly 400 and creates no session", async () => {
+    const res = await post({ url: "https://youtu.be/jNQXAC9IVRw", goal: "x".repeat(501) });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: t("upload.goalTooLong") });
+    expect(h.send).not.toHaveBeenCalled();
   });
 
   it("stores a language override and rejects one outside the list", async () => {

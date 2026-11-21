@@ -4,10 +4,11 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRightIcon, UploadIcon, XIcon } from "lucide-react";
 import { WARNING_BOX, WarningIcon } from "@/components/WarningNote";
-import { PROCESSING_USD_PER_HOUR, SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
+import { ASK_USD_PER_QUESTION, PROCESSING_USD_PER_HOUR, SPOKEN_LANGUAGE_CODES, estimateCostUsd, isAudioExtension, isUploadExtension, parseYouTubeUrl } from "@digestor/core";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { aboutUsd } from "@/lib/cost";
 import { HINT_MAX_CHARS } from "@/lib/hintInput";
+import { GOAL_MAX_CHARS } from "@/lib/goalInput";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -129,6 +130,8 @@ export function UploadForm() {
   const [upload, setUpload] = useState<Upload>({ phase: "idle" });
   const [url, setUrl] = useState("");
   const [hint, setHint] = useState("");
+  const [goal, setGoal] = useState("");
+  const goalRef = useRef<HTMLTextAreaElement>(null);
   const [record, setRecord] = useState("");
   const [house, pickHouse, showHouse] = useRecordHouse();
   // Closed until asked for; a typed link or a picked house keeps it open.
@@ -177,6 +180,7 @@ export function UploadForm() {
         setUpload({ phase: "uploading", pct: 0 });
         const qs = new URLSearchParams({ filename: file.name });
         if (hint.trim()) qs.set("hint", hint.trim());
+        if (goal.trim()) qs.set("goal", goal.trim());
         if (record.trim()) qs.set("record", record.trim());
         if (record.trim() && house) qs.set("chamber", house);
         if (language) qs.set("language", language);
@@ -187,7 +191,7 @@ export function UploadForm() {
         const res = await fetch("/api/sessions/youtube", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, hint: hint.trim() || undefined, record: record.trim() || undefined, chamber: record.trim() && house ? house : undefined, language: language || undefined }),
+          body: JSON.stringify({ url, hint: hint.trim() || undefined, goal: goal.trim() || undefined, record: record.trim() || undefined, chamber: record.trim() && house ? house : undefined, language: language || undefined }),
         });
         const text = await res.text();
         if (!res.ok) throw new Error(errorFrom(text, t("upload.errorGeneric")));
@@ -202,7 +206,7 @@ export function UploadForm() {
   }
 
   // What the pay check says: the estimate when the length is known, else the hourly rate.
-  const confirmText =
+  const baseConfirm =
     mode === "file" && meta
       ? {
           description: t("cost.uploadFile", { length: formatDuration(meta.durationMs) }),
@@ -212,6 +216,9 @@ export function UploadForm() {
           description: mode === "file" ? t("cost.uploadUnknown") : t("cost.uploadYoutube"),
           estimate: t("cost.uploadRate", { rate: aboutUsd(PROCESSING_USD_PER_HOUR) }),
         };
+
+  const goalCost = goal.trim() ? t("cost.uploadGoal", { cost: aboutUsd(ASK_USD_PER_QUESTION) }) : null;
+  const confirmText = { ...baseConfirm, estimate: goalCost ? `${baseConfirm.estimate} ${goalCost}` : baseConfirm.estimate };
 
   const estimate =
     mode === "file" && meta ? (
@@ -368,7 +375,44 @@ export function UploadForm() {
         </TabsContent>
       </Tabs>
 
-      <Card className="h-fit gap-0 p-4 md:mt-10 md:flex-1">
+      <div className="flex flex-col gap-4 md:mt-10 md:flex-1">
+      <Card className="h-fit gap-0 p-4">
+        <label htmlFor="goal" className="font-semibold">
+          {t("upload.goalLabel")} <span className="font-normal text-muted-foreground">{t("upload.goalOptional")}</span>
+        </label>
+        <Textarea
+          id="goal"
+          ref={goalRef}
+          rows={3}
+          className="mt-2"
+          value={goal}
+          disabled={busy}
+          onChange={(e) => setGoal(e.target.value)}
+          maxLength={GOAL_MAX_CHARS}
+          aria-describedby="goal-help"
+          placeholder={t("upload.goalPlaceholder")}
+        />
+        <p id="goal-help" className="mt-2 text-sm text-muted-foreground">
+          {t("upload.goalHelp")}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(["instagram", "heated", "speaker"] as const).map((key) => (
+            <Button
+              key={key}
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                setGoal(t(`upload.goalChip.${key}`));
+                goalRef.current?.focus();
+              }}
+            >
+              {t(`upload.goalChip.${key}`)}
+            </Button>
+          ))}
+        </div>
+      </Card>
+      <Card className="h-fit gap-0 p-4">
         <label htmlFor="hint" className="font-semibold">
           {t("upload.hintLabel")} <span className="font-normal text-muted-foreground">{t("upload.hintOptional")}</span>
         </label>
@@ -475,6 +519,7 @@ export function UploadForm() {
           onConfirm={async () => void submit()}
         />
       </Card>
+      </div>
     </div>
   );
 }

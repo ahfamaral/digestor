@@ -5,6 +5,7 @@ import { AUDIO_ONLY_WARNING, JOB_OPTIONS, QUEUES, UPLOAD_UNSUPPORTED } from "@di
 import { getSession, sessions } from "@digestor/core/server";
 import { AUTH_COOKIE, authToken } from "@/lib/auth";
 import { createHarness, type Harness } from "@/test/harness";
+import { t } from "@/lib/i18n";
 import { PUT } from "./route";
 
 let h: Harness;
@@ -63,6 +64,24 @@ describe("PUT /api/sessions/upload", () => {
       hint: "A panel on housing",
     });
     expect(h.send).toHaveBeenCalledWith(QUEUES.start, { sessionId }, { ...JOB_OPTIONS, singletonKey: sessionId });
+  });
+
+  it("stores the goal apart from the hint", async () => {
+    const res = await upload(`filename=a.mp4&goal=${encodeURIComponent("3 clips on housing")}&hint=${encodeURIComponent("A panel")}`, bytes(10));
+    const s = await getSession(h.db, ((await res.json()) as { sessionId: string }).sessionId);
+    expect(s).toMatchObject({ goal: "3 clips on housing", hint: "A panel" });
+  });
+
+  it("an empty goal stores null", async () => {
+    const res = await upload("filename=a.mp4", bytes(10));
+    expect((await getSession(h.db, ((await res.json()) as { sessionId: string }).sessionId))?.goal).toBeNull();
+  });
+
+  it("a goal over 500 characters is a friendly 400 and creates no session", async () => {
+    const res = await upload(`filename=a.mp4&goal=${"x".repeat(501)}`, bytes(10));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: t("upload.goalTooLong") });
+    expect(h.send).not.toHaveBeenCalled();
   });
 
   it("audio upload needs the acknowledgement", async () => {

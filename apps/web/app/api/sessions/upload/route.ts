@@ -7,6 +7,7 @@ import { errorResponse } from "@/lib/http";
 import { readLanguageInput, START_FAILED } from "@/lib/languageInput";
 import { readRecordInput } from "@/lib/recordInput";
 import { readHintInput } from "@/lib/hintInput";
+import { readGoalInput } from "@/lib/goalInput";
 import { sendStart } from "@/lib/jobs";
 import { getServer } from "@/lib/server";
 
@@ -16,7 +17,7 @@ function maxUploadGb(): number {
 }
 
 /**
- * PUT /api/sessions/upload?filename=<name>&hint=<text>[&language=<pt|en|es|fr|de|it>][&record=<date, sitting number or link>][&chamber=<house>][&audioOnlyAck=1] — body is the raw file stream.
+ * PUT /api/sessions/upload?filename=<name>&hint=<text>[&goal=<text>][&language=<pt|en|es|fr|de|it>][&record=<date, sitting number or link>][&chamber=<house>][&audioOnlyAck=1] — body is the raw file stream.
  * Audio files (mp3, m4a, wav) need `audioOnlyAck=1`: clips from them show a waveform, and the user must accept that.
  * A video file without a picture (audio in an .mp4/.mov) isn't refused: the worker goes on as audio-only and the
  * Processing and context screens show the same notice (`foundNoVideo`).
@@ -39,6 +40,8 @@ export async function PUT(req: Request): Promise<Response> {
   if ("error" in language) return language.error;
   const note = readHintInput(params.get("hint"));
   if ("error" in note) return note.error;
+  const goalInput = readGoalInput(params.get("goal"));
+  if ("error" in goalInput) return goalInput.error;
   if (!req.body) return errorResponse(400, "No file was uploaded.");
 
   const gb = maxUploadGb();
@@ -63,7 +66,7 @@ export async function PUT(req: Request): Promise<Response> {
 
   const hint = note.hint;
   try {
-    await createSession(db, { id: sessionId, title: filename.slice(0, dot), source: "upload", originalKey, hint, audioOnlyAck: audioOnly, languageOverride: language.code });
+    await createSession(db, { id: sessionId, title: filename.slice(0, dot), source: "upload", originalKey, hint, goal: goalInput.goal, audioOnlyAck: audioOnly, languageOverride: language.code });
     // The session row has to exist before its record can be linked (foreign key), so a link failure can't stop the session
     // from starting: log it and go on. The record stays optional: it can be linked from Who's who at any time.
     if (record.ref) {
