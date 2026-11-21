@@ -728,11 +728,12 @@ describe("runAsk loop", () => {
     expect(c!.system).toMatch(/true or false/);
     expect(c!.system).toContain("Speakers: A, B");
     expect(c!.system).toContain("For a set of clips ('3 clips on Ukraine for Instagram'), call find_clip_candidates, then make_clip_package with the best ones; Instagram, TikTok, Reels and Shorts mean 9:16.");
+    expect(c!.system).toContain("update_clip changes a clip's format, title, credit line or adds a subtitle draft; X and YouTube mean 16:9, Instagram, TikTok, Reels and Shorts 9:16.");
     // Every tool's zod schema converts to an Anthropic tool definition.
     const formatted = new ChatAnthropic({ apiKey: "x", model: "claude-sonnet-5-5" }).formatStructuredToolToAnthropic(c!.tools) as { input_schema: { type: string } }[];
     expect(formatted.every((t) => t.input_schema.type === "object")).toBe(true);
     expect(c!.tools.map((t) => t.name).sort()).toEqual(
-      ["find_clip_candidates", "get_clip_context", "get_transcript", "list_clips", "list_moments", "list_speeches", "list_topics", "make_clip_package", "propose_clip", "search_transcript", "set_selection", "trim_clip"],
+      ["find_clip_candidates", "get_clip_context", "get_transcript", "list_clips", "list_moments", "list_speeches", "list_topics", "make_clip_package", "propose_clip", "search_transcript", "set_selection", "trim_clip", "update_clip"],
     );
   });
 

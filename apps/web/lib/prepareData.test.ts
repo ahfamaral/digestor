@@ -16,7 +16,7 @@ describe("defaultCredit", () => {
 });
 
 describe("undoStep", () => {
-  type Kind = "create" | "bounds" | "format" | "style" | "delete" | "merge";
+  type Kind = "create" | "bounds" | "format" | "style" | "delete" | "merge" | "update" | "replace";
   const ev = (kind: Kind, undone = false, before: unknown = null) => ({ kind, undoneAt: undone ? new Date() : null, before });
 
   it("names the latest change still standing, and never the clip's creation", () => {
@@ -26,6 +26,11 @@ describe("undoStep", () => {
     expect(undoStep([ev("create"), ev("bounds", true)])).toBeNull();
     expect(undoStep([ev("create"), ev("format"), ev("bounds", true)])).toEqual({ kind: "format" });
     expect(undoStep([ev("create"), ev("style")])).toEqual({ kind: "style" });
+  });
+
+  it("Prepare's undo labels an Ask update or replace as Ask's change", () => {
+    expect(undoStep([ev("update")])).toEqual({ kind: "ask" });
+    expect(undoStep([ev("create"), ev("replace")])).toEqual({ kind: "ask" });
   });
 
   it("a merge carries the range the clip goes back to", () => {

@@ -126,6 +126,8 @@ function undoLabel(step: UndoStep | null): string {
       return t("prepare.undoStyle");
     case "merge":
       return t("prepare.undoMerge");
+    case "ask":
+      return t("prepare.undoAsk");
     default:
       return t("prepare.undo");
   }

@@ -9,7 +9,7 @@ import {
 import {
   claimAskMessage, claimClipRender, clipsMadeByAsk, listClips, listTracks, claimMomentCheck, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
-  releaseMomentCheck, setClipRenderStatus, setSelection, StaleClipError, updateClip, type AskMessage, type Db, type Session,
+  releaseMomentCheck, setClipRenderStatus, setSelection, StaleClipError, updateClip, applyClipUpdate, ClipTitleNotOwnError, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
 import type { StructuredLLM } from "../llm/structured.js";
 import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/tools.js";
@@ -36,6 +36,9 @@ const MAX_DIRECT_CHANGES = 3;
 const MAX_SEARCH_K = 10;
 const DEFAULT_SEARCH_K = 6;
 const MAX_TITLE_CHARS = 120;
+const MAX_CREDIT_CHARS = 200;
+/** What the model reads when it tries to rename a clip made from an analysis moment (the official analysis, which Ask never changes). */
+const titleNotOwn = (n: number) => `Clip ${n}'s title comes from the analysis and can't be changed; only clips you or Ask made can be renamed.`;
 /** find_clip_candidates: `count` clips wanted (default 3, at most 5); it offers up to 2 more for the journalist to pick from. */
 const DEFAULT_PACKAGE = 3;
 const MAX_PACKAGE = 5;
@@ -88,7 +91,7 @@ export type AskDeps = {
 export type JobSender = (queue: string, data: Record<string, string>, singletonKey: string) => Promise<void>;
 
 /** The tools that change the journalist's clips or selections: the graph asks for approval before they run. */
-export const MUTATING_TOOLS: ReadonlySet<string> = new Set(["propose_clip", "trim_clip", "set_selection", "make_clip_package"]);
+export const MUTATING_TOOLS: ReadonlySet<string> = new Set(["propose_clip", "trim_clip", "set_selection", "make_clip_package", "update_clip"]);
 
 export type { AskToolCallRecord };
 
@@ -769,6 +772,106 @@ export const TOOLS: Tool[] = [
   },
   {
     spec: {
+      name: "update_clip",
+      description:
+        `Change one of the user's clips (only when they ask): its format (9:16 for Instagram, TikTok, Reels and Shorts; 16:9 for X and YouTube; the crop goes back to the centre), its title (only clips the user or Ask made), its credit line, or add a subtitle draft in one language. Give at least one field. Counts as one of the ${MAX_DIRECT_CHANGES} changes allowed per question. It cannot burn in, approve subtitles or export.`,
+      schema: z.object({
+        clipId: z.string().uuid(),
+        format: z.enum(["16:9", "9:16"]).optional(),
+        title: z.string().optional().describe("Short title in the language of the video"),
+        credit: z.string().optional().describe("The credit line shown on the video"),
+        addSubtitles: z.string().optional().describe("Language code of a subtitle draft to add (e.g. en, pt, de)"),
+      }),
+    },
+    async run(ctx, a: { clipId: string; format?: ClipFormat; title?: string; credit?: string; addSubtitles?: string }) {
+      const clip = await getClip(ctx.db, a.clipId);
+      if (!clip || clip.ownerId !== ctx.ownerId || clip.sessionId !== ctx.session.id) {
+        throw new ToolInputError(`there is no clip ${a.clipId} in this video.`);
+      }
+      requireVideo(ctx);
+      if (a.format === undefined && a.title === undefined && a.credit === undefined && a.addSubtitles === undefined) {
+        throw new ToolInputError("give at least one of format, title, credit or addSubtitles.");
+      }
+      const n = (await numberedClips(ctx)).find((c) => c.clip.id === clip.id)?.n ?? ctx.numbers.get(clip.id) ?? 0;
+      const title = a.title === undefined ? undefined : a.title.trim().slice(0, MAX_TITLE_CHARS);
+      if (title === "") throw new ToolInputError("title is empty.");
+      const credit = a.credit === undefined ? undefined : a.credit.trim().slice(0, MAX_CREDIT_CHARS);
+      if (credit === "") throw new ToolInputError("credit is empty.");
+      const language = a.addSubtitles?.trim();
+      if (language !== undefined) {
+        if (!subtitleLanguageOk(ctx, language)) {
+          const offered = [...new Set([ctx.session.language, ...LANGUAGES.map((l) => l.code)].filter((c): c is string => !!c))];
+          throw new ToolInputError(`subtitle language "${language.slice(0, 20)}" isn't offered. Use one of ${offered.join(", ")}.`);
+        }
+        if ((await listTracks(ctx.db, clip.id)).some((t) => t.language === language)) {
+          throw new ToolInputError(`clip ${n} already has ${languageLabel(language)} subtitles.`);
+        }
+        if (!ctx.send) throw new ToolInputError("subtitle drafts can't be made here.");
+      }
+      let currentTitle: string | null = null;
+      if (title !== undefined) {
+        const moment = clip.momentId ? await getMoment(ctx.db, clip.momentId) : null;
+        if (!moment || moment.ownerId !== ctx.ownerId) throw new ToolInputError(titleNotOwn(n));
+        currentTitle = moment.title;
+      }
+      const set = {
+        ...(a.format !== undefined && a.format !== clip.format ? { format: a.format } : {}),
+        ...(credit !== undefined && credit !== clip.credit ? { credit } : {}),
+        ...(title !== undefined && title !== currentTitle ? { title } : {}),
+        ...(language !== undefined ? { addLanguage: language } : {}),
+      };
+      if (Object.keys(set).length === 0) throw new ToolInputError(`clip ${n} already has these settings. Nothing to change.`);
+      requireDirectChange(ctx);
+      if (ctx.mode === "plan") {
+        ctx.directChanges += 1;
+        const parts = [
+          set.format ? `format ${set.format} (crop back to the centre)` : "",
+          set.credit ? `credit "${set.credit}"` : "",
+          set.title ? `title ${quoted(set.title)}` : "",
+          set.addLanguage ? `add ${languageLabel(set.addLanguage)} subtitle draft` : "",
+        ].filter(Boolean);
+        return { text: "", summary: `Change clip ${n}: ${parts.join(", ")}`, clips: [{ id: clip.id, n, version: clip.editVersion }] };
+      }
+      requireApproved(ctx);
+      willWrite(ctx);
+      ctx.directChanges += 1;
+      let out: Awaited<ReturnType<typeof applyClipUpdate>>;
+      try {
+        out = await applyClipUpdate(ctx.db, { clipId: clip.id, ownerId: ctx.ownerId, ...set, actor: "ask", expectVersion: ctx.versions.get(clip.id) });
+      } catch (err) {
+        if (err instanceof StaleClipError) {
+          const live = await getClip(ctx.db, clip.id);
+          throw new ToolInputError(staleText([{ n: ctx.numbers.get(clip.id) ?? n, removed: !live }]));
+        }
+        if (err instanceof ClipTitleNotOwnError) throw new ToolInputError(titleNotOwn(n));
+        throw err;
+      }
+      if (ctx.versions.has(clip.id)) ctx.versions.set(clip.id, out.clip.editVersion);
+      // The new track row is the claim; its job is sent after it, and a send that fails removes the row again.
+      let draft = "";
+      if (out.trackId && ctx.send) {
+        try {
+          await ctx.send(QUEUES.prepareTrack, { trackId: out.trackId }, out.trackId);
+          draft = `${languageLabel(set.addLanguage!)} subtitle draft is being prepared.`;
+        } catch (err) {
+          console.error(`[ask] couldn't queue the subtitle draft of clip ${clip.id}:`, err);
+          await deleteTrack(ctx.db, out.trackId).catch((e: unknown) => console.error("[ask] removing the unqueued track failed", e));
+          draft = `Couldn't start the ${languageLabel(set.addLanguage!)} subtitle draft: the user can add it on Prepare.`;
+        }
+      }
+      const done = [
+        set.format ? `format ${set.format} (crop back to the centre)` : "",
+        set.credit ? "credit line" : "",
+        set.title ? "title" : "",
+      ].filter(Boolean);
+      return {
+        text: [`Clip ${clip.id} updated${done.length ? `: ${done.join(", ")}` : ""}.`, draft, "Burn-in, subtitle approval and export stay with the user on Prepare."].filter(Boolean).join(" "),
+        clipId: clip.id,
+      };
+    },
+  },
+  {
+    spec: {
       name: "set_selection",
       description:
         `Mark moments approved or skipped (not a clip), or back to undecided (only when the user asks). Send every moment of one request in a single call. Per question, only ${MAX_DIRECT_CHANGES} changes apply at once (clips count too); a call that would go beyond that waits for the user's confirmation instead.`,
@@ -1053,10 +1156,11 @@ Rules:
 - Never invent names. Tool results mark who speaks with speaker ids (A, B, …); use them to work out who said what. In your answer, refer to a speaker the known participants below name by that name only, with "probably" before a name that is not confirmed (for example "probably Ana Silva said …"); never put their speaker id next to the name (not "Speaker C, probably Ana Silva"). Describe a speaker without a name by their role when one is given below (for example "the moderator"), else by their speaker id (for example "Speaker A"). For what a named person said, use list_speeches, then get_transcript for the turns that matter.
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
-- propose_clip, trim_clip, set_selection and make_clip_package change the user's own clips and selections. Use them only when the user asks for that change. You can't export, burn in subtitles or change the official analysis.
+- propose_clip, trim_clip, set_selection, make_clip_package and update_clip change the user's own clips and selections. Use them only when the user asks for that change. You can't export, burn in subtitles or change the official analysis.
 - When the user names a clip by number or title, call list_clips first; its numbers are the ones the user sees in Prepare.
 - For what comes just before or after a clip (the question before an answer, where an argument continues), call get_clip_context, then trim_clip.
 - For a set of clips ('3 clips on Ukraine for Instagram'), call find_clip_candidates, then make_clip_package with the best ones; Instagram, TikTok, Reels and Shorts mean 9:16.
+- update_clip changes a clip's format, title, credit line or adds a subtitle draft; X and YouTube mean 16:9, Instagram, TikTok, Reels and Shorts 9:16.
 - The user approves each change before it is made, and may edit it first. When a result says "${DECLINED}", nothing was changed: say so plainly and don't try it again unless they ask.
 - Write plain text only: no Markdown (no **, #, backticks or asterisk bullets; use "-" for a list). Timestamps stay as [hh:mm:ss].
 - Keep answers short.

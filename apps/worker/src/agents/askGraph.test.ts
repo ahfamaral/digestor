@@ -4,7 +4,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OWNER_ID, QUEUES, findBoundaries, snapRange, type AskToolCallRecord, type ToolApprovalPayload, type ToolApprovalResolution, type Word } from "@digestor/core";
 import {
-  addAskMessage, completeAnalysisVersion, createClip, createDb, createSession, claimMomentCheck, deleteClip, getAskMessage, getClip, updateClip, listAskMessages, listClips, listPersonalMoments,
+  addAskMessage, completeAnalysisVersion, createClip, createTrack, createDb, createSession, claimMomentCheck, deleteClip, getAskMessage, getClip, updateClip, listAskMessages, listClips, listPersonalMoments,
   listSelections, listTracks, resolveToolApproval, saveMoments, saveTopics, saveTranscript, startAnalysisVersion, updateSession, type Db,
 } from "@digestor/core/server";
 import { handleAskResume } from "../jobs.js";
@@ -121,7 +121,7 @@ async function decide(deps: ReturnType<typeof depsFor>, sessionId: string, messa
 
 describe("Ask graph", () => {
   it("MUTATING_TOOLS are the four tools that change clips or selections", () => {
-    expect([...MUTATING_TOOLS].sort()).toEqual(["make_clip_package", "propose_clip", "set_selection", "trim_clip"]);
+    expect([...MUTATING_TOOLS].sort()).toEqual(["make_clip_package", "propose_clip", "set_selection", "trim_clip", "update_clip"]);
   });
 
   it("a read-only turn answers without a pause, with the same tool records as before plus the verify chip", async () => {
@@ -951,5 +951,161 @@ describe("stale approval cards", () => {
     await decide(deps, s.id, msg.id, { decision: "approve" });
     expect(toolResults(llm.calls.at(-1)!)[0]).toContain("removed");
     expect(await getClip(db, clip2.id)).toBeNull();
+  });
+});
+
+
+describe("update_clip", () => {
+  const sender = () => {
+    const sent: { queue: string; data: Record<string, string>; key: string }[] = [];
+    return { sent, send: async (queue: string, data: Record<string, string>, key: string) => void sent.push({ queue, data, key }) };
+  };
+  async function threeClips() {
+    const seeded = await seed();
+    const mk = (startMs: number, endMs: number, momentId?: string) =>
+      createClip(db, { sessionId: seeded.s.id, ownerId: OWNER_ID, startMs, endMs, format: "9:16", ...(momentId ? { momentId } : {}), actor: "user" });
+    const clip1 = await mk(60_000, 90_000);
+    const clip2 = await mk(180_000, 210_000);
+    const clip3 = await mk(300_000, 330_000);
+    return { ...seeded, clip1, clip2, clip3 };
+  }
+
+  it("update_clip plan and apply: the card names clip 3, approve makes it 16:9 with a Portuguese draft", async () => {
+    const { s, clip3 } = await threeClips();
+    const msg = await ask(s.id, "Make clip 3 for X with Portuguese subtitles.");
+    const jobs = sender();
+    const llm = new FakeToolLLM([
+      toolStep(call("list_clips", {})),
+      toolStep(call("update_clip", { clipId: clip3.id, format: "16:9", addSubtitles: "pt" }, "upd")),
+      answer("Done."),
+    ]);
+    const deps = { ...depsFor(llm), send: jobs.send };
+    await runAsk(deps, msg.id);
+    const [action] = await approvals(s.id, msg.id);
+    const [card] = (action!.payload as ToolApprovalPayload).calls;
+    expect(card).toMatchObject({ name: "update_clip", summary: expect.stringContaining("Change clip 3"), clips: [{ n: 3 }] });
+    expect(card!.summary).toBe("Change clip 3: format 16:9 (crop back to the centre), add Portuguese subtitle draft");
+    expect(await getClip(db, clip3.id)).toMatchObject({ format: "9:16" }); // nothing before approval
+    expect(jobs.sent).toEqual([]);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await getClip(db, clip3.id)).toMatchObject({ format: "16:9", cropOffset: 0 });
+    const [track] = await listTracks(db, clip3.id);
+    expect(track).toMatchObject({ language: "pt", status: "preparing" });
+    expect(jobs.sent.map((j) => j.queue)).toEqual([QUEUES.prepareTrack]); // never a burn or an export
+    expect(jobs.sent[0]).toMatchObject({ data: { trackId: track!.id }, key: track!.id });
+    const stored = await getAskMessage(db, msg.id);
+    expect((stored!.toolCalls as AskToolCallRecord[]).find((c) => c.name === "update_clip")).toMatchObject({ ok: true, clipId: clip3.id });
+  });
+
+  it("a subtitle draft that can't be queued is removed and the model is told", async () => {
+    const { s, clip3 } = await threeClips();
+    const msg = await ask(s.id, "Add Portuguese subtitles to clip 3.");
+    const llm = new FakeToolLLM([toolStep(call("update_clip", { clipId: clip3.id, addSubtitles: "pt", credit: "Agência" })), answer("Done.")]);
+    const deps = { ...depsFor(llm), send: async () => { throw new Error("queue down"); } };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await listTracks(db, clip3.id)).toEqual([]);
+    expect(await getClip(db, clip3.id)).toMatchObject({ credit: "Agência" });
+    expect(toolResults(llm.calls.at(-1)!)[0]).toMatch(/Couldn't start the Portuguese subtitle draft/);
+  });
+
+  it("update_clip counts as one change toward the cap of 3", async () => {
+    const { s, clip1, clip2, clip3 } = await threeClips();
+    const msg = await ask(s.id, "Trim all three, then make clip 1 16:9.");
+    const llm = new FakeToolLLM([
+      toolStep(
+        call("trim_clip", { clipId: clip1.id, start: "00:01:05", end: "00:01:25" }),
+        call("trim_clip", { clipId: clip2.id, start: "00:03:05", end: "00:03:25" }),
+        call("trim_clip", { clipId: clip3.id, start: "00:05:05", end: "00:05:25" }),
+      ),
+      toolStep(call("update_clip", { clipId: clip1.id, format: "16:9" })),
+      answer("Three trims made."),
+    ]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(toolResults(llm.calls[2]!)[0]).toMatch(/^Error: .*confirm/i);
+    expect(await approvals(s.id, msg.id)).toHaveLength(1);
+    expect((await getClip(db, clip1.id))!.format).toBe("9:16");
+  });
+
+  it("two calls on the same clip in one card both apply (the second expects the first's new version)", async () => {
+    const { s, clip1 } = await threeClips();
+    const msg = await ask(s.id, "Trim clip 1 and make it 16:9.");
+    const llm = new FakeToolLLM([
+      toolStep(call("trim_clip", { clipId: clip1.id, start: "00:01:05", end: "00:01:25" }), call("update_clip", { clipId: clip1.id, format: "16:9" })),
+      answer("Done."),
+    ]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    const [trimmed, updated] = toolResults(llm.calls.at(-1)!);
+    expect(trimmed).not.toContain("changed since");
+    expect(updated).not.toContain("changed since");
+    expect(await getClip(db, clip1.id)).toMatchObject({ format: "16:9", cropOffset: 0, startMs: expect.any(Number) });
+    expect((await getClip(db, clip1.id))!.editVersion).toBe(2);
+  });
+
+  it("a card edited by hand since is refused as stale: update_clip changes nothing", async () => {
+    const { s, clip3 } = await threeClips();
+    const msg = await ask(s.id, "Make clip 3 16:9.");
+    const llm = new FakeToolLLM([toolStep(call("update_clip", { clipId: clip3.id, format: "16:9" })), answer("Done.")]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    await updateClip(db, clip3.id, { credit: "By hand" }, "user");
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    expect(await getClip(db, clip3.id)).toMatchObject({ format: "9:16", credit: "By hand" });
+    expect(toolResults(llm.calls.at(-1)!)[0]).toContain("Clip 3 changed since this card was made");
+  });
+
+  it("without any field, with a language the clip has, or with an unknown language it is an error to the model and asks nothing", async () => {
+    const { s, clip1 } = await threeClips();
+    await createTrack(db, clip1.id, "pt");
+    const msg = await ask(s.id, "Change clip 1.");
+    const llm = new FakeToolLLM([
+      toolStep(
+        call("update_clip", { clipId: clip1.id }),
+        call("update_clip", { clipId: clip1.id, addSubtitles: "pt" }),
+        call("update_clip", { clipId: clip1.id, addSubtitles: "xx-nope" }),
+      ),
+      answer("Can't."),
+    ]);
+    await runAsk({ ...depsFor(llm), send: sender().send }, msg.id);
+    const [none, has, unknown] = toolResults(llm.calls[1]!);
+    expect(none).toMatch(/^Error: .*at least one/);
+    expect(has).toMatch(/^Error: .*already has/);
+    expect(unknown).toMatch(/^Error: .*isn't offered/);
+    expect(await approvals(s.id, msg.id)).toEqual([]);
+    expect((await getAskMessage(db, msg.id))!.status).toBe("done");
+  });
+
+  it("a clip made from the analysis can't be renamed: the model reads why, nothing is asked", async () => {
+    const { s, momentIds } = await seed();
+    const clip = await createClip(db, { sessionId: s.id, ownerId: OWNER_ID, startMs: 0, endMs: 30_000, momentId: momentIds[0]!, actor: "user" });
+    const msg = await ask(s.id, "Rename clip 1.");
+    const llm = new FakeToolLLM([toolStep(call("update_clip", { clipId: clip.id, title: "Mine" })), answer("Can't.")]);
+    await runAsk({ ...depsFor(llm), send: sender().send }, msg.id);
+    expect(toolResults(llm.calls[1]!)[0]).toBe("Error: Clip 1's title comes from the analysis and can't be changed; only clips you or Ask made can be renamed.");
+    expect(await approvals(s.id, msg.id)).toEqual([]);
+  });
+
+  it("a clip Ask made can be renamed", async () => {
+    const { s, analysisId } = await seed();
+    const msg = await ask(s.id, "Make a clip then rename it.");
+    const llm = new FakeToolLLM([
+      toolStep(call("propose_clip", { start: "00:01:01", end: "00:01:31", title: "Old" })),
+      answer("Made."),
+    ]);
+    const deps = { ...depsFor(llm), send: sender().send };
+    await runAsk(deps, msg.id);
+    await decide(deps, s.id, msg.id, { decision: "approve" });
+    const [clip] = await listClips(db, OWNER_ID, s.id);
+    const msg2 = await ask(s.id, "Rename it.");
+    const llm2 = new FakeToolLLM([toolStep(call("update_clip", { clipId: clip!.id, title: "New" })), answer("Renamed.")]);
+    const deps2 = { ...depsFor(llm2), send: sender().send };
+    await runAsk(deps2, msg2.id);
+    await decide(deps2, s.id, msg2.id, { decision: "approve" });
+    const [moment] = await listPersonalMoments(db, OWNER_ID, analysisId);
+    expect(moment!.title).toBe("New");
   });
 });

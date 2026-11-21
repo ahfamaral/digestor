@@ -716,6 +716,7 @@ export const en = {
     undoFormat: "Undo format",
     undoStyle: "Undo subtitle look",
     undoMerge: "Undo merge",
+    undoAsk: "Undo Ask's change",
     undoLabel: "{action}: {title}",
     undoMergeTitle: "Undo the merge?",
     undoMergeDescription: "This clip goes back to {start} to {end}, and the clip merged into it comes back as it was. Subtitles made for the merged clip will be out of date.",

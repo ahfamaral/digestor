@@ -23,6 +23,14 @@ export class StaleClipError extends Error {
   }
 }
 
+/** `applyClipUpdate` was asked to rename a clip whose title is the official analysis's (only clips the owner or Ask made can be renamed). */
+export class ClipTitleNotOwnError extends Error {
+  constructor(readonly clipId: string) {
+    super(`The title of clip ${clipId} comes from the analysis`);
+    this.name = "ClipTitleNotOwnError";
+  }
+}
+
 const bumpVersion = { editVersion: sql`${clips.editVersion} + 1` };
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -588,6 +596,58 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
 }
 
 /**
+ * Ask's `update_clip`: format (the crop goes back to the centre), credit line, title and one new subtitle language in
+ * one transaction, one `update` event and one version bump. The title is the clip's moment's, so it is renamed only
+ * when that moment is this owner's own, else `ClipTitleNotOwnError` (nothing is written). A new language is a
+ * `preparing` track; the caller claims and sends its job. `expectVersion` guards a card planned on an older version.
+ */
+export async function applyClipUpdate(
+  db: Db,
+  a: { clipId: string; ownerId: string; format?: ClipFormat; credit?: string | null; title?: string; addLanguage?: string; actor: ClipActor; expectVersion?: number },
+): Promise<{ clip: Clip; trackId: string | null }> {
+  return db.transaction(async (tx) => {
+    const before = await lockClip(tx, a.clipId);
+    if (a.expectVersion !== undefined && (!before || before.deletedAt || before.editVersion !== a.expectVersion)) throw new StaleClipError(a.clipId);
+    if (!before || before.deletedAt || before.ownerId !== a.ownerId) throw new Error(`Clip not found: ${a.clipId}`);
+    let titleBefore: { momentId: string; title: string } | undefined;
+    if (a.title !== undefined) {
+      const [moment] = before.momentId ? await tx.select().from(moments).where(eq(moments.id, before.momentId)) : [];
+      if (!moment || moment.ownerId !== a.ownerId) throw new ClipTitleNotOwnError(a.clipId);
+      titleBefore = { momentId: moment.id, title: moment.title };
+    }
+    const patch: Partial<typeof clips.$inferInsert> = {};
+    if (a.format !== undefined && a.format !== before.format) {
+      patch.format = a.format;
+      patch.cropOffset = 0;
+    }
+    const creditChanged = a.credit !== undefined && a.credit !== before.credit;
+    if (creditChanged) {
+      patch.credit = a.credit;
+      patch.creditSetAt = new Date();
+    }
+    let trackId: string | null = null;
+    if (a.addLanguage !== undefined) {
+      const [track] = await tx.insert(subtitleTracks).values({ clipId: a.clipId, language: a.addLanguage }).onConflictDoNothing().returning();
+      if (!track) throw new Error(`Clip ${a.clipId} already has a ${a.addLanguage} track`);
+      trackId = track.id;
+    }
+    if (titleBefore && a.title !== titleBefore.title) await tx.update(moments).set({ title: a.title! }).where(eq(moments.id, titleBefore.momentId));
+    await tx.update(clips).set({ ...patch, updatedAt: new Date(), ...bumpVersion }).where(eq(clips.id, a.clipId));
+    if (patch.format !== undefined || creditChanged) await staleIfDone(tx, a.clipId);
+    const [fresh] = await tx.select().from(clips).where(eq(clips.id, a.clipId));
+    const snapshot = (c: Clip) => ({ format: c.format, cropOffset: c.cropOffset, credit: c.credit, creditSetAt: c.creditSetAt });
+    await tx.insert(clipEvents).values({
+      clipId: a.clipId,
+      actor: a.actor,
+      kind: "update",
+      before: { ...snapshot(before), ...(titleBefore ? { title: titleBefore } : {}) },
+      after: { ...snapshot(fresh!), ...(a.title !== undefined ? { title: { momentId: titleBefore!.momentId, title: a.title } } : {}), addedTrackId: trackId },
+    });
+    return { clip: fresh!, trackId };
+  });
+}
+
+/**
  * Soft delete: the row and its events stay so `undoLastEvent` can restore it. Test-only today (no route deletes a
  * clip; merge soft-deletes through `mergeClips`): tests use it to set up a deleted clip and the `delete` undo.
  */
@@ -636,6 +696,18 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
           inArray(selections.momentId, tx.select({ id: moments.id }).from(moments).where(and(eq(moments.id, clip.momentId), eq(moments.origin, "ask")))),
         ));
       }
+    } else if (ev.kind === "update") {
+      const b = ev.before as { format: ClipFormat; cropOffset: number; credit: string | null; creditSetAt: string | null; title?: { momentId: string; title: string } };
+      const a = ev.after as { addedTrackId?: string | null };
+      set = { ...set, format: b.format, cropOffset: b.cropOffset, credit: b.credit, creditSetAt: b.creditSetAt ? new Date(b.creditSetAt) : null };
+      if (b.title) await tx.update(moments).set({ title: b.title.title }).where(eq(moments.id, b.title.momentId));
+      if (a.addedTrackId) {
+        await tx.delete(subtitleTracks).where(and(
+          eq(subtitleTracks.id, a.addedTrackId),
+          isNull(subtitleTracks.approvedAt),
+          sql`${subtitleTracks.burnStatus} not in ('queued', 'rendering')`,
+        ));
+      }
     } else if (ev.kind === "merge") {
       set = { ...set, ...(ev.before as object) };
       const { absorbedClipId } = ev.after as { absorbedClipId: string };
@@ -645,7 +717,7 @@ export async function undoLastEvent(db: Db, clipId: string): Promise<Clip | null
     }
     await tx.update(clips).set(set).where(eq(clips.id, clipId));
     await tx.update(clipEvents).set({ undoneAt: now }).where(eq(clipEvents.id, ev.id));
-    if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "merge") await staleIfDone(tx, clipId);
+    if (ev.kind === "bounds" || ev.kind === "format" || ev.kind === "merge" || ev.kind === "update") await staleIfDone(tx, clipId);
     if (ev.kind === "style") await staleBurnsIfDone(tx, clipId);
     if (ev.kind === "bounds" || ev.kind === "merge") await afterBoundsChange(tx, clipId, ev.before as { startMs: number; endMs: number });
     const [fresh] = await tx.select().from(clips).where(eq(clips.id, clipId));

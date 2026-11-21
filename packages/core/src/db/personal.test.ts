@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  StaleClipError, staleCardClips, setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents, clipsMadeByAsk,
+  StaleClipError, staleCardClips, setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents, clipsMadeByAsk, applyClipUpdate, ClipTitleNotOwnError,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -1047,5 +1047,70 @@ describe("startAskQuestion", () => {
     const [a, b] = await Promise.all([start(async () => {}, { onlyIfEmpty: true }), start(async () => {}, { onlyIfEmpty: true })]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
     expect(await listAsk(db, OWNER, s.id)).toHaveLength(2);
+  });
+});
+
+describe("applyClipUpdate", () => {
+  it("changes format (crop to centre), credit and adds a language in one event and one version", async () => {
+    const c = await newClip();
+    await updateClip(db, c.id, { format: "9:16", cropOffset: 0.4 }, "user");
+    const v0 = (await getClip(db, c.id))!.editVersion;
+    const { clip, trackId } = await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, format: "16:9", credit: "TV Globo", addLanguage: "pt", actor: "ask" });
+    expect(clip).toMatchObject({ format: "16:9", cropOffset: 0, credit: "TV Globo", editVersion: v0 + 1 });
+    expect(clip.creditSetAt).not.toBeNull();
+    expect((await listClipEvents(db, c.id)).filter((e) => e.kind === "update")).toHaveLength(1);
+    expect((await getTrack(db, trackId!))!.status).toBe("preparing");
+  });
+
+  it("renames a personal moment, refuses an analysis moment's title", async () => {
+    const mine = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 10_000, endMs: 50_000, title: "Old", origin: "ask" });
+    const a = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: mine.id, startMs: 10_000, endMs: 50_000, actor: "ask" });
+    await applyClipUpdate(db, { clipId: a.id, ownerId: OWNER, title: "New", actor: "ask" });
+    expect((await getMoment(db, mine.id))!.title).toBe("New");
+
+    const [official] = await saveMoments(db, analysisId, [
+      { topicId: null, granularity: "passage", startMs: 60_000, endMs: 100_000, title: "Official", why: "w", relevance: 50, speakers: [], evidence: [], origin: "ai", highlights: [] },
+    ]);
+    const b = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: official!.id, startMs: 60_000, endMs: 100_000, actor: "user" });
+    const v = (await getClip(db, b.id))!.editVersion;
+    await expect(applyClipUpdate(db, { clipId: b.id, ownerId: OWNER, title: "Mine", format: "9:16", actor: "ask" })).rejects.toBeInstanceOf(ClipTitleNotOwnError);
+    expect((await getMoment(db, official!.id))!.title).toBe("Official");
+    expect(await getClip(db, b.id)).toMatchObject({ format: "16:9", editVersion: v });
+  });
+
+  it("undo of an update restores everything it set and removes its unapproved track", async () => {
+    const mine = await createPersonalMoment(db, { analysisId, ownerId: OWNER, startMs: 10_000, endMs: 50_000, title: "Old", origin: "ask" });
+    const c = await createClip(db, { sessionId: s.id, ownerId: OWNER, momentId: mine.id, startMs: 10_000, endMs: 50_000, actor: "ask" });
+    await updateClip(db, c.id, { cropOffset: 0.3, credit: "A" }, "user");
+    const before = (await getClip(db, c.id))!;
+    const { trackId } = await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, format: "9:16", credit: "B", title: "New", addLanguage: "pt", actor: "ask" });
+    const undone = await undoLastEvent(db, c.id);
+    expect(undone).toMatchObject({ format: before.format, cropOffset: 0.3, credit: "A" });
+    expect(undone!.editVersion).toBeGreaterThan(before.editVersion + 1);
+    expect((await getMoment(db, mine.id))!.title).toBe("Old");
+    expect(await getTrack(db, trackId!)).toBeNull();
+  });
+
+  it("undo keeps an approved track", async () => {
+    const c = await newClip();
+    const { trackId } = await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, addLanguage: "pt", actor: "ask" });
+    await setTrackCues(db, trackId!, [cue("Oi")], "ready");
+    await approveTrack(db, trackId!);
+    await undoLastEvent(db, c.id);
+    expect(await getTrack(db, trackId!)).not.toBeNull();
+  });
+
+  it("expectVersion mismatch throws StaleClipError and changes nothing", async () => {
+    const c = await newClip();
+    await expect(applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, credit: "X", actor: "ask", expectVersion: 5 })).rejects.toBeInstanceOf(StaleClipError);
+    expect((await getClip(db, c.id))!.credit).toBeNull();
+  });
+
+  it("stales a finished render", async () => {
+    const c = await newClip();
+    await claimClipRender(db, c.id);
+    await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" });
+    await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, credit: "X", actor: "ask" });
+    expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
   });
 });

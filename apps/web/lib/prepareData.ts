@@ -34,7 +34,7 @@ export function mergePairs(clips: { startMs: number; endMs: number }[]): Map<num
 export { defaultCredit } from "@digestor/core";
 
 /** What Prepare's Undo would revert; a merge also says the range the clip goes back to. */
-export type UndoStep = { kind: "bounds" | "format" | "style" } | { kind: "merge"; range: Range };
+export type UndoStep = { kind: "bounds" | "format" | "style" | "ask" } | { kind: "merge"; range: Range };
 
 /**
  * The change "Undo" would revert: the latest one still standing. Undoing a clip's creation would delete it, so that
@@ -48,6 +48,9 @@ export function undoStep(events: { kind: ClipEventKind; undoneAt: Date | string 
     case "format":
     case "style":
       return { kind: last.kind };
+    case "update":
+    case "replace":
+      return { kind: "ask" };
     case "merge": {
       const b = last.before as { startMs: number; endMs: number };
       return { kind: "merge", range: { startMs: b.startMs, endMs: b.endMs } };
