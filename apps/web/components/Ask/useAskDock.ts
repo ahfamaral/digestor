@@ -18,9 +18,12 @@ export function useAskDock(sessionId: string, hasGoal: boolean) {
 
   useEffect(() => {
     const stored = readAskDock(browserStorage(), sessionId);
+    // Storage and width are only readable after hydration (a lazy initial state would not match the server HTML).
+    /* eslint-disable react-hooks/set-state-in-effect -- reading browser storage after mount is deliberate */
     setRemembered(stored);
     setReady(true);
     if (initialAskOpen({ desktop: isDesktopNow(), hasGoal, remembered: stored })) setOpenState(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
     // Once after mount: later width changes or edits never open the panel by themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

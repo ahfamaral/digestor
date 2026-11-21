@@ -2,7 +2,7 @@
 
 import { MediaPlayer } from "@/components/MediaPlayer";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus, type ToolApprovalResolution } from "@digestor/core";
 import { ChevronRightIcon } from "lucide-react";
@@ -62,11 +62,8 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
   const lang = language ?? undefined;
   const listEnd = useRef<HTMLDivElement>(null);
   const ownInput = useRef<HTMLTextAreaElement | null>(null);
-  const inputRef = useCallback((node: HTMLTextAreaElement | null) => {
-    ownInput.current = node;
-    if (typeof outerInputRef === "function") outerInputRef(node);
-    else if (outerInputRef) (outerInputRef as React.RefObject<HTMLTextAreaElement | null>).current = node;
-  }, [outerInputRef]);
+  // Hands the question box to the frame's ref (function or object) without writing to a prop.
+  useImperativeHandle(outerInputRef, () => ownInput.current as HTMLTextAreaElement);
   const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
   const [loadError, setLoadError] = useState(false);
   const [text, setText] = useState("");
@@ -98,9 +95,17 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
     }
   }, [sessionId, router]);
 
-  // Loads the conversation whenever the frame shows the thread (the fetch is async: nothing is set synchronously).
+  // Loads the conversation whenever the frame shows the thread. It runs from a callback after the effect, never
+  // inside it: the load sets state once the fetch answers.
   useEffect(() => {
-    if (active) void load(false);
+    if (!active) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) return load(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [active, load]);
 
   // "Taking too long" counts from the last status change: an answer resumed after an approval is fresh again.
@@ -321,7 +326,7 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
         {t("ask.inputLabel")}
       </label>
       <Textarea
-        ref={inputRef}
+        ref={ownInput}
         id="ask-input"
         maxLength={MAX_QUESTION}
         value={text}
