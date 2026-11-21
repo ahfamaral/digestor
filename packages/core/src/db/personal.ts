@@ -437,6 +437,16 @@ export async function mergeClips(db: Db, ownerId: string, clipIds: [string, stri
   });
 }
 
+/** The clips whose creation event was by Ask (a later Ask edit of a user's clip doesn't count). */
+export async function clipsMadeByAsk(db: Db, clipIds: string[]): Promise<Set<string>> {
+  if (clipIds.length === 0) return new Set();
+  const rows = await db
+    .select({ clipId: clipEvents.clipId })
+    .from(clipEvents)
+    .where(and(inArray(clipEvents.clipId, clipIds), eq(clipEvents.kind, "create"), eq(clipEvents.actor, "ask")));
+  return new Set(rows.map((r) => r.clipId));
+}
+
 export async function listClips(db: Db, ownerId: string, sessionId: string): Promise<Clip[]> {
   return db
     .select()

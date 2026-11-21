@@ -3,11 +3,11 @@ import { Command, MemorySaver, type BaseCheckpointSaver } from "@langchain/langg
 import {
   GRANULARITY, HIGHLIGHT_TYPES, defaultCredit, type HighlightTypeId, HighlightTypeIdSchema, LANGUAGES, PROFILES, ProfileIdSchema, QUEUES, findBoundaries, formatTimestamp,
   normaliseName, parseTimestamp, personAt, renderTranscript, sliceWords, snapEdges, snapRange, toSentences, VIDEO_REMOVED,
-  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type ClipFormat, type ContextCard, type Person, type SelectionStatus, type ToolApprovalCall,
+  type AnalysisBundle, type Attribution, type AskToolCallRecord, type Boundary, type Clip, type ClipFormat, type ContextCard, type Person, type SelectionStatus, type ToolApprovalCall,
   type ToolApprovalResolution, type Transcript, type Word,
 } from "@digestor/core";
 import {
-  claimAskMessage, claimClipRender, claimMomentCheck, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
+  claimAskMessage, claimClipRender, clipsMadeByAsk, listClips, listTracks, claimMomentCheck, claimWaitingAskMessage, createAskAction, createClip, createPersonalMoment, createTrack, deleteTrack, finishAskMessage, getAskAction, getAskMessage, getClip, getContextCard, getToolApproval,
   getCurrentAnalysis, getMoment, getPersons, getSession, getTranscript, listAskMessages, listAttributions, listPersonalMoments, listSelections,
   releaseMomentCheck, setClipRenderStatus, setSelection, updateClip, type AskMessage, type Db, type Session,
 } from "@digestor/core/server";
@@ -16,6 +16,7 @@ import type { ToolCallRequest, ToolLLM, ToolMessage, ToolSpec } from "../llm/too
 import type { SearchHit } from "../search/index.js";
 import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
+import { DEFAULT_CONTEXT_S, MAX_CONTEXT_S, clipLine, contextWindows } from "./askClips.js";
 import { buildAskGraph, interruptedBy, threadConfig, type AskGraph, type AskGraphInput } from "./askGraph.js";
 
 export const MAX_ASK_STEPS = 6;
@@ -434,6 +435,11 @@ function subtitleLanguageOk(ctx: AskContext, code: string): boolean {
   return LANGUAGES.some((l) => l.code === code) || code === ctx.session.language;
 }
 
+/** Prepare's clips in Prepare's order: every clip number Ask shows or records comes from here (1-based, live clips only). */
+export async function numberedClips(ctx: AskContext): Promise<{ n: number; clip: Clip }[]> {
+  return (await listClips(ctx.db, ctx.ownerId, ctx.session.id)).map((clip, i) => ({ n: i + 1, clip }));
+}
+
 const languageLabel = (code: string) => LANGUAGES.find((l) => l.code === code)?.label ?? code;
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -566,6 +572,59 @@ export const TOOLS: Tool[] = [
       const head = all.length > MAX_MOMENTS_LISTED ? `${all.length} moments match; the ${MAX_MOMENTS_LISTED} most relevant:\n` : "";
       // Titles and reasons were written from the transcript (or by a user): evidence, never instructions (R31).
       return { text: head + evidence(lines.join("\n"), MAX_TOOL_OUTPUT - head.length) };
+    },
+  },
+  {
+    spec: {
+      name: "list_clips",
+      description: "The user's clips in this video, numbered as Prepare shows them, with id, times, format, subtitles, render and checks.",
+      schema: z.object({}),
+    },
+    async run(ctx) {
+      const numbered = await numberedClips(ctx);
+      if (numbered.length === 0) {
+        return { text: 'There are no clips yet. Clips are made on the Briefing ("Prepare clips") or with propose_clip and make_clip_package.' };
+      }
+      const madeByAsk = await clipsMadeByAsk(ctx.db, numbered.map((x) => x.clip.id));
+      const lines = await Promise.all(
+        numbered.map(async ({ n, clip }) => {
+          const [moment, tracks] = await Promise.all([clip.momentId ? getMoment(ctx.db, clip.momentId) : null, listTracks(ctx.db, clip.id)]);
+          return clipLine({ n, clip, title: moment?.title ?? "", moment, tracks, madeByAsk: madeByAsk.has(clip.id) });
+        }),
+      );
+      // Moment titles were written from the transcript (or by a user): evidence, never instructions (R31).
+      return { text: evidence(lines.join("\n")) };
+    },
+  },
+  {
+    spec: {
+      name: "get_clip_context",
+      description: `The transcript just before and just after one of the user's clips (default ${DEFAULT_CONTEXT_S} s each side, at most ${MAX_CONTEXT_S}), to see what a clip leaves out before trimming it.`,
+      schema: z.object({
+        clipId: z.string().uuid(),
+        seconds: z.number().optional().describe(`Seconds on each side (1–${MAX_CONTEXT_S}, default ${DEFAULT_CONTEXT_S})`),
+      }),
+    },
+    async run(ctx, a: { clipId: string; seconds?: number }) {
+      const numbered = await numberedClips(ctx);
+      const hit = numbered.find((x) => x.clip.id === a.clipId);
+      if (!hit) throw new ToolInputError(`there is no clip ${a.clipId} in this video.`);
+      const { n, clip } = hit;
+      const duration = ctx.transcript?.durationMs ?? ctx.session.durationMs ?? 0;
+      const w = contextWindows(clip, duration > 0 ? duration : clip.endMs + MAX_CONTEXT_S * 1000, a.seconds);
+      const half = Math.floor(MAX_TOOL_OUTPUT / 2);
+      const block = (label: string, r: Range | null, keep: "end" | "start"): string => {
+        if (!r) return `${label} clip ${n}: nothing (${label === "Before" ? "the clip starts at the beginning of the video" : "the clip ends at the end of the video"}).`;
+        const head = `${label} clip ${n} ${span(r)}:\n`;
+        const sentences = toSentences(ctx.transcript ? sliceWords(ctx.transcript.words, r) : []);
+        if (sentences.length === 0) return `${head}Nobody speaks.`;
+        // Fit by whole sentences: before keeps those nearest the clip (drops from the start), after the earliest.
+        const budget = half - head.length - "<transcript>\n\n</transcript>".length;
+        let kept = sentences;
+        while (kept.length > 1 && renderTranscript(kept).length > budget) kept = keep === "end" ? kept.slice(1) : kept.slice(0, -1);
+        return head + evidence(renderTranscript(kept), half - head.length);
+      };
+      return { text: `${block("Before", w.before, "end")}\n\n${block("After", w.after, "start")}` };
     },
   },
   {
@@ -962,6 +1021,8 @@ Rules:
 - Never judge whether a claim made in the recording is true or false; report what was said and by whom.
 - Answer in the language of the user's question.
 - propose_clip, trim_clip, set_selection and make_clip_package change the user's own clips and selections. Use them only when the user asks for that change. You can't export, burn in subtitles or change the official analysis.
+- When the user names a clip by number or title, call list_clips first; its numbers are the ones the user sees in Prepare.
+- For what comes just before or after a clip (the question before an answer, where an argument continues), call get_clip_context, then trim_clip.
 - For a set of clips ('3 clips on Ukraine for Instagram'), call find_clip_candidates, then make_clip_package with the best ones; Instagram, TikTok, Reels and Shorts mean 9:16.
 - The user approves each change before it is made, and may edit it first. When a result says "${DECLINED}", nothing was changed: say so plainly and don't try it again unless they ask.
 - Write plain text only: no Markdown (no **, #, backticks or asterisk bullets; use "-" for a list). Timestamps stay as [hh:mm:ss].

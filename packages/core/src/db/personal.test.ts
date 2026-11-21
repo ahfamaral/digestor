@@ -12,7 +12,7 @@ import {
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
-  StaleClipError, staleCardClips, setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents,
+  StaleClipError, staleCardClips, setClipRenderStatus, mergeClips, listClipPreviews, confirmClips, claimMomentCheck, releaseMomentCheck, claimAskMessage, releaseAskMessage, listClipEvents, clipsMadeByAsk,
 } from "./personal.ts";
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
@@ -110,6 +110,15 @@ describe("personal moments and selections", () => {
 });
 
 describe("clips", () => {
+  it("clipsMadeByAsk is the clips whose creation was by Ask", async () => {
+    const byUser = await newClip();
+    const byAsk = await createClip(db, { sessionId: s.id, ownerId: OWNER, startMs: 60_000, endMs: 90_000, actor: "ask" });
+    // a later edit by Ask does not make a user's clip an Ask clip
+    await updateClip(db, byUser.id, { startMs: 12_000 }, "ask");
+    expect([...(await clipsMadeByAsk(db, [byUser.id, byAsk.id]))]).toEqual([byAsk.id]);
+    expect((await clipsMadeByAsk(db, [])).size).toBe(0);
+  });
+
   it("createClip writes a create event; defaults are v2", async () => {
     const c = await newClip();
     expect(c).toMatchObject({ format: "16:9", cropOffset: 0, renderStatus: "none", deletedAt: null });
