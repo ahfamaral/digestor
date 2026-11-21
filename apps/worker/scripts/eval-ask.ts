@@ -107,7 +107,7 @@ try {
     const judge = config.provider === "openrouter" ? createOpenRouterLLM(key, config.models) : createAnthropicLLM(key);
     const meter = new UsageMeter();
     const rows: Parameters<typeof answerScores>[0] = [];
-    const verify = { sentBack: 0, couldntConfirm: 0, unchecked: 0, outOfSteps: 0, paused: 0 };
+    const verify = { sentBack: 0, couldntConfirm: 0, unchecked: 0, outOfSteps: 0, paused: 0, clarified: 0 };
     const detail: string[] = [];
     const started = Date.now();
     await withUsageMeter(meter, async () => {
@@ -132,6 +132,7 @@ try {
           verify.sentBack += rounds > 0 ? 1 : 0;
           verify.couldntConfirm += answer.includes(COULDNT_CONFIRM) ? 1 : 0;
           verify.unchecked += chip?.result.includes("couldn't be checked") || chip?.result === "Couldn't be checked" ? 1 : 0;
+          verify.clarified += (Array.isArray(done?.toolCalls) ? (done.toolCalls as { name: string }[]) : []).some((c) => c.name === "ask_user") ? 1 : 0;
           verify.outOfSteps += answer === OUT_OF_STEPS ? 1 : 0;
           rows.push({ q, answer, citedMs, quotesFound: quotes.map((x) => text.includes(norm(x))) });
           detail.push(`${q.id} [${done?.status}] verify ${chip ? `${chip.result}, sent back ${rounds}×` : "none"}; cited ${citedMs.map(clock).join(", ") || "none"}; quotes ${quotes.length ? quotes.map((x) => `${text.includes(norm(x)) ? "ok" : "NOT FOUND"}: "${x}"`).join(" | ") : "none"}\n    ${answer.replace(/\s+/g, " ").slice(0, 1500)}`);
@@ -146,6 +147,7 @@ try {
     console.log("| Metric | Result |\n| --- | --- |");
     console.log(`| Citation hit (answerable) | ${pct(s.citationHit)} |\n| Quote exact | ${pct(s.quoteExact)} |\n| Refusal correct (unanswerable) | ${pct(s.refusalCorrect)} |`);
     console.log(`| Answers sent back by verify | ${verify.sentBack} of ${s.n} |\n| Answers ending "I couldn't confirm" | ${verify.couldntConfirm} of ${s.n} |\n| Answers with parts not checked | ${verify.unchecked} of ${s.n} |\n| Gave up on the step limit | ${verify.outOfSteps} of ${s.n} |`);
+    console.log(`Asked a clarifying question: ${verify.clarified} of ${s.n}`);
     if (verify.paused > 0) console.log(`| Paused for approval (not scored) | ${verify.paused} of ${golden.questions.length} |`);
     for (const [kk, v] of usageRows("Ask run", meter.report(), null)) console.log(`| ${kk} | ${v} |`);
     console.log("\nPer question:");

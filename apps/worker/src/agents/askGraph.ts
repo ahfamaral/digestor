@@ -5,7 +5,7 @@ import type { AskToolCallRecord, CardClip, StaleClip, ToolApprovalCall, ToolAppr
 import { createToolApproval, getAskMessage, getToolApproval, staleCardClips } from "@digestor/core/server";
 import type { ToolCallRequest, ToolMessage } from "../llm/tools.js";
 import {
-  ANSWER_TOO_LONG, AskRunError, DECLINED, EDITED, readResolution, staleText, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
+  ANSWER_TOO_LONG, AskRunError, AskUserArgs, DECLINED, EDITED, readResolution, staleText, MAX_ASK_STEPS, MAX_CALLS_PER_STEP, MUTATING_TOOLS, NOT_IN_DATA, OUT_OF_STEPS, TOOL_SPECS, loadAskRun, record, runTool,
   type AskDeps, type AskRun, type ToolResult,
 } from "./ask.js";
 import { VERIFY_RETRIES, splitCouldntConfirm, verificationFeedback, verifyAnswer, verifySummary, withCouldntConfirm, type VerifyResult } from "./verify.js";
@@ -156,6 +156,14 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
       // call's arguments fail validation and the model reads the error).
       if (res.toolCalls.length === 0 && res.cutOff) return giveUp(ANSWER_TOO_LONG);
       if (res.toolCalls.length === 0) return { steps, final: res.text.trim() || NOT_IN_DATA, finalRaw: res.raw };
+      // A lone, valid ask_user ends the answer with its question (never verified); the options are in its record.
+      if (res.toolCalls.length === 1 && res.toolCalls[0]!.name === "ask_user") {
+        const asked = AskUserArgs.safeParse(res.toolCalls[0]!.args);
+        if (asked.success) {
+          const { question, options } = asked.data;
+          return { steps, final: question, settled: true, records: [...state.records, { name: "ask_user", args: { question, options }, result: question.slice(0, 300), ok: true }] };
+        }
+      }
       if (steps >= MAX_ASK_STEPS) return giveUp(OUT_OF_STEPS); // the model could never read these results
       return { steps, messages: [...state.messages, { role: "assistant", text: res.text, toolCalls: res.toolCalls, raw: res.raw }] };
     } catch (err) {

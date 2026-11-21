@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASK_PENDING_LIMIT_MS, asSelectionStatus, asToolCalls, awaitsApproval, checkClipEdit, cutAtWord, formatToolCall, initialPackageDraft, isChange, packageDecision, packageOutcome,
-  sourceLines, isAnswering, isStalePending, askPollMs, ASK_POLL_MS, ASK_SLOW_POLL_MS, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, staleLine, verifyResult,
+  askUserPrompt, clipLinks, sourceLines, isAnswering, isStalePending, askPollMs, ASK_POLL_MS, ASK_SLOW_POLL_MS, isWorkingOn, linkifyTimestamps, parseApprovalPayload, parseBulkPayload, planSelectionUndo, staleLine, verifyResult,
 } from "./askText";
 
 describe("linkifyTimestamps", () => {
@@ -342,5 +342,24 @@ describe("clip packages, fix round (C3)", () => {
     expect(packageOutcome(calls, 0)).toEqual({ ok: true, made: 2 });
     expect(packageOutcome(calls, 1)).toEqual({ ok: false, made: 0 });
     expect(packageOutcome(calls, 2)).toBeNull();
+  });
+});
+
+describe("ask_user records", () => {
+  const asked = { name: "ask_user", args: { question: "Which platform?", options: ["Instagram", "X"] }, result: "Which platform?", ok: true };
+  it("askUserPrompt reads the question and options; sourceLines ignores ask_user", () => {
+    expect(askUserPrompt([asked])).toEqual({ question: "Which platform?", options: ["Instagram", "X"] });
+    expect(askUserPrompt([{ ...asked, args: { question: "Q", options: ["only"] } }])).toBeNull();
+    expect(askUserPrompt([{ ...asked, args: "garbage" }])).toBeNull();
+    expect(askUserPrompt([])).toBeNull();
+    expect(sourceLines(asked)).toEqual([]);
+  });
+  it("clipLinks gives one link per clip, titled for a package", () => {
+    expect(clipLinks({ name: "propose_clip", args: { title: "Rent caps" }, result: "", ok: true, clipId: "c1" })).toEqual([{ clipId: "c1", title: "Rent caps" }]);
+    expect(clipLinks({ name: "make_clip_package", args: { clips: [{ title: "One" }, { title: "Two" }] }, result: "", ok: true, clipIds: ["a", "b"] })).toEqual([
+      { clipId: "a", title: "One" }, { clipId: "b", title: "Two" },
+    ]);
+    expect(clipLinks({ name: "make_clip_package", args: { clips: [{ title: "One" }, { title: "Two" }] }, result: "", ok: true, clipIds: ["a"] })).toEqual([{ clipId: "a", title: null }]);
+    expect(clipLinks({ name: "set_selection", args: {}, result: "", ok: true })).toEqual([]);
   });
 });

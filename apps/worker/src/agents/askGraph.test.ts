@@ -1189,3 +1189,36 @@ describe("replace_clip", () => {
     expect(toolResults(llm.calls.at(-1)!)[0]).toContain("Clip 2 changed since this card was made");
   });
 });
+
+describe("ask_user", () => {
+  const OPTIONS = ["Instagram / TikTok (9:16)", "X / YouTube (16:9)"];
+  const calls = (m: { toolCalls: unknown }) => (Array.isArray(m.toolCalls) ? (m.toolCalls as AskToolCallRecord[]) : []);
+
+  it("ask_user stored: one call ends the answer with the question and its options, unverified", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Make me a clip about rents.");
+    const llm = new FakeToolLLM([toolStep(call("ask_user", { question: "Which platform?", options: OPTIONS }))]);
+    await runAsk(depsFor(llm), msg.id);
+    const done = (await getAskMessage(db, msg.id))!;
+    expect(done).toMatchObject({ status: "done", text: "Which platform?" });
+    expect(calls(done).find((c) => c.name === "ask_user")).toEqual({ name: "ask_user", args: { question: "Which platform?", options: OPTIONS }, result: "Which platform?", ok: true });
+    expect(calls(done).some((c) => c.name === "verify_answer")).toBe(false);
+    expect(llm.calls).toHaveLength(1); // no verify, no further turn
+  });
+
+  it("ask_user with another tool in the same turn is an error to the model", async () => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Topics?");
+    const llm = new FakeToolLLM([toolStep(call("ask_user", { question: "Which?", options: OPTIONS }), call("list_topics", {})), answer("Not in the data.")]);
+    await runAsk(depsFor(llm), msg.id);
+    expect(toolResults(llm.calls.at(-1)!)[0]).toContain("ask_user ends your answer");
+  });
+
+  it.each([[["only one"]], [["a", "b", "c", "d", "e"]]])("ask_user with %j options is invalid arguments", async (options) => {
+    const { s } = await seed();
+    const msg = await ask(s.id, "Topics?");
+    const llm = new FakeToolLLM([toolStep(call("ask_user", { question: "Which?", options })), answer("Not in the data.")]);
+    await runAsk(depsFor(llm), msg.id);
+    expect(toolResults(llm.calls.at(-1)!)[0]).toContain("Error: invalid arguments for ask_user");
+  });
+});

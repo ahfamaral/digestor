@@ -84,6 +84,8 @@ export function Briefing(props: BriefingProps) {
   const statuses = useMemo(() => displayStatuses(selections, overlay), [selections, overlay]);
   const [playing, setPlaying] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Task 10 replaces this with the dock hook; until then the drawer is closed by default, as before.
+  const [askOpen, setAskOpen] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
@@ -272,7 +274,7 @@ export function Briefing(props: BriefingProps) {
             <Button ref={whoRef} variant="outline" size="sm" onClick={() => openWho("button")}>
               {t("names.whoOpen")}
             </Button>
-            <AskDrawer sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} examples={props.askExamples} />
+            <AskDrawer open={askOpen} onOpenChange={setAskOpen} sessionId={session.id} language={session.language} hasVideo={session.hasVideo} videoRemoved={session.videoRemoved} examples={props.askExamples} />
           </div>
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-xs text-muted-foreground">

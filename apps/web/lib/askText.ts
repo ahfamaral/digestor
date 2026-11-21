@@ -162,6 +162,31 @@ export function verifyResult(calls: AskToolCallRecord[]): VerifyState | null {
   return { kind: "ok" };
 }
 
+/** The worker's clarifying-question tool (apps/worker/src/agents/ask.ts): its record carries the quick replies. */
+const ASK_USER_CALL = "ask_user";
+
+/** The question and quick replies of an answer that asked one (2-4 options), else null. */
+export function askUserPrompt(calls: AskToolCallRecord[]): { question: string; options: string[] } | null {
+  const call = calls.find((c) => c.name === ASK_USER_CALL && c.ok);
+  const args = typeof call?.args === "object" && call.args !== null ? (call.args as Record<string, unknown>) : null;
+  if (!args || typeof args.question !== "string" || !Array.isArray(args.options)) return null;
+  const options = (args.options as unknown[]).filter((o): o is string => typeof o === "string" && o.trim() !== "");
+  return options.length >= 2 && options.length <= 4 ? { question: args.question, options } : null;
+}
+
+/** The clips a change made or changed, one link each: `clipId`, or `clipIds` titled by `args.clips[i].title` (a package). */
+export function clipLinks(call: AskToolCallRecord): { clipId: string; title: string | null }[] {
+  const args = (typeof call.args === "object" && call.args !== null ? call.args : {}) as { title?: unknown; clips?: unknown };
+  const named = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+  if ((call.clipIds?.length ?? 0) > 0) {
+    const clips = Array.isArray(args.clips) ? (args.clips as { title?: unknown }[]) : [];
+    // Titles line up with the made clips only when every picked clip was made (the card may have unticked some).
+    const aligned = clips.length === call.clipIds!.length;
+    return call.clipIds!.map((clipId, i) => ({ clipId, title: aligned ? named(clips[i]?.title) : null }));
+  }
+  return call.clipId ? [{ clipId: call.clipId, title: named(args.title) }] : [];
+}
+
 /**
  * A call that changed something (a clip, a package of clips, selections): it has Undo and is never a source. A package
  * that failed partway keeps the clips it made, so it counts too.
@@ -183,7 +208,7 @@ export interface SourceLine {
  * survives, and no title is cut mid-word.
  */
 export function sourceLines(call: AskToolCallRecord): SourceLine[] {
-  if (call.name === VERIFY_CALL) return []; // shown by `verifyResult`, not a source
+  if (call.name === VERIFY_CALL || call.name === ASK_USER_CALL) return []; // shown by `verifyResult` / `askUserPrompt`, not sources
   if (isChange(call)) return [];
   const stored = call.result.length >= STORED_RESULT_CHARS;
   const raw = call.result.replace(/<\/?transcript>/gi, "").replace(UUID, "").replace(/[<>]/g, "");
