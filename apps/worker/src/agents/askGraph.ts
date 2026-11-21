@@ -258,6 +258,7 @@ export function buildAskGraph(deps: AskDeps, checkpointer: BaseCheckpointSaver) 
         let out: ToolResult & { ok: boolean };
         try {
           if (i >= MAX_CALLS_PER_STEP) out = { text: `Error: at most ${MAX_CALLS_PER_STEP} tool calls per turn.`, ok: false };
+          else if (approval?.stale?.length && asked.has(call.id)) out = { text: staleText(approval.stale), ok: false };
           else if (approval?.decision === "reject" && asked.has(call.id)) out = { text: DECLINED, ok: false };
           else if (stale.length > 0 && asked.has(call.id)) out = { text: staleText(stale), ok: false };
           else {

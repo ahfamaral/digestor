@@ -934,6 +934,17 @@ describe("stale approval cards", () => {
     expect(toolResults(llm.calls.at(-1)!)[0]).toContain("Clip 2 changed since this card was made");
   });
 
+  it("a card the route refused as stale tells the model so, not 'declined'; a plain reject still reads declined", async () => {
+    const stale = await pausedTrim();
+    await decide(stale.deps, stale.s.id, stale.msg.id, { decision: "reject", stale: [{ n: 2, removed: false }] });
+    const text = toolResults(stale.llm.calls.at(-1)!)[0]!;
+    expect(text).toContain("Clip 2 changed since this card was made");
+    expect(text).not.toContain(DECLINED);
+    const plain = await pausedTrim();
+    await decide(plain.deps, plain.s.id, plain.msg.id, { decision: "reject" });
+    expect(toolResults(plain.llm.calls.at(-1)!)[0]).toBe(DECLINED);
+  });
+
   it("a clip removed while the card waits is refused as removed", async () => {
     const { s, clip2, msg, llm, deps } = await pausedTrim();
     await deleteClip(db, clip2.id, "user");
