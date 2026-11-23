@@ -1,7 +1,7 @@
 # Câmara monitor preview — design
 
 Date: 2026-11-11. Status: draft for the owner's approval. First slice of the parliament monitor
-(`docs/research/monitor-debate/en/final-design.md`), built inside Digestor for the capstone demo on Tue 17 Nov 2026.
+(its design lives in private research notes), built inside Digestor for the capstone demo on Tue 17 Nov 2026.
 
 ## Why
 

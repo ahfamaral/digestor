@@ -391,3 +391,7 @@ Still open (all small):
 - [docs/capstone/user-test-script.md](docs/capstone/user-test-script.md): a 20-minute version for one tester, with a printable notes sheet for the agent's accuracy and response times.
 
 The reasoning for using LangGraph in Ask but not in the pipeline is in the Architecture section above.
+
+## License
+
+© 2026 André Henrique Freitas do Amaral. All rights reserved.
