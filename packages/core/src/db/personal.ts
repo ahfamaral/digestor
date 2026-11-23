@@ -3,9 +3,11 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "dri
 import type { MomentWithHighlights } from "../analysisTypes.ts";
 import { saveMoments, type NewMoment } from "./analysis.ts";
 import { topicForStart } from "../moments.ts";
+import { attachWords } from "../subtitleText.ts";
+import { applyTrackLines, checkTrackLines, trackLinesVersion, type TrackLineInput, type TrackLineProblem } from "../trackLines.ts";
 import type {
   AskActionKind, AskAction, AskMessage, AskMessageStatus, AskMessageWithActions, AskRole, Clip, ClipActor, ClipFormat,
-  ClipEvent, CardClip, StaleClip, ToolApprovalPayload, ToolApprovalResolution, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus,
+  ClipEvent, CardClip, StaleClip, ToolApprovalPayload, ToolApprovalResolution, FindMoreRequest, ProblemReport, ProblemTargetKind, RenderStatus, SelectionStatus, Track, TrackCue, TrackStatus, CueWord,
 } from "../personalTypes.ts";
 import { GRANULARITY, ProfileIdSchema, type Granularity } from "../profiles.ts";
 import { defaultSubtitlePosition, type SubtitlePosition, type SubtitleStyle } from "../subtitleStyle.ts";
@@ -260,7 +262,7 @@ export async function releaseMomentCheck(db: Db, momentId: string): Promise<void
 // ---------------------------------------------------------------- clips
 
 export type ClipPatch = Partial<
-  Pick<Clip, "startMs" | "endMs" | "format" | "cropOffset" | "subtitleStyle" | "subtitlePosition" | "credit" | "noCreditNeeded" | "warningsAck" | "protectedAck">
+  Pick<Clip, "startMs" | "endMs" | "format" | "cropOffset" | "subtitleStyle" | "subtitlePosition" | "subtitleHighlight" | "credit" | "noCreditNeeded" | "warningsAck" | "protectedAck">
 >;
 
 const alive = isNull(clips.deletedAt);
@@ -318,7 +320,7 @@ type NewClip = { sessionId: string; ownerId: string; momentId?: string | null; s
 async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
   // The style of the clip whose style was set (or that was created) last: render writes bump updated_at, so not that.
   const [last] = await tx
-    .select({ subtitleStyle: clips.subtitleStyle })
+    .select({ subtitleStyle: clips.subtitleStyle, subtitleHighlight: clips.subtitleHighlight })
     .from(clipEvents)
     .innerJoin(clips, eq(clips.id, clipEvents.clipId))
     .where(and(eq(clips.ownerId, a.ownerId), alive, inArray(clipEvents.kind, ["style", "create"])))
@@ -346,6 +348,7 @@ async function insertClip(tx: Tx, a: NewClip): Promise<Clip> {
       endMs: a.endMs,
       ...(a.format ? { format: a.format } : {}),
       subtitleStyle: last?.subtitleStyle ?? "yellow",
+      subtitleHighlight: last?.subtitleHighlight ?? false,
       subtitlePosition: profile.success ? defaultSubtitlePosition(profile.data) : "bottom",
       credit: remembered?.credit?.trim() ? remembered.credit : null, // a cleared line was the last word: no default
     })
@@ -550,7 +553,7 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
     const changed = <K extends keyof ClipPatch>(k: K) => patch[k] !== undefined && patch[k] !== before[k];
     const boundsChanged = changed("startMs") || changed("endMs");
     const formatChanged = changed("format") || changed("cropOffset");
-    const styleChanged = changed("subtitleStyle") || changed("subtitlePosition");
+    const styleChanged = changed("subtitleStyle") || changed("subtitlePosition") || changed("subtitleHighlight");
     const creditChanged = changed("credit") || changed("noCreditNeeded");
     const [row] = await tx
       .update(clips)
@@ -580,8 +583,8 @@ export async function updateClip(db: Db, id: string, patch: ClipPatch, actor: Cl
         clipId: id,
         actor,
         kind: "style",
-        before: { subtitleStyle: before.subtitleStyle, subtitlePosition: before.subtitlePosition },
-        after: { subtitleStyle: row!.subtitleStyle, subtitlePosition: row!.subtitlePosition },
+        before: { subtitleStyle: before.subtitleStyle, subtitlePosition: before.subtitlePosition, subtitleHighlight: before.subtitleHighlight },
+        after: { subtitleStyle: row!.subtitleStyle, subtitlePosition: row!.subtitlePosition, subtitleHighlight: row!.subtitleHighlight },
       });
     }
     if (boundsChanged) await afterBoundsChange(tx, id, row!);
@@ -851,30 +854,38 @@ export async function failClipRender(db: Db, id: string): Promise<void> {
     .where(and(eq(clips.id, id), alive, inArray(clips.renderStatus, ["queued", "rendering"])));
 }
 
-/** Atomic claim before enqueueing a render: `queued` only from none, failed or stale. */
+/**
+ * Atomic claim before enqueueing a render: `queued` only from none, failed or stale, or from a `done` render made before
+ * renders wrote the audio copy (no `audio_key`: "Make the audio").
+ */
 export async function claimClipRender(db: Db, id: string): Promise<boolean> {
   const rows = await db
     .update(clips)
     .set({ renderStatus: "queued", updatedAt: new Date() })
-    .where(and(eq(clips.id, id), alive, inArray(clips.renderStatus, ["none", "failed", "stale"])))
+    .where(and(
+      eq(clips.id, id),
+      alive,
+      or(inArray(clips.renderStatus, ["none", "failed", "stale"]), and(eq(clips.renderStatus, "done"), isNull(clips.audioKey))),
+    ))
     .returning({ id: clips.id });
   return rows.length > 0;
 }
 
 /**
  * Records a finished render in one statement: `done` only if bounds, format, crop and credit are still exactly what was
- * rendered, otherwise `stale`. The key is stored either way. Null when the clip no longer exists.
+ * rendered, otherwise `stale`. The keys (video and its audio copy) are stored either way. Null when the clip no longer exists.
  */
 export async function finishClipRender(
   db: Db,
   id: string,
   rendered: { startMs: number; endMs: number; format: ClipFormat; cropOffset: number; credit: string | null },
-  keys: { renderKey: string },
+  keys: { renderKey: string; audioKey: string },
 ): Promise<"done" | "stale" | null> {
   const [row] = await db
     .update(clips)
     .set({
       renderKey: keys.renderKey,
+      audioKey: keys.audioKey,
       renderStatus: sql`CASE WHEN ${clips.startMs} = ${rendered.startMs} AND ${clips.endMs} = ${rendered.endMs} AND ${clips.format} = ${rendered.format} AND ${clips.cropOffset} = ${rendered.cropOffset} AND ${clips.credit} IS NOT DISTINCT FROM ${rendered.credit}::text THEN 'done' ELSE 'stale' END`,
       updatedAt: new Date(),
     })
@@ -890,12 +901,16 @@ export function burnSignature(
   track: { cues: TrackCue[] },
   clip: {
     startMs: number; endMs: number; format: ClipFormat; cropOffset: number; credit: string | null;
-    subtitleStyle: SubtitleStyle; subtitlePosition: SubtitlePosition;
+    subtitleStyle: SubtitleStyle; subtitlePosition: SubtitlePosition; subtitleHighlight?: boolean;
   },
 ): string {
-  const { startMs, endMs, format, cropOffset, credit, subtitleStyle, subtitlePosition } = clip;
+  const { startMs, endMs, format, cropOffset, credit, subtitleStyle, subtitlePosition, subtitleHighlight } = clip;
+  // The highlight joins the signature only when on, so burns made before it existed keep their signature.
   return createHash("sha1")
-    .update(JSON.stringify({ texts: track.cues.map((c) => c.text), startMs, endMs, format, cropOffset, credit, subtitleStyle, subtitlePosition }))
+    .update(JSON.stringify({
+      texts: track.cues.map((c) => c.text), times: track.cues.map((c) => [c.startMs, c.endMs]), startMs, endMs, format, cropOffset, credit, subtitleStyle, subtitlePosition,
+      ...(subtitleHighlight ? { subtitleHighlight } : {}),
+    }))
     .digest("hex");
 }
 
@@ -930,22 +945,40 @@ export async function deleteTrack(db: Db, id: string): Promise<void> {
 }
 
 /**
- * Removes a failed or outdated track so the language can be built again ("Try again", "Rebuild"). Neither status can
- * be approved, so this never races an approval or a burn claim; a burn still being made keeps the row. True when a
- * row was deleted.
+ * Removes a failed or outdated track so the language can be built again ("Try again", "Rebuild"); with `ready`, a
+ * ready one too (Rebuild on a finished track: its edits and approval go with it). A burn still being made keeps the
+ * row, so this never races a burn. True when a row was deleted.
  */
-export async function deleteFailedTrack(db: Db, id: string): Promise<boolean> {
+export async function deleteFailedTrack(db: Db, id: string, opts?: { ready?: boolean }): Promise<boolean> {
   const rows = await db
     .delete(subtitleTracks)
     .where(
       and(
         eq(subtitleTracks.id, id),
-        inArray(subtitleTracks.status, ["failed", "outdated"]),
+        inArray(subtitleTracks.status, opts?.ready ? ["failed", "outdated", "ready"] : ["failed", "outdated"]),
         sql`${subtitleTracks.burnStatus} not in ('queued', 'rendering')`,
       ),
     )
     .returning({ id: subtitleTracks.id });
   return rows.length > 0;
+}
+
+/**
+ * "Remove" on a subtitle language the journalist doesn't want: deletes a track that isn't approved (a draft, a failed
+ * or an outdated one) and counts as a clip change (`edit_version`, like adding a language). An approved track must be
+ * unapproved first; one still being prepared, or whose burned video is being made, is `busy`. On success the removed
+ * row comes back so the caller can delete its files.
+ */
+export async function removeTrack(db: Db, id: string): Promise<{ removed: Track } | { error: "missing" | "approved" | "busy" }> {
+  return db.transaction(async (tx) => {
+    const [track] = await tx.select().from(subtitleTracks).where(eq(subtitleTracks.id, id)).for("update");
+    if (!track) return { error: "missing" as const };
+    if (track.approvedAt !== null) return { error: "approved" as const };
+    if (track.status === "preparing" || track.burnStatus === "queued" || track.burnStatus === "rendering") return { error: "busy" as const };
+    await tx.delete(subtitleTracks).where(eq(subtitleTracks.id, id));
+    await tx.update(clips).set(bumpVersion).where(eq(clips.id, track.clipId));
+    return { removed: track };
+  });
 }
 
 /**
@@ -966,6 +999,24 @@ async function lockTrack(tx: Tx, id: string): Promise<Track> {
   const [row] = await tx.select().from(subtitleTracks).where(eq(subtitleTracks.id, id)).for("update");
   if (!row) throw new Error(`Track not found: ${id}`);
   return row;
+}
+
+/**
+ * Backfill (once): gives a `ready` track's lines the word times of freshly built lines (`attachWords`), under the row
+ * lock, changing nothing else (text, approval, burn status). Null when the track is gone or not `ready`.
+ */
+export async function attachTrackWords(
+  db: Db,
+  id: string,
+  built: { startMs: number; endMs: number; words: CueWord[] }[],
+): Promise<{ attached: number; lines: number } | null> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select().from(subtitleTracks).where(eq(subtitleTracks.id, id)).for("update");
+    if (!row || row.status !== "ready") return null;
+    const { cues, attached } = attachWords(row.cues, built);
+    if (attached > 0) await tx.update(subtitleTracks).set({ cues }).where(eq(subtitleTracks.id, id));
+    return { attached, lines: row.cues.length };
+  });
 }
 
 /**
@@ -1040,6 +1091,37 @@ export async function editTrackCues(db: Db, id: string, edits: { i: number; text
   });
 }
 
+/**
+ * Saves an edited list of lines (times changed, lines deleted or added) for a `ready` track: `base` is the
+ * `trackLinesVersion` of the lines the editor started from, so a list built on lines that changed meanwhile is refused
+ * (`changed`). The lines must pass `checkTrackLines` against the clip range the track was built for. Like a text edit,
+ * it clears approval and outdates a finished burn.
+ */
+export async function setTrackLines(
+  db: Db,
+  id: string,
+  lines: TrackLineInput[],
+  base: string,
+): Promise<{ track: Track } | { error: "not_ready" | "changed" } | { problems: { i: number; problem: TrackLineProblem }[] }> {
+  return db.transaction(async (tx) => {
+    const track = await lockTrack(tx, id);
+    if (track.status !== "ready" || track.builtStartMs === null || track.builtEndMs === null) return { error: "not_ready" as const };
+    if (trackLinesVersion(track.cues) !== base) return { error: "changed" as const };
+    const problems = checkTrackLines(lines, track.builtEndMs - track.builtStartMs);
+    if (problems.length > 0) return { problems };
+    const [row] = await tx
+      .update(subtitleTracks)
+      .set({
+        cues: applyTrackLines(track.cues, lines),
+        approvedAt: null,
+        burnStatus: track.burnStatus === "done" ? "stale" : track.burnStatus,
+      })
+      .where(eq(subtitleTracks.id, id))
+      .returning();
+    return { track: row! };
+  });
+}
+
 /** Approves a `ready` track whose lines are all filled; an outdated (or not yet built) one is `not_ready`. */
 export async function approveTrack(db: Db, id: string): Promise<"ok" | "missing_cues" | "not_ready"> {
   return db.transaction(async (tx) => {
@@ -1049,6 +1131,20 @@ export async function approveTrack(db: Db, id: string): Promise<"ok" | "missing_
     await tx.update(subtitleTracks).set({ approvedAt: new Date() }).where(eq(subtitleTracks.id, id));
     return "ok";
   });
+}
+
+/**
+ * "Undo approval": the lines stay as they are, the track is no longer approved (so the clip fails the export
+ * checklist until it is approved again). A burned version is kept: approving the same lines again brings it back.
+ * Null unless the track is `ready`.
+ */
+export async function unapproveTrack(db: Db, id: string): Promise<Track | null> {
+  const [row] = await db
+    .update(subtitleTracks)
+    .set({ approvedAt: null })
+    .where(and(eq(subtitleTracks.id, id), eq(subtitleTracks.status, "ready")))
+    .returning();
+  return row ?? null;
 }
 
 /** Burned-in versions exist only for approved tracks that are current (`ready`, not outdated). */
@@ -1126,7 +1222,7 @@ export class AskQueueError extends Error {
 /**
  * The one way to start an Ask answer: stores the question (`done`), then a `pending` answer (inserted second with its own
  * clock_timestamp, since now() is the same inside a transaction and the order would tie), in one transaction, then enqueues the answer. `onlyIfEmpty` serialises
- * per session (advisory lock) and returns null when the owner already has any Ask message there. A failed enqueue:
+ * per session (advisory lock, taken always) and returns null when the owner already has any Ask message there (archived ones count). A failed enqueue:
  * `rollback` removes both rows and throws `AskQueueError`; `fail` keeps the question and fails the answer.
  */
 export async function startAskQuestion(
@@ -1135,8 +1231,10 @@ export async function startAskQuestion(
   a: { sessionId: string; ownerId: string; text: string; onlyIfEmpty?: boolean; onEnqueueError: "rollback" | "fail" },
 ): Promise<{ question: AskMessage; answer: AskMessage } | null> {
   const stored = await db.transaction(async (tx) => {
+    // Serialised per session, always: `onlyIfEmpty` checks for messages, and "New conversation" never archives a
+    // question that is being stored (`archiveAskConversation` takes the same lock).
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${a.sessionId}))`);
     if (a.onlyIfEmpty) {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${a.sessionId}))`);
       const [any] = await tx
         .select({ id: askMessages.id })
         .from(askMessages)
@@ -1341,6 +1439,35 @@ export async function listAskMessages(db: Db, ownerId: string, sessionId: string
     .from(askActions)
     .where(inArray(askActions.messageId, msgs.map((m) => m.id)));
   return msgs.map((m) => ({ ...m, actions: actions.filter((a) => a.messageId === m.id) }));
+}
+
+/**
+ * "New conversation": archives the owner's current Ask conversation on a session (every message not archived yet gets
+ * one `archivedAt`), so Ask no longer replays it and the drawer starts empty. Refused (`busy`) while an answer is
+ * pending, running or waiting at an approval card, or a card still waits for a click (a bulk selection); `empty` when there is nothing to archive. Serialised with
+ * `startAskQuestion` by the session's advisory lock.
+ */
+export async function archiveAskConversation(
+  db: Db,
+  ownerId: string,
+  sessionId: string,
+): Promise<{ archived: number } | { error: "busy" | "empty" }> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${sessionId}))`);
+    const current = and(eq(askMessages.ownerId, ownerId), eq(askMessages.sessionId, sessionId), isNull(askMessages.archivedAt));
+    const rows = await tx.select({ id: askMessages.id, status: askMessages.status }).from(askMessages).where(current);
+    if (rows.length === 0) return { error: "empty" as const };
+    if (rows.some((r) => r.status === "pending" || r.status === "running" || r.status === "waiting")) return { error: "busy" as const };
+    // A card still waiting for a click (a bulk selection to confirm) would be lost in the archive.
+    const [open] = await tx
+      .select({ id: askActions.id })
+      .from(askActions)
+      .where(and(inArray(askActions.messageId, rows.map((r) => r.id)), eq(askActions.status, "pending")))
+      .limit(1);
+    if (open) return { error: "busy" as const };
+    const done = await tx.update(askMessages).set({ archivedAt: sql`now()` }).where(current).returning({ id: askMessages.id });
+    return { archived: done.length };
+  });
 }
 
 export async function createAskAction(

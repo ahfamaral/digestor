@@ -41,7 +41,7 @@ export function UnconfirmedBanner({
             ref={button}
             type="button"
             onClick={() => setOpen(true)}
-            className="inline-flex h-8 items-center rounded-md border border-border bg-white px-3 text-xs font-semibold text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+            className="inline-flex h-8 items-center rounded-md border border-border bg-white px-3 text-xs font-semibold text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand"
           >
             {t("prepare.confirmNames")}
           </button>

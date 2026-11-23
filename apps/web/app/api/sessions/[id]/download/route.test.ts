@@ -19,7 +19,7 @@ let c2: string;
 /** Marks a clip's render done with its key, and optionally burns a track, through the same functions the worker uses. */
 async function markRendered(db: Db, sessionId: string, clipId: string, burnedLanguages: string[] = []) {
   const clip = (await getClip(db, clipId))!;
-  expect(await finishClipRender(db, clipId, clip, { renderKey: `${sessionId}/clips/${clipId}.mp4` })).toBe("done");
+  expect(await finishClipRender(db, clipId, clip, { renderKey: `${sessionId}/clips/${clipId}.mp4`, audioKey: `${sessionId}/clips/${clipId}.m4a` })).toBe("done");
   for (const tr of await listTracks(db, clipId))
     if (burnedLanguages.includes(tr.language))
       expect(await finishTrackBurn(db, tr.id, burnSignature(tr, clip), `${sessionId}/clips/${clipId}.${tr.language}.burned.mp4`)).toBe("done");
@@ -45,6 +45,7 @@ beforeAll(async () => {
   const dir = path.join(h.root, sessionId, "clips");
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, `${c1}.mp4`), "plain-1");
+  writeFileSync(path.join(dir, `${c1}.m4a`), "audio-1");
   writeFileSync(path.join(dir, `${c1}.pt.burned.mp4`), "burned-1-pt");
   writeFileSync(path.join(dir, `${c1}.en.burned.mp4`), "burned-1-en");
   for (const lang of ["pt", "en"]) {
@@ -80,6 +81,14 @@ describe("GET /api/sessions/[id]/download", () => {
     ]);
     expect(strFromU8(files["01 Strasse uber Kase.pt.srt"]!)).toBe("1\n00:00:00,000 --> 00:00:01,500\nOlá pt\n");
     expect(strFromU8(files["01 Strasse uber Kase.en.vtt"]!)).toContain("Olá en");
+  });
+
+  it("audio: each clip's .m4a only, in a zip named for audio", async () => {
+    const res = await call(sessionId, "audio");
+    expect(res.headers.get("Content-Disposition")).toContain("clips audio.zip");
+    const files = await unzip(res);
+    expect(Object.keys(files)).toEqual(["01 Strasse uber Kase.m4a"]);
+    expect(strFromU8(files["01 Strasse uber Kase.m4a"]!)).toBe("audio-1");
   });
 
   it("burned: one file per language, named with the language", async () => {

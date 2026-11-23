@@ -209,6 +209,8 @@ export const clips = pgTable(
     cropOffset: doublePrecision("crop_offset").notNull().default(0),
     subtitleStyle: text("subtitle_style").$type<SubtitleStyle>().notNull().default("yellow"),
     subtitlePosition: text("subtitle_position").$type<SubtitlePosition>().notNull().default("bottom"),
+    /** Word-by-word highlighting in the burn (lines in the spoken language only). */
+    subtitleHighlight: boolean("subtitle_highlight").notNull().default(false),
     credit: text("credit"),
     /** When the credit line last changed (render writes bump updated_at, so that can't say which credit was typed last). */
     creditSetAt: timestamp("credit_set_at", { withTimezone: true }),
@@ -217,6 +219,8 @@ export const clips = pgTable(
     protectedAck: boolean("protected_ack").notNull().default(false),
     renderStatus: text("render_status").$type<RenderStatus>().notNull().default("none"),
     renderKey: text("render_key"),
+    /** The same cut as audio only (`clips/<id>.m4a`), written by the plain render since 2026-11-23; null for older renders. */
+    audioKey: text("audio_key"),
     /** Bumped by changes to bounds, format, crop, credit and subtitle languages (never renders or acknowledgements): stale-card check. */
     editVersion: integer("edit_version").notNull().default(0),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -279,6 +283,8 @@ export const askMessages = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     /** Last status change: the drawer gives up on an answer that has been `pending`/`running` this long (a resumed answer is fresh). */
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    /** "New conversation": set on every message of the conversation it ended. Ask no longer replays them; the drawer shows them under "Earlier conversations". */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [index("ask_messages_owner_session_idx").on(t.ownerId, t.sessionId)],
 );

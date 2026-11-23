@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { ClipFormat } from "./personalTypes.ts";
 import type { ProfileId } from "./profiles.ts";
 
-export const SubtitleStyleSchema = z.enum(["yellow", "white", "white_box"]);
+export const SubtitleStyleSchema = z.enum(["yellow", "white", "white_box", "yellow_box"]);
 export type SubtitleStyle = z.infer<typeof SubtitleStyleSchema>;
 export const SubtitlePositionSchema = z.enum(["bottom", "above_banner", "top"]);
 export type SubtitlePosition = z.infer<typeof SubtitlePositionSchema>;
@@ -16,12 +16,21 @@ export const SUBTITLE_GEOMETRY = {
   shadowPx1080: 1,
   marginPct: { bottom: 0.06, above_banner: 0.22, top: 0.05 },
   boxOpacity: 0.75,
+  /** Word highlighting: words not spoken yet show at this opacity (spoken ones at full colour). */
+  upcomingOpacity: 0.55,
 } as const;
+
+/**
+ * The picture of an audio-only clip: a white waveform, one centred vertical line per column (ffmpeg `showwaves`
+ * `mode=cline`), on a dark background. The render (worker) and the live preview (web) both read it.
+ */
+export const WAVEFORM = { background: "#17181c", line: "#ffffff" } as const;
 
 export const SUBTITLE_STYLES: Record<SubtitleStyle, { color: string; bold: boolean; box: boolean }> = {
   yellow: { color: "#FFE600", bold: true, box: false },
   white: { color: "#FFFFFF", bold: true, box: false },
   white_box: { color: "#FFFFFF", bold: false, box: true },
+  yellow_box: { color: "#FFE600", bold: false, box: true },
 };
 
 const BANNER_PROFILES: readonly ProfileId[] = ["parliament", "supreme_court", "trial", "un"];

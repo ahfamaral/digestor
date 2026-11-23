@@ -1,5 +1,5 @@
-export type ZipChoice = "burned" | "files" | "plain";
-export const ZIP_CHOICES: readonly ZipChoice[] = ["burned", "files", "plain"];
+export type ZipChoice = "burned" | "files" | "plain" | "audio";
+export const ZIP_CHOICES: readonly ZipChoice[] = ["burned", "files", "plain", "audio"];
 export const isZipChoice = (v: unknown): v is ZipChoice => ZIP_CHOICES.includes(v as ZipChoice);
 
 /** What a clip has stored, as far as the zip is concerned. */
@@ -9,10 +9,12 @@ export interface ZipClip {
   title: string;
   /** The plain MP4 is made (render done). */
   mp4: boolean;
+  /** The audio-only copy (`.m4a`) is made. */
+  audio: boolean;
   languages: { language: string; /** SRT/VTT can be rendered (current cues with text). */ text: boolean; /** A subtitle video is made. */ burned: boolean }[];
 }
 
-export type ZipEntryKind = "mp4" | "burned" | "srt" | "vtt";
+export type ZipEntryKind = "mp4" | "m4a" | "burned" | "srt" | "vtt";
 export interface ZipEntry {
   name: string;
   kind: ZipEntryKind;
@@ -42,7 +44,7 @@ const lang = (code: string) => code.replace(/[^A-Za-z0-9-]/g, "") || "und";
 
 /**
  * The files each choice puts in the zip, in order, and (for `burned`) the clips that have no subtitle video yet.
- * Names are `01 <title>.mp4`, `01 <title>.pt.srt`, `01 <title>.pt.mp4` (a subtitle video), numbered by the clip's
+ * Names are `01 <title>.mp4`, `01 <title>.m4a` (audio only), `01 <title>.pt.srt`, `01 <title>.pt.mp4` (a subtitle video), numbered by the clip's
  * position among all clips so they match "Clip n" on the page; unique case-insensitively.
  */
 export function zipEntries(clips: ZipClip[], choice: ZipChoice): { entries: ZipEntry[]; skipped: { n: number; title: string }[] } {
@@ -64,6 +66,10 @@ export function zipEntries(clips: ZipClip[], choice: ZipChoice): { entries: ZipE
       for (const l of burned) add({ kind: "burned", clipId: c.id, language: l.language }, `${base}.${lang(l.language)}`, "mp4");
       return;
     }
+    if (choice === "audio") {
+      if (c.audio) add({ kind: "m4a", clipId: c.id }, base, "m4a");
+      return;
+    }
     if (c.mp4) add({ kind: "mp4", clipId: c.id }, base, "mp4");
     if (choice === "files")
       for (const l of c.languages.filter((x) => x.text))
@@ -73,11 +79,12 @@ export function zipEntries(clips: ZipClip[], choice: ZipChoice): { entries: ZipE
 }
 
 /** The zip input of an Export row (the same shape the route builds from the database). */
-export function zipClipOf(c: { id: string; title: string; row: { mp4: string | null; languages: { language: string; srt: string | null; burn: { url: string | null } }[] } }): ZipClip {
+export function zipClipOf(c: { id: string; title: string; row: { mp4: string | null; audio: string | null; languages: { language: string; srt: string | null; burn: { url: string | null } }[] } }): ZipClip {
   return {
     id: c.id,
     title: c.title,
     mp4: c.row.mp4 !== null,
+    audio: c.row.audio !== null,
     languages: c.row.languages.map((l) => ({ language: l.language, text: l.srt !== null, burned: l.burn.url !== null })),
   };
 }

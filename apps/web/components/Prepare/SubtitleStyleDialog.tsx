@@ -1,28 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Noto_Sans } from "next/font/google";
-import { SUBTITLE_STYLES, trackToCues, type SubtitlePosition, type SubtitleStyle } from "@digestor/core";
+import { SUBTITLE_STYLES, WAVEFORM, trackToCues, type SubtitlePosition, type SubtitleStyle } from "@digestor/core";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Busy } from "@/components/ui/spinner";
 import { pauseAllMedia } from "@/lib/media";
 import { t } from "@/lib/i18n";
 import { cn } from "cn";
-import { previewCss, startingLook, subtitlePositions, type SubtitleLook } from "@/lib/subtitlePreview";
+import { startingLook, subtitlePositions, type SubtitleLook } from "@/lib/subtitlePreview";
+import { SubtitleOverlay } from "./SubtitleOverlay";
+import { Waveform } from "@/components/Waveform";
 import type { ClipView, TrackView } from "@/lib/prepareData";
 import { cropPosition } from "./FormatPicker";
 
-// The worker draws subtitles in Noto Sans; the preview loads it too, for this dialog only.
-const noto = Noto_Sans({ subsets: ["latin", "latin-ext"], weight: ["400", "700"], display: "swap" });
-
 /** The dark background the render puts behind audio-only clips (`WAVE_BG` in the worker's ffmpeg.ts). */
-const AUDIO_BG = "#17181c";
 
 const STYLES: { value: SubtitleStyle; label: string }[] = [
   { value: "yellow", label: t("prepare.styleYellow") },
   { value: "white", label: t("prepare.styleWhite") },
   { value: "white_box", label: t("prepare.styleWhiteBox") },
+  { value: "yellow_box", label: t("prepare.styleYellowBox") },
 ];
 const POSITION_LABEL: Record<SubtitlePosition, string> = {
   bottom: t("prepare.positionBottom"),
@@ -68,7 +66,7 @@ export function SubtitleStyleDialog(props: SubtitleStyleDialogProps) {
 function Body({
   onOpenChange, clip, track, sessionId, hasVideo, onUse, languageLabel, cancelRef, busy, setBusy,
 }: SubtitleStyleDialogProps & { cancelRef: React.RefObject<HTMLButtonElement | null>; busy: boolean; setBusy: (b: boolean) => void }) {
-  const [look, setLook] = useState<SubtitleLook>(() => startingLook({ style: clip.subtitleStyle, position: clip.subtitlePosition }, hasVideo));
+  const [look, setLook] = useState<SubtitleLook>(() => startingLook({ style: clip.subtitleStyle, position: clip.subtitlePosition, highlight: clip.subtitleHighlight }, hasVideo));
   const positions = subtitlePositions(hasVideo).map((value) => ({ value, label: POSITION_LABEL[value] }));
   const [error, setError] = useState<string | null>(null);
   const [frameH, setFrameH] = useState(0);
@@ -84,8 +82,10 @@ function Body({
   }, []);
 
   // Cue times are relative to the clip start.
-  const first = trackToCues(track.cues, clip.format)[0];
+  const first = trackToCues(track.cues, clip.format, { highlight: look.highlight })[0];
   const lines = first?.lines ?? [t("prepare.styleSample")];
+  // With word highlighting, show the line a third of the way through: the first words lit, the rest dimmed.
+  const lit = first?.karaoke ? first.karaoke[Math.max(0, Math.ceil(first.karaoke.length / 3) - 1)]! : 0;
   const at = clip.startMs + (first?.startMs ?? 0);
   const vertical = clip.format === "9:16";
   const src = `/api/files/${sessionId}/proxy.mp4#t=${(at / 1000).toFixed(2)}`;
@@ -117,8 +117,9 @@ function Body({
           role="img"
           aria-label={t("prepare.styleFrameLabel", { language: languageLabel ?? track.language })}
           className={cn("relative overflow-hidden rounded-lg bg-stone-900", vertical ? "aspect-[9/16] h-[min(55vh,28rem)]" : "aspect-video w-full")}
-          style={hasVideo ? undefined : { backgroundColor: AUDIO_BG }}
+          style={hasVideo ? undefined : { backgroundColor: WAVEFORM.background }}
         >
+          {!hasVideo && <Waveform still />}
           {hasVideo && (
             <video
               key={src}
@@ -132,23 +133,33 @@ function Body({
               style={vertical ? { objectPosition: cropPosition(clip.cropOffset) } : undefined}
             />
           )}
-          {frameH > 0 && (
-            <div
-              lang={track.language}
-              dir="auto"
-              className={noto.className}
-              style={previewCss({ ...look, format: clip.format }, frameH)}
-              data-testid="subtitle-preview"
-            >
-              {lines.join("\n")}
-            </div>
-          )}
+          <SubtitleOverlay
+            cue={{ lines, karaoke: first?.karaoke }}
+            look={look}
+            format={clip.format}
+            frameHeight={frameH}
+            nowMs={lit}
+            lang={track.language}
+          />
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Choice legend={t("prepare.styleLegend")} name="subtitle-style" value={look.style} options={STYLES} onChange={(style) => setLook((l) => ({ ...l, style }))} sample />
         <Choice legend={t("prepare.positionLegend")} name="subtitle-position" value={look.position} options={positions} onChange={(position) => setLook((l) => ({ ...l, position }))} />
       </div>
+      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-2 py-1.5 text-sm has-[:checked]:border-brand has-[:checked]:bg-muted has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand">
+        <input
+          type="checkbox"
+          checked={look.highlight}
+          onChange={(e) => setLook((l) => ({ ...l, highlight: e.target.checked }))}
+          aria-describedby="subtitle-highlight-hint"
+          className="mt-0.5 accent-[var(--brand)]"
+        />
+        <span className="grid gap-0.5">
+          <span>{t("prepare.highlightWords")}</span>
+          <span id="subtitle-highlight-hint" className="text-xs text-muted-foreground">{t("prepare.highlightWordsHint")}</span>
+        </span>
+      </label>
       {error && (
         <p role="alert" className="text-xs text-red-700">
           {error}
@@ -158,7 +169,7 @@ function Body({
         <Button ref={cancelRef} type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
           {t("confirm.cancel")}
         </Button>
-        <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90" disabled={busy} onClick={() => void use()}>
+        <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90 active:brightness-[0.82]" disabled={busy} onClick={() => void use()}>
           <Busy busy={busy}>{busy ? t("prepare.styleSaving") : t("prepare.styleUse")}</Busy>
         </Button>
       </DialogFooter>

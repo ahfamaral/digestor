@@ -18,12 +18,23 @@ export type AskActionKind = "bulk_selection" | "tool_approval";
 export type AskActionStatus = "pending" | "confirmed" | "dismissed";
 export type ProblemTargetKind = "moment" | "topic" | "briefing" | "quote" | "clip" | "track" | "attribution";
 
+/** One spoken word of a subtitle line's original: clip-relative times and its length in code points. */
+export interface CueWord {
+  startMs: number;
+  endMs: number;
+  chars: number;
+}
+
 export interface TrackCue {
   startMs: number;
   endMs: number;
   original: string;
   text: string;
   missing: boolean;
+  /** The original's spoken words, in order (tracks built before 2026-11-23 may lack them until backfilled). */
+  words?: CueWord[];
+  /** Added by the journalist in the editor: no original. */
+  added?: boolean;
 }
 
 export interface Clip {
@@ -40,6 +51,8 @@ export interface Clip {
   cropOffset: number;
   subtitleStyle: SubtitleStyle;
   subtitlePosition: SubtitlePosition;
+  /** Word-by-word highlighting in the burn (lines in the spoken language only). */
+  subtitleHighlight: boolean;
   credit: string | null;
   noCreditNeeded: boolean;
   /** When the credit line last changed. */
@@ -48,6 +61,8 @@ export interface Clip {
   protectedAck: boolean;
   renderStatus: RenderStatus;
   renderKey: string | null;
+  /** The render's audio-only copy (`.m4a`); null for renders made before it existed. */
+  audioKey: string | null;
   /** Bumped by bounds, format/crop, credit and subtitle-language changes; a card's clips are checked against it. */
   editVersion: number;
   /** Set when the clip was deleted (or its creation undone); the row and its history are kept. */
@@ -157,6 +172,8 @@ export interface AskMessage {
   status: AskMessageStatus;
   createdAt: Date;
   updatedAt: Date;
+  /** Set when "New conversation" ended the conversation this message belongs to (null: the current one). */
+  archivedAt: Date | null;
 }
 
 /** One tool call of an Ask answer, as stored in `ask_messages.tool_calls` (the UI's chips). */

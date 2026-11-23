@@ -1,0 +1,1 @@
+ALTER TABLE "ask_messages" ADD COLUMN "archived_at" timestamp with time zone;

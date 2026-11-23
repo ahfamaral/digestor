@@ -15,9 +15,9 @@ const BodySchema = z.union([
     .strict()
     .refine((b) => b.format !== undefined || b.cropOffset !== undefined),
   z
-    .object({ subtitleStyle: SubtitleStyleSchema.optional(), subtitlePosition: SubtitlePositionSchema.optional() })
+    .object({ subtitleStyle: SubtitleStyleSchema.optional(), subtitlePosition: SubtitlePositionSchema.optional(), subtitleHighlight: z.boolean().optional() })
     .strict()
-    .refine((b) => b.subtitleStyle !== undefined || b.subtitlePosition !== undefined),
+    .refine((b) => b.subtitleStyle !== undefined || b.subtitlePosition !== undefined || b.subtitleHighlight !== undefined),
   z.object({ credit: z.string().max(200).nullable() }).strict(),
   z.object({ noCreditNeeded: z.boolean() }).strict(),
   z.object({ warningsAck: z.boolean() }).strict(),
@@ -97,10 +97,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     patch = {};
     if (body.format !== undefined) patch.format = body.format;
     if (body.cropOffset !== undefined) patch.cropOffset = Math.max(-1, Math.min(1, body.cropOffset));
-  } else if ("subtitleStyle" in body || "subtitlePosition" in body) {
+  } else if ("subtitleStyle" in body || "subtitlePosition" in body || "subtitleHighlight" in body) {
     patch = {};
     if (body.subtitleStyle !== undefined) patch.subtitleStyle = body.subtitleStyle;
     if (body.subtitlePosition !== undefined) patch.subtitlePosition = body.subtitlePosition;
+    if (body.subtitleHighlight !== undefined) patch.subtitleHighlight = body.subtitleHighlight;
   } else if ("credit" in body) {
     patch = { credit: body.credit === null || body.credit.trim() === "" ? null : body.credit.trim() };
   } else {

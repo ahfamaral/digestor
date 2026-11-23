@@ -47,7 +47,7 @@ export async function prepareTrack(deps: TrackDeps, trackId: string): Promise<vo
       : await translateCues(llm, { from: sourceLang, to: track.language, lines: original });
 
   const cues: TrackCue[] = base.map((c, i) => ({
-    startMs: c.startMs, endMs: c.endMs, original: original[i]!, text: texts[i]!.text, missing: texts[i]!.missing,
+    startMs: c.startMs, endMs: c.endMs, original: original[i]!, text: texts[i]!.text, missing: texts[i]!.missing, words: c.words,
   }));
   // Cues are clip-relative: record the cut they were built for, so a later trim marks them outdated (R27). A trim
   // that landed while this ran makes them outdated at once.

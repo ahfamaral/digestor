@@ -20,6 +20,10 @@ describe("AA contrast (4.5:1) of the real colours", () => {
   it("upcoming stepper text on white", () => expect(contrastRatio(C.stepUpcoming, C.white)).toBeGreaterThanOrEqual(4.5));
   it("done-step green on white", () => expect(contrastRatio(C.stepDone, C.white)).toBeGreaterThanOrEqual(4.5));
   it("disabled button text on its grey", () => expect(contrastRatio(C.disabledFg, C.disabledBg)).toBeGreaterThanOrEqual(4.5));
+  it("text on a hovered or pressed control (it turns to the ink colour there)", () => {
+    expect(contrastRatio(C.foreground, C.hover)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(C.foreground, C.pressed)).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 describe("focus ring (3:1, WCAG 1.4.11 and 2.4.13)", () => {
@@ -41,6 +45,9 @@ describe("globals.css uses the tested values", () => {
     "--disabled": C.disabledBg,
     "--disabled-foreground": C.disabledFg,
     "--ring": C.ring,
+    "--hover": C.hover,
+    "--pressed": C.pressed,
+    "--foreground": C.foreground,
   };
   for (const [name, hex] of Object.entries(cssVars)) {
     it(`${name} is ${hex}`, () => {

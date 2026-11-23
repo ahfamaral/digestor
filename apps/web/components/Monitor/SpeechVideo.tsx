@@ -44,7 +44,7 @@ export function SpeechVideoView({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-stone-500"
+            className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-stone-500"
           >
             <X className="size-3.5" aria-hidden />
             {tm(locale, "speech.hideVideo")}
@@ -54,7 +54,7 @@ export function SpeechVideoView({
             type="button"
             onClick={() => setOpen(true)}
             aria-label={tm(locale, "speech.watchLabel", { what: watchText, at })}
-            className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-stone-500"
+            className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-stone-500"
           >
             <Play className="size-3.5" aria-hidden />
             {watchText}

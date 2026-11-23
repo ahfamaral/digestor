@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { clipPosition, cueAt, previewCss, reviewColumns, seekFor, startingLook, subtitlePositions } from "./subtitlePreview";
+import type { TrackCue } from "@digestor/core";
+import { clipPosition, cueAt, editorCues, previewCss, reviewColumns, seekFor, spokenTokens, startingLook, subtitlePositions, upcomingColor } from "./subtitlePreview";
 
 describe("subtitle positions", () => {
   it("offer Above name banner only when there is a picture", () => {
@@ -77,5 +78,32 @@ describe("review with playback", () => {
     expect(reviewColumns("en", "de")).toBe(2);
     expect(reviewColumns("en", undefined)).toBe(2);
     expect(reviewColumns("en", null)).toBe(2);
+  });
+});
+
+describe("editor preview helpers", () => {
+  const words = [{ startMs: 0, endMs: 300, chars: 2 }, { startMs: 400, endMs: 700, chars: 4 }];
+  const line: TrackCue = { startMs: 0, endMs: 700, original: "um dois", text: "um dois", missing: false, words };
+
+  it("editorCues uses the unsaved texts", () => {
+    expect(editorCues([line], ["one two"], "16:9", false)[0]!.lines).toEqual(["one two"]);
+    expect(editorCues([line], [], "16:9", false)[0]!.lines).toEqual(["um dois"]);
+  });
+
+  it("editorCues highlights only lines that are still the spoken words", () => {
+    expect(editorCues([line], ["um dois"], "16:9", true)[0]!.karaoke).toEqual([0, 400]);
+    expect(editorCues([line], ["one two"], "16:9", true)[0]!.karaoke).toBeUndefined();
+  });
+
+  it("spokenTokens counts the words that have started", () => {
+    const cue = { startMs: 0, endMs: 700, lines: ["um dois"], karaoke: [0, 400] };
+    expect(spokenTokens(cue, 0)).toBe(1);
+    expect(spokenTokens(cue, 399)).toBe(1);
+    expect(spokenTokens(cue, 400)).toBe(2);
+    expect(spokenTokens({ startMs: 0, endMs: 1, lines: ["x"] }, 5)).toBe(0);
+  });
+
+  it("upcomingColor dims the style's colour like the burn", () => {
+    expect(upcomingColor("yellow_box")).toBe("#FFE6008c");
   });
 });

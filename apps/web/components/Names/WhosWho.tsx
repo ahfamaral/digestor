@@ -18,7 +18,7 @@ import { Busy } from "@/components/ui/spinner";
 import { useHasVideo } from "@/components/HasVideo";
 
 const BTN =
-  "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-hover active:bg-pressed disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const SAMPLE_MS = 5000;
 
 /** An HTTP failure whose message is the server's friendly sentence. */

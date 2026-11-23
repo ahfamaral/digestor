@@ -74,14 +74,14 @@ describe("views", () => {
   it("turn rows and JSON responses into the same plain shape", () => {
     const at = new Date("2026-10-30T10:00:00Z");
     const clip = {
-      id: "c", sessionId: "s", ownerId: "owner", momentId: "m", mergedMomentIds: [] as string[], startMs: 1, endMs: 2, format: "9:16" as const, cropOffset: 0.5, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const,
-      credit: null, noCreditNeeded: false, creditSetAt: null, warningsAck: true, protectedAck: false, renderStatus: "none" as const, renderKey: null, editVersion: 0,
+      id: "c", sessionId: "s", ownerId: "owner", momentId: "m", mergedMomentIds: [] as string[], startMs: 1, endMs: 2, format: "9:16" as const, cropOffset: 0.5, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const, subtitleHighlight: false,
+      credit: null, noCreditNeeded: false, creditSetAt: null, warningsAck: true, protectedAck: false, renderStatus: "none" as const, renderKey: null, audioKey: null, editVersion: 0,
       deletedAt: null, createdAt: at, updatedAt: at,
     };
     const fromRow = toClipView(clip);
     expect(toClipView(JSON.parse(JSON.stringify(clip)))).toEqual(fromRow);
     expect(fromRow).toEqual({
-      id: "c", startMs: 1, endMs: 2, format: "9:16", cropOffset: 0.5, subtitleStyle: "yellow", subtitlePosition: "bottom", credit: null, noCreditNeeded: false, warningsAck: true,
+      id: "c", startMs: 1, endMs: 2, format: "9:16", cropOffset: 0.5, subtitleStyle: "yellow", subtitlePosition: "bottom", subtitleHighlight: false, credit: null, noCreditNeeded: false, warningsAck: true,
       protectedAck: false, midSentence: false, updatedAt: "2026-10-30T10:00:00.000Z",
     });
     expect(toClipView({ ...clip, midSentence: true }).midSentence).toBe(true);

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {} }) }));
 
-import { AskThread, type AskThreadMessage } from "./AskThread";
+import { AskThread, archivedConversations, type AskThreadMessage } from "./AskThread";
 
 const base = { sessionId: "s1", ownerId: "owner", status: "done", actions: [], createdAt: "2026-11-21T10:00:00.000Z", updatedAt: "2026-11-21T10:00:01.000Z" };
 const userQ = (id: string, text: string): AskThreadMessage => ({ ...base, id, role: "user", text, toolCalls: null }) as AskThreadMessage;
@@ -46,6 +46,37 @@ describe("AskThread", () => {
     expect(html).toContain('href="/s/s1/prepare#clip-a"');
     expect(html).toContain("Open in Prepare: One");
     expect(html).toContain("Open in Prepare: Two");
+  });
+
+  it("New conversation: shown once there is a conversation, greyed out while an answer is open", () => {
+    expect(buttons(render([]))).not.toContain("New conversation");
+    const done = render([userQ("u1", "Topics?"), answerWith("a1", "Housing.", [])]);
+    expect(done).toMatch(/<button[^>]*>(?:(?!<\/button>).)*New conversation<\/button>/);
+    expect(done).not.toMatch(/<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*New conversation/);
+    const open = render([userQ("u1", "Topics?"), { ...answerWith("a1", "", []), status: "pending" } as AskThreadMessage]);
+    // Not disabled (a disabled button gets no hover or focus, so no balloon): marked aria-disabled, with the reason attached.
+    expect(open).toMatch(/<button[^>]*aria-disabled="true"[^>]*>(?:(?!<\/button>).)*New conversation/);
+    expect(open).toContain('id="ask-new-blocked"');
+    expect(open).toContain("Finish the open answer or card first");
+  });
+
+  it("an archived conversation is not the current one: the drawer starts empty with a link to it", () => {
+    const at = "2026-11-23T15:10:00.000Z";
+    const old = [{ ...userQ("u1", "Old question"), archivedAt: at }, { ...answerWith("a1", "Old answer.", [{ name: "propose_clip", args: { title: "x" }, result: "ok", ok: true, clipId: "c-1" }]), archivedAt: at }] as AskThreadMessage[];
+    const html = render(old);
+    expect(html).toContain("Nothing asked yet");
+    expect(html).toContain("Earlier conversations (1)");
+    expect(html).not.toContain("Old question");
+    expect(buttons(html)).not.toContain("New conversation");
+  });
+
+  it("archivedConversations groups by archive time, oldest first", () => {
+    const m = (id: string, archivedAt: string | null) => ({ id, archivedAt });
+    const groups = archivedConversations([m("1", "2026-11-23T10:00:00.000Z"), m("2", "2026-11-23T10:00:00.000Z"), m("3", "2026-11-22T09:00:00.000Z"), m("4", null)]);
+    expect(groups.map((g) => [g.archivedAt, g.messages.map((x) => x.id)])).toEqual([
+      ["2026-11-22T09:00:00.000Z", ["3"]],
+      ["2026-11-23T10:00:00.000Z", ["1", "2"]],
+    ]);
   });
 
   it("AskThread renders in the drawer: the input, the examples on an empty thread", () => {

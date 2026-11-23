@@ -6,6 +6,8 @@ export interface ExportClipInput {
   sessionId: string;
   renderStatus: RenderStatus;
   renderKey: string | null;
+  /** The render's audio-only copy; null for a render made before renders wrote one. */
+  audioKey: string | null;
   /**
    * The export checklist passes now (`exportChecklist`, the rule Export applies before rendering). Only then are the
    * clip's made videos (plain and with subtitles) offered: a clip package renders before the checklist is done.
@@ -44,6 +46,10 @@ export interface ExportRow {
   clipId: string;
   renderStatus: RenderStatus;
   mp4: string | null;
+  /** The same cut as audio only (`.m4a`), offered with the MP4. */
+  audio: string | null;
+  /** The MP4 is offered but was made before renders wrote the audio: "Make the videos" makes it. */
+  audioMissing: boolean;
   renderOutOfDate: boolean;
   languages: ExportLanguageRow[];
   /** Inline (no `?download=1`) URLs for the Watch player: the plain MP4 with its text tracks, and each made subtitle video. */
@@ -89,6 +95,8 @@ export function exportRows(clips: ExportClipInput[], tracks: ExportTrackInput[])
     clipId: clip.id,
     renderStatus: clip.renderStatus,
     mp4: renderDone ? url(clip.sessionId, `${clip.id}.mp4`) : null,
+    audio: renderDone && clip.audioKey ? url(clip.sessionId, `${clip.id}.m4a`) : null,
+    audioMissing: renderDone && !clip.audioKey,
     renderOutOfDate: clip.renderStatus === "stale",
     watch: {
       mp4: renderDone ? inline(clip.sessionId, `${clip.id}.mp4`) : null,
@@ -128,14 +136,19 @@ export function inFlight(rows: ExportRow[]): boolean {
   return rows.some((r) => active(r.renderStatus) || r.languages.some((l) => active(l.burn.status)));
 }
 
-/** Subtitle videos "Make the videos" would still make: not made, out of date, or failed on an approved track. */
+/**
+ * Files "Make the videos" would still make besides new renders: subtitle videos not made, out of date, or failed on an
+ * approved track, and the audio of a clip rendered before renders wrote one.
+ */
 export function toMake(rows: ExportRow[]): number {
   let n = 0;
-  for (const r of rows)
+  for (const r of rows) {
+    if (r.audioMissing) n++;
     for (const l of r.languages) {
       const s = l.burn.state;
       if (s === "notMade" || s === "outOfDate" || (s === "failed" && l.approved)) n++;
     }
+  }
   return n;
 }
 

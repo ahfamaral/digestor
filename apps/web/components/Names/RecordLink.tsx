@@ -11,7 +11,7 @@ import { holdsLink, RecordHouseSelect, recordHelpText, useRecordHouse } from "./
 import { Busy, Spinner } from "@/components/ui/spinner";
 
 const BTN =
-  "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-hover active:bg-pressed disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const POLL_MS = 3000;
 /** A waiting row only turns pending when its retry is due (hourly sweep): no need to ask every 3 s. */
 const WAITING_POLL_MS = 60_000;

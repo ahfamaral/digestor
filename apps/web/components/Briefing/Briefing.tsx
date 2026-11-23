@@ -347,7 +347,7 @@ export function Briefing(props: BriefingProps) {
       {props.namesChanged && (
         <p role="status" className={`${NOTICE} border-border bg-white text-foreground`}>
           {t("names.changedNotice")}{" "}
-          <button type="button" onClick={() => setReanalyzeOpen(true)} className="font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
+          <button type="button" onClick={() => setReanalyzeOpen(true)} className="font-medium underline underline-offset-2 outline-none hover:text-foreground hover:decoration-2 focus-visible:ring-2 focus-visible:ring-brand">
             {t("names.reanalyse")}
           </button>
         </p>
@@ -439,7 +439,7 @@ export function Briefing(props: BriefingProps) {
             type="button"
             disabled={fm.busy}
             onClick={fm.start}
-            className="inline-flex h-9 items-center rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-9 items-center rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Busy busy={fm.busy}>{fm.label}</Busy>
           </button>
@@ -469,7 +469,7 @@ export function Briefing(props: BriefingProps) {
             <button
               type="button"
               onClick={() => setFilters(SHOW_HIDDEN_FILTERS)}
-              className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+              className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand"
             >
               {t("briefing.showHidden")}
             </button>
@@ -480,7 +480,7 @@ export function Briefing(props: BriefingProps) {
               disabled={approved.length === 0 || session.videoRemoved}
               onClick={() => setConfirmOpen(true)}
               aria-describedby={session.videoRemoved ? "video-removed" : undefined}
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
+              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white not-disabled:hover:brightness-90 not-disabled:active:brightness-[0.82] outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
             >
               {t("briefing.confirm")}
             </button>

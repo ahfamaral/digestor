@@ -8,7 +8,7 @@ import { sql } from "drizzle-orm";
 import { clipEvents, clips, subtitleTracks } from "./schema.ts";
 import {
   addAskMessage, addProblemReport, approveTrack, claimClipRender, claimTrackBurn, createAskAction, createClip,
-  createPersonalMoment, burnSignature, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
+  createPersonalMoment, attachTrackWords, burnSignature, setTrackLines, removeTrack, unapproveTrack, createTrack, deleteClip, editTrackCues, finishAskMessage, finishClipRender,
   finishTrackBurn, setTrackBurnStatus, getAskMessage, getClip, getTrack, listAskMessages, listClips, listPersonalMoments, listProblemReports, listSelections,
   countSelectionsByAnalysis,
   resolveAskAction, deleteTrack, deleteFailedTrack, failTrack, getClipAny, requestTrackBurn, setSelection, setTrackCues, undoLastEvent, updateClip,
@@ -17,9 +17,10 @@ import {
 import { getMoment, setMomentChecks } from "./analysis.ts";
 import { moments as momentsTable } from "./schema.ts";
 import type { TrackCue } from "../personalTypes.ts";
+import { trackLinesVersion } from "../trackLines.ts";
 import { createCustomPerson } from "./names.ts";
 import type { NewMoment } from "./analysis.ts";
-import { startAskQuestion, ASK_QUEUE_FAILED, AskQueueError, listAskMessages as listAsk, listShownRanges, requestFindMore, claimFindMore, finishFindMore, failFindMore, getFindMore } from "./personal.ts";
+import { archiveAskConversation, startAskQuestion, ASK_QUEUE_FAILED, AskQueueError, listAskMessages as listAsk, listShownRanges, requestFindMore, claimFindMore, finishFindMore, failFindMore, getFindMore } from "./personal.ts";
 
 const OWNER = "owner";
 let db: Db;
@@ -130,7 +131,7 @@ describe("clips", () => {
   it("updateClip records before/after and marks done renders stale", async () => {
     const c = await newClip();
     await claimClipRender(db, c.id);
-    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k.mp4" })).toBe("done");
+    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k.mp4", audioKey: "k.m4a" })).toBe("done");
     const t = (await createTrack(db, c.id, "pt"))!;
     await db.execute(sqlBurnDone(t.id));
     const u = await updateClip(db, c.id, { startMs: 11_000 }, "user");
@@ -211,9 +212,9 @@ describe("clips", () => {
     const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const };
     await claimClipRender(db, c.id);
     await updateClip(db, c.id, { credit: "Parliament TV" }, "user");
-    expect(await finishClipRender(db, c.id, geo, { renderKey: "k" })).toBe("stale");
+    expect(await finishClipRender(db, c.id, geo, { renderKey: "k", audioKey: "k.m4a" })).toBe("stale");
     await claimClipRender(db, c.id);
-    expect(await finishClipRender(db, c.id, { ...geo, credit: "Parliament TV" }, { renderKey: "k" })).toBe("done");
+    expect(await finishClipRender(db, c.id, { ...geo, credit: "Parliament TV" }, { renderKey: "k", audioKey: "k.m4a" })).toBe("done");
     await updateClip(db, c.id, { noCreditNeeded: true }, "user");
     expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
   });
@@ -223,8 +224,19 @@ describe("clips", () => {
     expect(await claimClipRender(db, c.id)).toBe(true);
     expect(await claimClipRender(db, c.id)).toBe(false);
     await updateClip(db, c.id, { cropOffset: 0.2 }, "user");
-    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" })).toBe("stale");
+    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k", audioKey: "k.m4a" })).toBe("stale");
     expect((await getClip(db, c.id))!.renderKey).toBe("k");
+    expect(await claimClipRender(db, c.id)).toBe(true);
+  });
+
+  it("finishClipRender stores the audio copy; a done render without one can be claimed again, with one it can't", async () => {
+    const c = await newClip();
+    const geo = { startMs: 10_000, endMs: 50_000, format: "16:9" as const, cropOffset: 0, credit: null };
+    await claimClipRender(db, c.id);
+    expect(await finishClipRender(db, c.id, geo, { renderKey: "k.mp4", audioKey: "k.m4a" })).toBe("done");
+    expect((await getClip(db, c.id))!.audioKey).toBe("k.m4a");
+    expect(await claimClipRender(db, c.id)).toBe(false);
+    await db.update(clips).set({ audioKey: null }).where(eq(clips.id, c.id));
     expect(await claimClipRender(db, c.id)).toBe(true);
   });
 });
@@ -325,6 +337,109 @@ describe("tracks", () => {
     expect((await getTrack(db, t.id))!.burnStatus).toBe("stale");
   });
 
+  it("unapproveTrack keeps the lines and a finished burn; deleteFailedTrack takes a ready track only when asked", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready");
+    await approveTrack(db, t.id);
+    await setTrackBurnStatus(db, t.id, "done");
+    expect(await unapproveTrack(db, t.id)).toMatchObject({ approvedAt: null, burnStatus: "done", cues: [cue("Oi")] });
+    expect(await deleteFailedTrack(db, t.id)).toBe(false);
+    expect(await deleteFailedTrack(db, t.id, { ready: true })).toBe(true);
+    expect(await getTrack(db, t.id)).toBeNull();
+  });
+
+  it("turning word highlighting on stales a done burn, is logged as a style change, and undo turns it off", async () => {
+    const c = await newClip();
+    expect(c.subtitleHighlight).toBe(false);
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await db.execute(sqlBurnDone(t.id));
+    await updateClip(db, c.id, { subtitleHighlight: true }, "user");
+    expect((await getTrack(db, t.id))!.burnStatus).toBe("stale");
+    const events = await listClipEvents(db, c.id);
+    expect(events.at(-1)).toMatchObject({ kind: "style", before: { subtitleHighlight: false }, after: { subtitleHighlight: true } });
+    expect(await newClip()).toMatchObject({ subtitleHighlight: true });
+    expect(await undoLastEvent(db, c.id)).toMatchObject({ subtitleHighlight: false });
+  });
+
+  it("burnSignature is unchanged by the highlight while it is off", () => {
+    const geo = { startMs: 0, endMs: 1000, format: "16:9" as const, cropOffset: 0, credit: null, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const };
+    const sig = burnSignature({ cues: [cue("Oi")] }, geo);
+    expect(burnSignature({ cues: [cue("Oi")] }, { ...geo, subtitleHighlight: false })).toBe(sig);
+    expect(burnSignature({ cues: [cue("Oi")] }, { ...geo, subtitleHighlight: true })).not.toBe(sig);
+  });
+
+  it("setTrackLines saves times, deletions and added lines, clears approval and stales a done burn", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    const words = [{ startMs: 0, endMs: 1000, chars: 2 }];
+    await setTrackCues(db, t.id, [cue("Oi", { words }), cue("Tchau", { startMs: 2000, endMs: 3000 }), cue("Fim", { startMs: 4000, endMs: 5000 })], "ready", { startMs: c.startMs, endMs: c.endMs });
+    await approveTrack(db, t.id);
+    await db.execute(sqlBurnDone(t.id));
+    const before = (await getTrack(db, t.id))!;
+    const base = trackLinesVersion(before.cues);
+    const res = await setTrackLines(db, t.id, [
+      { startMs: 0, endMs: 1000, text: "Oi!", from: 0 },
+      { startMs: 1000, endMs: 1800, text: "", from: null },
+      { startMs: 2200, endMs: 3000, text: "Tchau", from: 1 },
+    ], base);
+    if (!("track" in res)) throw new Error(JSON.stringify(res));
+    expect(res.track.cues).toEqual([
+      { startMs: 0, endMs: 1000, original: "Hello", text: "Oi!", missing: false, words },
+      { startMs: 1000, endMs: 1800, original: "", text: "", missing: true, added: true },
+      { startMs: 2200, endMs: 3000, original: "Hello", text: "Tchau", missing: false },
+    ]);
+    expect(res.track.approvedAt).toBeNull();
+    expect(res.track.burnStatus).toBe("stale");
+    // the same base again: the lines changed meanwhile
+    expect(await setTrackLines(db, t.id, [{ startMs: 0, endMs: 1000, text: "x", from: 0 }], base)).toEqual({ error: "changed" });
+    const now = trackLinesVersion(res.track.cues);
+    expect(await setTrackLines(db, t.id, [{ startMs: 0, endMs: 41_000, text: "x", from: 0 }], now)).toEqual({ problems: [{ i: 0, problem: "outside" }] });
+  });
+
+  it("removeTrack deletes a track that isn't approved and bumps the clip's edit version", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    expect(await removeTrack(db, t.id)).toEqual({ error: "busy" });
+    await setTrackCues(db, t.id, [cue("Oi")], "ready");
+    await approveTrack(db, t.id);
+    expect(await removeTrack(db, t.id)).toEqual({ error: "approved" });
+    await unapproveTrack(db, t.id);
+    await db.execute(sql`update subtitle_tracks set burn_status = 'rendering' where id = ${t.id}`);
+    expect(await removeTrack(db, t.id)).toEqual({ error: "busy" });
+    await setTrackBurnStatus(db, t.id, "done");
+    const before = (await getClip(db, c.id))!.editVersion;
+    const res = await removeTrack(db, t.id);
+    expect(res).toMatchObject({ removed: { id: t.id } });
+    expect(await getTrack(db, t.id)).toBeNull();
+    expect((await getClip(db, c.id))!.editVersion).toBe(before + 1);
+    expect(await removeTrack(db, t.id)).toEqual({ error: "missing" });
+  });
+
+  it("setTrackLines refuses a track that isn't ready", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    expect(await setTrackLines(db, t.id, [{ startMs: 0, endMs: 1000, text: "x" }], trackLinesVersion([]))).toEqual({ error: "not_ready" });
+  });
+
+  it("burnSignature changes with a line's times", () => {
+    const geo = { startMs: 0, endMs: 1000, format: "16:9" as const, cropOffset: 0, credit: null, subtitleStyle: "yellow" as const, subtitlePosition: "bottom" as const };
+    expect(burnSignature({ cues: [cue("Oi", { endMs: 900 })] }, geo)).not.toBe(burnSignature({ cues: [cue("Oi")] }, geo));
+  });
+
+  it("attachTrackWords adds word times to a ready track and changes nothing else", async () => {
+    const c = await newClip();
+    const t = (await createTrack(db, c.id, "pt"))!;
+    await setTrackCues(db, t.id, [cue("Oi")], "ready");
+    await approveTrack(db, t.id);
+    const line = (await getTrack(db, t.id))!.cues[0]!;
+    const words = [{ startMs: line.startMs, endMs: line.endMs, chars: 2 }];
+    expect(await attachTrackWords(db, t.id, [{ startMs: line.startMs, endMs: line.endMs, words }])).toEqual({ attached: 1, lines: 1 });
+    const after = (await getTrack(db, t.id))!;
+    expect(after.cues[0]).toEqual({ ...line, words });
+    expect(after.approvedAt).not.toBeNull();
+  });
+
   it("finishTrackBurn is stale when the style changed during the burn", async () => {
     const c = await newClip();
     const t = (await createTrack(db, c.id, "pt"))!;
@@ -352,7 +467,7 @@ describe("tracks", () => {
     await deleteClip(db, c.id, "user");
     expect(await claimClipRender(db, c.id)).toBe(false);
     expect(await claimTrackBurn(db, t.id)).toBe(false);
-    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" })).toBeNull();
+    expect(await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k", audioKey: "k.m4a" })).toBeNull();
     expect(await finishTrackBurn(db, t.id, "x", "k")).toBeNull();
   });
 });
@@ -954,7 +1069,7 @@ describe("edit version", () => {
     await updateClip(db, c.id, { protectedAck: true }, "user");
     await updateClip(db, c.id, { subtitleStyle: "white" }, "user");
     await claimClipRender(db, c.id);
-    await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" });
+    await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k", audioKey: "k.m4a" });
     await editTrackCues(db, t!.id, [{ i: 0, text: "Edited" }]);
     expect(await version(c.id)).toBe(before);
   });
@@ -1050,6 +1165,27 @@ describe("startAskQuestion", () => {
     expect(a).toMatchObject({ status: "failed", text: ASK_QUEUE_FAILED });
     expect(r!.answer.id).toBe(a!.id);
   });
+  it("archiveAskConversation: refused while an answer is open, then archives the whole conversation once", async () => {
+    const own = await createSession(db, { title: "Archive", source: "upload" });
+    const ask = () => startAskQuestion(db, async () => {}, { sessionId: own.id, ownerId: OWNER, text: "Topics?", onEnqueueError: "rollback" });
+    expect(await archiveAskConversation(db, OWNER, own.id)).toEqual({ error: "empty" });
+    const first = (await ask())!;
+    expect(await archiveAskConversation(db, OWNER, own.id)).toEqual({ error: "busy" });
+    await finishAskMessage(db, first.answer.id, { text: "Housing.", status: "done" });
+    const bulk = await createAskAction(db, { messageId: first.answer.id, kind: "bulk_selection", payload: { momentIds: [], status: "approved" } });
+    expect(await archiveAskConversation(db, OWNER, own.id)).toEqual({ error: "busy" });
+    await db.execute(sql`update ask_actions set status = 'dismissed' where id = ${bulk.id}`);
+    expect(await archiveAskConversation(db, OWNER, own.id)).toEqual({ archived: 2 });
+    expect((await listAsk(db, OWNER, own.id)).every((m) => m.archivedAt !== null)).toBe(true);
+    expect(await archiveAskConversation(db, OWNER, own.id)).toEqual({ error: "empty" });
+    // the next question starts the new conversation; the old one keeps its own archive time
+    await ask();
+    const all = await listAsk(db, OWNER, own.id);
+    expect(all.map((m) => m.archivedAt === null)).toEqual([false, false, true, true]);
+    // onlyIfEmpty still sees the archived conversation (a goal never starts Ask a second time)
+    expect(await startAskQuestion(db, async () => {}, { sessionId: own.id, ownerId: OWNER, text: "x", onlyIfEmpty: true, onEnqueueError: "rollback" })).toBeNull();
+  });
+
   it("onlyIfEmpty: two calls at once store one pair", async () => {
     const [a, b] = await Promise.all([start(async () => {}, { onlyIfEmpty: true }), start(async () => {}, { onlyIfEmpty: true })]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
@@ -1119,7 +1255,7 @@ describe("applyClipUpdate", () => {
     const render = async () => {
       const cur = (await getClip(db, c.id))!;
       await claimClipRender(db, c.id);
-      await finishClipRender(db, c.id, { startMs: cur.startMs, endMs: cur.endMs, format: cur.format, cropOffset: cur.cropOffset, credit: cur.credit }, { renderKey: "k" });
+      await finishClipRender(db, c.id, { startMs: cur.startMs, endMs: cur.endMs, format: cur.format, cropOffset: cur.cropOffset, credit: cur.credit }, { renderKey: "k", audioKey: "k.m4a" });
       expect((await getClip(db, c.id))!.renderStatus).toBe("done");
     };
     await render();
@@ -1137,7 +1273,7 @@ describe("applyClipUpdate", () => {
   it("stales a finished render", async () => {
     const c = await newClip();
     await claimClipRender(db, c.id);
-    await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k" });
+    await finishClipRender(db, c.id, { startMs: 10_000, endMs: 50_000, format: "16:9", cropOffset: 0, credit: null }, { renderKey: "k", audioKey: "k.m4a" });
     await applyClipUpdate(db, { clipId: c.id, ownerId: OWNER, credit: "X", actor: "ask" });
     expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
   });
@@ -1183,7 +1319,7 @@ describe("replaceClipMoment", () => {
     expect((await getClip(db, c.id))!.startMs).toBe(10_000);
     await claimClipRender(db, c.id);
     const cur = (await getClip(db, c.id))!;
-    await finishClipRender(db, c.id, { startMs: cur.startMs, endMs: cur.endMs, format: cur.format, cropOffset: cur.cropOffset, credit: cur.credit }, { renderKey: "k" });
+    await finishClipRender(db, c.id, { startMs: cur.startMs, endMs: cur.endMs, format: cur.format, cropOffset: cur.cropOffset, credit: cur.credit }, { renderKey: "k", audioKey: "k.m4a" });
     await swap(c.id, { expectVersion: cur.editVersion });
     expect((await getClip(db, c.id))!.renderStatus).toBe("stale");
   });

@@ -11,7 +11,7 @@ export default function NotFound() {
         <h1 className="text-xl font-bold tracking-tight">{t("notFound.title")}</h1>
         <Link
           href="/"
-          className="mt-4 inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-4 inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-foreground outline-none hover:brightness-90 active:brightness-[0.82] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           {t("common.backToSessions")}
         </Link>

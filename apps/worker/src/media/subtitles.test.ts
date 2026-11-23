@@ -1,6 +1,6 @@
 import type { Word } from "@digestor/core";
 import { describe, expect, it } from "vitest";
-import { buildAss, buildCues, buildSrt, buildVtt } from "./subtitles.js";
+import { buildAss, buildCues, buildSrt, buildVtt, karaokeText } from "./subtitles.js";
 
 const w = (text: string, startMs: number, endMs: number): Word => ({ text, startMs, endMs, speaker: "A", confidence: 0.9 });
 
@@ -8,6 +8,19 @@ const w = (text: string, startMs: number, endMs: number): Word => ({ text, start
 const words: Word[] = Array.from({ length: 35 }, (_, i) => w(`word${i}`, 8000 + i * 400, 8000 + i * 400 + 300));
 
 describe("buildCues", () => {
+  it("repairs crushed word times before grouping (real: a crowd chant, 7 words in 0.47 s)", () => {
+    const base = 91_894;
+    const chant: [string, number, number][] = [
+      ["nossa", 25574, 28027], ["luta", 28027, 29630], ["pelo", 29790, 29950], ["fim", 29950, 29998], ["da", 29998, 30030],
+      ["escala", 30030, 30110], ["6", 30110, 30159], ["por", 30159, 30223], ["1!", 30223, 30255],
+    ];
+    const cues = buildCues(chant.map(([t, a, b]) => w(t, base + a, base + b)), { startMs: base, endMs: base + 35_000 });
+    const all = cues.flatMap((c) => c.words);
+    // "pelo fim da escala 6 por 1!" now takes well over a second, not 0.47 s
+    expect(all.at(-1)!.endMs - all[2]!.startMs).toBeGreaterThan(1500);
+    expect(all[0]!.startMs).toBe(25574);
+    expect(all.at(-1)!.endMs).toBe(30255);
+  });
   it("a sentence's last word is not left alone on a cue when the speech is continuous (real: \"können.\", \"abbauen.\")", () => {
     const text = "und endlich ausreichend Geld vom Bund, damit die Kommunen das auch umsetzen können.".split(" ");
     let t = 0;
@@ -35,6 +48,15 @@ describe("buildCues", () => {
     const text = cues.flatMap((c) => c.lines).join(" ");
     expect(text).not.toContain("word0 ");
     expect(text).toContain("word10");
+  });
+
+  it("each cue carries its words with clip-relative times and lengths", () => {
+    const cues = buildCues(words, { startMs: 10_000, endMs: 20_000 });
+    for (const c of cues) {
+      expect(c.words.map((w) => w.chars)).toEqual(c.lines.join(" ").split(" ").map((x) => [...x].length));
+      expect(c.words[0]!.startMs).toBe(c.startMs);
+      expect(c.words.at(-1)!.endMs).toBe(c.endMs);
+    }
   });
 
   it("a free cut that starts and ends mid-sentence keeps only words inside the range", () => {
@@ -93,7 +115,7 @@ describe("buildCues", () => {
   });
 });
 
-const look = (over: Partial<{ style: "yellow" | "white" | "white_box"; position: "bottom" | "above_banner" | "top"; format: "16:9" | "9:16" }> = {}) => ({
+const look = (over: Partial<{ style: "yellow" | "white" | "white_box" | "yellow_box"; position: "bottom" | "above_banner" | "top"; format: "16:9" | "9:16" }> = {}) => ({
   style: "yellow" as const, position: "bottom" as const, format: "16:9" as const, ...over,
 });
 
@@ -113,7 +135,7 @@ describe("buildSrt / buildAss", () => {
     expect(ass).toContain("PlayResX: 640");
     expect(ass).toContain("PlayResY: 360");
     expect(ass).toContain("WrapStyle: 0");
-    expect(ass).toContain("Style: Default,Noto Sans,20,&H0000E6FF,&H0000E6FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,20,20,22,1");
+    expect(ass).toContain("Style: Default,Noto Sans,20,&H0000E6FF,&H7300E6FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,2,20,20,22,1");
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:01.50,Default,,0,0,0,,a \\{b\\}\\Nc");
     expect(ass).toContain("Dialogue: 0,1:02:03.45,1:02:05.00,Default,,0,0,0,,Later");
   });
@@ -123,6 +145,31 @@ describe("buildSrt / buildAss", () => {
     expect(v).toContain("Noto Sans,77,");
     expect(v).toContain("WrapStyle: 0");
     expect(buildAss(cues, { width: 1920, height: 1080 }, look({ format: "16:9" }))).toContain("Noto Sans,59,");
+  });
+
+  it("yellow on dark box draws a box behind yellow text", () => {
+    const ass = buildAss(cues, { width: 1920, height: 1080 }, look({ style: "yellow_box" }));
+    expect(ass).toMatch(/Style: Default,Noto Sans,59,&H0000E6FF,&H7300E6FF,&H40000000,&H40000000,0,0,0,0,100,100,0,0,3,/);
+  });
+
+  it("a cue with word times writes \\k tags that add up to the cue's length", () => {
+    const cue = { startMs: 1000, endMs: 3005, lines: ["um dois", "três"], karaoke: [1203, 1777, 2500] };
+    const text = karaokeText(cue);
+    expect(text).toBe("{\\k20}{\\k58}um {\\k72}dois\\N{\\k51}três");
+    const sum = [...text.matchAll(/\\k(\d+)/g)].reduce((n, m) => n + Number(m[1]), 0);
+    expect(sum).toBe(Math.round((cue.endMs - cue.startMs) / 10));
+    expect(buildAss([cue], { width: 1920, height: 1080 }, look())).toContain(",,0,0,0,,{\\k20}{\\k58}um");
+  });
+
+  it("with a box style, a highlighted cue draws the box once below the highlighted words", () => {
+    const cue = { startMs: 0, endMs: 1000, lines: ["um dois"], karaoke: [0, 500] };
+    const ass = buildAss([cue], { width: 1920, height: 1080 }, look({ style: "yellow_box" }));
+    expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\1a&HFF&\\2a&HFF&}um dois");
+    expect(ass).toContain("Dialogue: 1,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\3a&HFF&\\4a&HFF&}{\\k50}um {\\k50}dois");
+  });
+
+  it("a cue without word times has no \\k tags", () => {
+    expect(buildAss(cues, { width: 1920, height: 1080 }, look())).not.toContain("\\k");
   });
 
   it("yellow above the banner at 1080p", () => {
@@ -135,7 +182,7 @@ describe("buildSrt / buildAss", () => {
 
   it("white is bold white with an outline", () => {
     const ass = buildAss(cues, { width: 1920, height: 1080 }, look({ style: "white" }));
-    expect(ass).toContain("Noto Sans,59,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,1,2,20,20,65,1");
+    expect(ass).toContain("Noto Sans,59,&H00FFFFFF,&H73FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,1,2,20,20,65,1");
   });
 
   it("top uses alignment 8 and the top margin", () => {
@@ -145,7 +192,7 @@ describe("buildSrt / buildAss", () => {
 
   it("white_box draws a 75% black box with border style 3", () => {
     const ass = buildAss(cues, { width: 1920, height: 1080 }, look({ style: "white_box" }));
-    expect(ass).toContain("&H00FFFFFF,&H00FFFFFF,&H40000000,&H40000000,0,0,0,0,100,100,0,0,3,");
+    expect(ass).toContain("&H00FFFFFF,&H73FFFFFF,&H40000000,&H40000000,0,0,0,0,100,100,0,0,3,");
   });
 
   it("escapes literal backslashes and never emits zero-duration cues", () => {

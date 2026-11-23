@@ -154,7 +154,7 @@ export function DeputyCombobox({ locale, size, label }: { locale: MonitorLocale;
                 <button
                   type="button"
                   onClick={() => setAttempt((n) => n + 1)}
-                  className="rounded font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-stone-500"
+                  className="rounded font-medium underline underline-offset-2 outline-none hover:decoration-2 focus-visible:ring-2 focus-visible:ring-stone-500"
                 >
                   {tm(locale, "combobox.retry")}
                 </button>

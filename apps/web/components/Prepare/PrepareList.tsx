@@ -38,6 +38,7 @@ import { SubtitlesPanel } from "./SubtitlesPanel";
 import { TrimStrip } from "./TrimStrip";
 import { Busy } from "@/components/ui/spinner";
 import { HasVideoProvider } from "@/components/HasVideo";
+import { Waveform } from "@/components/Waveform";
 
 /** One clip as the server page sends it. */
 export interface PrepareClipData {
@@ -289,6 +290,9 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
       return { ...i, tracks: [...others, track].sort((a, b) => a.language.localeCompare(b.language)) };
     });
 
+  const dropTrack = (clipId: string, trackId: string) =>
+    update(clipId, (i) => ({ ...i, tracks: i.tracks.filter((x) => x.id !== trackId) }));
+
   // The credit line starts from the YouTube channel: save it once for clips that have none yet.
   const creditApplied = useRef(false);
   useEffect(() => {
@@ -523,6 +527,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
                     onUndo={() => (item.undo?.kind === "merge" ? setUndoMergeId(item.clip.id) : void undo(item.clip.id))}
                     onCheckAgain={() => void checkAgain(item.clip.id)}
                     onTrack={(tr) => setTrack(item.clip.id, tr)}
+                    onTrackRemoved={(id) => dropTrack(item.clip.id, id)}
                   />
                   {pairs.has(n) && (() => {
                     const k = pairs.get(n)!;
@@ -534,7 +539,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
                           type="button"
                           onClick={() => setMergeIds([earlier, later])}
                           disabled={(busy[earlier] ?? false) || (busy[later] ?? false)}
-                          className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-8 items-center rounded-full border border-dashed border-muted-foreground/60 bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none hover:bg-hover active:bg-pressed hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {t("prepare.mergeButton", { a: k + 1, b: n + 2 })}
                         </button>
@@ -628,10 +633,11 @@ interface ClipCardProps {
   onUndo: () => void;
   onCheckAgain: () => void;
   onTrack: (track: TrackView) => void;
+  onTrackRemoved: (trackId: string) => void;
 }
 
 function ClipCard({
-  n, item, clipState, inside, open, onToggle, session, defaultCredit, names, creditDiffers, formatDiffers, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack,
+  n, item, clipState, inside, open, onToggle, session, defaultCredit, names, creditDiffers, formatDiffers, timedOut, busy, error, status, checklist, onChange, onUndo, onCheckAgain, onTrack, onTrackRemoved,
 }: ClipCardProps) {
   const { clip, title } = item;
   // R30: once the video is removed the clip is frozen; only the acknowledgements can change.
@@ -678,7 +684,7 @@ function ClipCard({
             aria-expanded={open}
             aria-controls={bodyId}
             aria-label={open ? t("prepare.collapseClip", { n }) : t("prepare.expandClip", { n })}
-            className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md border border-border bg-white outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+            className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md border border-border bg-white outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand"
           >
             <ChevronRightIcon aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
           </button>
@@ -736,7 +742,7 @@ function ClipCard({
                 onClick={onUndo}
                 disabled={busy}
                 aria-label={t("prepare.undoLabel", { action: undoLabel(item.undo), title: title || t("prepare.clipHeading", { n }) })}
-                className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {undoLabel(item.undo)}
               </button>
@@ -827,11 +833,12 @@ function ClipCard({
                 clip={clip}
                 hasVideo={session.hasVideo}
                 thumbUrl={item.thumbUrl}
-                onLook={(look) => onChange({ subtitleStyle: look.style, subtitlePosition: look.position })}
+                onLook={(look) => onChange({ subtitleStyle: look.style, subtitlePosition: look.position, subtitleHighlight: look.highlight })}
                 originalLanguage={session.language}
                 tracks={item.tracks}
                 frozen={frozen}
                 onTrack={onTrack}
+                onTrackRemoved={onTrackRemoved}
               />
               <Checklist
                 clipId={clip.id}
@@ -864,6 +871,9 @@ function ClipPlayer({
   thumbUrl: string | null;
 }) {
   const [playing, setPlaying] = useState(false);
+  // Audio-only: whether the sound is really playing (the player's own play/pause), for the waveform.
+  const [sounding, setSounding] = useState(false);
+  const audioRef = useRef<HTMLMediaElement | null>(null);
   // A collapsed card stops its player (it unmounts) and starts again from the poster.
   if (!visible && playing) setPlaying(false);
   const src = `/api/files/${sessionId}/proxy.mp4#t=${(clip.startMs / 1000).toFixed(1)},${(clip.endMs / 1000).toFixed(1)}`;
@@ -879,17 +889,29 @@ function ClipPlayer({
       aria-expanded={playing}
       aria-label={playing ? t("preview.stopLabel", { title }) : t("preview.playLabel", { title })}
       aria-describedby={videoRemoved ? "video-removed" : undefined}
-      className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
     >
       {playing ? t("preview.stop") : t("preview.play")}
     </button>
   );
 
   if (!hasVideo) {
+    // The frame the made video will have (16:9, or 9:16 inside it), with the waveform following the sound.
     return (
       <div className="grid gap-2">
+        <div className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-stone-900">
+          {videoRemoved ? (
+            <p className="px-4 text-center text-xs text-stone-300">{t("preview.videoRemoved")}</p>
+          ) : (
+            <div className={cn("relative h-full", vertical ? "aspect-[9/16]" : "w-full")}>
+              <Waveform mediaRef={audioRef} playing={playing && sounding} />
+            </div>
+          )}
+        </div>
+        {playing && !videoRemoved && (
+          <MediaPlayer kind="audio" autoPlay src={src} label={label} mediaRef={audioRef} onPlayingChange={setSounding} className="w-full" />
+        )}
         <div>{button}</div>
-        {playing && !videoRemoved && <MediaPlayer kind="audio" autoPlay src={src} label={label} className="w-full" />}
       </div>
     );
   }

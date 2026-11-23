@@ -17,6 +17,7 @@ import type { SearchHit } from "../search/index.js";
 import { withProfile } from "../pipeline/analysis.js";
 import { CONFIRMED_NAME, promptCard } from "../pipeline/naming.js";
 import { DEFAULT_CONTEXT_S, MAX_CONTEXT_S, clipLine, contextWindows } from "./askClips.js";
+import { MAX_TOPICS } from "./topics.js";
 import { buildAskGraph, interruptedBy, threadConfig, type AskGraph, type AskGraphInput } from "./askGraph.js";
 
 export const MAX_ASK_STEPS = 6;
@@ -303,6 +304,42 @@ export function evidence(body: string, max = MAX_TOOL_OUTPUT): string {
   return open + cap(safe, max - open.length - close.length) + close;
 }
 
+const TOPICS_SHORTENED = "Summaries are shortened. For the full summaries, call list_topics with their numbers, e.g. {\"topics\": [3, 4]}.";
+/** A shortened summary shorter than this says nothing: the outline then lists times and titles only. */
+const MIN_SHORT_SUMMARY = 24;
+
+/**
+ * `list_topics`: with `wanted` numbers, those topics in full (unknown numbers ignored). Otherwise every topic, numbered,
+ * so the whole session is always visible (at most `MAX_TOPICS`, whose times and titles fit the output limit): full
+ * summaries when they all fit, else each summary cut to its first sentence and an equal share of the room left.
+ */
+export function topicList(topics: { startMs: number; endMs: number; title: string; summary: string }[], wanted?: number[]): string {
+  const head = (t: (typeof topics)[number], i: number) => `${i + 1}. ${span(t)} ${t.title}`;
+  const full = (t: (typeof topics)[number], i: number) => `${head(t, i)} — ${t.summary}`;
+  if (wanted !== undefined) {
+    const picked = [...new Set(wanted)].filter((n) => n >= 1 && n <= topics.length).sort((a, b) => a - b);
+    if (picked.length === 0) return `No topic has those numbers. There are ${topics.length} topics, numbered 1 to ${topics.length}.`;
+    return evidence(picked.map((n) => full(topics[n - 1]!, n - 1)).join("\n"));
+  }
+  const room = MAX_TOOL_OUTPUT - "<transcript>\n\n</transcript>".length;
+  const all = topics.map(full).join("\n");
+  if (all.length <= room) return evidence(all);
+  const budget = room - 1 - TOPICS_SHORTENED.length;
+  const heads = topics.map(head);
+  const share = Math.floor((budget - heads.join("\n").length) / topics.length) - " — ".length;
+  const lines = share < MIN_SHORT_SUMMARY ? heads : topics.map((t, i) => `${heads[i]} — ${shorten(t.summary, share)}`);
+  return `${evidence(lines.join("\n"), MAX_TOOL_OUTPUT - 1 - TOPICS_SHORTENED.length)}\n${TOPICS_SHORTENED}`;
+}
+
+/** A summary's first sentence, cut at a word to at most `max` characters (with "…" when cut). */
+function shorten(summary: string, max: number): string {
+  const first = summary.trim().split(/(?<=[.!?])\s+/)[0] ?? "";
+  if (first.length <= max) return first;
+  const cut = first.slice(0, max - 1);
+  const atWord = cut.lastIndexOf(" ");
+  return `${(atWord > max / 2 ? cut.slice(0, atWord) : cut).trimEnd()}…`;
+}
+
 /** A highlight type as the model is told it: the label the journalist sees, with the id to filter by. */
 function typeName(id: HighlightTypeId): string {
   return `${HIGHLIGHT_TYPES[id].label} (${id})`;
@@ -544,12 +581,19 @@ export const TOOLS: Tool[] = [
     },
   },
   {
-    spec: { name: "list_topics", description: "The topics of the session in order, with their times and summaries.", schema: z.object({}) },
-    async run(ctx) {
+    spec: {
+      name: "list_topics",
+      description:
+        "The topics of the session in order, numbered, with their times and summaries. Every topic is always listed; on a long session the summaries are shortened. Pass `topics` (numbers from the list) to get those topics' full summaries.",
+      schema: z.object({
+        topics: z.array(z.number().int()).max(MAX_TOPICS).optional().describe("Topic numbers (1 = the first) whose full summaries you want."),
+      }),
+    },
+    async run(ctx, a: { topics?: number[] }) {
       const analysis = requireAnalysis(ctx);
       if (analysis.topics.length === 0) return { text: "No topics were found." };
       // Titles and summaries were written from the transcript: evidence, never instructions (R31).
-      return { text: evidence(analysis.topics.map((t) => `${span(t)} ${t.title} — ${t.summary}`).join("\n")) };
+      return { text: topicList(analysis.topics, a.topics) };
     },
   },
   {
@@ -1265,8 +1309,9 @@ ${facts.map((f) => `- ${f}`).join("\n")}`;
  * the pending answer. Row order isn't trusted, because the web route may insert both in one transaction (same now()).
  */
 async function loadHistory(db: Db, pending: AskMessage): Promise<ToolMessage[]> {
+  // A conversation ended with "New conversation" is never replayed (`archivedAt`).
   const earlier = (await listAskMessages(db, pending.ownerId, pending.sessionId)).filter(
-    (m) => m.id !== pending.id && m.createdAt.getTime() <= pending.createdAt.getTime(),
+    (m) => m.id !== pending.id && m.archivedAt === null && m.createdAt.getTime() <= pending.createdAt.getTime(),
   );
   const question = earlier.filter((m) => m.role === "user" && m.text.trim() !== "").at(-1);
   if (!question) return [];

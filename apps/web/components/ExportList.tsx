@@ -48,10 +48,10 @@ export interface ExportListProps {
 }
 
 const LINK =
-  "inline-flex h-8 items-center rounded-lg border border-border bg-white px-3 text-xs font-semibold outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-flex h-8 items-center rounded-lg border border-border bg-white px-3 text-xs font-semibold outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand";
 const NOTICE = "mb-3 rounded-lg border px-3 py-2 text-sm";
 
-/** Export: each prepared clip with its checklist, the Export button, and every download (MP4, SRT/VTT, MP4 with subtitles). */
+/** Export: each prepared clip with its checklist, the Export button, and every download (MP4, audio, SRT/VTT, MP4 with subtitles). */
 export function ExportList({ session, names, whoRows, unconfirmed, profile, clips }: ExportListProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -184,7 +184,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
               onClick={() => void start()}
               disabled={busy || session.videoRemoved || ready.length === 0}
               aria-describedby={session.videoRemoved ? "video-removed" : ready.length === 0 && clips.length > 0 ? "none-ready" : undefined}
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
+              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white not-disabled:hover:brightness-90 not-disabled:active:brightness-[0.82] outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
             >
               <Busy busy={busy}>{busy ? t("exportScreen.exporting") : t("exportScreen.makeVideos")}</Busy>
             </button>
@@ -295,6 +295,19 @@ function ClipRow({
                 />
               </li>
             )}
+            {row.audio !== null ? (
+              <li className="flex flex-wrap items-center gap-2">
+                <span className="w-40 text-[13px] font-medium">{t("exportScreen.audio")}</span>
+                <a href={row.audio} aria-label={t("exportScreen.downloadLabel", { what: t("exportScreen.audio"), title: heading })} className={LINK}>
+                  {t("exportScreen.m4a")}
+                </a>
+              </li>
+            ) : row.audioMissing ? (
+              <li className="flex flex-wrap items-center gap-2">
+                <span className="w-40 text-[13px] font-medium">{t("exportScreen.audio")}</span>
+                <span className="text-[13px] text-muted-foreground">{t("exportScreen.audioMissing")}</span>
+              </li>
+            ) : null}
             {row.languages.map((l) => (
               <LanguageLine key={l.language} l={l} heading={heading} id={`${clip.id}:${l.language}:burned`} watchSrc={row.watch.burned.find((b) => b.language === l.language)?.src ?? null} watching={watching} setWatching={setWatching} />
             ))}

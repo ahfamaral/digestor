@@ -6,24 +6,28 @@ import { isUuid } from "@/lib/ids";
 import { QUEUE_FAILED, frozenError, readyClip } from "@/lib/personal";
 import { getServer } from "@/lib/server";
 
-const BodySchema = z.object({ language: z.string().min(2).max(35) }).strict();
+const BodySchema = z.object({ language: z.string().min(2).max(35), rebuild: z.literal(true).optional() }).strict();
 
 /**
  * A new track for the language; when one exists and has failed or is outdated (built for an older cut), it is
- * replaced ("Try again", "Rebuild"). Null when a track in that language is preparing or ready.
+ * replaced ("Try again", "Rebuild"), and with `rebuild` a ready one too (its edits and approval go). Null when a
+ * track in that language is preparing (or ready, without `rebuild`); "busy" when its burned-in video is being made.
  */
-async function createOrRetry(db: Db, clipId: string, language: string): Promise<Track | null> {
+async function createOrRetry(db: Db, clipId: string, language: string, rebuild: boolean): Promise<Track | null | "busy"> {
   const created = await createTrack(db, clipId, language);
   if (created) return created;
   const existing = (await listTracks(db, clipId)).find((t) => t.language === language);
-  const replaceable = existing?.status === "failed" || existing?.status === "outdated";
-  if (!existing || !replaceable || !(await deleteFailedTrack(db, existing.id))) return null;
+  const replaceable = existing?.status === "failed" || existing?.status === "outdated" || (rebuild && existing?.status === "ready");
+  if (!existing || !replaceable) return null;
+  if (!(await deleteFailedTrack(db, existing.id, { ready: rebuild }))) {
+    return existing.burnStatus === "queued" || existing.burnStatus === "rendering" ? "busy" : null;
+  }
   return createTrack(db, clipId, language, { rebuild: true }); // null if a parallel retry got there first
 }
 
 /**
- * POST /api/clips/[id]/tracks — `{ language }`: starts a subtitle track (one per clip and language), or rebuilds a failed or
- * outdated one. 409 `VIDEO_REMOVED` once the session's video is removed (R30).
+ * POST /api/clips/[id]/tracks — `{ language, rebuild? }`: starts a subtitle track (one per clip and language), or rebuilds a
+ * failed or outdated one (with `rebuild`, a ready one too). 409 `VIDEO_REMOVED` once the session's video is removed (R30).
  */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
@@ -48,7 +52,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const known = LANGUAGES.some((l) => l.code === language) || (session.language !== null && session.language === language);
   if (!known) return errorResponse(400, "That subtitle language isn't available.");
 
-  const track = await createOrRetry(db, id, language);
+  const track = await createOrRetry(db, id, language, parsed.data.rebuild === true);
+  if (track === "busy") return errorResponse(409, "The video with these subtitles is being made; rebuild them when it finishes.");
   if (!track) return errorResponse(409, "This clip already has subtitles in that language.");
   try {
     await boss.send(QUEUES.prepareTrack, { trackId: track.id }, { ...JOB_OPTIONS, singletonKey: track.id });

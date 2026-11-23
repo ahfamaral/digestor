@@ -17,7 +17,7 @@ import { t, type MessageKey } from "@/lib/i18n";
 
 /** Approve / Skip: both labels share one grid cell, so a button keeps the width of its longer label in both states. */
 const STATUS_BTN =
-  "inline-grid justify-items-center max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 rounded-md border border-border bg-white px-[7px] py-[3px] text-[11.5px] leading-[1.4] font-medium text-foreground hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-grid justify-items-center max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 rounded-md border border-border bg-white px-[7px] py-[3px] text-[11.5px] leading-[1.4] font-medium text-foreground hover:bg-hover active:bg-pressed outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const STATUS_BUTTONS: { status: SelectionStatus; text: MessageKey; done: MessageKey; label: MessageKey; on: string }[] = [
   { status: "approved", text: "briefing.approve", done: "briefing.approved", label: "briefing.approveLabel", on: "border-green-300 bg-green-100 text-green-800 hover:bg-green-100" },
   { status: "rejected", text: "briefing.skip", done: "briefing.skipped", label: "briefing.skipLabel", on: "border-stone-300 bg-stone-100 text-stone-900 hover:bg-stone-100" },
@@ -115,7 +115,7 @@ export function MomentRow({
           aria-expanded={playing}
           aria-label={playing ? t("preview.stopLabel", { title: m.title }) : t("preview.playLabel", { title: m.title })}
           aria-describedby={ctx.videoRemoved ? "video-removed" : undefined}
-          className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border bg-white text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+          className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border bg-white text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
         >
           {playing ? <SquareIcon aria-hidden className="size-2.5 fill-current" /> : <PlayIcon aria-hidden className="ml-px size-3 fill-current" />}
         </button>

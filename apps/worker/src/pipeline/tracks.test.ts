@@ -49,6 +49,7 @@ describe("prepareTrack", () => {
     expect(t.status).toBe("ready");
     expect(t.cues.length).toBeGreaterThan(0);
     expect(t.cues.every((c) => c.text === c.original && !c.missing)).toBe(true);
+    expect(t.cues.every((c) => (c.words?.length ?? 0) > 0)).toBe(true);
     expect(t.srtKey).toBeNull();
     expect(t.vttKey).toBeNull();
   });

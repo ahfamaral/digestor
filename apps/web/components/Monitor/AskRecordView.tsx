@@ -101,7 +101,7 @@ export function AskForm({
         />
         <button
           type="submit"
-          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-3 focus-visible:ring-stone-500"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground outline-none hover:brightness-90 active:brightness-[0.82] focus-visible:ring-3 focus-visible:ring-stone-500"
         >
           <MessageSquareQuote className="size-4 group-aria-busy/get:hidden" aria-hidden />
           <Spinner className="size-4 hidden group-aria-busy/get:block" />

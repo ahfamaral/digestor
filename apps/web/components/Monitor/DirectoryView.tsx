@@ -55,7 +55,7 @@ export function DirectoryView({
             )}
             <button
               type="submit"
-              className="inline-flex h-9 shrink-0 items-center rounded-lg bg-brand px-4 font-medium text-brand-foreground outline-none hover:brightness-90 focus-visible:ring-3 focus-visible:ring-stone-500"
+              className="inline-flex h-9 shrink-0 items-center rounded-lg bg-brand px-4 font-medium text-brand-foreground outline-none hover:brightness-90 active:brightness-[0.82] focus-visible:ring-3 focus-visible:ring-stone-500"
             >
               {tm(locale, "directory.apply")}
             </button>
@@ -100,7 +100,7 @@ function DirectoryRow({ locale, member: m }: { locale: MonitorLocale; member: Di
   return (
     <Link
       href={deputyHref(m.externalId)}
-      className="flex h-full items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-stone-500"
+      className="flex h-full items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-stone-500"
     >
       <Avatar name={m.name} photoUrl={m.photoUrl} size={40} lazy />
       <span className="flex min-w-0 flex-1 flex-col">

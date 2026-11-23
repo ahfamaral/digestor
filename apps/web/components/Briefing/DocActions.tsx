@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { languageName, t } from "@/lib/i18n";
 
 export const ACT =
-  "inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground hover:bg-hover active:bg-pressed disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 
 function fileName(title: string, language: string | null): string {
   const slug = title.normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "briefing";

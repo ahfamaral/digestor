@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WAVEFORM } from "@digestor/core";
 
 export class FfmpegError extends Error {
   constructor(
@@ -100,6 +101,13 @@ export async function probe(path: string) {
 export const extractAudio = (input: string, output: string) =>
   ffmpeg(["-i", input, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "64k", output]);
 
+/** The clip's audio only (`.m4a`, AAC 160 kb/s as the rendered video's track), cut from the original: the Export "Audio" file. */
+export const cutAudio = (o: { input: string; output: string; startMs: number; endMs: number }) =>
+  ffmpeg([
+    "-ss", secs(o.startMs), "-i", o.input, "-t", secs(o.endMs - o.startMs),
+    "-vn", "-map", "0:a:0", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", o.output,
+  ]);
+
 /**
  * 360p H.264 preview copy (a smaller source keeps its height, never upscaled) with mono 64 kb/s voice audio; audio-only
  * sources get an AAC-only `proxy.mp4` (browsers play it in <audio>). 360p keeps name captions and on-screen text readable.
@@ -130,7 +138,7 @@ export const escapeFilterPath = (p: string) =>
   p.replace(/[\\:']/g, "\\$&").replace(/[\\',;[\]]/g, "\\$&");
 
 const NOTO_SANS = "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf";
-const WAVE_BG = "0x17181c";
+const WAVE_BG = `0x${WAVEFORM.background.slice(1)}`;
 
 export type ClipFormat = "16:9" | "9:16";
 

@@ -7,7 +7,7 @@ import {
   type Db, type LocalStorage,
 } from "@digestor/core/server";
 import { VideoRemovedError } from "../errors.js";
-import { probe, renderClip as ffmpegRenderClip, renderSize, type RenderClipOptions } from "../media/ffmpeg.js";
+import { cutAudio as ffmpegCutAudio, probe, renderClip as ffmpegRenderClip, renderSize, type RenderClipOptions } from "../media/ffmpeg.js";
 import { buildAss } from "../media/subtitles.js";
 
 export type RenderDeps = {
@@ -15,6 +15,8 @@ export type RenderDeps = {
   storage: LocalStorage;
   /** Injectable for tests; defaults to the real ffmpeg render. */
   renderClip?: (o: RenderClipOptions) => Promise<void>;
+  /** Injectable for tests; defaults to the real ffmpeg audio cut. */
+  cutAudio?: (o: { input: string; output: string; startMs: number; endMs: number }) => Promise<void>;
 };
 
 type Clip = NonNullable<Awaited<ReturnType<typeof getClip>>>;
@@ -27,7 +29,7 @@ async function sourceOf(deps: RenderDeps, clip: Clip) {
   return { session, input: deps.storage.resolve(session.originalKey) };
 }
 
-/** Cuts the clip (no subtitles) to `clips/<clipId>.mp4`. The sender claimed it (`queued`); `done` only if nothing changed meanwhile. */
+/** Cuts the clip (no subtitles) to `clips/<clipId>.mp4`, and its audio alone to `clips/<clipId>.m4a`. The sender claimed it (`queued`); `done` only if nothing changed meanwhile. */
 export async function renderClipJob(deps: RenderDeps, clipId: string): Promise<void> {
   const clip = await getClip(deps.db, clipId);
   if (!clip || clip.deletedAt) {
@@ -43,10 +45,12 @@ export async function renderClipJob(deps: RenderDeps, clipId: string): Promise<v
   const range = { startMs: clip.startMs, endMs: clip.endMs, format: clip.format, cropOffset: clip.cropOffset, credit: clip.credit };
   await setClipRenderStatus(deps.db, clipId, "rendering");
   const key = deps.storage.key(clip.sessionId, `clips/${clip.id}.mp4`);
+  const audioKey = deps.storage.key(clip.sessionId, `clips/${clip.id}.m4a`);
   await (deps.renderClip ?? ffmpegRenderClip)({
     input: src.input, output: deps.storage.resolve(key), ...range, hasVideo: src.session.hasVideo,
   });
-  await finishClipRender(deps.db, clipId, range, { renderKey: key });
+  await (deps.cutAudio ?? ffmpegCutAudio)({ input: src.input, output: deps.storage.resolve(audioKey), startMs: clip.startMs, endMs: clip.endMs });
+  await finishClipRender(deps.db, clipId, range, { renderKey: key, audioKey });
 }
 
 /** Burns an approved track's translated text into `clips/<clipId>.<lang>.burned.mp4`. */
@@ -79,7 +83,7 @@ export async function burnTrack(deps: RenderDeps, trackId: string): Promise<void
   const tmp = await mkdtemp(join(tmpdir(), "digestor-burn-"));
   try {
     const assPath = join(tmp, "subs.ass");
-    await writeFile(assPath, buildAss(trackToCues(track.cues, clip.format), size, { style: clip.subtitleStyle, position: clip.subtitlePosition, format: clip.format }), "utf8");
+    await writeFile(assPath, buildAss(trackToCues(track.cues, clip.format, { highlight: clip.subtitleHighlight }), size, { style: clip.subtitleStyle, position: clip.subtitlePosition, format: clip.format }), "utf8");
     await (deps.renderClip ?? ffmpegRenderClip)({
       input: src.input, output: deps.storage.resolve(key), startMs: clip.startMs, endMs: clip.endMs, format: clip.format,
       cropOffset: clip.cropOffset, credit: clip.credit, hasVideo, assPath,

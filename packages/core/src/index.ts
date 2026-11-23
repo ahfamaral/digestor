@@ -12,6 +12,7 @@ export * from "./youtubeUrl.ts";
 export * from "./pipelineVersion.ts";
 export * from "./moments.ts";
 export * from "./subtitleText.ts";
+export * from "./trackLines.ts";
 export * from "./subtitleStyle.ts";
 export * from "./checklist.ts";
 export * from "./credit.ts";

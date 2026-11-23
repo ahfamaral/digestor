@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { asciiName, zipEntries, type ZipClip } from "./zipNames";
 
 const clip = (over: Partial<ZipClip> = {}): ZipClip => ({
-  id: "c1", title: "Opening statement", mp4: true,
+  id: "c1", title: "Opening statement", mp4: true, audio: true,
   languages: [{ language: "pt", text: true, burned: false }], ...over,
 });
 
@@ -22,6 +22,10 @@ describe("zipEntries", () => {
     const r = zipEntries([clip(), clip({ id: "c2", title: "Second" }), clip({ id: "c3", mp4: false })], "plain");
     expect(r.entries.map((e) => e.name)).toEqual(["01 Opening statement.mp4", "02 Second.mp4"]);
     expect(r.skipped).toEqual([]);
+  });
+  it("audio: only each clip's .m4a, numbered by the clip's position", () => {
+    const r = zipEntries([clip(), clip({ id: "c2", audio: false }), clip({ id: "c3", title: "Third" })], "audio");
+    expect(r.entries.map((e) => [e.name, e.kind, e.clipId])).toEqual([["01 Opening statement.m4a", "m4a", "c1"], ["03 Third.m4a", "m4a", "c3"]]);
   });
   it("files: video plus SRT and VTT per language with text", () => {
     const r = zipEntries([clip({ languages: [{ language: "pt", text: true, burned: false }, { language: "en", text: false, burned: false }] })], "files");

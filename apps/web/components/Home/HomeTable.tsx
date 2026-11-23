@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 export type ClipPreviewView = ClipPreview & { thumbUrl: string | null };
 
 const CHIP = "inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const chip = (on: boolean) => cn(CHIP, on ? "border-foreground bg-foreground text-white" : "border-border bg-white text-foreground hover:bg-muted");
+const chip = (on: boolean) => cn(CHIP, on ? "border-foreground bg-foreground text-white" : "border-border bg-white text-foreground hover:bg-hover active:bg-pressed");
 const TONE = { normal: "text-foreground", busy: "text-foreground", waiting: "font-medium text-violet-700", failed: "font-medium text-destructive" } as const;
 
 const STATUS_CHIPS: { id: StatusFilter; key: Parameters<typeof t>[0] }[] = [
@@ -91,7 +91,7 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
         aria-expanded={open[r.id] ?? false}
         aria-label={t(open[r.id] ? "home.hideClips" : "home.showClips", { title: r.title })}
         onClick={() => setOpen((o) => ({ ...o, [r.id]: !o[r.id] }))}
-        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-hover hover:text-foreground active:bg-pressed focus-visible:ring-2 focus-visible:ring-ring"
       >
         {open[r.id] ? <ChevronDown aria-hidden className="size-4" /> : <ChevronRight aria-hidden className="size-4" />}
       </button>
@@ -110,7 +110,7 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
     <span className="flex flex-wrap gap-1 @min-[60rem]:flex-nowrap">
       {goTo(r).map((g) =>
         g.href ? (
-          <Link key={g.step} href={g.href} className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2 text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
+          <Link key={g.step} href={g.href} className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2 text-xs outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-ring">
             {t(`appBar.step.${g.step}`)}
           </Link>
         ) : (
@@ -139,7 +139,7 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
             onClick={() => update({ status: f.status === s.id ? "any" : s.id })}
             className={cn(
               "flex flex-col items-start rounded-xl border bg-white px-3 py-2 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              f.status === s.id ? "border-foreground" : "border-border hover:bg-muted/50",
+              f.status === s.id ? "border-foreground" : "border-border hover:bg-hover/50 active:bg-pressed/50",
             )}
           >
             <span className="text-lg font-bold">{s.n}</span>
@@ -211,7 +211,7 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
       {shown.length === 0 ? (
         <div className="rounded-xl border border-border bg-white p-6 text-center text-sm">
           <p className="mb-3 text-muted-foreground">{t("home.noMatch")}</p>
-          <button type="button" onClick={() => update(DEFAULT_FILTERS)} className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-muted">
+          <button type="button" onClick={() => update(DEFAULT_FILTERS)} className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-hover active:bg-pressed">
             {t("home.clearFilters")}
           </button>
         </div>

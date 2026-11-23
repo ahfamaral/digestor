@@ -10,7 +10,7 @@ export function BackLink({ href, label, onClick }: { href: string; label: string
     <Link
       href={href}
       onClick={onClick}
-      className="-ml-2.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm text-foreground outline-none hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+      className="-ml-2.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
     >
       <ChevronLeft className="size-4" aria-hidden />
       {label}

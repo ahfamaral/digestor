@@ -7,10 +7,11 @@ describe("subtitle style and position", () => {
     for (const p of ["interview", "electoral_debate", "other"] as const) expect(defaultSubtitlePosition(p)).toBe("bottom");
   });
   it("has the agreed values", () => {
-    expect(SubtitleStyleSchema.options).toEqual(["yellow", "white", "white_box"]);
+    expect(SubtitleStyleSchema.options).toEqual(["yellow", "white", "white_box", "yellow_box"]);
     expect(SubtitlePositionSchema.options).toEqual(["bottom", "above_banner", "top"]);
     expect(SUBTITLE_STYLES.yellow).toEqual({ color: "#FFE600", bold: true, box: false });
     expect(SUBTITLE_STYLES.white_box).toEqual({ color: "#FFFFFF", bold: false, box: true });
+    expect(SUBTITLE_STYLES.yellow_box).toEqual({ color: "#FFE600", bold: false, box: true });
     expect(SUBTITLE_GEOMETRY.marginPct.above_banner).toBe(0.22);
     expect(SUBTITLE_GEOMETRY.fontPct).toEqual({ "16:9": 0.055, "9:16": 0.04 });
     expect(SUBTITLE_GEOMETRY.maxChars["16:9"]).toBe(42);

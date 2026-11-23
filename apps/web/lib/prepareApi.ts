@@ -1,5 +1,5 @@
 // Client calls of Prepare clips. Each resolves to plain views, or throws an Error carrying the API's friendly sentence.
-import type { MomentChecks, SubtitlePosition, SubtitleStyle } from "@digestor/core";
+import type { MomentChecks, SubtitlePosition, SubtitleStyle, TrackLineInput } from "@digestor/core";
 import { errorMessage } from "./http";
 import { toClipView, toTrackView, type ClipView, type TrackView } from "./prepareData";
 import { t } from "./i18n";
@@ -24,7 +24,7 @@ const json = (method: string, body?: unknown): RequestInit => ({ method, body: b
 export type ClipChange =
   | { start: string; end: string; free?: true }
   | { format?: "16:9" | "9:16"; cropOffset?: number }
-  | { subtitleStyle?: SubtitleStyle; subtitlePosition?: SubtitlePosition }
+  | { subtitleStyle?: SubtitleStyle; subtitlePosition?: SubtitlePosition; subtitleHighlight?: boolean }
   | { credit: string | null }
   | { noCreditNeeded: boolean }
   | { warningsAck: boolean }
@@ -50,10 +50,22 @@ export const requestChecks = (clipId: string): Promise<boolean> =>
 export const fetchTracks = (clipId: string): Promise<TrackView[]> =>
   call(`/api/clips/${clipId}/tracks`, { method: "GET" }, (b: { tracks: Parameters<typeof toTrackView>[0][] }) => b.tracks.map(toTrackView));
 
-export const addTrack = (clipId: string, language: string): Promise<TrackView> =>
-  call(`/api/clips/${clipId}/tracks`, json("POST", { language }), toTrackView);
+/** `rebuild`: replace a ready track with a fresh draft (its edits and approval go). */
+export const addTrack = (clipId: string, language: string, opts?: { rebuild?: boolean }): Promise<TrackView> =>
+  call(`/api/clips/${clipId}/tracks`, json("POST", opts?.rebuild ? { language, rebuild: true } : { language }), toTrackView);
 
-export type TrackChange = { edits: { i: number; text: string }[] } | { approve: true } | { burn: boolean };
+/** "Remove" a subtitle language that isn't approved (204, nothing to read back). */
+export async function deleteTrack(id: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/tracks/${id}`, { method: "DELETE", cache: "no-store" });
+  } catch {
+    throw new Error(t("prepare.saveFailed"));
+  }
+  if (!res.ok) throw new Error(await errorMessage(res, t("prepare.saveFailed")));
+}
+
+export type TrackChange = { edits: { i: number; text: string }[] } | { lines: TrackLineInput[]; base: string } | { approve: boolean } | { burn: boolean };
 
 export const patchTrack = (id: string, change: TrackChange): Promise<TrackView> =>
   call(`/api/tracks/${id}`, json("PATCH", change), toTrackView);

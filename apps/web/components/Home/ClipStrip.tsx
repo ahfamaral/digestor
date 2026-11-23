@@ -76,7 +76,7 @@ export function ClipStrip({ sessionId, clips }: { sessionId: string; clips: Clip
           <button
             type="button"
             onClick={() => setAll(true)}
-            className={`${TILE} h-full min-h-28 items-center justify-center text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring`}
+            className={`${TILE} h-full min-h-28 items-center justify-center text-muted-foreground outline-none hover:bg-hover hover:text-foreground active:bg-pressed focus-visible:ring-2 focus-visible:ring-ring`}
           >
             {t("home.moreClips", { n: rest })}
           </button>

@@ -60,7 +60,7 @@ export function SectionNav({ label, links, dense = false }: { label: string; lin
               <JumpLink
                 id={l.id}
                 current={on}
-                className={`inline-flex min-h-8 items-center justify-center rounded-full ${on ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground"} ${dense ? "min-w-8 px-1.5" : "px-2.5"} outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1`}
+                className={`inline-flex min-h-8 items-center justify-center rounded-full ${on ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-hover active:bg-pressed hover:text-foreground"} ${dense ? "min-w-8 px-1.5" : "px-2.5"} outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1`}
               >
                 {l.text}
               </JumpLink>

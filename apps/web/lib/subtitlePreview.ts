@@ -1,9 +1,13 @@
 import type { CSSProperties } from "react";
-import { SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type ClipFormat, type SubtitlePosition, type SubtitleStyle } from "@digestor/core";
+import {
+  SUBTITLE_GEOMETRY, SUBTITLE_STYLES, trackToCues, type ClipFormat, type Cue, type SubtitlePosition, type SubtitleStyle, type TrackCue,
+} from "@digestor/core";
 
 export interface SubtitleLook {
   style: SubtitleStyle;
   position: SubtitlePosition;
+  /** Word-by-word highlighting (lines in the spoken language only). */
+  highlight: boolean;
 }
 
 /** The positions offered: a waveform (audio-only file) has no name banner to sit above. */
@@ -12,7 +16,7 @@ export function subtitlePositions(hasVideo: boolean): SubtitlePosition[] {
 }
 
 /** The look the style dialog starts from: a position it doesn't offer starts at the bottom. */
-export function startingLook(look: SubtitleLook, hasVideo: boolean): SubtitleLook {
+export function startingLook<L extends Pick<SubtitleLook, "position">>(look: L, hasVideo: boolean): L {
   return subtitlePositions(hasVideo).includes(look.position) ? look : { ...look, position: "bottom" };
 }
 
@@ -22,7 +26,7 @@ export function startingLook(look: SubtitleLook, hasVideo: boolean): SubtitleLoo
  * ASS draws the outline outside the glyph; `-webkit-text-stroke` is centred on the edge, so it is doubled and the fill
  * is painted over its inner half (`paint-order`). The white box is one rectangle here, one per line in libass.
  */
-export function previewCss(look: SubtitleLook & { format: ClipFormat }, frameHeightPx: number): CSSProperties {
+export function previewCss(look: Pick<SubtitleLook, "style" | "position"> & { format: ClipFormat }, frameHeightPx: number): CSSProperties {
   const g = SUBTITLE_GEOMETRY;
   const st = SUBTITLE_STYLES[look.style];
   const outline = Math.round((g.outlinePx1080 * frameHeightPx) / 1080);
@@ -77,4 +81,20 @@ export function reviewColumns(trackLanguage: string, originalLanguage: string | 
   if (!originalLanguage) return 2;
   const primary = (code: string) => code.toLowerCase().split(/[-_]/)[0];
   return primary(trackLanguage) === primary(originalLanguage) ? 1 : 2;
+}
+
+/** The on-screen subtitles of a track with the editor's current (maybe unsaved) texts: the same split the burn uses. */
+export function editorCues(cues: TrackCue[], texts: string[], format: ClipFormat, highlight: boolean): Cue[] {
+  return trackToCues(cues.map((c, i) => ({ ...c, text: texts[i] ?? c.text })), format, { highlight });
+}
+
+/** How many of a highlighted cue's words have started at `clipMs` (0 for a cue without word times). */
+export function spokenTokens(cue: Cue, clipMs: number): number {
+  return cue.karaoke ? cue.karaoke.filter((ms) => ms <= clipMs).length : 0;
+}
+
+/** A style's text colour for words not spoken yet (`upcomingOpacity`), as the burn's SecondaryColour. */
+export function upcomingColor(style: SubtitleStyle): string {
+  const alpha = Math.round(SUBTITLE_GEOMETRY.upcomingOpacity * 255).toString(16).padStart(2, "0");
+  return `${SUBTITLE_STYLES[style].color}${alpha}`;
 }

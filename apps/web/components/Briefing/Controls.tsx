@@ -97,7 +97,7 @@ export function Controls({
                     title={last ? t("briefing.levelLast") : undefined}
                     className={cn(
                       "flex h-8 items-center gap-2 rounded-md border border-border bg-white px-2.5 text-sm text-foreground",
-                      last ? "cursor-not-allowed" : "cursor-pointer hover:bg-muted",
+                      last ? "cursor-not-allowed" : "cursor-pointer hover:bg-hover active:bg-pressed",
                     )}
                   >
                     <Checkbox
@@ -143,7 +143,7 @@ export function Controls({
                   onClick={() => set({ speaker: null, person: null })}
                   aria-label={t("briefing.clearFocus")}
                   title={t("briefing.clearFocus")}
-                  className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+                  className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground outline-none hover:bg-hover hover:text-foreground active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <XIcon aria-hidden className="size-4" />
                 </button>
@@ -155,7 +155,7 @@ export function Controls({
                     disabled={findMore.busy}
                     onClick={findMore.onClick}
                     aria-describedby="find-more-cost"
-                    className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Busy busy={findMore.busy}>{findMore.label}</Busy>
                   </button>
@@ -209,7 +209,7 @@ export function Controls({
                 onClick={() => set({ types: [] })}
                 className={cn(
                   "rounded-full border border-border bg-white px-2.5 py-0.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                  filters.types.length === 0 && "border-foreground bg-foreground text-white",
+                  filters.types.length === 0 ? "border-foreground bg-foreground text-white" : "hover:bg-hover active:bg-pressed",
                 )}
               >
                 {t("briefing.allTypes")}
@@ -224,7 +224,7 @@ export function Controls({
                     onClick={() => toggleType(type)}
                     className={cn(
                       "rounded-full border px-2.5 py-0.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                      on ? cn(TONE_CHIP[HIGHLIGHT_TYPES[type].tone], "border-current") : "border-border bg-white text-foreground",
+                      on ? cn(TONE_CHIP[HIGHLIGHT_TYPES[type].tone], "border-current hover:brightness-95") : "border-border bg-white text-foreground hover:bg-hover active:bg-pressed",
                     )}
                   >
                     {t(`highlight.${type}`)}
@@ -248,7 +248,7 @@ export function Controls({
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span aria-live="off">{shown === 1 ? t("briefing.shownOne") : t("briefing.shownMany", { n: shown })}</span>
         {toSearchParams(filters) !== "" && (
-          <button type="button" onClick={() => onChange(DEFAULT_FILTERS)} className="underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand">
+          <button type="button" onClick={() => onChange(DEFAULT_FILTERS)} className="underline underline-offset-2 outline-none hover:text-foreground hover:decoration-2 focus-visible:ring-2 focus-visible:ring-brand">
             {t("briefing.reset")}
           </button>
         )}

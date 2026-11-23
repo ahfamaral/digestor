@@ -66,7 +66,8 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (busy && !next ? undefined : onOpenChange(next))}>
-      <DialogContent showCloseButton={false} initialFocus={cancelRef}>
+      {/* A confirm asks for a decision: the page behind it dims to half, so it's clear nothing else can be done until then. */}
+      <DialogContent showCloseButton={false} initialFocus={cancelRef} overlayClassName="bg-black/50">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription dir="auto">
@@ -87,7 +88,7 @@ export function ConfirmDialog({
           <Button ref={cancelRef} type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             {cancelLabel ?? t("confirm.cancel")}
           </Button>
-          <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90" disabled={busy} onClick={() => void confirm()}>
+          <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90 active:brightness-[0.82]" disabled={busy} onClick={() => void confirm()}>
             <Busy busy={busy}>{busy && busyLabel ? busyLabel : actionLabel}</Busy>
           </Button>
         </DialogFooter>

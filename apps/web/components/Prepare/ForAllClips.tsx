@@ -37,7 +37,7 @@ export interface ForAllClipsProps {
 const FIELD =
   "h-8 min-w-0 rounded-md border border-border bg-white px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const ACT =
-  "inline-flex h-8 items-center rounded-md border border-border bg-white px-3 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground";
+  "inline-flex h-8 items-center rounded-md border border-border bg-white px-3 text-xs font-medium text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground";
 
 /** "For all clips": credit line, format and an extra subtitle language, applied to the clips still on the shared value. */
 export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps) {
@@ -152,7 +152,7 @@ export function ForAllClips({ clips, originalLanguage, onRun }: ForAllClipsProps
                   onClick={() => ask("format", f)}
                   className={cn(
                     "inline-flex h-8 min-w-12 items-center justify-center gap-1 rounded-md px-2.5 text-xs font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                    on ? "bg-foreground text-white" : "text-foreground hover:bg-muted",
+                    on ? "bg-foreground text-white" : "text-foreground hover:bg-hover active:bg-pressed",
                   )}
                 >
                   {t(label)}

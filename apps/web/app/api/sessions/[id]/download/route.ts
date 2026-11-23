@@ -14,7 +14,7 @@ import { isZipChoice, zipClipOf, zipEntries, type ZipChoice } from "@/lib/zipNam
 /** What goes into one zip entry: a stored file (by absolute path) or text rendered from cues. */
 type Source = { name: string } & ({ path: string } | { text: string });
 
-const SUFFIX: Record<ZipChoice, string> = { burned: "with subtitles", files: "with subtitle files", plain: "videos" };
+const SUFFIX: Record<ZipChoice, string> = { burned: "with subtitles", files: "with subtitle files", plain: "videos", audio: "audio" };
 
 /**
  * Streams a zip as it reads (fflate's Zip has no Zip64: archives over 4 GB are unsupported; clips are short): each file is piped in 64 KiB chunks and stored, not deflated (MP4s don't compress), so a
@@ -108,8 +108,8 @@ async function plan(id: string, choice: ZipChoice): Promise<{ sources: Source[];
       continue;
     }
     const row = byId.get(e.clipId)!;
-    if (e.kind === "mp4" || e.kind === "burned") {
-      const rel = e.kind === "mp4" ? `clips/${e.clipId}.mp4` : `clips/${e.clipId}.${e.language}.burned.mp4`;
+    if (e.kind === "mp4" || e.kind === "m4a" || e.kind === "burned") {
+      const rel = e.kind === "burned" ? `clips/${e.clipId}.${e.language}.burned.mp4` : `clips/${e.clipId}.${e.kind}`;
       if (await exists(file(rel))) sources.push({ name: e.name, path: file(rel) });
     } else {
       const track = row.tracks.find((t) => t.language === e.language);
@@ -122,9 +122,9 @@ async function plan(id: string, choice: ZipChoice): Promise<{ sources: Source[];
 }
 
 /**
- * GET /api/sessions/[id]/download?choice=burned|files|plain — a zip of files that are already stored: `burned` the
- * subtitle videos (one per language), `files` the plain videos plus SRT/VTT rendered from the cues, `plain` the plain
- * videos. Nothing is rendered here, and a clip's videos go in only while it passes the export checklist. 409 "Nothing to download yet." when the zip would be empty. With `check=1` it runs
+ * GET /api/sessions/[id]/download?choice=burned|files|plain|audio — a zip of files that are already stored: `burned`
+ * the subtitle videos (one per language), `files` the plain videos plus SRT/VTT rendered from the cues, `plain` the plain
+ * videos, `audio` each clip's audio only (`.m4a`). Nothing is rendered here, and a clip's videos go in only while it passes the export checklist. 409 "Nothing to download yet." when the zip would be empty. With `check=1` it runs
  * the same checks and answers `{ files }` as JSON without streaming, so the page can show a failure in its dialog
  * before starting a normal browser download. Kept clips of a session whose video was removed still download (R30).
  */

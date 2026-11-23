@@ -260,6 +260,27 @@
       "when": 1795289937753,
       "tag": "0036_ai_goes_first",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1795434842721,
+      "tag": "0037_subtitle_highlight",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795446439000,
+      "tag": "0038_ask_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795450954079,
+      "tag": "0039_clip_audio",
+      "breakpoints": true
     }
   ]
 }

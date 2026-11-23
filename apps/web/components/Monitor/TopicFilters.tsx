@@ -69,7 +69,7 @@ export function TopicFilters({ locale, params, facets, folded = false }: { local
   const n = activeTopicFilters(params);
   return (
     <details className="group/filters grid gap-3">
-      <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-stone-500 [&::-webkit-details-marker]:hidden">
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded text-sm font-medium outline-none hover:underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-stone-500 [&::-webkit-details-marker]:hidden">
         <ChevronRight className="size-4 transition-transform group-open/filters:rotate-90 motion-reduce:transition-none" aria-hidden />
         {n > 0 ? tm(locale, "filters.folded", { n: String(n) }) : tm(locale, "filters.legend")}
       </summary>

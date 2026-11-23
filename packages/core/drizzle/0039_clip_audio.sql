@@ -1,0 +1,1 @@
+ALTER TABLE "clips" ADD COLUMN "audio_key" text;

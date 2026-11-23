@@ -3,15 +3,18 @@
 import { MediaPlayer } from "@/components/MediaPlayer";
 import Link from "next/link";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { formatTimestamp, type AskAction, type AskMessageWithActions, type AskToolCallRecord, type SelectionStatus, type ToolApprovalResolution } from "@digestor/core";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   askUserPrompt, asToolCalls, awaitsApproval, clipLinks, formatToolCall, isChange, packageOutcome, parseApprovalPayload, isStalePending, isWorkingOn, stoppedSince, askPollMs, linkifyTimestamps, parseBulkPayload, planSelectionUndo, sourceLines, verifyResult, type VerifyState,
 } from "@/lib/askText";
 import { ApprovalCard } from "./ApprovalCard";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { errorMessage } from "@/lib/http";
 import { t } from "@/lib/i18n";
 import { Busy, Spinner } from "@/components/ui/spinner";
@@ -19,10 +22,10 @@ import { Busy, Spinner } from "@/components/ui/spinner";
 const MAX_QUESTION = 500;
 /** The counter appears this close to the limit. */
 const COUNTER_FROM = 400;
-const CHIP = "inline-flex h-6 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
+const CHIP = "inline-flex h-6 items-center rounded-md border border-border bg-white px-2 text-xs font-medium outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 
-export type AskThreadMessage = Omit<AskMessageWithActions, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt?: string };
+export type AskThreadMessage = Omit<AskMessageWithActions, "createdAt" | "updatedAt" | "archivedAt"> & { createdAt: string; updatedAt?: string; archivedAt?: string | null };
 type Message = AskThreadMessage;
 /** A decision on a card: confirm/dismiss a bulk selection, or approve/edit/reject an Ask change. */
 type Decision = { decision: "confirm" | "dismiss" } | ToolApprovalResolution;
@@ -41,6 +44,8 @@ export interface AskThreadProps {
   initialMessages?: AskThreadMessage[];
   /** The question box, for a frame that focuses it when it opens. */
   inputRef?: React.Ref<HTMLTextAreaElement>;
+  /** Where the frame wants the "New conversation" button (its header); without one it sits above the messages. */
+  headerSlot?: HTMLElement | null;
 }
 
 /**
@@ -57,7 +62,7 @@ function verifyLine(v: VerifyState): string {
   return v.n === 1 ? t("ask.verify.uncheckedOne") : t("ask.verify.unchecked", { n: v.n });
 }
 
-export function AskThread({ sessionId, language, hasVideo, videoRemoved, examples, active, initialMessages, inputRef: outerInputRef }: AskThreadProps) {
+export function AskThread({ sessionId, language, hasVideo, videoRemoved, examples, active, initialMessages, inputRef: outerInputRef, headerSlot }: AskThreadProps) {
   const router = useRouter();
   const lang = language ?? undefined;
   const listEnd = useRef<HTMLDivElement>(null);
@@ -75,6 +80,12 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** "New conversation": the confirm is open; the earlier conversations are shown; what happened, for screen readers. */
+  const [confirmNew, setConfirmNew] = useState(false);
+  const [showEarlier, setShowEarlier] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  /** The greyed button was pressed (touch has no hover): its reason shows under it too. */
+  const [blockedNote, setBlockedNote] = useState(false);
   /** Answers being worked on at the last load: one that stopped since may have changed clips or selections, so the page refreshes. */
   const working = useRef<Set<string>>(new Set());
 
@@ -110,7 +121,12 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
 
   // "Taking too long" counts from the last status change: an answer resumed after an approval is fresh again.
   const isWaiting = (m: Message) => m.role === "assistant" && isWorkingOn(m) && !isStalePending(m.updatedAt ?? m.createdAt, now);
-  const hasPending = messages.some(isWaiting);
+  // The current conversation; ones ended with "New conversation" are read only, under "Earlier conversations".
+  const current = messages.filter((m) => !m.archivedAt);
+  const earlier = archivedConversations(messages);
+  const hasPending = current.some(isWaiting);
+  // An answer still open or a card still waiting for a click: finish it before starting over (the server refuses too).
+  const conversationOpen = current.some((m) => isWorkingOn(m) || awaitsApproval(m) || m.actions.some((a) => a.status === "pending"));
   // A slow answer keeps being polled (slowly), so it still shows up when the worker finishes it.
   const pollMs = askPollMs(messages.filter((m) => m.role === "assistant" && isWorkingOn(m)).map((m) => m.updatedAt ?? m.createdAt), now);
   useEffect(() => {
@@ -124,7 +140,22 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
 
   useEffect(() => {
     listEnd.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, hasPending]);
+  }, [current.length, hasPending]);
+
+  /** Archives the conversation (throws for the confirm to show), then starts empty with the cursor in the question box. */
+  async function startNew() {
+    const res = await fetch(`/api/sessions/${sessionId}/ask/archive`, { method: "POST" });
+    if (!res.ok) {
+      const message = await errorMessage(res, t("ask.sendFailed"));
+      if (res.status === 409) await load(true);
+      throw new Error(message);
+    }
+    await load(true);
+    setShowEarlier(false);
+    setPreview(null);
+    setNotice(t("ask.newConversationDone"));
+    ownInput.current?.focus();
+  }
 
   function setBusyKey(key: string, on: boolean) {
     setBusy((b) => {
@@ -239,15 +270,68 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
   const canSend = !sending && text.trim().length > 0 && !tooLong;
   const previewSrc = preview ? `/api/files/${sessionId}/proxy.mp4#t=${(preview.ms / 1000).toFixed(1)}` : null;
   const previewLabel = preview ? t("ask.previewLabel", { time: formatTimestamp(preview.ms) }) : "";
-  const lastId = messages.at(-1)?.id;
+  const lastId = current.at(-1)?.id;
+  const label = (
+    <>
+      <MessageSquarePlus aria-hidden />
+      {t("ask.newConversation")}
+    </>
+  );
+  // Blocked: still focusable and hoverable (a disabled button gets neither), so the balloon can say why; a press shows
+  // the reason under the button as well, for touch screens.
+  const newButton = current.length > 0 && (conversationOpen ? (
+    <div className="mt-2 grid justify-items-start gap-1">
+      <Tooltip>
+        <TooltipTrigger
+          delay={0}
+          render={
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              aria-disabled="true"
+              aria-describedby="ask-new-blocked"
+              onClick={() => setBlockedNote(true)}
+              className="cursor-not-allowed opacity-50"
+            />
+          }
+        >
+          {label}
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="start">{t("ask.newConversationBusy")}</TooltipContent>
+      </Tooltip>
+      <p id="ask-new-blocked" className={blockedNote ? "text-xs text-muted-foreground" : "sr-only"}>
+        {t("ask.newConversationBusy")}
+      </p>
+    </div>
+  ) : (
+    <Button type="button" size="xs" variant="outline" onClick={() => setConfirmNew(true)} className="mt-2">
+      {label}
+    </Button>
+  ));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+    {newButton && (headerSlot ? createPortal(newButton, headerSlot) : <div className="border-b border-border px-4 pb-2">{newButton}</div>)}
+    {confirmNew && (
+      <ConfirmDialog
+        open
+        onOpenChange={(open) => !open && setConfirmNew(false)}
+        title={t("ask.newConversationTitle")}
+        description={t("ask.newConversationDescription")}
+        actionLabel={t("ask.newConversationAction")}
+        busyLabel={t("ask.newConversationStarting")}
+        onConfirm={startNew}
+      />
+    )}
+    <p role="status" className="sr-only">
+      {notice}
+    </p>
     {preview && (
       <div className="border-b border-border bg-stone-50 px-4 py-2">
         <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <span className="font-mono">{previewLabel}</span>
-          <button type="button" className="underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand" onClick={() => setPreview(null)}>
+          <button type="button" className="underline underline-offset-2 outline-none hover:text-foreground hover:decoration-2 focus-visible:ring-2 focus-visible:ring-brand" onClick={() => setPreview(null)}>
             {t("ask.previewClose")}
           </button>
         </div>
@@ -271,7 +355,52 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
           {t("ask.loadFailed")}
         </p>
       )}
-      {messages.length === 0 && !loadError && (
+      {earlier.length > 0 && (
+        <div className="mb-3 border-b border-border pb-3">
+          <button
+            type="button"
+            aria-expanded={showEarlier}
+            onClick={() => setShowEarlier((v) => !v)}
+            className="inline-flex min-h-8 items-center gap-1 rounded text-xs text-muted-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <ChevronRightIcon aria-hidden className={`size-3.5 transition-transform motion-reduce:transition-none ${showEarlier ? "rotate-90" : ""}`} />
+            {showEarlier ? t("ask.earlierHide") : t("ask.earlier", { n: earlier.length })}
+          </button>
+          {showEarlier && (
+            <div className="mt-2 grid gap-4">
+              <p className="text-xs text-muted-foreground">{t("ask.earlierReadOnly")}</p>
+              {earlier.map((c) => (
+                <section key={c.archivedAt} aria-label={t("ask.earlierHeading", { date: endedAt(c.archivedAt) })} className="grid gap-2">
+                  <h3 className="text-xs font-semibold text-muted-foreground">{t("ask.earlierHeading", { date: endedAt(c.archivedAt) })}</h3>
+                  <ol className="grid gap-3 opacity-90">
+                    {c.messages.map((m) => (
+                      <MessageItem
+                        key={m.id}
+                        message={m}
+                        sessionId={sessionId}
+                        lang={lang}
+                        videoRemoved={videoRemoved}
+                        stale={false}
+                        undone={undone}
+                        busy={busy}
+                        errors={errors}
+                        onTime={(ms) => setPreview((p) => ({ ms, n: (p?.n ?? 0) + 1 }))}
+                        onUndo={undo}
+                        onDecide={decide}
+                        latest={false}
+                        sending={sending}
+                        onReply={() => {}}
+                        readOnly
+                      />
+                    ))}
+                  </ol>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {current.length === 0 && !loadError && (
         <div>
           <p className="text-sm text-muted-foreground">{t("ask.empty")}</p>
           <p id="ask-example-hint" className="sr-only">
@@ -288,7 +417,7 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
                     setText(q);
                     ownInput.current?.focus();
                   }}
-                  className="w-full rounded-md border border-border bg-white px-2.5 py-1.5 text-left text-sm break-words text-foreground outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-brand"
+                  className="w-full rounded-md border border-border bg-white px-2.5 py-1.5 text-left text-sm break-words text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   {q}
                 </button>
@@ -298,7 +427,7 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
         </div>
       )}
       <ol aria-live="polite" aria-relevant="additions" className="grid gap-3">
-        {messages.map((m) => (
+        {current.map((m) => (
           <MessageItem
             key={m.id}
             message={m}
@@ -352,7 +481,7 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
             t("cost.askQuestion")
           )}
         </p>
-        <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:brightness-90">
+        <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:brightness-90 active:brightness-[0.82]">
           <Busy busy={sending}>{sending ? t("ask.sending") : t("ask.send")}</Busy>
         </Button>
       </div>
@@ -367,8 +496,10 @@ export function AskThread({ sessionId, language, hasVideo, videoRemoved, example
 }
 
 function MessageItem({
-  message, sessionId, lang, videoRemoved, stale, undone, busy, errors, onTime, onUndo, onDecide, latest, sending, onReply,
+  message, sessionId, lang, videoRemoved, stale, undone, busy, errors, onTime, onUndo, onDecide, latest, sending, onReply, readOnly = false,
 }: {
+  /** A message of an earlier conversation: shown, never acted on (no Undo; its cards are all decided). */
+  readOnly?: boolean;
   /** The newest message of the thread: only its quick replies are buttons. */
   latest: boolean;
   sending: boolean;
@@ -464,7 +595,7 @@ function MessageItem({
             return (
               <li key={key} className="grid gap-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {undone.has(key) ? (
+                  {readOnly ? null : undone.has(key) ? (
                     <span className="text-xs text-muted-foreground">{t("ask.undone")}</span>
                   ) : (
                     <button type="button" className={CHIP} disabled={busy.has(key)} aria-label={t("ask.undoLabel", { call: label })} onClick={() => onUndo(key, call)}>
@@ -569,3 +700,17 @@ function ActionItem({
     </div>
   );
 }
+
+/** Conversations ended with "New conversation", oldest first, each with its messages (one archive time each). */
+export function archivedConversations<M extends { archivedAt?: string | Date | null }>(messages: M[]): { archivedAt: string; messages: M[] }[] {
+  const groups = new Map<string, M[]>();
+  for (const m of messages) {
+    if (!m.archivedAt) continue;
+    const key = new Date(m.archivedAt).toISOString();
+    groups.set(key, [...(groups.get(key) ?? []), m]);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([archivedAt, msgs]) => ({ archivedAt, messages: msgs }));
+}
+
+/** "23 Nov, 16:10" in the reader's own time zone (only rendered after a click, so never on the server). */
+const endedAt = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });

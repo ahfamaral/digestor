@@ -236,7 +236,7 @@ export function PackageCard({
           )}
           <div className="flex flex-wrap gap-2">
             {!videoRemoved && (
-              <Button type="submit" size="sm" disabled={busy || picked === 0} className="bg-brand text-white hover:brightness-90">
+              <Button type="submit" size="sm" disabled={busy || picked === 0} className="bg-brand text-white hover:brightness-90 active:brightness-[0.82]">
                 <Busy busy={busy}>
                   {busy ? t("ask.approval.sending") : picked === 0 ? t("ask.package.tickOne") : picked === 1 ? t("ask.package.makeOne") : t("ask.package.make", { n: picked })}
                 </Busy>

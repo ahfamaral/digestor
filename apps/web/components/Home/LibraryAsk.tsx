@@ -211,7 +211,7 @@ export function LibraryAsk() {
                   t("cost.libraryQuestion")
                 )}
               </p>
-              <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:brightness-90">
+              <Button type="submit" size="sm" disabled={!canSend} className="bg-brand text-white hover:brightness-90 active:brightness-[0.82]">
                 <Busy busy={sending}>{sending ? t("ask.sending") : t("ask.send")}</Busy>
               </Button>
             </div>

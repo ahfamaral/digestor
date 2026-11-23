@@ -193,7 +193,7 @@ export function ContextCheck({
               {q.sampleStartMs !== null && (
                 <button
                   type="button"
-                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-semibold hover:bg-muted"
+                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-semibold hover:bg-hover active:bg-pressed"
                   onClick={() => hear(q.sampleStartMs as number)}
                 >
                   {t("context.hear")}
@@ -278,7 +278,7 @@ export function ContextCheck({
           type="button"
           disabled={busy}
           onClick={onContinue}
-          className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white disabled:bg-disabled disabled:text-disabled-foreground"
+          className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white not-disabled:hover:brightness-90 not-disabled:active:brightness-[0.82] disabled:bg-disabled disabled:text-disabled-foreground"
         >
           {t("context.continue")}
         </button>

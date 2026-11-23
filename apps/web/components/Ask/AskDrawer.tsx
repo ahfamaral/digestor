@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { t } from "@/lib/i18n";
@@ -37,6 +37,8 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
   const triggerRef = useRef<HTMLButtonElement>(null);
   /** The question box: focused when the drawer opens (the example buttons above it would take focus otherwise). */
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** Under the title and hint: where the thread puts its "New conversation" button. */
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
   // Beside the page, not over it: the page makes room for the 28 rem panel (`sm:max-w-md`) so nothing hides under it.
   useEffect(() => {
@@ -86,6 +88,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
           <div className="border-b border-border px-4 py-3 pr-12">
             <DialogTitle>{t(hasVideo ? "ask.title" : "ask.titleAudio")}</DialogTitle>
             <DialogDescription id="ask-description" className="mt-1 text-xs text-muted-foreground">{t(hasVideo ? "ask.hint" : "ask.hintAudio")}</DialogDescription>
+            <div ref={setHeaderSlot} />
           </div>
           <AskThread
             sessionId={sessionId}
@@ -95,6 +98,7 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
             examples={examples}
             active={open}
             inputRef={inputRef}
+            headerSlot={headerSlot}
           />
         </DialogContent>
       </Dialog>

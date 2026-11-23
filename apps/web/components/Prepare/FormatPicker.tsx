@@ -51,7 +51,7 @@ export function FormatPicker({ clipId, format, cropOffset, hasVideo, disabled, d
             onClick={() => format !== f.id && onFormat(f.id)}
             className={cn(
               "inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60",
-              format === f.id ? "bg-foreground text-white" : "text-foreground hover:bg-muted",
+              format === f.id ? "bg-foreground text-white" : "text-foreground hover:bg-hover active:bg-pressed",
             )}
           >
             {t(f.label)}

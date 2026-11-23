@@ -220,7 +220,7 @@ export function ApprovalCard({
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={busy} className="bg-brand text-white hover:brightness-90">
+            <Button type="submit" size="sm" disabled={busy} className="bg-brand text-white hover:brightness-90 active:brightness-[0.82]">
               <Busy busy={busy}>{busy ? t("ask.approval.sending") : t("ask.approval.approveEdited")}</Busy>
             </Button>
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setEditing(false)}>
@@ -231,7 +231,7 @@ export function ApprovalCard({
       ) : (
         <div className="flex flex-wrap gap-2">
           {!videoRemoved && (
-            <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, { decision: "approve" })} className="bg-brand text-white hover:brightness-90">
+            <Button type="button" size="sm" disabled={busy} onClick={() => onDecide(action, { decision: "approve" })} className="bg-brand text-white hover:brightness-90 active:brightness-[0.82]">
               <Busy busy={busy}>{busy ? t("ask.approval.sending") : t("ask.approval.approve")}</Busy>
             </Button>
           )}

@@ -1,0 +1,1 @@
+ALTER TABLE "clips" ADD COLUMN "subtitle_highlight" boolean DEFAULT false NOT NULL;

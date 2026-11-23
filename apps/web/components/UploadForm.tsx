@@ -431,7 +431,7 @@ export function UploadForm() {
           aria-expanded={recordOpen}
           aria-controls="record-section"
           onClick={() => setRecordOpen((o) => !o)}
-          className="mt-4 inline-flex items-center gap-1 self-start rounded-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-4 inline-flex items-center gap-1 self-start rounded-sm font-semibold outline-none hover:underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRightIcon aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", recordOpen && "rotate-90")} />
           {t("upload.recordLabel")} <span className="font-normal text-muted-foreground">{t("upload.recordOptional")}</span>
@@ -489,7 +489,7 @@ export function UploadForm() {
         <p className="my-3 text-sm text-muted-foreground">{estimate}</p>
         <Button
           size="lg"
-          className="h-10 w-full bg-brand text-brand-foreground hover:brightness-90"
+          className="h-10 w-full bg-brand text-brand-foreground hover:brightness-90 active:brightness-[0.82]"
           disabled={!canSubmit}
           aria-describedby={audioWaiting ? "audio-ack-hint" : undefined}
           onClick={() => canSubmit && setConfirmOpen(true)}

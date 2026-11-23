@@ -1,5 +1,5 @@
 import {
-  endsSentence, layout, MAX_LINES, SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type ClipFormat, type Cue, type SubtitlePosition, type SubtitleStyle, type Word,
+  endsSentence, layout, MAX_LINES, repairWordTimes, type CueWord, SUBTITLE_GEOMETRY, SUBTITLE_STYLES, type ClipFormat, type Cue, type SubtitlePosition, type SubtitleStyle, type Word,
 } from "@digestor/core";
 
 export { buildSrt, buildVtt, type Cue } from "@digestor/core";
@@ -7,10 +7,16 @@ export { buildSrt, buildVtt, type Cue } from "@digestor/core";
 const MAX_CUE_MS = 3500;
 const GAP_MS = 300;
 
-export function buildCues(words: Word[], range: { startMs: number; endMs: number }): Cue[] {
-  const inRange = words
-    .filter((w) => w.endMs > range.startMs && w.startMs < range.endMs)
-    .map((w) => ({ ...w, startMs: Math.max(w.startMs, range.startMs), endMs: Math.min(w.endMs, range.endMs) }));
+/**
+ * Cues of the clip's words, each with its words' clip-relative times (stored on track lines for splitting and
+ * highlighting). Word times a noisy stretch got wrong (crushed next to stretched words) are repaired first.
+ */
+export function buildCues(words: Word[], range: { startMs: number; endMs: number }): (Cue & { words: CueWord[] })[] {
+  const inRange = repairWordTimes(
+    words
+      .filter((w) => w.endMs > range.startMs && w.startMs < range.endMs)
+      .map((w) => ({ ...w, startMs: Math.max(w.startMs, range.startMs), endMs: Math.min(w.endMs, range.endMs) })),
+  );
 
   const groups: Word[][] = [];
   let cur: Word[] = [];
@@ -49,6 +55,7 @@ export function buildCues(words: Word[], range: { startMs: number; endMs: number
     startMs: ws[0]!.startMs - range.startMs,
     endMs: ws.at(-1)!.endMs - range.startMs,
     lines: layout(ws),
+    words: ws.map((w) => ({ startMs: w.startMs - range.startMs, endMs: w.endMs - range.startMs, chars: [...w.text].length })),
   }));
 }
 
@@ -73,6 +80,27 @@ function assColour(hex: string, alpha = "00"): string {
   return `&H${alpha}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`;
 }
 
+/**
+ * A cue's text with a `\k` (centiseconds) before each word: the time from the cue's start to its first word, then each
+ * word until the next one starts (the last until the cue ends). Positions are rounded once, so the durations add up
+ * to the cue's length exactly.
+ */
+export function karaokeText(c: Cue): string {
+  const end = Math.max(1, Math.round((c.endMs - c.startMs) / 10));
+  let prev = 0;
+  const at = c.karaoke!.map((ms) => (prev = Math.min(end, Math.max(prev, Math.round((ms - c.startMs) / 10)))));
+  let i = 0;
+  const lines = c.lines.map((line) =>
+    line.split(/\s+/).filter(Boolean).map((word) => {
+      const next = i + 1 < at.length ? at[i + 1]! : end;
+      const tag = `{\\k${next - at[i]!}}${escapeAssText(word)}`;
+      i++;
+      return tag;
+    }).join(" "),
+  );
+  return (at[0]! > 0 ? `{\\k${at[0]}}` : "") + lines.join("\\N");
+}
+
 export function buildAss(
   cues: Cue[],
   video: { width: number; height: number },
@@ -90,9 +118,17 @@ export function buildAss(
   const outlineColour = st.box ? boxColour : assColour("#000000");
   const backColour = st.box ? boxColour : assColour("#000000");
   const primary = assColour(st.color);
-  const dialogue = cues.map(
-    (c) => `Dialogue: 0,${assTime(c.startMs)},${assTime(Math.max(c.endMs, c.startMs + 10))},Default,,0,0,0,,${c.lines.map(escapeAssText).join("\\N")}`,
-  );
+  // Word highlighting: karaoke shows words not reached yet in SecondaryColour (dimmed), then PrimaryColour.
+  const secondary = assColour(st.color, assAlpha(g.upcomingOpacity));
+  const dialogue = cues.flatMap((c) => {
+    const at = `${assTime(c.startMs)},${assTime(Math.max(c.endMs, c.startMs + 10))},Default,,0,0,0,`;
+    const plain = c.lines.map(escapeAssText).join("\\N");
+    if (!c.karaoke) return [`Dialogue: 0,${at},${plain}`];
+    // libass boxes each karaoke word on its own (seams where they overlap): with a box, layer 0 draws one box per line
+    // with invisible text, and layer 1 the highlighted words with an invisible box.
+    if (!st.box) return [`Dialogue: 0,${at},${karaokeText(c)}`];
+    return [`Dialogue: 0,${at},{\\1a&HFF&\\2a&HFF&}${plain}`, `Dialogue: 1,${at},{\\3a&HFF&\\4a&HFF&}${karaokeText(c)}`];
+  });
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -103,7 +139,7 @@ export function buildAss(
     "",
     "[V4+ Styles]",
     "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    `Style: Default,Noto Sans,${fontSize},${primary},${primary},${outlineColour},${backColour},${st.bold ? -1 : 0},0,0,0,100,100,0,0,${st.box ? 3 : 1},${outline},${shadow},${alignment},20,20,${marginV},1`,
+    `Style: Default,Noto Sans,${fontSize},${primary},${secondary},${outlineColour},${backColour},${st.bold ? -1 : 0},0,0,0,100,100,0,0,${st.box ? 3 : 1},${outline},${shadow},${alignment},20,20,${marginV},1`,
     "",
     "[Events]",
     "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",

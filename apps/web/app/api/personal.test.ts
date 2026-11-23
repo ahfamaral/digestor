@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
+import { JOB_OPTIONS, OWNER_ID, QUEUES, trackLinesVersion, VIDEO_REMOVED } from "@digestor/core";
 import {
   createCustomPerson, getFindMore, replaceAiAttributions, setHumanAttribution, claimFindMore,
   createClip, createTrack, deleteClip, failTrack, getClip, getTrack, listClips, setTrackBurnStatus, listSelections, setMomentChecks, setTrackCues, updateSession,
@@ -13,7 +13,7 @@ import { POST as confirm } from "./sessions/[id]/clips/route";
 import { PATCH as patchClip } from "./clips/[id]/route";
 import { POST as undo } from "./clips/[id]/undo/route";
 import { POST as postTrack } from "./clips/[id]/tracks/route";
-import { PATCH as patchTrack } from "./tracks/[id]/route";
+import { DELETE as deleteTrackRoute, PATCH as patchTrack } from "./tracks/[id]/route";
 import { GET as getFindMoreRoute, POST as postFindMore } from "./sessions/[id]/find-more/route";
 
 let h: Harness;
@@ -344,6 +344,87 @@ describe("tracks", () => {
     expect(await res.json()).toEqual({ error: "This clip already has subtitles in that language." });
     expect(h.send).not.toHaveBeenCalled();
     expect((await getTrack(h.db, t.id))?.status).toBe("ready");
+  });
+
+  it("rebuild replaces a ready track with a fresh draft, and waits while its video is being made", async () => {
+    const { clip } = await clipFor();
+    const t = (await createTrack(h.db, clip.id, "it"))!;
+    await setTrackCues(h.db, t.id, [{ startMs: 0, endMs: 1000, original: "a", text: "edited", missing: false }], "ready");
+    await setTrackBurnStatus(h.db, t.id, "rendering");
+    const busy = await postTrack(req({ language: "it", rebuild: true }), ctx(clip.id));
+    expect(busy.status).toBe(409);
+    expect(await busy.json()).toEqual({ error: "The video with these subtitles is being made; rebuild them when it finishes." });
+    await setTrackBurnStatus(h.db, t.id, "done");
+    h.send.mockClear();
+    const res = await postTrack(req({ language: "it", rebuild: true }), ctx(clip.id));
+    expect(res.status).toBe(201);
+    const fresh = await res.json();
+    expect(fresh).toMatchObject({ language: "it", status: "preparing", approvedAt: null });
+    expect(fresh.id).not.toBe(t.id);
+    expect(await getTrack(h.db, t.id)).toBeNull();
+    expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("approve false undoes the approval and keeps the lines", async () => {
+    const { clip } = await clipFor();
+    const track = (await createTrack(h.db, clip.id, "pt"))!;
+    const cues = [{ startMs: 0, endMs: 1000, original: "Hello", text: "Olá", missing: false }];
+    await setTrackCues(h.db, track.id, cues, "ready");
+    expect((await patchTrack(req({ approve: true }, "PATCH"), ctx(track.id))).status).toBe(200);
+    const res = await patchTrack(req({ approve: false }, "PATCH"), ctx(track.id));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ approvedAt: null, cues });
+  });
+
+  it("saves an edited line list, refuses overlaps per line and a stale base", async () => {
+    const { clip } = await clipFor();
+    const track = (await createTrack(h.db, clip.id, "pt"))!;
+    const cues = [
+      { startMs: 0, endMs: 1000, original: "Hello", text: "Olá", missing: false },
+      { startMs: 1000, endMs: 2000, original: "World", text: "Mundo", missing: false },
+    ];
+    await setTrackCues(h.db, track.id, cues, "ready", { startMs: clip.startMs, endMs: clip.endMs });
+    const base = trackLinesVersion(cues);
+    const overlap = await patchTrack(req({ lines: [
+      { startMs: 0, endMs: 1500, text: "Olá", from: 0 }, { startMs: 1000, endMs: 2000, text: "Mundo", from: 1 },
+    ], base }, "PATCH"), ctx(track.id));
+    expect(overlap.status).toBe(400);
+    expect(await overlap.json()).toEqual({ error: "Line 2 starts before line 1 ends." });
+    const ok = await patchTrack(req({ lines: [
+      { startMs: 0, endMs: 800, text: "Olá", from: 0 }, { startMs: 800, endMs: 1200, text: "e", from: null },
+    ], base }, "PATCH"), ctx(track.id));
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).cues).toEqual([
+      { startMs: 0, endMs: 800, original: "Hello", text: "Olá", missing: false },
+      { startMs: 800, endMs: 1200, original: "", text: "e", missing: false, added: true },
+    ]);
+    const stale = await patchTrack(req({ lines: [{ startMs: 0, endMs: 800, text: "x", from: 0 }], base }, "PATCH"), ctx(track.id));
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({ error: "These subtitles changed in another window. Close and open them again." });
+  });
+
+  it("DELETE removes a language that isn't approved, refuses an approved one, and counts as a clip change", async () => {
+    const { clip } = await clipFor();
+    const track = (await createTrack(h.db, clip.id, "pt"))!;
+    await setTrackCues(h.db, track.id, [{ startMs: 0, endMs: 1000, original: "Hello", text: "Olá", missing: false }], "ready");
+    await patchTrack(req({ approve: true }, "PATCH"), ctx(track.id));
+    const approved = await deleteTrackRoute(new Request("http://x", { method: "DELETE" }), ctx(track.id));
+    expect(approved.status).toBe(409);
+    expect(await approved.json()).toEqual({ error: "Undo the approval before removing these subtitles." });
+    await patchTrack(req({ approve: false }, "PATCH"), ctx(track.id));
+    const before = (await getClip(h.db, clip.id))!.editVersion;
+    const res = await deleteTrackRoute(new Request("http://x", { method: "DELETE" }), ctx(track.id));
+    expect(res.status).toBe(204);
+    expect(await getTrack(h.db, track.id)).toBeNull();
+    expect((await getClip(h.db, clip.id))!.editVersion).toBe(before + 1);
+    expect((await deleteTrackRoute(new Request("http://x", { method: "DELETE" }), ctx(track.id))).status).toBe(404);
+  });
+
+  it("DELETE refuses a language still being prepared", async () => {
+    const { clip } = await clipFor();
+    const track = (await createTrack(h.db, clip.id, "it"))!;
+    const res = await deleteTrackRoute(new Request("http://x", { method: "DELETE" }), ctx(track.id));
+    expect(res.status).toBe(409);
   });
 
   it("rolls the track back when the job can't be queued", async () => {

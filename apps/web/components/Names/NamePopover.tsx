@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useHasVideo } from "@/components/HasVideo";
 
 const BTN =
-  "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-flex h-8 items-center rounded-md border border-border bg-white px-2.5 text-xs font-medium text-foreground hover:bg-hover active:bg-pressed disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const SEARCH_MS = 250;
 
 /** An HTTP failure whose message is the server's friendly sentence; any other thrown error stays in the log. */

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { LANGUAGES, estimateTranslationUsd } from "@digestor/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WarningIcon } from "@/components/WarningNote";
-import { addTrack, patchTrack } from "@/lib/prepareApi";
+import { addTrack, deleteTrack, patchTrack } from "@/lib/prepareApi";
 import { subtitleLanguages, type ClipView, type TrackView } from "@/lib/prepareData";
 import { languageName, t } from "@/lib/i18n";
 import { aboutUsd } from "@/lib/cost";
@@ -12,6 +12,7 @@ import { TrackEditor } from "./TrackEditor";
 import { Dropdown } from "@/components/Dropdown";
 import { Busy, Spinner } from "@/components/ui/spinner";
 import { SubtitleStyleDialog } from "./SubtitleStyleDialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { SubtitleLook } from "@/lib/subtitlePreview";
 
 export interface SubtitlesPanelProps {
@@ -30,16 +31,18 @@ export interface SubtitlesPanelProps {
   /** The video was removed (R30): lines show read-only (no player), and can't be edited, approved or burned any more; adding a language still works. */
   frozen: boolean;
   onTrack: (track: TrackView) => void;
+  /** A language was removed ("Remove"). */
+  onTrackRemoved: (trackId: string) => void;
 }
 
 const ACT =
-  "inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-7 items-center rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * Subtitles per language: add a language, download drafts, review and approve lines, and ask for a burned-in version.
  * A track built for an older cut is "outdated" (R27): no downloads, and Rebuild replaces it.
  */
-export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, onLook, originalLanguage, tracks, frozen, onTrack }: SubtitlesPanelProps) {
+export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, onLook, originalLanguage, tracks, frozen, onTrack, onTrackRemoved }: SubtitlesPanelProps) {
   const options = subtitleLanguages(originalLanguage, tracks.map((tr) => tr.language));
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,6 +50,11 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, on
   const [trackErrors, setTrackErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  /** The ready track whose Rebuild waits for confirmation (it replaces edits and approval). */
+  const [rebuilding, setRebuilding] = useState<TrackView | null>(null);
+  const [unapproving, setUnapproving] = useState<string | null>(null);
+  /** The track whose Remove waits for confirmation. */
+  const [removing, setRemoving] = useState<TrackView | null>(null);
   /** The style dialog: opened by ticking "put in the video" (then Use also requests it) or by "Change look". */
   const [styling, setStyling] = useState<{ trackId: string; thenBurn: boolean } | null>(null);
   const chosen = options.some((o) => o.code === pick) ? pick : (options[0]?.code ?? "");
@@ -81,6 +89,37 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, on
     setRetrying(null);
   }
 
+  /** Rebuild a ready track: a fresh draft replaces it. Throws (the confirm dialog shows the message). */
+  async function rebuild(track: TrackView) {
+    try {
+      onTrack(await addTrack(clipId, track.language, { rebuild: true }));
+    } catch (err) {
+      throw err instanceof Error && err.message ? err : new Error(t("prepare.saveFailed"));
+    }
+  }
+
+  /** "Remove" a language that isn't approved. Throws (the confirm dialog shows the message). */
+  async function remove(track: TrackView) {
+    try {
+      await deleteTrack(track.id);
+    } catch (err) {
+      throw err instanceof Error && err.message ? err : new Error(t("prepare.saveFailed"));
+    }
+    onTrackRemoved(track.id);
+  }
+
+  /** "Undo approval": the lines stay, the track is no longer approved. */
+  async function unapprove(track: TrackView) {
+    setTrackErrors((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== track.id)));
+    setUnapproving(track.id);
+    try {
+      onTrack(await patchTrack(track.id, { approve: false }));
+    } catch (err) {
+      setTrackErrors((e) => ({ ...e, [track.id]: err instanceof Error ? err.message : t("prepare.saveFailed") }));
+    }
+    setUnapproving(null);
+  }
+
   /** `inline`: the caller (the style dialog) shows the failure itself, so it is rethrown instead of put on the row. */
   async function burn(track: TrackView, want: boolean, inline = false) {
     setTrackErrors((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== track.id)));
@@ -96,7 +135,7 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, on
   const stylingTrack = tracks.find((tr) => tr.id === styling?.trackId) ?? null;
 
   async function saveLook(track: TrackView, look: SubtitleLook, thenBurn: boolean) {
-    if (look.style !== clip.subtitleStyle || look.position !== clip.subtitlePosition) {
+    if (look.style !== clip.subtitleStyle || look.position !== clip.subtitlePosition || look.highlight !== clip.subtitleHighlight) {
       if (!(await onLook(look))) throw new Error(t("prepare.saveFailed"));
     }
     if (thenBurn) await burn(track, true, true);
@@ -123,6 +162,10 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, on
             onChangeLook={() => setStyling({ trackId: tr.id, thenBurn: false })}
             retrying={retrying === tr.id}
             onRetry={() => void retry(tr)}
+            onRebuild={() => setRebuilding(tr)}
+            unapproving={unapproving === tr.id}
+            onUnapprove={() => void unapprove(tr)}
+            onRemove={() => setRemoving(tr)}
           />
         ))}
       </ul>
@@ -159,6 +202,38 @@ export function SubtitlesPanel({ sessionId, clipId, clip, hasVideo, thumbUrl, on
         <p role="alert" className="mt-1 text-xs text-red-700">
           {error}
         </p>
+      )}
+      {rebuilding && (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => !open && setRebuilding(null)}
+          title={t("prepare.rebuildTitle", { language: label(rebuilding.language) })}
+          description={rebuilding.burnBuilt ? t("prepare.rebuildDescriptionBurned") : t("prepare.rebuildDescription")}
+          estimate={
+            rebuilding.language === originalLanguage
+              ? `${t("cost.subtitleOriginal")}.`
+              : `${t("cost.subtitleTranslate", { cost: aboutUsd(estimateTranslationUsd(clip.endMs - clip.startMs)) })}.`
+          }
+          actionLabel={t("prepare.rebuild")}
+          busyLabel={t("prepare.rebuilding")}
+          onConfirm={() => rebuild(rebuilding)}
+        />
+      )}
+      {removing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => !open && setRemoving(null)}
+          title={t("prepare.removeTitle", { language: label(removing.language) })}
+          description={t("prepare.removeDescription", { language: label(removing.language) })}
+          estimate={
+            removing.language === originalLanguage
+              ? undefined
+              : `${t("cost.subtitleTranslate", { cost: aboutUsd(estimateTranslationUsd(clip.endMs - clip.startMs)) })}.`
+          }
+          actionLabel={t("prepare.remove")}
+          busyLabel={t("prepare.removing")}
+          onConfirm={() => remove(removing)}
+        />
       )}
       {stylingTrack && styling && (
         <SubtitleStyleDialog
@@ -210,7 +285,7 @@ function burnNote(track: TrackView): string | null {
 }
 
 function TrackRow({
-  sessionId, clipId, track, label, frozen, error, onReview, onBurn, onChangeLook, retrying, onRetry,
+  sessionId, clipId, track, label, frozen, error, onReview, onBurn, onChangeLook, retrying, onRetry, onRebuild, unapproving, onUnapprove, onRemove,
 }: {
   sessionId: string;
   clipId: string;
@@ -223,6 +298,12 @@ function TrackRow({
   onChangeLook: () => void;
   retrying: boolean;
   onRetry: () => void;
+  /** Rebuild a ready track (asks first). */
+  onRebuild: () => void;
+  unapproving: boolean;
+  onUnapprove: () => void;
+  /** Remove a language that isn't approved (asks first). */
+  onRemove: () => void;
 }) {
   const ready = track.status === "ready";
   const burnOn = track.burnStatus !== "none";
@@ -230,6 +311,13 @@ function TrackRow({
   // Turning burn-in on needs approved lines; turning a request off is always allowed (except while it's being made).
   const burnDisabled = frozen || !ready || making || (!burnOn && !track.approved);
   const note = burnNote(track);
+  // Approved lines are undone first; a track still being prepared or put in the video can't go yet.
+  const removable = !frozen && !making && track.status !== "preparing" && !(ready && track.approved);
+  const removeButton = removable && (
+    <button type="button" className={ACT} onClick={onRemove} aria-label={t("prepare.removeLabel", { language: label })}>
+      {t("prepare.remove")}
+    </button>
+  );
   const file = (ext: "srt" | "vtt") => `/api/files/${sessionId}/clips/${clipId}.${track.language}.${ext}`;
 
   return (
@@ -246,6 +334,17 @@ function TrackRow({
           <span className={track.approved ? "text-xs font-semibold text-green-700" : "text-xs text-muted-foreground"}>
             {track.approved ? t("prepare.approved") : t("prepare.notApproved")}
           </span>
+        )}
+        {ready && track.approved && !frozen && (
+          <button
+            type="button"
+            className="rounded text-xs underline underline-offset-2 outline-none enabled:hover:decoration-2 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={unapproving || making}
+            onClick={onUnapprove}
+            aria-label={t("prepare.undoApprovalLabel", { language: label })}
+          >
+            <Busy busy={unapproving}>{t("prepare.undoApproval")}</Busy>
+          </button>
         )}
         {ready && (
           <span className="ml-auto flex items-center gap-1.5">
@@ -279,6 +378,7 @@ function TrackRow({
               <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.retry")}</Busy>
             </button>
           )}
+          {removeButton}
         </div>
       )}
       {track.status === "outdated" && (
@@ -298,6 +398,7 @@ function TrackRow({
               <Busy busy={retrying}>{retrying ? t("prepare.adding") : t("prepare.rebuild")}</Busy>
             </button>
           )}
+          {removeButton}
         </div>
       )}
       {ready && (
@@ -305,6 +406,32 @@ function TrackRow({
           <button type="button" className={ACT} onClick={onReview} aria-label={t("prepare.reviewLabel", { language: label })}>
             {t("prepare.review")}
           </button>
+          {!frozen && (
+            <button
+              type="button"
+              className={ACT}
+              disabled={making}
+              onClick={onRebuild}
+              aria-label={t("prepare.rebuildReadyLabel", { language: label })}
+              title={making ? t("prepare.rebuildWhileMaking") : undefined}
+            >
+              {t("prepare.rebuild")}
+            </button>
+          )}
+          {/* The look (style, position, word highlight) also shows in the line editor, so it is reachable before burn-in. */}
+          {!frozen && (
+            <button
+              type="button"
+              className={ACT}
+              disabled={making}
+              onClick={onChangeLook}
+              aria-label={t("prepare.changeLookLabel", { language: label })}
+              title={making ? t("prepare.changeLookWhileMaking") : undefined}
+            >
+              {t("prepare.changeLook")}
+            </button>
+          )}
+          {removeButton}
           <label className="flex items-center gap-1.5 text-xs font-medium" title={!track.approved && !burnOn ? t("prepare.burnNeedsApproval") : undefined}>
             <Checkbox
               checked={burnOn}
@@ -314,16 +441,6 @@ function TrackRow({
             />
             <span aria-hidden>{t("prepare.burnIn")}</span>
           </label>
-          {burnOn && !frozen && !making && (
-            <button
-              type="button"
-              className="rounded text-xs underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-brand"
-              onClick={onChangeLook}
-              aria-label={t("prepare.changeLookLabel", { language: label })}
-            >
-              {t("prepare.changeLook")}
-            </button>
-          )}
           {!track.approved && <span className="text-xs text-muted-foreground">{t("prepare.burnNeedsApproval")}</span>}
           {note && (
             <span

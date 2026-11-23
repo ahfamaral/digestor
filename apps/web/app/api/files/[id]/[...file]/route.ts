@@ -18,12 +18,13 @@ const ALLOWED: { re: RegExp; kind: Kind }[] = [
   { re: /^audio\.(mp3)$/, kind: "audio" },
   { re: /^names\/([A-Za-z0-9_-]{1,64})\.(jpg)$/, kind: "frame" },
   { re: new RegExp(`^thumbs/(${UUID})\\.(jpg)$`, "i"), kind: "thumb" },
-  { re: new RegExp(`^clips/(${UUID})\\.(mp4)$`, "i"), kind: "render" },
+  { re: new RegExp(`^clips/(${UUID})\\.(mp4|m4a)$`, "i"), kind: "render" },
   { re: new RegExp(`^clips/(${UUID})\\.(${LANG})\\.burned\\.(mp4)$`, "i"), kind: "burned" },
   { re: new RegExp(`^clips/(${UUID})\\.(${LANG})\\.(srt|vtt)$`, "i"), kind: "subtitle" },
 ];
 const CONTENT_TYPES: Record<string, string> = {
   mp4: "video/mp4",
+  m4a: "audio/mp4",
   mp3: "audio/mpeg",
   jpg: "image/jpeg",
   srt: "application/x-subrip; charset=utf-8",

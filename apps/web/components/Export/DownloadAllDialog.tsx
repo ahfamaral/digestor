@@ -8,9 +8,9 @@ import { t } from "@/lib/i18n";
 import { zipClipOf, zipEntries, ZIP_CHOICES, type ZipChoice } from "@/lib/zipNames";
 import type { ExportClipData } from "@/components/ExportList";
 
-const HELP: Record<ZipChoice, "burnedHelp" | "filesHelp" | "plainHelp"> = { burned: "burnedHelp", files: "filesHelp", plain: "plainHelp" };
+const HELP: Record<ZipChoice, "burnedHelp" | "filesHelp" | "plainHelp" | "audioHelp"> = { burned: "burnedHelp", files: "filesHelp", plain: "plainHelp", audio: "audioHelp" };
 
-/** "Download all": three choices built from stored files; "burned" lists the clips it leaves out. Downloading is a plain link. */
+/** "Download all": four choices built from stored files; "burned" lists the clips it leaves out. Downloading is a plain link. */
 export function DownloadAllDialog({ sessionId, clips, language }: { sessionId: string; clips: ExportClipData[]; language?: string }) {
   const [open, setOpen] = useState(false);
   const zipClips = clips.map(zipClipOf);
@@ -120,7 +120,7 @@ export function DownloadAllDialog({ sessionId, clips, language }: { sessionId: s
               {t("exportScreen.cancel")}
             </Button>
             {choice !== null && (
-              <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90" disabled={starting} onClick={() => void download()}>
+              <Button type="button" className="bg-brand text-brand-foreground hover:brightness-90 active:brightness-[0.82]" disabled={starting} onClick={() => void download()}>
                 <Busy busy={starting}>{starting ? t("exportScreen.downloadingZip") : t("exportScreen.downloadZip")}</Busy>
               </Button>
             )}

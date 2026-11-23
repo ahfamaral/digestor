@@ -110,6 +110,7 @@ export interface ClipView {
   cropOffset: number;
   subtitleStyle: SubtitleStyle;
   subtitlePosition: SubtitlePosition;
+  subtitleHighlight: boolean;
   credit: string | null;
   noCreditNeeded: boolean;
   warningsAck: boolean;
@@ -130,6 +131,7 @@ export function toClipView(c: Jsonish<Clip> & { midSentence?: boolean }): ClipVi
     cropOffset: c.cropOffset,
     subtitleStyle: c.subtitleStyle,
     subtitlePosition: c.subtitlePosition,
+    subtitleHighlight: c.subtitleHighlight,
     credit: c.credit,
     noCreditNeeded: c.noCreditNeeded,
     warningsAck: c.warningsAck,

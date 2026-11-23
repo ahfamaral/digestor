@@ -86,7 +86,7 @@ export function RollCallView({
           {r.parties.map((p) => (
             <li key={p.party ?? "none"}>
               <details open={!!mine && p.deputies.some((d) => d.externalId === mine.externalId)} className="group rounded-xl border border-border bg-white">
-                <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-xl px-4 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-stone-500">
+                <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-xl px-4 py-2.5 text-sm hover:bg-hover/60 outline-none focus-visible:ring-2 focus-visible:ring-stone-500">
                   <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden />
                   <span className="font-semibold">{p.party ?? tm(locale, "rollCallPage.noParty")}</span>
                   <span className="text-muted-foreground">

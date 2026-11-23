@@ -11,6 +11,7 @@ import {
 import { handleBurnTrack, handleRenderClip } from "../jobs.js";
 import { VideoRemovedError } from "../errors.js";
 import { burnTrack, renderClipJob, type RenderDeps } from "./render.js";
+import { probe } from "../media/ffmpeg.js";
 
 const TEST_MP4 = fileURLToPath(new URL("../../test/tmp/test.mp4", import.meta.url));
 const url = process.env.TEST_DATABASE_URL;
@@ -42,7 +43,7 @@ d("clip render jobs", () => {
   const fake = (fn: (o: { output: string; assPath?: string }) => Promise<void> | void) =>
     vi.fn(async (o: { output: string; assPath?: string }) => void (await fn(o)));
 
-  it("cuts a plain clip to clips/<id>.mp4 and marks it done", async () => {
+  it("cuts a plain clip to clips/<id>.mp4 and its audio to clips/<id>.m4a, and marks it done", async () => {
     const { s, clip } = await seed();
     await claimClipRender(db, clip.id);
     await renderClipJob({ db, storage }, clip.id);
@@ -50,6 +51,11 @@ d("clip render jobs", () => {
     expect(after.renderStatus).toBe("done");
     expect(after.renderKey).toBe(`${s.id}/clips/${clip.id}.mp4`);
     expect(existsSync(storage.resolve(after.renderKey!))).toBe(true);
+    expect(after.audioKey).toBe(`${s.id}/clips/${clip.id}.m4a`);
+    const audio = await probe(storage.resolve(after.audioKey!));
+    expect(audio.hasVideo).toBe(false);
+    expect(audio.durationMs).toBeGreaterThan(1800);
+    expect(audio.durationMs).toBeLessThan(2300);
   });
 
   it("a job for a done or unclaimed clip does nothing", async () => {

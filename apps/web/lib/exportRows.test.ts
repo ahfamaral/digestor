@@ -3,7 +3,7 @@ import type { ChecklistId } from "@digestor/core";
 import { exportStatus, exportableIds, isExportReady, exportRows, inFlight, renderedFirst, sortByOrder, statusLabel, needsList, toMake, type ExportRow } from "./exportRows";
 
 const clip = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => ({
-  id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", cleared: true, ...over,
+  id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", audioKey: "s1/clips/c1.m4a" as string | null, cleared: true, ...over,
 });
 const track = (over: Partial<Parameters<typeof exportRows>[1][number]> = {}) => ({
   clipId: "c1", language: "pt", status: "ready" as const, cues: [{ startMs: 0, endMs: 1000, original: "Hello", text: "Olá", missing: false }],
@@ -81,6 +81,20 @@ describe("burn state and toMake", () => {
     expect(toMake(rows)).toBe(2);
     expect(toMake(exportRows([clip()], [track({ burnStatus: "failed", approvedAt: new Date() })]))).toBe(1);
     expect(toMake(exportRows([clip()], [track({ burnStatus: "failed" })]))).toBe(0);
+  });
+});
+
+describe("audio only", () => {
+  it("offers the .m4a with the MP4, under the same rules", () => {
+    expect(exportRows([clip()], [])[0]).toMatchObject({ audio: "/api/files/s1/clips/c1.m4a?download=1", audioMissing: false });
+    expect(exportRows([clip({ cleared: false })], [])[0]).toMatchObject({ audio: null, audioMissing: false });
+    expect(exportRows([clip({ renderStatus: "stale" })], [])[0]).toMatchObject({ audio: null, audioMissing: false });
+  });
+  it("a render made before audio files existed has none, and toMake counts it", () => {
+    const rows = exportRows([clip({ audioKey: null })], []);
+    expect(rows[0]).toMatchObject({ audio: null, audioMissing: true });
+    expect(toMake(rows)).toBe(1);
+    expect(toMake(exportRows([clip()], []))).toBe(0);
   });
 });
 

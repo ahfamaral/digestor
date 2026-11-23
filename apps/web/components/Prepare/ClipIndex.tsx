@@ -32,7 +32,7 @@ export function ClipIndex({ entries, language, onJump, stacked = false }: { entr
         aria-expanded={open}
         aria-controls="clip-index-list"
         onClick={() => setOpen((o) => !o)}
-        className={cn("flex w-full items-center gap-1 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand", !stacked && "lg:hidden")}
+        className={cn("flex w-full items-center gap-1 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand", !stacked && "lg:hidden")}
       >
         <ChevronRightIcon aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
         {t("prepare.indexTitle", { n: entries.length })}
@@ -46,7 +46,7 @@ export function ClipIndex({ entries, language, onJump, stacked = false }: { entr
             <a
               href={`#clip-${e.id}`}
               onClick={() => onJump(e.id)}
-              className="grid gap-0.5 rounded-lg border border-border bg-white px-2.5 py-1.5 text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand"
+              className="grid gap-0.5 rounded-lg border border-border bg-white px-2.5 py-1.5 text-[13px] outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-brand"
             >
               <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                 <span className="font-mono text-xs">

@@ -3,11 +3,12 @@ import { JOB_OPTIONS, OWNER_ID, QUEUES, VIDEO_REMOVED } from "@digestor/core";
 import {
   createClip, createToolApproval, getAskAction, updateClip,
   completeAnalysisVersion, getRunningAnalysis, listAnalysisVersions, createAskAction, getAskMessage, listAskMessages, listProblemReports, listSelections, saveTranslation,
-  startAnalysisVersion, createSession, updateSession, getTranslation, addAskMessage, getMoment, setMomentChecks,
+  startAnalysisVersion, createSession, updateSession, getTranslation, addAskMessage, getMoment, setMomentChecks, finishAskMessage,
 } from "@digestor/core/server";
 import { createHarness, type Harness } from "@/test/harness";
 import { seedReadySession } from "@/test/personalFixture";
 import { GET as getAsk, POST as postAsk } from "./sessions/[id]/ask/route";
+import { POST as archiveAsk } from "./sessions/[id]/ask/archive/route";
 import { POST as postAction } from "./ask-actions/[id]/route";
 import { GET as getTranslationRoute, POST as postTranslation } from "./analyses/[id]/translations/route";
 import { POST as reanalyze } from "./sessions/[id]/reanalyze/route";
@@ -53,6 +54,24 @@ describe("Ask", () => {
     await updateSession(h.db, sessionId, { stage: "finding_moments" });
     expect((await postAsk(req({ question: "hi" }), ctx(sessionId))).status).toBe(409);
     expect((await postAsk(req({ question: "hi" }), ctx("nope"))).status).toBe(404);
+  });
+});
+
+describe("POST /api/sessions/[id]/ask/archive", () => {
+  it("refuses while an answer is open, then archives; the list keeps the archived messages", async () => {
+    const { sessionId } = await seedReadySession(h.db);
+    expect(await (await archiveAsk(req({}), ctx(sessionId))).json()).toEqual({ archived: 0 });
+    await postAsk(req({ question: "Topics?" }), ctx(sessionId));
+    const busy = await archiveAsk(req({}), ctx(sessionId));
+    expect(busy.status).toBe(409);
+    expect(await busy.json()).toEqual({ error: "Finish the open answer or card first: approve or reject it, then start a new conversation." });
+    const [, answer] = await listAskMessages(h.db, OWNER_ID, sessionId);
+    await finishAskMessage(h.db, answer!.id, { text: "Housing.", status: "done" });
+    const ok = await archiveAsk(req({}), ctx(sessionId));
+    expect(await ok.json()).toEqual({ archived: 2 });
+    const list = await (await getAsk(new Request("http://localhost/x"), ctx(sessionId))).json();
+    expect(list.messages.map((m: { archivedAt: string | null }) => m.archivedAt !== null)).toEqual([true, true]);
+    expect((await archiveAsk(req({}), ctx("00000000-0000-4000-8000-000000000000"))).status).toBe(404);
   });
 });
 

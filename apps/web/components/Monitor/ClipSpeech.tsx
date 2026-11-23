@@ -34,7 +34,7 @@ export function ClipSpeech({ locale, speechKey, video }: { locale: MonitorLocale
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-stone-500"
+        className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-hover active:bg-pressed focus-visible:ring-2 focus-visible:ring-stone-500"
       >
         <Scissors className="size-3.5" aria-hidden />
         {tm(locale, "clip.button")}
