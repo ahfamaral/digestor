@@ -24,7 +24,8 @@ const BADGES = {
   metadata: { text: "context.badgeMetadata", cls: "bg-stone-200 text-stone-700" },
   ai: { text: "context.badgeSuggested", cls: "bg-stone-100 text-stone-600" },
   human: { text: "context.badgeHuman", cls: "bg-purple-100 text-purple-800" },
-  missing: { text: "context.badgeMissing", cls: "bg-red-100 text-red-700" },
+  // Nothing found is normal for optional facts: neutral and dashed, never red (red reads as an error).
+  missing: { text: "context.badgeMissing", cls: "border border-dashed border-stone-300 bg-white text-stone-600" },
   record: { text: "context.badgeRecord", cls: "bg-green-100 text-green-800" },
 } as const satisfies Record<ShownBadge, { text: MessageKey; cls: string }>;
 

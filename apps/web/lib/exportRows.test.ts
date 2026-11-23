@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChecklistId } from "@digestor/core";
-import { exportStatus, exportableIds, isExportReady, exportRows, inFlight, renderedFirst, sortByOrder, statusLabel, toMake, type ExportRow } from "./exportRows";
+import { exportStatus, exportableIds, isExportReady, exportRows, inFlight, renderedFirst, sortByOrder, statusLabel, needsList, toMake, type ExportRow } from "./exportRows";
 
 const clip = (over: Partial<Parameters<typeof exportRows>[0][number]> = {}) => ({
   id: "c1", sessionId: "s1", renderStatus: "done" as const, renderKey: "s1/clips/c1.mp4", cleared: true, ...over,
@@ -172,7 +172,10 @@ describe("exportStatus", () => {
   it("labels: Rendered, Rendering, Needs with actions", () => {
     expect(statusLabel({ kind: "rendered" })).toBe("Rendered · download below");
     expect(statusLabel({ kind: "rendering" })).toBe("Rendering…");
-    expect(statusLabel({ kind: "needs", actions: ["credit", "context"] })).toBe("Needs: Add a credit line; Tick 'I've read these warnings'");
+    expect(statusLabel({ kind: "needs", actions: ["credit", "context"] })).toBe("2 steps before export");
+    expect(statusLabel({ kind: "needs", actions: ["credit"] })).toBe("1 step before export");
+    expect(needsList({ kind: "needs", actions: ["credit", "context"] })).toEqual(["Add a credit line", "Tick 'I've read these warnings'"]);
+    expect(needsList({ kind: "rendered" })).toEqual([]);
   });
   it("sortByOrder keeps a fixed order even when a render finishes", () => {
     const mk = (id: string) => ({ id });

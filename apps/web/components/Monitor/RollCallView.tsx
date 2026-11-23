@@ -9,7 +9,7 @@ import { ExternalLink } from "./ExternalLink";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { ReturnLink } from "./ReturnLink";
 import { VoteBar, VoteLegend } from "./VoteBar";
-import { sumCounts } from "@/lib/monitor/voteBar";
+import { sumCounts, voteSegments } from "@/lib/monitor/voteBar";
 import { cn } from "@/lib/utils";
 
 /** The vote the Câmara records for the deputy presiding the session. */
@@ -31,6 +31,8 @@ export function RollCallView({
   const mine = from === undefined ? null : r.parties.flatMap((p) => p.deputies).find((d) => d.externalId === from) ?? null;
   const chair = r.parties.some((p) => p.deputies.some((d) => d.vote === CHAIR_VOTE));
   const all = sumCounts(r.parties);
+  const rest = voteSegments(all).filter((s) => s.key !== "Sim" && s.key !== "Não");
+  const otherKind = rest.length === 1 && rest[0]!.key !== "other" ? rest[0]!.key : null;
   return (
     <div lang={locale} className="grid gap-8">
       <div className="grid gap-3">
@@ -54,7 +56,12 @@ export function RollCallView({
           {r.billSummary && <p lang="pt-BR" className="break-words text-muted-foreground">{r.billSummary}</p>}
           <p className="flex flex-wrap gap-x-3 font-mono text-xs text-muted-foreground">
             <time dateTime={r.date}>{formatDay(r.date, locale)}</time>
-            <span>{tm(locale, "rollCall.totals", { yes: n(r.yes), no: n(r.no), other: n(r.other) })}</span>
+            {/* Official totals; when the rest is one kind of vote, it is named as in the bar's key ("Abstenção 1", not "Other 1"). */}
+            <span>
+              {otherKind && r.other > 0
+                ? tm(locale, "rollCall.totalsNamed", { yes: n(r.yes), no: n(r.no), kind: otherKind, other: n(r.other) })
+                : tm(locale, "rollCall.totals", { yes: n(r.yes), no: n(r.no), other: n(r.other) })}
+            </span>
           </p>
           {all.length > 0 && (
             <div className="grid max-w-xl gap-1.5">

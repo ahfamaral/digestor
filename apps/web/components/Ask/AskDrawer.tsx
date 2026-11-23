@@ -70,7 +70,8 @@ export function AskDrawer({ sessionId, language, hasVideo, videoRemoved, example
     <>
       <Button ref={triggerRef} type="button" variant="outline" size="sm" onClick={openByUser} aria-keyshortcuts="/">
         {t("ask.open")}
-        <kbd className="rounded border border-border bg-stone-50 px-1 font-mono text-[11px] text-muted-foreground">/</kbd>
+        {/* The key hint means nothing on a touch screen. */}
+        <kbd className="rounded border border-border bg-stone-50 px-1 font-mono text-[11px] text-muted-foreground pointer-coarse:hidden">/</kbd>
       </Button>
 
       <Dialog open={open} onOpenChange={onOpenChange} modal={!desktop} disablePointerDismissal={desktop}>

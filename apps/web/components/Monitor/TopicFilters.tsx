@@ -59,7 +59,7 @@ export function TopicFilters({ locale, params, facets, folded = false }: { local
         </label>
       </fieldset>
       <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm">
-        <Link href={landingHref({ q: params.q })} className="rounded px-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
+        <Link href={landingHref({ q: params.q })} className="inline-block rounded px-1 py-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
           {tm(locale, "filters.clear")}
         </Link>
       </div>

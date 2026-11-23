@@ -35,6 +35,8 @@ export function SpeechVideoView({
   const href = watchUrl(video);
   if (!src || !href) return null;
   const at = videoPosition(video.startS);
+  // The button's name starts with its visible text (WCAG 2.5.3).
+  const watchText = label === "at" ? tm(locale, "speech.watchAt", { at }) : tm(locale, "speech.watch", { length: videoLength(video.endS - video.startS) });
   return (
     <div className="grid gap-1.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -51,11 +53,11 @@ export function SpeechVideoView({
           <button
             type="button"
             onClick={() => setOpen(true)}
-            aria-label={tm(locale, "speech.watchLabel", { at })}
+            aria-label={tm(locale, "speech.watchLabel", { what: watchText, at })}
             className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-sm font-medium outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-stone-500"
           >
             <Play className="size-3.5" aria-hidden />
-            {label === "at" ? tm(locale, "speech.watchAt", { at }) : tm(locale, "speech.watch", { length: videoLength(video.endS - video.startS) })}
+            {watchText}
           </button>
         )}
         {clip?.enabled && <ClipSpeech locale={locale} speechKey={clip.speechKey} video={video} />}

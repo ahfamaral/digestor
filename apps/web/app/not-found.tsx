@@ -7,7 +7,7 @@ export default function NotFound() {
   return (
     <>
       <AppBar />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
+      <main id="content" tabIndex={-1} className="outline-none mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
         <h1 className="text-xl font-bold tracking-tight">{t("notFound.title")}</h1>
         <Link
           href="/"

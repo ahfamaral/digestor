@@ -425,7 +425,7 @@ export function PrepareList({ session, defaultCredit, names, whoRows, clips }: P
   return (
     <HasVideoProvider value={session.hasVideo}>
       <AppBar current="Prepare" session={{ id: session.id, ready: true }} facts={{ hasClips: items.length > 0, allReadyRendered: false }} />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
+      <main id="content" tabIndex={-1} className="outline-none mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3">
           <BackLink href={`/s/${session.id}`} label={t("prepare.backToBriefing")} />
           <div className="mt-1 flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -729,7 +729,7 @@ function ClipCard({
           {/* On a phone the badge and Undo go on their own line under the title, so the title keeps the width and
               breaks between words, not inside one (mid-word only for a single word wider than the line). */}
           <div className="flex shrink-0 flex-wrap items-start gap-2 max-sm:basis-full max-sm:pl-10">
-            <ClipStatusBadge status={clipState} dismissed={item.dismissed} className="mt-1" />
+            <ClipStatusBadge status={clipState} dismissed={item.dismissed} className="mt-1" checklistHref={open ? `#checklist-h-${clip.id}` : undefined} />
             {open && item.undo && !frozen && (
               <button
                 type="button"
@@ -849,7 +849,7 @@ function ClipCard({
   );
 }
 
-/** The clip on the proxy (never the original): `preload="none"` and `#t=start,end`; in 9:16 the frame shows the crop. */
+/** The clip on the proxy (never the original): `preload="none"` and `#t=start,end` for the player; without a thumbnail an open card shows the first frame (`preload="metadata"`); in 9:16 the frame shows the crop. */
 function ClipPlayer({
   visible, sessionId, clip, title, format, cropOffset, hasVideo, videoRemoved, thumbUrl,
 }: {
@@ -913,6 +913,18 @@ function ClipPlayer({
         ) : thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- a same-origin API file, not a static asset
           <img src={thumbUrl} alt="" loading="lazy" className={cn(fit)} style={vertical ? { objectPosition: cropPosition(cropOffset) } : undefined} />
+        ) : visible ? (
+          // No thumbnail: the clip's first frame (metadata only, nothing plays), so the crop can be checked before Play.
+          <video
+            src={src}
+            preload="metadata"
+            muted
+            playsInline
+            aria-hidden
+            tabIndex={-1}
+            className={cn(fit, "pointer-events-none")}
+            style={vertical ? { objectPosition: cropPosition(cropOffset) } : undefined}
+          />
         ) : (
           <span aria-hidden className={cn(vertical ? "aspect-[9/16] h-full border-x border-dashed border-stone-500" : "")} />
         )}

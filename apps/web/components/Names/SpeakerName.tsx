@@ -77,7 +77,7 @@ export function SpeakerName({
             lang={label.badge ? language : undefined}
             dir="auto"
             className={cn(
-              "rounded-sm text-left font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand",
+              "-my-1 inline-block rounded-sm py-1 text-left font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand",
               label.proposed && "underline decoration-dotted underline-offset-2",
             )}
           >

@@ -34,6 +34,13 @@ describe("AskThread", () => {
     expect(html).toContain("Open in Prepare");
   });
 
+  it("never shows the tool's note to the model", () => {
+    const note = "Clip 34989e73-8171-4ee6-9200-f490e4426469 updated. Burn-in stays with the user on Prepare.";
+    const html = render([userQ("u1", "Add English"), answerWith("a1", "Added.", [{ name: "update_clip", args: { clipId: "c-9" }, result: note, ok: true, clipId: "c-9" }])]);
+    expect(html).not.toContain("34989e73");
+    expect(html).not.toContain("the user");
+  });
+
   it("a package gets one titled link per clip", () => {
     const html = render([userQ("u1", "3 clips"), answerWith("a1", "Made.", [{ name: "make_clip_package", args: { clips: [{ title: "One" }, { title: "Two" }] }, result: "ok", ok: true, clipIds: ["a", "b"] }])]);
     expect(html).toContain('href="/s/s1/prepare#clip-a"');

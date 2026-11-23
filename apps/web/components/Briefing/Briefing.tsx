@@ -35,6 +35,10 @@ import type { RowContext } from "./MomentRow";
 import { SomethingOff } from "./SomethingOff";
 import { SummaryCard } from "./SummaryCard";
 import { TopicCard } from "./TopicCard";
+import { cn } from "@/lib/utils";
+import { LONG_BRIEFING, allTopics, topicOpen } from "@/lib/topicOpen";
+
+const TEXT_BUTTON = "inline-flex min-h-6 items-center rounded-sm font-medium text-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand";
 import { HasVideoProvider } from "@/components/HasVideo";
 
 const NOTICE = "mb-3 rounded-xl border px-3 py-2 text-sm";
@@ -164,6 +168,10 @@ export function Briefing(props: BriefingProps) {
   const views = useMemo(() => filterMoments(moments, statuses, filters, topics, focusCtx, sticky), [moments, statuses, filters, topics, focusCtx, sticky]);
   const groups = useMemo(() => groupByTopic(views, topics), [views, topics]);
   const shown = useMemo(() => flattenViews(views).length, [views]);
+  // A long Briefing starts with its topics closed (`LONG_BRIEFING`); the reader's open/close choices win.
+  const [topicChoices, setTopicChoices] = useState<Record<string, boolean>>({});
+  const isTopicOpen = (key: string) => topicOpen(key, topicChoices, shown);
+  const setTopicOpen = (key: string, open: boolean) => setTopicChoices((c) => ({ ...c, [key]: open }));
   const titleOf = useMemo(() => new Map(moments.map((m) => [m.id, m.title])), [moments]);
   const approved = useMemo(() => approvedMomentIds(moments, statuses), [moments, statuses]);
   const approvedSet = useMemo(() => new Set(approved), [approved]);
@@ -210,14 +218,23 @@ export function Briefing(props: BriefingProps) {
     setActive(topicId);
     scrollTo(document.getElementById(`topic-${topicId}`), "start");
   }
+  // After opening a closed topic, wait for its rows to render before scrolling to one.
+  const afterRender = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
   // A pin or top-highlight card: the moment's row when the filters show it, else its topic's card.
   function goToMoment(momentId: string) {
     const m = moments.find((x) => x.id === momentId);
     const topicId = m ? topicIdOf(m, topics) : null;
     if (topicId) setActive(topicId);
-    const row = document.getElementById(`moment-${momentId}`);
-    scrollTo(row ?? (topicId ? document.getElementById(`topic-${topicId}`) : null), row ? "center" : "start");
-    if (row) setFlash(momentId);
+    const key = topicId ?? "outside";
+    const opening = !isTopicOpen(key);
+    if (opening) setTopicOpen(key, true);
+    const jump = () => {
+      const row = document.getElementById(`moment-${momentId}`);
+      scrollTo(row ?? (topicId ? document.getElementById(`topic-${topicId}`) : null), row ? "center" : "start");
+      if (row) setFlash(momentId);
+    };
+    if (opening) afterRender(jump);
+    else jump();
   }
 
   const ctx: RowContext = {
@@ -256,7 +273,7 @@ export function Briefing(props: BriefingProps) {
         type="button"
         aria-label={t("names.whoOpenFromCount", { text: `${speakersText}, ${namedText}` })}
         onClick={() => openWho("meta")}
-        className="rounded-sm underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+        className="-my-1 inline-block rounded-sm py-1 underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
       >
         {speakersText} · {namedText}
       </button>
@@ -299,7 +316,7 @@ export function Briefing(props: BriefingProps) {
               aria-expanded={spendingOpen}
               aria-controls="session-spending"
               onClick={() => setSpendingOpen((o) => !o)}
-              className="rounded-sm underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+              className="-my-1 inline-block rounded-sm py-1 underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
             >
               {t("cost.spendingButton")}
             </button>
@@ -398,11 +415,22 @@ export function Briefing(props: BriefingProps) {
         />
       )}
 
+      {shown > LONG_BRIEFING && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span>{t("briefing.longNote")}</span>
+          <button type="button" onClick={() => setTopicChoices(allTopics([...sections.map((s) => s.topic.id), "outside"], true))} className={TEXT_BUTTON}>
+            {t("briefing.openAll")}
+          </button>
+          <button type="button" onClick={() => setTopicChoices(allTopics([...sections.map((s) => s.topic.id), "outside"], false))} className={TEXT_BUTTON}>
+            {t("briefing.closeAll")}
+          </button>
+        </div>
+      )}
       <div className="grid gap-3">
         {sections.map((s) => (
-          <TopicCard key={s.topic.id} section={s} translated={tr.translated} trLang={tr.lang} views={byTopic.get(s.topic.id) ?? []} ctx={ctx} emptyNote={moments.length > 0 && !isDefault} />
+          <TopicCard key={s.topic.id} section={s} translated={tr.translated} trLang={tr.lang} views={byTopic.get(s.topic.id) ?? []} ctx={ctx} emptyNote={moments.length > 0 && !isDefault} open={isTopicOpen(s.topic.id)} onOpenChange={(o) => setTopicOpen(s.topic.id, o)} />
         ))}
-        {outside.length > 0 && <TopicCard section={null} translated={null} trLang={undefined} views={outside} ctx={ctx} emptyNote={false} />}
+        {outside.length > 0 && <TopicCard section={null} translated={null} trLang={undefined} views={outside} ctx={ctx} emptyNote={false} open={isTopicOpen("outside")} onOpenChange={(o) => setTopicOpen("outside", o)} />}
       </div>
 
       {fm.offer && fm.fewAtLevel(views) && (
@@ -424,6 +452,11 @@ export function Briefing(props: BriefingProps) {
 
       <footer className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+          {shown > LONG_BRIEFING && (
+            <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" })} className={cn(TEXT_BUTTON, "mr-auto text-sm")}>
+              {t("briefing.backToTop")}
+            </button>
+          )}
           {approved.length === 0 ? (
             <span className="text-sm text-muted-foreground">{t("briefing.approveFirstHint")}</span>
           ) : (

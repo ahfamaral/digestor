@@ -86,7 +86,7 @@ export function LandingView({
 
       <section className={card} aria-labelledby="door-topic">
         <h2 id="door-topic" className="text-base font-semibold">{tm(locale, "landing.topic")}</h2>
-        <GetForm action="/monitor" className="grid gap-4" required={{ name: "q", hint: tm(locale, "landing.noTopic") }}>
+        <GetForm label={tm(locale, "forms.topic")} action="/monitor" className="grid gap-4" required={{ name: "q", hint: tm(locale, "landing.noTopic") }}>
           <div className="flex gap-2">
             <label htmlFor="monitor-q" className="sr-only">{tm(locale, "landing.topicLabel")}</label>
             <input

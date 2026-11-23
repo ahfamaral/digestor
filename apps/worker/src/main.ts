@@ -226,13 +226,22 @@ async function main() {
   );
   // Load the e5 model now, so the first search doesn't wait for it (the web gives up after 3 s).
   embedder.embed(["warm-up"], "query").catch((err) => console.error("e5 warm-up failed:", err));
-  void warmRecordIndexes(meaning);
+  // Keep the meaning indexes loaded: a cold Chroma collection answers its first query in more than the web's 3 s, and
+  // the web then says search by meaning (and "Ask the record") isn't available. One small search now and every 10 min.
+  const warmMeaning = () => {
+    searchSpeechMeaning(meaning, "orçamento", 1).catch(() => {}); // index missing: the web already shows word matches
+    void warmRecordIndexes(meaning);
+  };
+  warmMeaning();
+  const warmTimer = setInterval(warmMeaning, 10 * 60_000);
+  warmTimer.unref();
 
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     try {
+      clearInterval(warmTimer);
       http.close();
       await boss.stop({ graceful: true, timeout: 8000 });
       await askCheckpointer.end();

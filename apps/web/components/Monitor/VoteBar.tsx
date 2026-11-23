@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  */
 const FILL: Record<VoteSegmentKey, string> = {
   Sim: "bg-stone-800",
-  Não: "bg-stone-400",
+  Não: "bg-stone-500", // 4.8:1 on white, 3:1+ beside Sim (WCAG 1.4.11)
   Abstenção: "bg-[repeating-linear-gradient(135deg,var(--color-stone-500)_0_1.5px,transparent_1.5px_4px)]",
   Obstrução: "bg-[repeating-linear-gradient(45deg,var(--color-stone-800)_0_1.5px,var(--color-stone-200)_1.5px_4px)]",
   // Dotted, not outlined: a thin outlined sliver at the bar's rounded end read as a letter.

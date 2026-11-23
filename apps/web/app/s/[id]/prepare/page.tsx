@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { sessionTabTitle } from "@/lib/sessionTabTitle";
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,6 +16,12 @@ import { currentSpeakerTitle } from "@/lib/briefingData";
 import { rangeVoices, whosWhoRows } from "@/lib/names";
 import { cutPoints, trimView } from "@/lib/trim";
 import { t } from "@/lib/i18n";
+
+/** The tab names the video and the screen. */
+export async function generateMetadata({ params }: PageProps<"/s/[id]/prepare">): Promise<Metadata> {
+  const { id } = await params;
+  return { title: await sessionTabTitle(id, t("prepare.title")) };
+}
 
 /** Prepare clips: trim, checks, format, credit and subtitles for each confirmed clip. Reads the DB per request (inside Suspense). */
 export default function PreparePage({ params }: PageProps<"/s/[id]/prepare">) {
@@ -35,7 +43,7 @@ async function PrepareScreen({ params }: { params: Promise<{ id: string }> }) {
     return (
       <>
         <AppBar current="Prepare" session={{ id: session.id, ready: false }} />
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
+        <main id="content" tabIndex={-1} className="outline-none mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
           <h1 className="mb-4 truncate text-xl font-bold tracking-tight">{session.title}</h1>
           <p role="alert" className="mb-3 text-sm text-red-700">
             {t("briefing.notReady")}

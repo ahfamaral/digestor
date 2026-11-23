@@ -43,7 +43,7 @@ export function ContextBanner({ sessionId, card, sessionTitle, language }: { ses
         onClick={dismiss}
         aria-label={t("context.bannerDismiss")}
         title={t("context.bannerDismiss")}
-        className="rounded-sm px-0.5 font-sans text-xs text-muted-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
+        className="-my-1 inline-block rounded-sm px-0.5 py-1 font-sans text-xs text-muted-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand"
       >
         {t("context.bannerHide")}
       </button>

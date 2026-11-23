@@ -59,7 +59,7 @@ export function VoteFilters({
   const filtered = votesFiltered(params);
   return (
     <div className="grid gap-2">
-      <GetForm action={`${deputyHref(externalId)}#${VOTES}`} className="grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
+      <GetForm label={tm(locale, "forms.votes")} action={`${deputyHref(externalId)}#${VOTES}`} className="grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
         <div className="flex gap-2">
           <label htmlFor="votes-q" className="sr-only">{tm(locale, "voteFilters.label")}</label>
           <input

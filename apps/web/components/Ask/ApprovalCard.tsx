@@ -119,7 +119,12 @@ export function ApprovalCard({
   return (
     <div role="group" aria-labelledby={headingId} className="grid gap-2 rounded-lg border border-border bg-stone-50 p-2">
       <p id={headingId} className="text-xs font-semibold">
-        {calls.length === 1 ? t("ask.approval.titleOne") : t("ask.approval.title", { n: calls.length })}
+        {/* Once decided, the title says what happened, so the thread reads as a history. */}
+        {action.status === "pending"
+          ? calls.length === 1 ? t("ask.approval.titleOne") : t("ask.approval.title", { n: calls.length })
+          : resolution?.stale && resolution.stale.length > 0 ? t("ask.approval.doneStale")
+          : action.status === "dismissed" ? t("ask.approval.doneDeclined")
+          : calls.length === 1 ? t("ask.approval.doneOne") : t("ask.approval.doneMany", { n: calls.length })}
       </p>
       {calls.length === 1 ? (
         <p lang={lang} dir="auto" className="break-words text-xs">

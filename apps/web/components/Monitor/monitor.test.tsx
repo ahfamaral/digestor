@@ -367,7 +367,7 @@ describe("monitor components", () => {
     // the note about YouTube's cookies: under the list's first video only
     expect(html).toContain("may set cookies");
     expect(renderToStaticMarkup(<ul><SpeechItem locale="en" speech={row} videoNote={false} /></ul>)).not.toContain("may set cookies");
-    expect(html).toContain('aria-label="Watch the speech in the session&#x27;s official video, from 0:01:16"');
+    expect(html).toMatch(/aria-label="Watch the speech · [^"]+, in the session&#x27;s official video from 0:01:16"/);
     expect(html).toContain('href="https://www.youtube.com/watch?v=NmI46Y25mEU&amp;t=76s"');
     expect(html).toContain("Open on YouTube at 0:01:16");
     expect(html).not.toContain("<iframe");
@@ -939,6 +939,11 @@ describe("monitor components", () => {
     };
     expect(renderToStaticMarkup(<RollCallView locale="en" rollCall={chair} />)).toContain("votes only to break a tie or in a secret ballot");
     expect(renderToStaticMarkup(<RollCallView locale="pt-BR" rollCall={chair} />)).toContain("só vota para desempatar ou em escrutínio secreto");
+  });
+
+  it("when the rest of the votes is one kind, the totals name it as the key does", () => {
+    const abst = { ...rollCallDetail, other: 1, parties: [{ party: "PT", counts: [{ vote: "Sim", n: 2 }, { vote: "Abstenção", n: 1 }], deputies: [] }] };
+    expect(renderToStaticMarkup(<RollCallView locale="en" rollCall={abst} />)).toContain("· Abstenção 1");
   });
 
   it("a split bar for the whole vote and one per party, hidden from screen readers, with a note that each bar is its own whole", () => {

@@ -9,6 +9,8 @@ export const COLOR_TOKENS = {
   stepDone: "#047857",
   disabledBg: "#e7e5e4",
   disabledFg: "#5f5e58",
+  /** Focus ring (`--ring`): a non-text indicator, at least 3:1 on white and on the page (WCAG 1.4.11, 2.4.13). */
+  ring: "#57534e",
 } as const;
 
 function channel(v: number): number {

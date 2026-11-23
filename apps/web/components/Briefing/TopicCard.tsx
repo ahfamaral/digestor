@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronRightIcon } from "lucide-react";
 import { formatTimestamp, type TranslatedBriefingContent } from "@digestor/core";
 import type { MomentView } from "@/lib/briefingFilters";
 import { splitFirstSentence, type PreviewSection } from "@/lib/preview";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { laneBars } from "@/lib/laneBars";
+import { flattenViews } from "@/lib/review";
 import { LaneGraph } from "./LaneGraph";
 import { MomentRow, type RowContext } from "./MomentRow";
 
@@ -24,6 +26,8 @@ export function TopicCard({
   views,
   ctx,
   emptyNote,
+  open,
+  onOpenChange,
 }: {
   section: PreviewSection | null;
   translated: TranslatedBriefingContent | null;
@@ -32,6 +36,9 @@ export function TopicCard({
   ctx: RowContext;
   /** Say that the filters hide this topic's moments (when it has none to show). */
   emptyNote: boolean;
+  /** Whether the moments show (a long Briefing starts closed: `topicOpen`). */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const [more, setMore] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -44,6 +51,9 @@ export function TopicCard({
   const { first, rest } = splitFirstSentence(summaryTr || section?.summary || "");
   const hasMore = rest !== "" || quote !== null;
   const bars = section ? laneBars(views, section.topic) : [];
+  const all = flattenViews(views);
+  const count = all.length;
+  const approvedHere = all.filter((v) => v.status === "approved").length;
   const pick = (id: string) => {
     const row = document.getElementById(`moment-${id}`);
     if (!row) return;
@@ -109,14 +119,30 @@ export function TopicCard({
         )}
       </div>
 
-      {bars.length > 0 && (
+      {views.length > 0 && (
+        <div className="mt-1 px-2">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={`topic-moments-${key}`}
+            onClick={() => onOpenChange(!open)}
+            className="inline-flex min-h-6 items-center gap-1 rounded-sm text-xs font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <ChevronRightIcon aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+            {open ? t("briefing.hideMoments") : count === 1 ? t("briefing.showMomentsOne") : t("briefing.showMoments", { n: count })}
+            {!open && approvedHere > 0 && <span className="font-normal text-green-800">· {t("briefing.approvedInTopic", { n: approvedHere })}</span>}
+          </button>
+        </div>
+      )}
+
+      {open && bars.length > 0 && (
         <div className="mt-2 px-2">
           <LaneGraph bars={bars} hoveredId={hoveredId} onHover={setHoveredId} onPick={pick} />
         </div>
       )}
 
       {views.length > 0 ? (
-        <ul className="mt-2">
+        <ul id={`topic-moments-${key}`} hidden={!open} className="mt-2">
           {views.map((v) => (
             <MomentRow key={v.moment.id} view={v} ctx={ctx} hoveredId={hoveredId} onHover={setHoveredId} />
           ))}

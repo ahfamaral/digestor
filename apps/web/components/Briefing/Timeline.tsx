@@ -64,6 +64,10 @@ export function Timeline({
     return () => observer.disconnect();
   }, []);
   const placed = useMemo(() => layoutPins(pins.map((p) => p.atPct), trackPx), [pins, trackPx]);
+  // The band pointed at, focused or picked is named under the strip: a narrow band shows only its number (or nothing).
+  const [pointed, setPointed] = useState<number | null>(null);
+  const namedIndex = pointed ?? bands.findIndex((b) => b.topicId === activeTopicId);
+  const named = namedIndex >= 0 ? bands[namedIndex] : undefined;
   const rows = Math.max(0, ...placed.map((p) => p.row)) + 1;
   return (
     <section aria-label={t("preview.timeline")} className="mt-3">
@@ -78,12 +82,17 @@ export function Timeline({
                   key={b.topicId}
                   type="button"
                   onClick={() => onBand(b.topicId)}
+                  onMouseEnter={() => setPointed(i)}
+                  onMouseLeave={() => setPointed(null)}
+                  onFocus={() => setPointed(i)}
+                  onBlur={() => setPointed(null)}
                   aria-current={active ? "location" : undefined}
                   aria-label={t("preview.timelineBand", { n: i + 1, title: b.title, time: formatTimestamp(b.startMs) })}
                   title={b.title}
                   style={{ width: `${b.widthPct}%` }}
                   className={cn(
-                    "@container min-w-0 border-r-2 border-background px-0.5 text-left text-[11px] last:border-r-0",
+                    // At least 24 px (WCAG 2.5.8): longer bands give up the width.
+                    "@container min-w-6 border-r-2 border-background px-0.5 text-left text-[11px] last:border-r-0",
                     FOCUS,
                     "focus-visible:ring-inset focus-visible:ring-offset-0",
                     active ? "bg-foreground font-semibold text-white" : "bg-stone-200 text-stone-700 hover:bg-stone-300",
@@ -100,6 +109,9 @@ export function Timeline({
               );
             })}
           </div>
+          <p aria-hidden className="mt-1 h-4 truncate text-xs text-muted-foreground">
+            {named && t("preview.timelineNamed", { n: namedIndex + 1, title: named.title, time: formatTimestamp(named.startMs) })}
+          </p>
           <div ref={track} className="relative mt-0.5" style={{ height: `${rows * PIN_PX}px` }}>
             {pins.map((p, i) => {
               const at = placed[i] ?? { leftPct: p.leftPct, row: p.row };
@@ -111,7 +123,7 @@ export function Timeline({
                   onClick={() => onPin(p.momentId)}
                   aria-label={t("preview.timelinePin", { type: t(`highlight.${p.type}`), title: p.title, time: formatTimestamp(p.startMs) })}
                   style={{ left: `${at.leftPct}%`, top: `${at.row * PIN_PX}px` }}
-                  className={cn("group absolute grid size-5 -translate-x-1/2 place-items-center rounded-full hover:z-20 focus-visible:z-20", FOCUS)}
+                  className={cn("group absolute grid size-6 -translate-x-1/2 place-items-center rounded-full hover:z-20 focus-visible:z-20", FOCUS)}
                 >
                   <span aria-hidden className={cn("size-3 rounded-full border-2 border-white shadow-[0_0_0_1px_var(--border)]", TONE_DOT[HIGHLIGHT_TYPES[p.type].tone])} />
                   {/* Visible on hover and on keyboard focus (a title attribute shows on hover only); the button's name says the same. */}

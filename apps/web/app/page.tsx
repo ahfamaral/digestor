@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { pageTitle } from "@/lib/pageTitle";
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
@@ -15,11 +17,13 @@ import { spentSoFarText } from "@/lib/cost";
 const SESSION_LIMIT = 200;
 
 /** Sessions: every ingested video, with where it is and its clips. Reads the DB per request (inside Suspense). */
+export const metadata: Metadata = { title: pageTitle(t("home.title")) };
+
 export default function SessionsPage({ searchParams }: PageProps<"/">) {
   return (
     <>
       <AppBar />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
+      <main id="content" tabIndex={-1} className="outline-none mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold tracking-tight">{t("home.title")}</h1>
           <div className="flex flex-wrap items-center gap-2">

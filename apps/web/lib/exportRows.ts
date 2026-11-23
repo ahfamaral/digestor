@@ -176,8 +176,14 @@ export function exportStatus(c: { dismissed: boolean; failing: ChecklistId[]; ro
 
 /** The status as one short sentence ("Needs: Add a credit line; ..."). */
 export function statusLabel(s: ExportStatus): string {
-  if (s.kind === "needs") return t("exportScreen.status.needs", { actions: s.actions.map((id) => t(`exportScreen.action.${id}`)).join("; ") });
+  // The status names the count; the row lists the steps (`needsList`).
+  if (s.kind === "needs") return s.actions.length === 1 ? t("exportScreen.status.needsOne") : t("exportScreen.status.needs", { n: s.actions.length });
   return t(`exportScreen.status.${s.kind}`);
+}
+
+/** What a clip still needs before export, one step per line, in checklist order. */
+export function needsList(s: ExportStatus): string[] {
+  return s.kind === "needs" ? s.actions.map((id) => t(`exportScreen.action.${id}`)) : [];
 }
 
 /** Rendered clips first; the order inside each group is kept. */

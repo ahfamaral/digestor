@@ -5,10 +5,11 @@
  * #anchor in the address would make Back jump to it instead of restoring where the reader was (see ScrollToHash). The
  * plain href still works without JavaScript; the target needs `tabIndex={-1}` to take focus.
  */
-export function JumpLink({ id, className, children }: { id: string; className?: string; children: React.ReactNode }) {
+export function JumpLink({ id, className, current = false, children }: { id: string; className?: string; current?: boolean; children: React.ReactNode }) {
   return (
     <a
       href={`#${id}`}
+      aria-current={current ? "location" : undefined}
       onClick={(e) => {
         const target = document.getElementById(id);
         if (!target || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

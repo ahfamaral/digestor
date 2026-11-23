@@ -22,6 +22,14 @@ describe("AA contrast (4.5:1) of the real colours", () => {
   it("disabled button text on its grey", () => expect(contrastRatio(C.disabledFg, C.disabledBg)).toBeGreaterThanOrEqual(4.5));
 });
 
+describe("focus ring (3:1, WCAG 1.4.11 and 2.4.13)", () => {
+  it("on white and on the page background", () => {
+    expect(contrastRatio(C.ring, C.white)).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(C.ring, C.background)).toBeGreaterThanOrEqual(3);
+  });
+  it("is never drawn at half strength", () => expect(css).not.toMatch(/ring-ring\/50|outline-ring\/50/));
+});
+
 describe("globals.css uses the tested values", () => {
   const cssVars: Record<string, string> = {
     "--background": C.background,
@@ -32,6 +40,7 @@ describe("globals.css uses the tested values", () => {
     "--step-done": C.stepDone,
     "--disabled": C.disabledBg,
     "--disabled-foreground": C.disabledFg,
+    "--ring": C.ring,
   };
   for (const [name, hex] of Object.entries(cssVars)) {
     it(`${name} is ${hex}`, () => {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { t } from "@/lib/i18n";
 import { Busy } from "@/components/ui/spinner";
@@ -39,15 +39,16 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>{t("login.title")}</CardTitle>
+        <h1 data-slot="card-title" className="font-heading text-base leading-snug font-medium">{t("login.title")}</h1>
         <CardDescription>{t("login.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="flex flex-col gap-3">
+          <label htmlFor="login-password" className="-mb-1.5 text-sm font-medium">{t("login.password")}</label>
           <Input
+            id="login-password"
             type="password"
             autoComplete="current-password"
-            aria-label={t("login.password")}
             aria-invalid={error !== null}
             autoFocus
             value={password}

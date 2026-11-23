@@ -14,7 +14,7 @@ describe("sessionStatus", () => {
   });
   it("says Downloading for a YouTube session that is downloading", () => {
     expect(sessionStatus({ stage: "downloading", error: null, source: "youtube" })).toEqual({ text: "Downloading from YouTube", busy: true, tone: "normal" });
-    expect(sessionStatus({ stage: "downloading", error: null, source: "upload" }).text).toBe("Uploading");
+    expect(sessionStatus({ stage: "downloading", error: null, source: "upload" }).text).toBe("Preparing the file");
   });
   it("says Failed without the raw error", () => {
     const s = sessionStatus({ stage: "failed", error: "ECONNRESET at 10.0.0.1" });

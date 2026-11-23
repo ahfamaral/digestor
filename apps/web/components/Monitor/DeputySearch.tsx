@@ -17,7 +17,7 @@ export function DeputySearch({ locale, externalId, params, phases }: { locale: M
   const min = `${params.year}-01-01`;
   const max = `${params.year}-12-31`;
   return (
-    <GetForm action={`${deputyHref(externalId)}#speeches`} className="grid gap-3 rounded-xl border border-border bg-white p-4">
+    <GetForm label={tm(locale, "forms.speeches")} action={`${deputyHref(externalId)}#speeches`} className="grid gap-3 rounded-xl border border-border bg-white p-4">
       <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <legend className="sr-only">{tm(locale, "deputySearch.rel")}</legend>
         {(["by", "mentions"] as const).map((rel) => (

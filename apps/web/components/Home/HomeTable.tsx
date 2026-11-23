@@ -154,7 +154,8 @@ export function HomeTable({ rows, clips, now, initial, limit, spent = null }: {
       )}
 
       {/* One row that scrolls sideways on a narrow screen (never wraps); the bottom line is a shadow so the scroll box doesn't clip the active tab's rule. */}
-      <nav aria-label={t("home.tabsLabel")} className="flex gap-1 overflow-x-auto text-sm shadow-[inset_0_-1px_0_var(--border)]">
+      {/* The right edge fades on a narrow screen, so a cut row shows there is more (as the monitor's section rows do). */}
+      <nav aria-label={t("home.tabsLabel")} className="flex gap-1 overflow-x-auto pr-8 text-sm shadow-[inset_0_-1px_0_var(--border)] max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]">
         {tabs.map((tab) => (
           <button
             key={tab.id}

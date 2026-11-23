@@ -15,7 +15,7 @@ export function SortSwitch({ locale, sort, href }: { locale: MonitorLocale; sort
             href={href(value)}
             aria-current={sort === value ? "true" : undefined}
             className={cn(
-              "rounded px-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500",
+              "inline-block rounded px-1 py-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500",
               sort === value ? "font-semibold" : "text-muted-foreground hover:text-foreground",
             )}
           >

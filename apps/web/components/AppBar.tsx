@@ -13,14 +13,16 @@ const FOCUS = "rounded outline-none focus-visible:ring-2 focus-visible:ring-ring
 
 /**
  * `signedOut` (the login page) leaves out the Sessions link: there is nowhere to go before signing in. `area` marks the
- * current top link (`aria-current`); `skipTo` adds a "Skip to content" link to that element id, shown on focus.
+ * current top link (`aria-current`; every page that isn't the monitor's or the login is in Sessions); `skipTo` (default
+ * `content`, the id every page gives its `<main>`) is the target of the "Skip to content" link, shown on focus.
  * Top bar: "Digestor." logo, a "Sessions" link home, and the six-step indicator (done steps green with ✓, current step
  * bold). Inside a ready session (`session.ready`) Briefing, Prepare and Export are links to jump between them.
  * `labels`: the bar's link texts in another language (the monitor's pages in Portuguese, `MonitorAppBar`); the
  * journalist pages leave it out and stay English.
  */
-export function AppBar({ current, session, facts = { hasClips: false, allReadyRendered: false }, signedOut = false, area, skipTo, labels, children }: { current?: Step; signedOut?: boolean; session?: { id: string; ready: boolean }; facts?: StepFacts; area?: "sessions" | "monitor"; skipTo?: string; labels?: AppBarLabels; children?: React.ReactNode }) {
+export function AppBar({ current, session, facts = { hasClips: false, allReadyRendered: false }, signedOut = false, area, skipTo = "content", labels, children }: { current?: Step; signedOut?: boolean; session?: { id: string; ready: boolean }; facts?: StepFacts; area?: "sessions" | "monitor"; skipTo?: string; labels?: AppBarLabels; children?: React.ReactNode }) {
   const at = current ? STEPS.indexOf(current) : -1;
+  const place = area ?? (signedOut ? undefined : "sessions");
   const text = labels ?? { sessions: t("appBar.sessions"), monitor: t("appBar.monitor"), skip: t("appBar.skip") };
   return (
     <header lang={labels?.lang} className="flex items-center justify-between gap-4 border-b border-border bg-white px-4 py-3">
@@ -36,10 +38,10 @@ export function AppBar({ current, session, facts = { hasClips: false, allReadyRe
         <Link href="/" className={cn("inline-flex h-8 items-center text-base font-extrabold tracking-tight", FOCUS)}>
           {t("app.name")}<span className="text-brand">.</span>
         </Link>
-        {!signedOut && <Link href="/" className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", FOCUS)}>
+        {!signedOut && <Link href="/" aria-current={place === "sessions" ? "page" : undefined} className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", place === "sessions" && "text-foreground", FOCUS)}>
           {text.sessions}
         </Link>}
-        {!signedOut && <Link href="/monitor" aria-current={area === "monitor" ? "page" : undefined} className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", area === "monitor" && "text-foreground", FOCUS)}>
+        {!signedOut && <Link href="/monitor" aria-current={place === "monitor" ? "page" : undefined} className={cn("inline-flex h-8 items-center px-1 text-sm font-medium text-muted-foreground hover:text-foreground", place === "monitor" && "text-foreground", FOCUS)}>
           {text.monitor}
         </Link>}
       </div>
@@ -59,7 +61,7 @@ export function AppBar({ current, session, facts = { hasClips: false, allReadyRe
               <span key={step} className="flex items-center gap-1.5">
                 {i > 0 && <span aria-hidden>›</span>}
                 {href ? (
-                  <Link href={href} className={cn(tone, i > at && "text-foreground/70", "underline-offset-2 hover:underline", FOCUS)}>
+                  <Link href={href} className={cn(tone, i > at && "text-foreground/70", "inline-flex min-h-6 items-center underline-offset-2 hover:underline", FOCUS)}>
                     {label}
                   </Link>
                 ) : (

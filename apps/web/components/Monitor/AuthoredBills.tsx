@@ -50,7 +50,7 @@ export function AuthoredBills({
   const meaningOnly = bills.meaningOnly ?? 0;
   const form = signed > 0 && (
     <div className="grid gap-2">
-      <GetForm action={`${deputyHref(externalId)}#${BILLS}`} className="grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
+      <GetForm label={tm(locale, "forms.bills")} action={`${deputyHref(externalId)}#${BILLS}`} className="grid gap-3 rounded-xl border border-border bg-white p-3 sm:p-4">
         <div className="flex gap-2">
           <label htmlFor="bills-q" className="sr-only">{tm(locale, "billFilters.label")}</label>
           <input
@@ -101,7 +101,7 @@ export function AuthoredBills({
       href={`${deputyHref(externalId, { ...params, btype: type, bp: 0 })}#${BILLS}`}
       aria-current={params.btype === type ? "true" : undefined}
       className={cn(
-        "rounded px-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500",
+        "inline-block rounded px-1 py-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500",
         params.btype === type ? "font-semibold" : "text-muted-foreground hover:text-foreground",
       )}
     >

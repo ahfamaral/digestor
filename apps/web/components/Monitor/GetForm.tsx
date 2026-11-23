@@ -45,8 +45,8 @@ function land(id: string) {
  * not be empty; the form then stays put, shows `hint` and focuses the field (the server says the same without JavaScript).
  */
 export function GetForm({
-  action, className, required, children,
-}: { action: string; className?: string; required?: { name: string; hint: string }; children: React.ReactNode }) {
+  action, className, required, label, children,
+}: { action: string; className?: string; required?: { name: string; hint: string }; /** Names the search landmark (a page with several). */ label?: string; children: React.ReactNode }) {
   const [missing, setMissing] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -64,6 +64,7 @@ export function GetForm({
   return (
     <form
       role="search"
+      aria-label={label}
       action={action}
       method="get"
       className={`group/get transition-opacity aria-busy:opacity-70 ${className ?? ""}`}

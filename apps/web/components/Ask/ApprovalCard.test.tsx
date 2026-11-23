@@ -29,6 +29,15 @@ describe("ApprovalCard", () => {
     expect(one).toMatch(/<p[^>]*>Make a clip 00:00:10–00:00:30/);
   });
 
+  it("a decided card's title says what happened, not the question", () => {
+    const decided = (status: AskAction["status"], calls: unknown[]) =>
+      renderToStaticMarkup(<ApprovalCard action={{ ...card(calls), status, resolution: { decision: "approve" } }} lang="pt" busy={false} error={undefined} videoRemoved={false} onDecide={() => {}} />);
+    expect(decided("confirmed", [clipCall])).toContain("Approved change");
+    expect(decided("confirmed", [clipCall])).not.toContain("Approve this change?");
+    expect(decided("confirmed", [clipCall, selectionCall])).toContain("2 approved changes");
+    expect(decided("dismissed", [clipCall])).toContain("Declined change");
+  });
+
   it("once the video is removed only Reject is offered (a change can't be made any more)", () => {
     expect(buttons(render([clipCall], true))).toEqual(["Reject"]);
   });

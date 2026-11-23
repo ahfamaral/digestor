@@ -17,7 +17,7 @@ import { t, type MessageKey } from "@/lib/i18n";
 
 /** Approve / Skip: both labels share one grid cell, so a button keeps the width of its longer label in both states. */
 const STATUS_BTN =
-  "inline-grid justify-items-center max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 rounded-md border border-border bg-white px-[7px] py-0.5 text-[11.5px] leading-[1.4] font-medium text-foreground hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-brand";
+  "inline-grid justify-items-center max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 rounded-md border border-border bg-white px-[7px] py-[3px] text-[11.5px] leading-[1.4] font-medium text-foreground hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-brand";
 const STATUS_BUTTONS: { status: SelectionStatus; text: MessageKey; done: MessageKey; label: MessageKey; on: string }[] = [
   { status: "approved", text: "briefing.approve", done: "briefing.approved", label: "briefing.approveLabel", on: "border-green-300 bg-green-100 text-green-800 hover:bg-green-100" },
   { status: "rejected", text: "briefing.skip", done: "briefing.skipped", label: "briefing.skipLabel", on: "border-stone-300 bg-stone-100 text-stone-900 hover:bg-stone-100" },
@@ -228,8 +228,8 @@ export function MomentRow({
                 onClick={() => ctx.onStatus(m.id, b.status)}
                 className={cn(STATUS_BTN, on && b.on)}
               >
-                <span className={cn("[grid-area:1/1]", on && "invisible")}>{t(b.text)}</span>
-                <span className={cn("[grid-area:1/1]", !on && "invisible")}>{t(b.done)}</span>
+                <span aria-hidden={on || undefined} className={cn("[grid-area:1/1]", on && "invisible")}>{t(b.text)}</span>
+                <span aria-hidden={!on || undefined} className={cn("[grid-area:1/1]", !on && "invisible")}>{t(b.done)}</span>
               </button>
             );
           })}

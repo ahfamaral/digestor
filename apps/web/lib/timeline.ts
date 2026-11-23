@@ -21,7 +21,7 @@ export interface TimelinePin {
 }
 
 /** A pin's width, and the track width the spacing is planned for (the strip's real width is only known in the browser). */
-export const PIN_PX = 20;
+export const PIN_PX = 24; // a pin is a 24 px target (WCAG 2.5.8); rows sit 24 px apart
 export const TRACK_PX = 560;
 export const MAX_PIN_ROWS = 3;
 

@@ -56,6 +56,8 @@ export function AskRecordView({
       {result && params.q && !result.ok && (
         <p role="status" className="text-sm">
           {tm(locale, "ask.unavailable")}{" "}
+          <Link href={askHref(params)} prefetch={false} className={link}>{tm(locale, "ask.tryAgain")}</Link>
+          {" · "}
           <Link href={words} className={link}>{tm(locale, "ask.tryWords")}</Link>
         </p>
       )}
@@ -85,7 +87,7 @@ export function AskForm({
   locale, params, askedEmpty = false, dates, id = "ask-q",
 }: { locale: MonitorLocale; params: AskParams; askedEmpty?: boolean; dates?: { min: string; max: string }; id?: string }) {
   return (
-    <GetForm action="/monitor/perguntar" className="grid gap-3" required={{ name: "q", hint: tm(locale, "ask.noQuestion") }}>
+    <GetForm label={tm(locale, "forms.ask")} action="/monitor/perguntar" className="grid gap-3" required={{ name: "q", hint: tm(locale, "ask.noQuestion") }}>
       <label htmlFor={id} className={dates ? "text-sm font-medium" : "sr-only"}>{tm(locale, "ask.label")}</label>
       <div className="flex gap-2">
         <input

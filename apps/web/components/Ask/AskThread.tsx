@@ -429,7 +429,7 @@ function MessageItem({
                 type="button"
                 disabled={videoRemoved}
                 aria-describedby={videoRemoved ? "ask-video-removed" : undefined}
-                aria-label={t("ask.playLabel", { time: formatTimestamp(part.ms) })}
+                aria-label={t("ask.playLabel", { label: part.label, time: formatTimestamp(part.ms) })}
                 onClick={() => onTime(part.ms)}
                 dir="ltr"
                 className="rounded bg-stone-100 px-1 font-mono text-xs font-medium text-foreground underline decoration-dotted underline-offset-2 outline-none hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
@@ -481,7 +481,7 @@ function MessageItem({
                     </Link>
                   ))}
                 </div>
-                {call.result && <p className="break-words text-xs text-muted-foreground">{call.result}</p>}
+                {/* call.result is the tool's note to the model (ids, "the user"): never shown. */}
                 {errors[key] && (
                   <p role="alert" className="text-xs text-red-700">
                     {errors[key]}

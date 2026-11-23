@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { sessionTabTitle } from "@/lib/sessionTabTitle";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { OWNER_ID, PROFILES, exportChecklist, speakersInRange } from "@digestor/core";
@@ -12,6 +14,13 @@ import { loadNames } from "@/lib/namesServer";
 import { currentSpeakerTitle } from "@/lib/briefingData";
 import { rangeVoices, unconfirmedAcrossClips, whosWhoRows } from "@/lib/names";
 import { getServer } from "@/lib/server";
+import { t } from "@/lib/i18n";
+
+/** The tab names the video and the screen. */
+export async function generateMetadata({ params }: PageProps<"/s/[id]/export">): Promise<Metadata> {
+  const { id } = await params;
+  return { title: await sessionTabTitle(id, t("exportScreen.title")) };
+}
 
 /** Export: checklist status, render start and downloads per clip. Reads the DB per request (inside Suspense). */
 export default function ExportPage({ params }: PageProps<"/s/[id]/export">) {

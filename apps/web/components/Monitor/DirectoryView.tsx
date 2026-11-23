@@ -37,7 +37,7 @@ export function DirectoryView({
         </div>
       </div>
 
-      <GetForm action="/monitor/deputados" className="grid gap-3 rounded-xl border border-border bg-white p-4 sm:p-5">
+      <GetForm label={tm(locale, "forms.directory")} action="/monitor/deputados" className="grid gap-3 rounded-xl border border-border bg-white p-4 sm:p-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <FormSelect name="party" label={tm(locale, "directory.party")} anyLabel={tm(locale, "filters.any")} options={options.parties} value={params.party} />
           <FormSelect name="uf" label={tm(locale, "directory.uf")} anyLabel={tm(locale, "filters.any")} options={options.ufs} value={params.uf} />
@@ -49,7 +49,7 @@ export function DirectoryView({
           </label>
           <div className="ml-auto flex items-center gap-4 text-sm">
             {filtered && (
-              <Link href={directoryHref()} className="rounded px-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
+              <Link href={directoryHref()} className="inline-block rounded px-1 py-1 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-stone-500">
                 {tm(locale, "directory.clear")}
               </Link>
             )}

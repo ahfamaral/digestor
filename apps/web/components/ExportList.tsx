@@ -12,7 +12,7 @@ import { BackLink } from "@/components/BackLink";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { WarningIcon } from "@/components/WarningNote";
 import { ApprovalDismissed } from "@/components/ApprovalDismissed";
-import { exportStatus, exportableIds, inFlight, languageLabel, renderedFirst, sortByOrder, statusLabel, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
+import { exportStatus, exportableIds, inFlight, languageLabel, renderedFirst, sortByOrder, statusLabel, needsList, toMake, type ExportLanguageRow, type ExportRow } from "@/lib/exportRows";
 import { t } from "@/lib/i18n";
 import { startRefreshLoop } from "@/lib/refreshLoop";
 import { cn } from "@/lib/utils";
@@ -105,7 +105,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
         session={{ id: session.id, ready: true }}
         facts={{ hasClips: clips.length > 0, allReadyRendered: ready.length > 0 && ready.every((c) => c.row.renderStatus === "done") }}
       />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
+      <main id="content" tabIndex={-1} className="outline-none mx-auto w-full max-w-5xl flex-1 px-4 pt-6 sm:px-6">
         <header className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
           <div className="min-w-0">
             <BackLink href={`/s/${session.id}/prepare`} label={t("exportScreen.backToPrepare")} />
@@ -170,6 +170,10 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
 
         <footer className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            {/* A disabled button says why. */}
+            {!session.videoRemoved && ready.length === 0 && clips.length > 0 && (
+              <span id="none-ready" className="text-sm text-muted-foreground">{t("exportScreen.noneReady")}</span>
+            )}
             <span className="text-sm font-medium text-muted-foreground">{missing === 0
                 ? t("exportScreen.readyCount", { n: ready.length, total: clips.length })
                 : missing === 1
@@ -179,7 +183,7 @@ export function ExportList({ session, names, whoRows, unconfirmed, profile, clip
               type="button"
               onClick={() => void start()}
               disabled={busy || session.videoRemoved || ready.length === 0}
-              aria-describedby={session.videoRemoved ? "video-removed" : undefined}
+              aria-describedby={session.videoRemoved ? "video-removed" : ready.length === 0 && clips.length > 0 ? "none-ready" : undefined}
               className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
             >
               <Busy busy={busy}>{busy ? t("exportScreen.exporting") : t("exportScreen.makeVideos")}</Busy>
@@ -253,11 +257,17 @@ function ClipRow({
       </div>
 
       {state.kind === "needs" ? (
-        <p className="mt-2 text-[13px]">
-          <Link href={`/s/${sessionId}/prepare#clip-${clip.id}`} className="text-foreground underline underline-offset-2">
-            {t("exportScreen.fixInPrepare")}
-          </Link>
-        </p>
+        <div className="mt-2 grid gap-1 text-[13px]">
+          <p className="font-medium">{t("exportScreen.needsHeading")}</p>
+          <ul className="list-disc pl-5 leading-relaxed">
+            {needsList(state).map((line) => <li key={line}>{line}</li>)}
+          </ul>
+          <p>
+            <Link href={`/s/${sessionId}/prepare#clip-${clip.id}`} className="text-foreground underline underline-offset-2">
+              {t("exportScreen.fixInPrepare")}
+            </Link>
+          </p>
+        </div>
       ) : state.kind === "dismissed" ? (
         <p className="mt-2 text-[13px] text-stone-700">{t("prepare.approvalDismissedHint")}</p>
       ) : null}
